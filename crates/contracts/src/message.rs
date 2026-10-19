@@ -61,6 +61,11 @@ pub struct Message {
     /// Astra effort transition immediately before this message. Other protocols
     /// ignore it; it is never rendered as conversation text.
     pub configuration_update: Option<crate::model::ReasoningEffort>,
+    /// Recorded tool change taking effect immediately before this message
+    /// (see [`crate::tool_changes`]). Drivers that
+    /// cannot send changes in a cache-safe form ignore it: their `tools`
+    /// already carries the current set. Never rendered as conversation text.
+    pub tool_changes: Option<crate::tool_changes::ToolChanges>,
 }
 
 impl Message {
@@ -75,6 +80,7 @@ impl Message {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -89,6 +95,7 @@ impl Message {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 

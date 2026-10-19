@@ -46,7 +46,8 @@
 //!   ... -- --smoke                 # five turns, a second or two
 //!   ... -- --summary out.jsonl     # append one JSON line per scenario
 //!   ... -- --moniker <name>        # label for the summary lines
-//!   ... -- --top <n>               # print the n statements costing most DB time per turn
+//!   ... -- --top <n>               # print the n statements costing most DB time per turn,
+//!                                  # and the slowest turns' slow steps
 //!
 //! `--summary` lines follow `crates/durable/benches/baseline.jsonl`
 //! (`tasks` are turns, `s2s_*` the pickup, `e2e_*` the client latency), so
@@ -69,6 +70,8 @@ use serde_json::{Value, json};
 const TURN_TIMEOUT: Duration = Duration::from_secs(60);
 const TURNS_PER_SESSION: usize = 5;
 const WORKER_TOKEN: &str = "server-turn-latency-bench";
+/// `key_id:base64` of 32 fixed bytes ("everruns-turn-latency-bench-key!").
+const BENCH_ENCRYPTION_KEY: &str = "kek-bench-v1:ZXZlcnJ1bnMtdHVybi1sYXRlbmN5LWJlbmNoLWtleSE=";
 
 struct Options {
     smoke: bool,
@@ -115,7 +118,15 @@ struct Turn {
     e2e: Duration,
     server_ms: f64,
     pickup_ms: f64,
+    /// The turn's slow steps (`--top`): gaps of at least [`SLOW_STEP_MS`]
+    /// between consecutive events, by the events' own timestamps.
+    slow_steps: Vec<(String, f64)>,
 }
+
+/// A step between two of a turn's events this long is shown by `--top`.
+const SLOW_STEP_MS: f64 = 3.0;
+/// Slowest turns `--top` breaks down per scenario.
+const SLOW_TURNS: usize = 5;
 
 fn main() {
     let opts = Options::from_args();
@@ -123,6 +134,14 @@ fn main() {
         eprintln!("turn_latency needs DATABASE_URL (a PostgreSQL database it may migrate)");
         std::process::exit(2);
     };
+    // The server and worker log nothing unless asked: with `RUST_LOG` set,
+    // their logs go to stderr, which is how a failed turn shows its cause.
+    if std::env::var_os("RUST_LOG").is_some() {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let http_port = free_port();
     let grpc_port = free_port();
     configure_environment(&database_url);
@@ -155,6 +174,11 @@ fn configure_environment(database_url: &str) {
         std::env::set_var("DEPLOYMENT_GRADE", "dev");
         std::env::set_var("AUTH_MODE", "none");
         std::env::set_var("WORKER_GRPC_AUTH_TOKEN", WORKER_TOKEN);
+        // Deployments set an encryption key, and a gRPC worker's turn reads
+        // and writes encrypted checkpoints through the server: without one
+        // every turn fails with "checkpoint encryption is not configured".
+        // A fixed throwaway key: the bench database holds only llmsim data.
+        std::env::set_var("SECRETS_ENCRYPTION_KEY", BENCH_ENCRYPTION_KEY);
         // Every client here shares 127.0.0.1, so the per-IP API limit (1200
         // requests a minute) trips on event polling once sessions run in
         // parallel. The bench measures turns, not the limiter.
@@ -220,6 +244,8 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
         "turn_latency ({}): real server + gRPC worker, llmsim, zero model latency",
         if opts.smoke { "smoke" } else { "full" }
     );
+    let cpu = cpu_model();
+    println!("cpu: {}", cpu.as_deref().unwrap_or("unknown"));
     println!(
         "{:>5} {:>6} {:>8} {:>9} {:>9} {:>9} {:>11} {:>11} {:>11} {:>14} {:>11}",
         "conc",
@@ -303,10 +329,14 @@ async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16)
                 println!("      {line}");
             }
         }
+        if opts.top > 0 {
+            print_slowest_turns(&turns);
+        }
         lines.push(json!({
             "bench": "server_turn_latency",
             "scenario": format!("text_c{}", load.concurrency),
             "moniker": opts.moniker,
+            "cpu": cpu,
             "smoke": opts.smoke,
             "tasks": turns.len(),
             "tasks_per_sec": (turns_per_sec * 10.0).round() / 10.0,
@@ -643,7 +673,68 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
         e2e,
         server_ms: ms(at("turn.completed")),
         pickup_ms: ms(at("turn.started")),
+        slow_steps: slow_steps(&seen, &turn_id, input_message_id),
     }
+}
+
+/// Gaps of at least [`SLOW_STEP_MS`] between this turn's consecutive events
+/// (`input.message` first), labelled `previous>next`.
+fn slow_steps(seen: &[Value], turn_id: &str, input_message_id: Option<&str>) -> Vec<(String, f64)> {
+    let mut events: Vec<(i64, &str, DateTime<Utc>)> = seen
+        .iter()
+        .filter(|event| {
+            event["context"]["turn_id"].as_str() == Some(turn_id)
+                || (input_message_id.is_some()
+                    && event["data"]["message"]["id"].as_str() == input_message_id)
+        })
+        .filter_map(|event| {
+            let ts = DateTime::parse_from_rfc3339(event["ts"].as_str()?).ok()?;
+            Some((
+                event["sequence"].as_i64().unwrap_or(i64::MAX),
+                event["type"].as_str()?,
+                ts.with_timezone(&Utc),
+            ))
+        })
+        .collect();
+    events.sort_by_key(|(sequence, _, _)| *sequence);
+    events
+        .windows(2)
+        .filter_map(|pair| {
+            let ms = (pair[1].2 - pair[0].2).num_microseconds().unwrap_or(0) as f64 / 1_000.0;
+            (ms >= SLOW_STEP_MS).then(|| (format!("{}>{}", pair[0].1, pair[1].1), ms))
+        })
+        .collect()
+}
+
+/// The [`SLOW_TURNS`] slowest turns by server time, with their slow steps:
+/// where a tail turn spent its time, on a runner whose logs are all we get.
+fn print_slowest_turns(turns: &[Turn]) {
+    let mut slowest: Vec<&Turn> = turns.iter().collect();
+    slowest.sort_by(|a, b| b.server_ms.total_cmp(&a.server_ms));
+    for turn in slowest.into_iter().take(SLOW_TURNS) {
+        let steps: Vec<String> = turn
+            .slow_steps
+            .iter()
+            .map(|(step, ms)| format!("{step}={ms:.0}"))
+            .collect();
+        println!(
+            "      slow turn: server {:.1} ms, pickup {:.1} ms, e2e {:.1} ms  {}",
+            turn.server_ms,
+            turn.pickup_ms,
+            turn.e2e.as_secs_f64() * 1_000.0,
+            steps.join("  ")
+        );
+    }
+}
+
+/// The runner's CPU model: shared runners vary between CPU generations, and
+/// throughput with them (EVE-1262), so a summary line says which it ran on.
+fn cpu_model() -> Option<String> {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    cpuinfo
+        .lines()
+        .find_map(|line| line.strip_prefix("model name")?.split_once(':'))
+        .map(|(_, model)| model.trim().to_owned())
 }
 
 fn percentile(values: &mut [f64], pct: f64) -> f64 {

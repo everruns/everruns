@@ -1,6 +1,6 @@
 ---
 title: Deploying a Framework App
-description: Ship a Framework app as a binary or a container, keep its data directory on persistent storage, pass provider keys through the environment, and know when to use serve instead.
+description: "Ship a Framework app as a binary or container: persistent storage for its data directory, provider keys from the environment, and when to use serve instead."
 ---
 
 A Framework app is your own Rust binary. The `everruns` crate needs no
@@ -35,6 +35,18 @@ For a deployment that keeps local state:
   configuration, then call `engine.attach(session_id, agent)` and
   `engine.resume(session_id)`. See
   [Resume after a process restart](/framework/sessions/#resume-after-a-process-restart).
+
+## Advanced local hosts
+
+Hosts built with `everruns::local::LocalRuntimeBuilder` reconcile orphaned background
+executions after constructing their runtime and start periodic maintenance. Recovery
+requires executor evidence that ownership is lost. A missing owner process leaves the
+execution outcome unverified; interrupted commands are never replayed.
+
+When composing `LocalBackends` directly, retain its recovery-wrapped task registry,
+bind `task_recovery` to the runtime's task wake observer, then call `recover_all`
+and `start_maintenance`. Recovery wakes are delivered at least once across crashes;
+a durable observer must deduplicate by session, task ID and terminal attempt.
 
 ## Pass secrets through the environment
 

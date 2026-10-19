@@ -5,7 +5,7 @@
 //!
 //! Tools provided:
 //! - `kv_store`: Key/value storage operations (set, get, delete, list)
-//! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
+//! - `secret_store`: Encrypted, write-only secret storage (set, delete, list)
 
 use crate::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_context::ToolContext;
@@ -29,6 +29,9 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // Revealed deferred MCP servers: written only by tool search and the
     // server's placeholder, so the kv_store tool cannot list or clear them.
     crate::DEFERRED_MCP_REVEAL_KV_PREFIX,
+    // Last listed tools of each MCP server, kept for turns whose listing
+    // fails. A forged record would publish tools the server never offered.
+    crate::MCP_LAST_TOOLS_KV_PREFIX,
     // Persisted channel ThreadContext (EVE-977). Reserved for the same reason
     // as the ARD prefixes: its participant list and "user is viewing" hint
     // reach the model as context, so a session/tool actor forging them would
@@ -69,7 +72,6 @@ const INTERNAL_SECRET_PREFIXES: &[&str] = &[
     "container_sandbox:",
     "daytona_sandbox:",
     "e2b_sandbox:",
-    "deno_sandbox:",
     "sprites_sprite:",
     "modal_sandbox:",
 ];
@@ -149,7 +151,7 @@ impl Capability for SessionStorageCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Use `kv_store` for general data. Use `secret_store` for sensitive data (API keys, tokens, credentials) — secrets are encrypted at rest. Keys are unique per session; storing with the same key overwrites.",
+            "Use `kv_store` for general data. Use `secret_store` for sensitive data (API keys, tokens, credentials) — secrets are encrypted at rest and write-only: you can store, list and delete them but never read a value back. Keys are unique per session; storing with the same key overwrites. `secret_store list` also shows bound secrets: API keys you can use but not read. Reference them as `$NAME` in a bash HTTP request header to their bound URL; never try to print or store them.",
         )
     }
 
@@ -407,7 +409,7 @@ impl Tool for SecretStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Encrypted secret storage operations: set, get, delete, or list secrets."
+        "Encrypted, write-only secret storage: set, delete, or list secrets. Values are never readable back."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -416,12 +418,12 @@ impl Tool for SecretStoreTool {
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["set", "get", "delete", "list"],
+                    "enum": ["set", "delete", "list"],
                     "description": "The operation to perform"
                 },
                 "name": {
                     "type": "string",
-                    "description": "The secret name (required for set, get, delete; max 255 chars)"
+                    "description": "The secret name (required for set and delete; max 255 chars)"
                 },
                 "value": {
                     "type": "string",
@@ -495,6 +497,9 @@ impl Tool for SecretStoreTool {
                         "Secret name is reserved for internal system use",
                     );
                 }
+                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                    return refused;
+                }
                 match storage_store
                     .set_secret(context.session_id, name, value)
                     .await
@@ -516,42 +521,24 @@ impl Tool for SecretStoreTool {
                     }
                 }
             }
+            // THREAT[TM-AGENT-038]: secret values are write-only to the model.
+            // Capabilities read the secrets they own server-side; a key the
+            // shell needs is a bound secret. One answer for every name, so
+            // `get` neither returns a value nor tells which names exist.
             "get" => {
-                let name = match arguments.get("name").and_then(|v| v.as_str()) {
-                    Some(n) => n,
-                    None => {
-                        return ToolExecutionResult::tool_error(
-                            "Missing required parameter: name (for get operation)",
-                        );
-                    }
-                };
-                if is_internal_session_secret_name(name) {
-                    return ToolExecutionResult::tool_error("Secret not found");
+                let name = arguments
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                    return refused;
                 }
-                match storage_store.get_secret(context.session_id, name).await {
-                    Ok(Some(value)) => ToolExecutionResult::success(json!({
-                        "operation": "get",
-                        "name": name,
-                        "value": value,
-                        "found": true
-                    })),
-                    Ok(None) => ToolExecutionResult::success(json!({
-                        "operation": "get",
-                        "name": name,
-                        "value": null,
-                        "found": false
-                    })),
-                    Err(e) => {
-                        let msg = e.to_string();
-                        if msg.contains("Encryption not configured") {
-                            ToolExecutionResult::tool_error(
-                                "Secret storage not available. Encryption is not configured.",
-                            )
-                        } else {
-                            ToolExecutionResult::internal_error(e)
-                        }
-                    }
-                }
+                ToolExecutionResult::tool_error(
+                    "Secret values are write-only: no tool can read one back. Capabilities use \
+                     the secrets they need on their own. To call an HTTP API with a key, ask the \
+                     person to add it as a bound secret (a URL it may be sent to), then send \
+                     `$NAME` in the auth header from bash.",
+                )
             }
             "delete" => {
                 let name = match arguments.get("name").and_then(|v| v.as_str()) {
@@ -567,6 +554,9 @@ impl Tool for SecretStoreTool {
                         "Secret name is reserved for internal system use",
                     );
                 }
+                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                    return refused;
+                }
                 match storage_store.delete_secret(context.session_id, name).await {
                     Ok(deleted) => ToolExecutionResult::success(json!({
                         "operation": "delete",
@@ -578,9 +568,15 @@ impl Tool for SecretStoreTool {
             }
             "list" => match storage_store.list_secrets(context.session_id).await {
                 Ok(secrets) => {
-                    let secret_list: Vec<Value> = secrets
+                    // A bound listing failure must not hide ordinary secrets.
+                    let bound = storage_store
+                        .list_bound_secrets(context.session_id)
+                        .await
+                        .unwrap_or_default();
+                    let mut secret_list: Vec<Value> = secrets
                         .iter()
                         .filter(|s| !is_internal_session_secret_name(&s.name))
+                        .filter(|s| !bound.iter().any(|b| b.name == s.name))
                         .map(|s| {
                             json!({
                                 "name": s.name,
@@ -589,6 +585,7 @@ impl Tool for SecretStoreTool {
                             })
                         })
                         .collect();
+                    secret_list.extend(bound.iter().map(bound_listing));
                     ToolExecutionResult::success(json!({
                         "operation": "list",
                         "secrets": secret_list,
@@ -618,6 +615,44 @@ impl Tool for SecretStoreTool {
     }
 }
 
+/// How a bound secret is described to the model: everything but the value.
+fn bound_listing(secret: &everruns_contracts::runtime::BoundSecretInfo) -> Value {
+    use everruns_contracts::runtime::{SecretAuth, SecretScope};
+    let header = match &secret.binding.auth {
+        SecretAuth::Bearer => format!("Authorization: Bearer ${}", secret.name),
+        SecretAuth::Header { name } => format!("{name}: ${}", secret.name),
+    };
+    json!({
+        "name": secret.name,
+        "bound": true,
+        "url": secret.binding.url,
+        "scope": match secret.scope {
+            SecretScope::Session => "session",
+            SecretScope::Agent => "agent",
+        },
+        "usage": format!(
+            "Write-only. In bash with HTTP enabled, send the header `{header}` to {}. The value is never readable.",
+            secret.binding.url
+        ),
+    })
+}
+
+/// THREAT[TM-BASH-030]: bound secrets are the person's, write-only. The model
+/// may not read, overwrite or delete one through `secret_store`; stores refuse
+/// the same reads and writes, this answers with how to use it instead.
+async fn refuse_bound(
+    store: &dyn crate::session_services::SessionStorageStore,
+    context: &ToolContext,
+    name: &str,
+) -> Option<ToolExecutionResult> {
+    let bound = store.list_bound_secrets(context.session_id).await.ok()?;
+    let secret = bound.iter().find(|secret| secret.name == name)?;
+    Some(ToolExecutionResult::tool_error(format!(
+        "'{name}' is a bound secret: write-only, managed by the person. Use ${name} in bash HTTP requests to {}; the platform puts the value on the wire.",
+        secret.binding.url
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -631,6 +666,7 @@ mod tests {
     #[derive(Default)]
     struct TestStorageStore {
         values: Mutex<HashMap<String, String>>,
+        bound: Vec<everruns_contracts::runtime::BoundSecretInfo>,
     }
 
     #[async_trait]
@@ -689,6 +725,100 @@ mod tests {
         ) -> Result<Vec<crate::session_services::SecretInfo>> {
             Ok(Vec::new())
         }
+
+        async fn list_bound_secrets(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Vec<everruns_contracts::runtime::BoundSecretInfo>> {
+            Ok(self.bound.clone())
+        }
+    }
+
+    /// THREAT[TM-BASH-030]: the model sees how to use a bound secret, never
+    /// its value, and cannot read, overwrite or delete it.
+    #[tokio::test]
+    async fn secret_store_lists_bound_secrets_and_refuses_them() {
+        use everruns_contracts::runtime::{
+            BoundSecretInfo, SecretAuth, SecretBinding, SecretScope,
+        };
+        let storage = Arc::new(TestStorageStore {
+            bound: vec![BoundSecretInfo {
+                name: "JEV_API_KEY".to_string(),
+                binding: SecretBinding {
+                    url: "https://api.typesafe.ai".to_string(),
+                    auth: SecretAuth::Bearer,
+                },
+                scope: SecretScope::Agent,
+            }],
+            ..Default::default()
+        });
+        let context = ToolContext::with_storage_store(SessionId::new(), storage);
+        let tool = SecretStoreTool;
+
+        let ToolExecutionResult::Success(listed) = tool
+            .execute_with_context(json!({"operation": "list"}), &context)
+            .await
+        else {
+            panic!("list");
+        };
+        assert_eq!(listed["secrets"][0]["name"], "JEV_API_KEY");
+        assert_eq!(listed["secrets"][0]["url"], "https://api.typesafe.ai");
+        assert!(
+            listed["secrets"][0]["usage"]
+                .as_str()
+                .unwrap()
+                .contains("Authorization: Bearer $JEV_API_KEY")
+        );
+
+        for args in [
+            json!({"operation": "get", "name": "JEV_API_KEY"}),
+            json!({"operation": "set", "name": "JEV_API_KEY", "value": "mine"}),
+            json!({"operation": "delete", "name": "JEV_API_KEY"}),
+        ] {
+            let result = tool.execute_with_context(args.clone(), &context).await;
+            let ToolExecutionResult::ToolError(message) = result else {
+                panic!("{args}: expected a refusal, got {result:?}");
+            };
+            assert!(message.contains("$JEV_API_KEY"), "{message}");
+        }
+    }
+
+    /// THREAT[TM-AGENT-038]: no session secret value ever reaches the model.
+    /// `get` answers the same refusal for a stored, a missing and a reserved
+    /// name, so it neither discloses a value nor which names exist.
+    #[tokio::test]
+    async fn secret_store_get_never_returns_a_value() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(crate::host::InMemorySessionStorageStore::new());
+        storage
+            .set_secret(session_id, "OPENAI_API_KEY", "sk-plain-session-secret")
+            .await
+            .unwrap();
+        let context = ToolContext::with_storage_store(session_id, storage);
+        let tool = SecretStoreTool;
+
+        let mut answers = Vec::new();
+        for name in ["OPENAI_API_KEY", "MISSING", "daytona_sandbox:sbx-1"] {
+            let result = tool
+                .execute_with_context(json!({"operation": "get", "name": name}), &context)
+                .await;
+            let ToolExecutionResult::ToolError(message) = result else {
+                panic!("{name}: expected a refusal, got {result:?}");
+            };
+            assert!(!message.contains("sk-plain-session-secret"), "{message}");
+            assert!(message.contains("write-only"), "{message}");
+            answers.push(message.replace(name, "<name>"));
+        }
+        assert!(
+            answers.windows(2).all(|pair| pair[0] == pair[1]),
+            "{answers:?}"
+        );
+
+        let schema = tool.parameters_schema();
+        let operations = schema["properties"]["operation"]["enum"]
+            .as_array()
+            .unwrap();
+        assert!(!operations.contains(&json!("get")), "{schema}");
     }
 
     #[test]
@@ -774,7 +904,6 @@ mod tests {
         ));
         assert!(is_internal_session_secret_name("daytona_sandbox:sbx-123"));
         assert!(is_internal_session_secret_name("e2b_sandbox:i-abc"));
-        assert!(is_internal_session_secret_name("deno_sandbox:sb_1"));
         assert!(is_internal_session_secret_name("sprites_sprite:sprite-1"));
         assert!(is_internal_session_secret_name("modal_sandbox:sb-1"));
         assert!(is_internal_session_secret_name("session_sandbox"));
@@ -983,7 +1112,6 @@ mod tests {
             "container_sandbox:evr-owned-sandbox",
             "daytona_sandbox:sbx-1",
             "e2b_sandbox:i-1",
-            "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
             "modal_sandbox:sb-1",
         ] {
@@ -998,7 +1126,6 @@ mod tests {
             "container_sandbox:evr-owned-sandbox",
             "daytona_sandbox:sbx-1",
             "e2b_sandbox:i-1",
-            "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
             "modal_sandbox:sb-1",
         ] {
@@ -1013,13 +1140,14 @@ mod tests {
                 "{name}: set must be reserved, got {set_result:?}"
             );
 
-            // get deliberately looks like a miss so reserved names cannot be enumerated
+            // get answers the same write-only refusal for every name, so
+            // reserved names cannot be enumerated
             let get_result = tool
                 .execute_with_context(json!({"operation": "get", "name": name}), &context)
                 .await;
             assert!(
-                matches!(get_result, ToolExecutionResult::ToolError(ref msg) if msg.contains("not found")),
-                "{name}: get must look like a miss, got {get_result:?}"
+                matches!(get_result, ToolExecutionResult::ToolError(ref msg) if msg.contains("write-only")),
+                "{name}: get must refuse like any other name, got {get_result:?}"
             );
 
             let delete_result = tool

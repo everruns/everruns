@@ -80,8 +80,12 @@ server root.
 - Only A2A 1.0 is served. Requests without `A2A-Version: 1.0` are rejected.
 - Tasks are kept in memory: after a restart, old task ids are unknown, while
   their contexts continue.
-- There is no authentication beyond what you put in front of the server, the
-  same as the other serve routes. The card advertises no security scheme.
+- The endpoint takes the same credentials as the other serve routes
+  ([Authentication](/framework/serve/#authentication)). With auth configured,
+  the card's `securitySchemes` and `securityRequirements` list one scheme per
+  method (`apiKey` for static keys, `oidc` for an OpenID Connect issuer,
+  `oauth2Bearer` for introspection), any one of which is enough; with none,
+  the card lists no scheme and the endpoint is open.
 - Push notifications are not offered. Use streaming or `GetTask`.
 
 For a hosted endpoint with API keys, push notifications, and A2A 0.3 support,

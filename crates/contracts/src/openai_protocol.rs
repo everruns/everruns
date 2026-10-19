@@ -14,10 +14,11 @@
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
+use crate::http_transport::{HttpClient, HttpResponse, HttpTransport};
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::{Client, Url};
 use std::sync::{Arc, Mutex};
+use url::Url;
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponse, LlmResponseStream,
@@ -35,7 +36,7 @@ use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::user_facing_error::is_provider_quota_message;
+use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message};
 
 pub fn is_azure_openai_api_url(api_url: &str) -> bool {
     Url::parse(api_url)
@@ -146,7 +147,7 @@ fn capture_request_body(
 /// The status is classified here, at the provider boundary, so callers that
 /// act on the *kind* of failure (credential checks distinguishing a rejected
 /// key from an unreachable provider) do not have to re-parse the message.
-pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
+pub fn models_api_status_error(status: http::StatusCode) -> AgentLoopError {
     AgentLoopError::llm_http(
         status.as_u16(),
         "",
@@ -180,6 +181,7 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 pub struct OpenAIProtocolChatDriver {
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    transport: HttpClient,
     /// Send `prompt_cache_key` when prompt caching is enabled. Off by default:
     /// not every OpenAI-compatible host accepts the field.
     prompt_cache_key: bool,
@@ -195,6 +197,7 @@ impl OpenAIProtocolChatDriver {
         crate::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
+            transport: HttpClient::default(),
             prompt_cache_key: false,
         }
     }
@@ -213,6 +216,17 @@ impl OpenAIProtocolChatDriver {
             .flatten()
     }
 
+    /// Use host HTTP without replacing request encoding, parsing or retries.
+    pub fn with_transport(mut self, transport: Arc<dyn HttpTransport>) -> Self {
+        self.transport = HttpClient::new(transport);
+        self
+    }
+
+    /// The injected transport, or the lazy native default.
+    pub fn http_client(&self) -> HttpClient {
+        self.transport.clone()
+    }
+
     /// Configure retry behavior for rate limit errors
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
@@ -226,7 +240,8 @@ impl OpenAIProtocolChatDriver {
     ///
     /// Returned by value for subclass access; a `reqwest::Client` is an `Arc`
     /// handle, so cloning it shares the same connection pool.
-    pub fn client(&self) -> Client {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn client(&self) -> reqwest::Client {
         crate::driver_helpers::shared_streaming_http_client()
     }
 
@@ -250,7 +265,7 @@ impl OpenAIProtocolChatDriver {
         model: &str,
         extra_headers: &[(String, String)],
         retries_consumed: u32,
-    ) -> Result<(reqwest::Response, RetryMetadata)> {
+    ) -> Result<(HttpResponse, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
@@ -271,7 +286,7 @@ impl OpenAIProtocolChatDriver {
                     .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut request_builder = self.client().post(&resolved.url);
+                let mut request_builder = self.http_client().post(&resolved.url);
                 let mut headers = resolved.headers;
                 headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 for (name, value) in
@@ -310,7 +325,9 @@ impl OpenAIProtocolChatDriver {
 
                         // Exhausted billing quota is surfaced as a 429 but is not
                         // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
+                        if is_provider_quota_message(&error_text)
+                            || is_usage_limit_message(&error_text)
+                        {
                             return RetryDecision::Terminal(
                                 AgentLoopError::llm_kind(
                                     LlmErrorKind::QuotaExhausted,
@@ -516,7 +533,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             return Err(error.into_stream_error().into_agent_error());
         }
         let response_model = body.model.clone();
-        let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
+        let (text, mut tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next()
+        {
             Some(mut choice) => {
                 let (text, thinking) = choice.message.text_and_thinking();
                 // Mirror the streaming path: tool calls whose arguments are not
@@ -542,6 +560,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
             }
             None => (String::new(), Vec::new(), None, None),
         };
+        crate::tool_schema_compat::restore_strict_openai_tool_calls(&config.tools, &mut tool_calls);
         let (prompt_tokens, completion_tokens, cached_tokens, reasoning_tokens, cost) = body
             .usage
             .map(|usage| {
@@ -889,7 +908,18 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .flat_map(futures::stream::iter),
         );
 
-        Ok(converted_stream)
+        let argument_tools = config.tools.clone();
+        Ok(Box::pin(converted_stream.map(move |event| {
+            event.map(|mut event| {
+                if let LlmStreamEvent::ToolCalls(calls) = &mut event {
+                    crate::tool_schema_compat::restore_strict_openai_tool_calls(
+                        &argument_tools,
+                        calls,
+                    );
+                }
+                event
+            })
+        })))
     }
 
     /// OpenAI-compatible Chat Completions accept the top-level

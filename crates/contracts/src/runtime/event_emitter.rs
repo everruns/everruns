@@ -20,6 +20,11 @@ pub trait EventEmitter: Send + Sync {
     ///
     /// Takes an EventRequest (without id/sequence) and returns the stored Event
     /// with id and sequence assigned by the storage layer.
+    ///
+    /// A host may store some lifecycle events in the background and return
+    /// at once, but never the `tool.started` of an `AtMostOnce` call: that
+    /// one is stored before `emit` returns, because resume reads a log without
+    /// it as proof the call never ran.
     async fn emit(&self, request: EventRequest) -> Result<Event>;
 }
 

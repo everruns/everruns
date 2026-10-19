@@ -1,6 +1,6 @@
 ---
 title: everruns notifications
-description: "Your in-app notifications. CLI reference for everruns notifications."
+description: "Your in-app notifications. CLI reference for everruns notifications: usage, flags and examples."
 sidebar:
   label: notifications
 appliesTo: [platform, cloud]

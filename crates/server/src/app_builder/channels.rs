@@ -27,6 +27,8 @@ pub(super) struct ChannelDeps {
     pub frontend_url: String,
     pub public_chat_enabled: bool,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
+    /// Downloads of the files AG-UI and A2A messages link to.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 pub(super) struct ChannelStates {
@@ -57,7 +59,8 @@ impl ChannelStates {
             deps.event_delivery.clone(),
             deps.rate_limiter("webhook"),
         )
-        .with_mcp_event_triggers(deps.mcp_event_triggers.clone());
+        .with_mcp_event_triggers(deps.mcp_event_triggers.clone())
+        .with_everruns_app(deps.auth.config.github_connection.as_ref());
         let a2a_replay_store = match deps.valkey.clone() {
             Some(client) => crate::channels::a2a::signing::A2aReplayStore::with_valkey(client),
             None => crate::channels::a2a::signing::A2aReplayStore::in_memory(),
@@ -71,7 +74,8 @@ impl ChannelStates {
             deps.rate_limiter("a2a"),
             a2a_replay_store.clone(),
             deps.frontend_url.clone(),
-        );
+        )
+        .with_egress(deps.egress.clone());
         crate::domains::poppy_agent::configure_public_base_url(&deps.auth.config.base_url);
         let poppy = crate::channels::poppy::PoppyState::new(
             deps.db.clone(),
@@ -90,7 +94,8 @@ impl ChannelStates {
             deps.sse_tracker.clone(),
             deps.rate_limiter("apikey"),
         )
-        .with_runtime_auth(deps.auth.clone());
+        .with_runtime_auth(deps.auth.clone())
+        .with_egress(deps.egress.clone());
         let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),
             deps.encryption.clone(),
@@ -99,6 +104,7 @@ impl ChannelStates {
             deps.sse_tracker.clone(),
             deps.rate_limiter("agui"),
         )
+        .with_egress(deps.egress.clone())
         .with_runtime_auth(deps.auth.clone());
         let fcp = crate::channels::fcp::FcpState::new(
             deps.db.clone(),
@@ -118,6 +124,7 @@ impl ChannelStates {
             deps.rate_limiter("public_chat"),
         )
         .with_public_chat_enabled(deps.public_chat_enabled)
+        .with_egress(deps.egress.clone())
         .with_runtime_auth(deps.auth.clone());
         Self {
             webhooks,

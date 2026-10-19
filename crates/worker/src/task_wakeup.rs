@@ -1,15 +1,12 @@
 // Push wake-ups for the task worker poll loop.
 //
 // Decision: the poll loop backs off to `poll_backoff_max` (5s by default) while
-// the queue is empty, and every turn phase (input -> reason -> act -> reason)
-// is its own queued task. Without a wake-up, a new message or the next phase
-// waited for the backed-off poll, which added up to seconds per tool call.
-// Two sources wake the loop now:
-// - the control plane's task-notification stream (NATS or PG NOTIFY behind
-//   the server), for work enqueued anywhere;
-// - this worker finishing a task, since that usually enqueued the next phase.
+// the queue is empty. Without a wake-up, enqueued work waited for the
+// backed-off poll. The control plane's task-notification stream (NATS or PG
+// NOTIFY behind the server) wakes the loop for work enqueued anywhere; the
+// session actor loop subscribes to its own notification types the same way.
 // Polling stays as the fallback, so a lost notification costs at most one
-// backoff interval, never a stuck turn.
+// backoff interval.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,11 +19,7 @@ use tracing::{debug, info, warn};
 
 use crate::durable::StoreError;
 
-use crate::unified_worker::TurnStore;
-
-/// Receiver side of a push channel: each item means "new work may be claimable".
-/// The channel closing means the push stream ended and the caller should resubscribe.
-pub use everruns_durable_engine::turn_store::TaskWakeups;
+use crate::task_store::{TaskStore, TaskWakeups};
 
 /// First resubscribe delay after the stream fails or ends.
 const RESUBSCRIBE_BASE: Duration = Duration::from_secs(1);
@@ -37,7 +30,7 @@ const RESUBSCRIBE_MAX: Duration = Duration::from_secs(30);
 /// notification into a wake-up of the poll loop.
 ///
 /// Returns immediately (the task ends) when the store has no push channel.
-pub(crate) fn spawn_wakeup_listener<S: TurnStore>(
+pub(crate) fn spawn_wakeup_listener<S: TaskStore>(
     store: Arc<S>,
     worker_id: String,
     activity_types: Vec<String>,

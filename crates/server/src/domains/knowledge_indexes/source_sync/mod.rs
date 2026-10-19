@@ -246,7 +246,11 @@ impl KnowledgeIndexSyncService {
             index.resolved_owner_user_id,
         ) {
             (Some(resolver), Some(user_id)) => resolver
-                .get_connection_token_for_user(user_id, "github")
+                .get_github_token_for_owner(
+                    index.org_id,
+                    user_id,
+                    &crate::domains::git_sources::github_read_access(&resolved.repository),
+                )
                 .await
                 .map_err(|_| anyhow!("failed to resolve GitHub connection"))?,
             _ => None,

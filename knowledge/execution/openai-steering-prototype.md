@@ -13,10 +13,9 @@ tags:
 ## Why revisit WebSockets
 
 Mid-turn user corrections are a concrete benefit unavailable through the current
-HTTP reason activity. The normal worker consumes persisted user-message wakes at
-activity boundaries (see [the turn driver](../../crates/durable-engine/src/turn_driver.rs)
-and [durable runner](../../crates/durable-engine/src/durable_runner.rs)). A socket cannot
-follow arbitrary activity placement across stateless workers.
+HTTP reason activity. The normal worker consumes persisted user messages from
+the session log at phase boundaries (see [the actor inbox](../../crates/core/src/host/session_actor/inbox.rs)).
+A socket cannot follow a session across the stateless workers that lease it.
 
 The [runnable prototype](../../examples/openai-steering/README.md) therefore has
 an explicit, single-host owner process and durable inbox. It does not register a

@@ -46,7 +46,6 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
     host_composition: HostComposition,
-    stream_heartbeater: Option<Arc<dyn crate::core::durability::StreamHeartbeater>>,
 }
 
 impl GrpcWorkerAdapters {
@@ -65,10 +64,12 @@ impl GrpcWorkerAdapters {
         host_composition: HostComposition,
     ) -> Result<Self> {
         let client = GrpcClient::connect(grpc_address).await?;
+        // Without checkpoint encryption on the control plane, run turns
+        // without the checkpoint stores rather than fail each one (EVE-1261).
+        client.probe_checkpoint_stores().await;
         Ok(Self {
             client,
             host_composition,
-            stream_heartbeater: None,
         })
     }
 
@@ -85,17 +86,7 @@ impl GrpcWorkerAdapters {
         Self {
             client,
             host_composition,
-            stream_heartbeater: None,
         }
-    }
-
-    /// Set the stream heartbeater for liveness signalling (EVE-531).
-    pub fn with_stream_heartbeater(
-        mut self,
-        heartbeater: Arc<dyn crate::core::durability::StreamHeartbeater>,
-    ) -> Self {
-        self.stream_heartbeater = Some(heartbeater);
-        self
     }
 
     /// Get the underlying GrpcClient (for MCP executor)
@@ -596,20 +587,28 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Arc::new(GrpcAdapter::new_org_scoped(self.client.clone(), org_id))
     }
 
+    // These three stores need checkpoint encryption on the control plane;
+    // without it they are absent, as on the in-process worker (EVE-1261).
     fn native_async_store(
         &self,
     ) -> Option<Arc<dyn crate::core::native_async_store::NativeAsyncStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
-        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
+        self.client
+            .checkpoint_stores_available()
+            .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
     fn storage_store(
@@ -803,10 +802,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         Some(Arc::new(GrpcOutboundToolRateLimiter::new(
             self.client.clone(),
         )))
-    }
-
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        self.stream_heartbeater.clone()
     }
 
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {

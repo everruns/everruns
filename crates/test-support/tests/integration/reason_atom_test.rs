@@ -34,6 +34,8 @@ mod native_compact_failure_test;
 mod provider_managed_checkpoint_test;
 #[path = "reason_atom/provider_managed_fallback_test.rs"]
 mod provider_managed_fallback_test;
+#[path = "reason_atom/stream_retry_test.rs"]
+mod stream_retry_test;
 
 async fn set_default_test_model(
     provider_store: &InMemoryProviderStore,
@@ -3086,11 +3088,8 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
         .await
         .expect("ReasonAtom should return Ok for partial success");
 
-    // Text should be preserved despite the trailing error
-    assert!(
-        result.success,
-        "Partial success with text should be treated as success"
-    );
+    // Every retry broke the same way: the text is kept once the budget is spent
+    assert!(result.success, "kept text is a success");
     assert!(
         result.text.contains("Research Agent"),
         "Partial text should be preserved: got '{}'",

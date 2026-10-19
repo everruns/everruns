@@ -16,7 +16,7 @@ Verify that the global chat agent can create a new agent when asked, using the `
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 

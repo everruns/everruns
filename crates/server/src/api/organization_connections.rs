@@ -10,9 +10,8 @@ use axum::{
     http::StatusCode,
     routing::{get, post, put},
 };
-use chrono::{DateTime, Utc};
 use everruns_contracts::connector::ConnectorType;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -41,41 +40,7 @@ pub struct SaveOrganizationConnectionRequest {
     pub credential: CreateApiKeyConnectionRequest,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-/// Non-secret metadata for an organization-owned provider account.
-pub struct OrganizationConnectionResponse {
-    /// Stable connection identifier used by Sandbox Templates and web search.
-    #[schema(example = "00000000-0000-0000-0000-000000000002")]
-    pub id: Uuid,
-    /// Human-readable account name.
-    #[schema(example = "Production Daytona")]
-    pub name: String,
-    /// Connector identifier, e.g. `daytona` or `brave_search`.
-    #[schema(example = "daytona")]
-    pub provider: String,
-    /// Provider identity returned while validating the credential, when available.
-    #[schema(example = "platform-team")]
-    pub provider_username: Option<String>,
-    /// Time at which the provider account was first connected.
-    #[schema(example = "2026-10-07T12:00:00Z")]
-    pub connected_at: DateTime<Utc>,
-    /// Time at which the account name or credential was last replaced.
-    #[schema(example = "2026-10-07T12:30:00Z")]
-    pub updated_at: DateTime<Utc>,
-}
-
-impl OrganizationConnectionResponse {
-    fn from_row(row: crate::storage::VirtualUserConnectionRow) -> Self {
-        Self {
-            id: row.id,
-            name: row.name.unwrap_or_else(|| row.provider.clone()),
-            provider: row.provider,
-            provider_username: row.provider_username,
-            connected_at: row.created_at,
-            updated_at: row.updated_at,
-        }
-    }
-}
+pub use crate::domains::organizations::provider_accounts::OrganizationConnectionResponse;
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -218,9 +183,10 @@ pub async fn create_connection(
             org_id: org.org_id,
             name,
             provider: provider_id,
-            access_token_encrypted: encrypted,
+            access_token_encrypted: Some(encrypted),
             provider_username: validation.provider_username,
             provider_metadata: validation.provider_metadata,
+            ..Default::default()
         })
         .await
         .map_err(|error| {

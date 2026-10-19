@@ -112,6 +112,10 @@ pub fn is_provider_quota_message(message: &str) -> bool {
         || lower.contains("exceeded your current quota")
         || lower.contains("credit_balance_exhausted")
         || lower.contains("credit balance is too low")
+        // OpenRouter 402: "This request requires more credits, or fewer
+        // max_tokens. You requested up to X tokens, but can only afford Y."
+        || lower.contains("requires more credits")
+        || lower.contains("can only afford")
 }
 
 /// Subscription/plan usage-limit patterns shared by the string classifier and
@@ -128,6 +132,8 @@ pub fn is_usage_limit_message(message: &str) -> bool {
         || lower.contains("usage_limit_reached")
         || lower.contains("usage limit reached")
         || lower.contains("usage limit has been reached")
+        || lower.contains("openrouter_free_tier_daily")
+        || lower.contains("free-models-per-day")
 }
 
 /// Extract the absolute reset time (`resets_at`, unix seconds) from a usage-limit
@@ -143,11 +149,23 @@ pub fn parse_usage_limit_reset_at(message: &str) -> Option<i64> {
     let re = RE.get_or_init(|| {
         Regex::new(r#""resets_at"\s*:\s*(?P<resets_at>\d{9,})"#).expect("valid resets_at regex")
     });
-    re.captures(message)?
-        .name("resets_at")?
+    if let Some(reset) = re.captures(message).and_then(|c| c.name("resets_at")) {
+        return reset.as_str().parse::<i64>().ok();
+    }
+    // OpenRouter embeds its absolute reset header in the error metadata in
+    // milliseconds. The usage-limit classifier keeps minute limits transient.
+    static HEADER_RE: OnceLock<Regex> = OnceLock::new();
+    let header_re = HEADER_RE.get_or_init(|| {
+        Regex::new(r#"(?i)"X-RateLimit-Reset"\s*:\s*"?(?P<millis>\d{13,})"#)
+            .expect("valid rate limit reset regex")
+    });
+    header_re
+        .captures(message)?
+        .name("millis")?
         .as_str()
         .parse::<i64>()
         .ok()
+        .map(|millis| millis / 1000)
 }
 
 /// Sentence OpenRouter puts in the human-readable half of an attestation-gate
@@ -463,18 +481,13 @@ impl UserFacingError {
             codes::REQUEST_TOO_LARGE => {
                 "The conversation has become too long for the model to process. Please start a new session or reduce the context size.".to_string()
             }
-            codes::PROVIDER_RATE_LIMITED => {
-                "Rate limited by the AI provider. Please wait a moment.".to_string()
-            }
+            codes::PROVIDER_RATE_LIMITED => rate_limited_message(&self.fields),
             codes::PROVIDER_USAGE_LIMIT_REACHED => usage_limit_reached_message(&self.fields),
             codes::PROVIDER_MISCONFIGURED => {
                 "There is a misconfiguration with the AI provider. Please contact support."
                     .to_string()
             }
-            codes::PROVIDER_QUOTA_EXHAUSTED => {
-                "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
-                    .to_string()
-            }
+            codes::PROVIDER_QUOTA_EXHAUSTED => quota_exhausted_message(&self.fields),
             codes::PROVIDER_ATTESTATION_REQUIRED => attestation_required_message(&self.fields),
             codes::PROVIDER_UNAVAILABLE => {
                 "The AI provider is experiencing issues. Please try again shortly.".to_string()
@@ -493,6 +506,35 @@ impl UserFacingError {
             _ => "I encountered an error while processing your request. Please try again later."
                 .to_string(),
         }
+    }
+}
+
+fn rate_limited_message(fields: &UserFacingErrorFields) -> String {
+    let in_flight = string_field(fields, "reason")
+        == Some(crate::provider_limit::IN_FLIGHT_BUDGET_EXHAUSTED_REASON);
+    let auto_retry = fields.get("auto_retry").and_then(Value::as_bool) == Some(true);
+    let retry_after = fields.get("retry_after").and_then(Value::as_u64);
+    let head = if in_flight {
+        "The AI provider's in-flight spending limit is reached."
+    } else {
+        "Rate limited by the AI provider."
+    };
+    match (auto_retry, retry_after) {
+        (true, Some(secs)) => format!("{head} Retrying automatically in about {secs}s."),
+        (true, None) => format!("{head} Retrying automatically shortly."),
+        (false, _) => format!("{head} Please wait a moment."),
+    }
+}
+
+fn quota_exhausted_message(fields: &UserFacingErrorFields) -> String {
+    let requested = fields.get("requested_max_tokens").and_then(Value::as_u64);
+    let affordable = fields.get("affordable_tokens").and_then(Value::as_u64);
+    match (requested, affordable) {
+        (Some(requested), Some(affordable)) => format!(
+            "The AI provider account is out of credits for this request: it asked for up to {requested} output tokens, but the balance covers {affordable}. Add credits or lower the max output tokens to continue."
+        ),
+        _ => "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
+            .to_string(),
     }
 }
 
@@ -567,9 +609,12 @@ pub fn classify_runtime_error_message(
     // condition is non-transient and needs operator action (top up the
     // account or raise limits), so it gets its own code.
     if is_provider_quota_message(normalized) {
-        return UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED)
-            .with_optional_field("provider", context.provider.clone())
-            .with_optional_field("model_id", context.model_id.clone());
+        return crate::provider_limit::apply_affordability_fields(
+            UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED)
+                .with_optional_field("provider", context.provider.clone())
+                .with_optional_field("model_id", context.model_id.clone()),
+            normalized,
+        );
     }
 
     // Subscription/plan usage limit (e.g. ChatGPT/Codex `usage_limit_reached`).
@@ -1101,6 +1146,27 @@ mod tests {
             no_reset.fallback_message(),
             "You're out of LLM usage limits."
         );
+    }
+
+    #[test]
+    fn daily_usage_limits_preserve_reset_and_leave_minute_limits_transient() {
+        let body = r#"{"error":{"message":"Rate limit exceeded: free-models-per-day-high-balance.","code":429,"metadata":{"limit_source":"openrouter_free_tier_daily","headers":{"X-RateLimit-Reset":"1791849600000"}}}}"#;
+        assert!(is_usage_limit_message(body));
+        assert_eq!(parse_usage_limit_reset_at(body), Some(1791849600));
+        assert_eq!(
+            wire(&classify_runtime_error_message(body, &context())),
+            json!({"code":"provider_usage_limit_reached","fields":{"provider":"provider","model_id":"model","resets_at":1791849600}})
+        );
+        assert!(is_usage_limit_message(
+            "Rate limit exceeded: free-models-per-day."
+        ));
+        for transient in [
+            "Rate limit exceeded: free-models-per-min.",
+            r#"{"error":{"code":429,"message":"Rate limit exceeded","metadata":{"limit_source":"upstream_provider_shared_pool"}}}"#,
+        ] {
+            assert!(!is_usage_limit_message(transient));
+            assert!(crate::llm_retry::is_transient_error_message(transient));
+        }
     }
 
     #[test]

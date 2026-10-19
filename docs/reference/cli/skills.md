@@ -1,6 +1,6 @@
 ---
 title: everruns skills
-description: "Skill packages and their content. CLI reference for everruns skills."
+description: "Skill packages and their content. CLI reference for everruns skills: usage, flags and examples."
 sidebar:
   label: skills
 appliesTo: [platform, cloud]

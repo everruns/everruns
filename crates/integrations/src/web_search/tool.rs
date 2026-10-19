@@ -17,15 +17,18 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::debug;
 
-use super::account::{account_driver, org_settings};
-use super::brave::{BRAVE_API_BASE, BraveSearchDriver};
+use super::account::{DriverBases, account_driver, org_settings};
 use super::config::WebSearchConfig;
 use super::free::FreeSearchDriver;
 use super::http::DirectEgress;
 use super::plan::{
-    PlanDrivers, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan, run_plan,
+    PlanDrivers, PlanEntry, PlanInputs, ResolvedPlan, SearchOutcome, plan_steps, resolve_plan,
+    run_plan,
 };
-use super::{BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER};
+use super::{
+    BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_CONNECTION_PROVIDER, HOSTED_SEARCH_ID, PARALLEL_API_KEY,
+    PARALLEL_CONNECTION_PROVIDER,
+};
 
 const DESCRIPTION: &str = "Search the web. Returns results with an id, title, url, site, \
 publication date when known, and a snippet (sometimes a longer excerpt). Cite each claim with \
@@ -46,26 +49,47 @@ struct Arguments {
     topic: SearchTopic,
 }
 
+/// Application-owned keys (Framework, serve), used when the session has none,
+/// and the deployment's own search (hosted).
+#[derive(Clone, Default)]
+pub(super) struct AppKeys {
+    pub(super) brave: Option<String>,
+    pub(super) parallel: Option<String>,
+    pub(super) hosted: Option<super::HostedWebSearch>,
+}
+
 pub(super) struct WebSearchTool {
     config: WebSearchConfig,
-    app_brave_key: Option<String>,
+    app_keys: AppKeys,
     free: Arc<FreeSearchDriver>,
-    brave_base: String,
+    bases: DriverBases,
 }
 
 impl WebSearchTool {
-    pub(super) fn new(config: WebSearchConfig, app_brave_key: Option<String>) -> Self {
+    pub(super) fn new(config: WebSearchConfig, app_keys: AppKeys) -> Self {
         Self {
             config,
-            app_brave_key,
+            app_keys,
             free: Arc::new(FreeSearchDriver::default()),
-            brave_base: BRAVE_API_BASE.to_string(),
+            bases: DriverBases::default(),
         }
     }
 
     #[cfg(test)]
     fn with_brave_base(mut self, base: impl Into<String>) -> Self {
-        self.brave_base = base.into();
+        self.bases.brave = base.into();
+        self
+    }
+
+    #[cfg(test)]
+    fn with_parallel_base(mut self, base: impl Into<String>) -> Self {
+        self.bases.parallel = base.into();
+        self
+    }
+
+    #[cfg(test)]
+    fn with_cloudflare_base(mut self, base: impl Into<String>) -> Self {
+        self.bases.cloudflare = base.into();
         self
     }
 
@@ -106,28 +130,33 @@ impl WebSearchTool {
         Ok(request)
     }
 
-    async fn brave_key(&self, context: &ToolContext) -> Option<String> {
+    /// A provider key from the user's connection, else the session secret,
+    /// else the application.
+    async fn session_key(
+        &self,
+        context: &ToolContext,
+        connection_provider: &str,
+        secret: &str,
+        app_key: Option<&String>,
+    ) -> Option<String> {
         if let Some(resolver) = &context.connection_resolver {
             match resolver
-                .get_connection_token(context.session_id, BRAVE_SEARCH_CONNECTION_PROVIDER)
+                .get_connection_token(context.session_id, connection_provider)
                 .await
             {
                 Ok(Some(token)) if !token.is_empty() => return Some(token),
                 Ok(_) => {}
-                Err(error) => debug!("Brave Search connection lookup failed: {error}"),
+                Err(error) => debug!("{connection_provider} connection lookup failed: {error}"),
             }
         }
         if let Some(storage) = &context.storage_store {
-            match storage
-                .get_secret(context.session_id, BRAVE_SEARCH_API_KEY)
-                .await
-            {
+            match storage.get_secret(context.session_id, secret).await {
                 Ok(Some(key)) if !key.is_empty() => return Some(key),
                 Ok(_) => {}
-                Err(error) => debug!("Brave Search secret lookup failed: {error}"),
+                Err(error) => debug!("{secret} secret lookup failed: {error}"),
             }
         }
-        self.app_brave_key.clone()
+        app_key.cloned()
     }
 
     async fn run(
@@ -135,15 +164,37 @@ impl WebSearchTool {
         mut request: SearchRequest,
         context: Option<&ToolContext>,
     ) -> ToolExecutionResult {
-        let (brave_key, org) = match context {
-            Some(context) => (self.brave_key(context).await, org_settings(context).await),
-            None => (self.app_brave_key.clone(), None),
+        let (brave_key, parallel_key, org) = match context {
+            Some(context) => (
+                self.session_key(
+                    context,
+                    BRAVE_SEARCH_CONNECTION_PROVIDER,
+                    BRAVE_SEARCH_API_KEY,
+                    self.app_keys.brave.as_ref(),
+                )
+                .await,
+                self.session_key(
+                    context,
+                    PARALLEL_CONNECTION_PROVIDER,
+                    PARALLEL_API_KEY,
+                    self.app_keys.parallel.as_ref(),
+                )
+                .await,
+                org_settings(context).await,
+            ),
+            None => (
+                self.app_keys.brave.clone(),
+                self.app_keys.parallel.clone(),
+                None,
+            ),
         };
         let plan = resolve_plan(PlanInputs {
             config: &self.config,
             org: org.as_deref(),
             model_has_native: false,
             brave_key: brave_key.is_some(),
+            parallel_key: parallel_key.is_some(),
+            hosted: self.app_keys.hosted.is_some(),
         });
         if request.limit == 0 {
             request.limit = plan.limit;
@@ -165,7 +216,7 @@ impl WebSearchTool {
                                 account,
                                 resolver.clone(),
                                 context.session_id,
-                                &self.brave_base,
+                                &self.bases,
                             )
                             .map(|driver| (account.id, account.provider.clone(), driver))
                         })
@@ -174,12 +225,24 @@ impl WebSearchTool {
                 .unwrap_or_default(),
             _ => Vec::new(),
         };
+        let hosted_call = match &self.app_keys.hosted {
+            Some(hosted) if plan.entries.contains(&PlanEntry::Hosted) => {
+                Some(hosted.driver_for_context(context))
+            }
+            _ => None,
+        };
         let drivers = PlanDrivers {
             free: self.free.clone(),
-            brave: brave_key.map(|key| {
-                Arc::new(BraveSearchDriver::with_base_url(key, &self.brave_base)) as Arc<_>
+            brave: brave_key.and_then(|key| {
+                self.bases
+                    .driver(BRAVE_SEARCH_CONNECTION_PROVIDER, key, None)
             }),
+            parallel: parallel_key
+                .and_then(|key| self.bases.driver(PARALLEL_CONNECTION_PROVIDER, key, None)),
             accounts,
+            hosted: hosted_call.clone().map(|driver| {
+                driver as Arc<dyn everruns_contracts::runtime::web_search::SearchDriver>
+            }),
         };
         let steps = plan_steps(&plan, &drivers);
         let search_context = SearchContext {
@@ -189,7 +252,25 @@ impl WebSearchTool {
             network_access: context.and_then(|context| context.network_access.clone()),
         };
         let outcome = run_plan(&steps, &request, &search_context).await;
-        self.result(&request, &plan, outcome)
+        let answered = outcome
+            .answered_by
+            .as_ref()
+            .is_some_and(|(id, _)| id == HOSTED_SEARCH_ID);
+        let billing = hosted_call
+            .as_ref()
+            .and_then(|driver| driver.billing_reference())
+            .map(|reference| {
+                json!({
+                    "permit_id": reference,
+                    "call_key": context.and_then(|context| context.idempotency_key.as_ref()),
+                    "answered": answered,
+                    // Sanitized response and engine identity repair a lost callback.
+                    // They stay in event details, never the model-facing result.
+                    "response": outcome.response.as_ref().filter(|response| answered &&
+                        serde_json::to_vec(response).is_ok_and(|bytes| bytes.len() <= 64 * 1024)),
+                })
+            });
+        self.result(&request, &plan, outcome, billing)
     }
 
     fn result(
@@ -197,6 +278,7 @@ impl WebSearchTool {
         request: &SearchRequest,
         plan: &ResolvedPlan,
         outcome: SearchOutcome,
+        billing: Option<Value>,
     ) -> ToolExecutionResult {
         let notes = outcome.fallback_notes();
         let results: Vec<Value> = outcome
@@ -225,6 +307,9 @@ impl WebSearchTool {
             "attempts": outcome.attempts,
             "results": results,
         });
+        if let Some(billing) = billing {
+            details["hosted_billing"] = billing;
+        }
         let mut model = json!({ "query": request.query, "results": results });
         let Some(response) = outcome.response else {
             // Kept a success so the details (and every raw response) reach the
@@ -257,12 +342,7 @@ impl WebSearchTool {
 /// A short id that is the same for the same url across calls in a session,
 /// so the model can cite `w3f9a1c` and the citation feed can resolve it.
 pub(super) fn result_id(url: &str) -> String {
-    let mut hash: u32 = 0x811c_9dc5;
-    for byte in url.trim_end_matches('/').bytes() {
-        hash ^= u32::from(byte);
-        hash = hash.wrapping_mul(0x0100_0193);
-    }
-    format!("w{:06x}", hash & 0x00ff_ffff)
+    everruns_contracts::runtime::web_search::web_result_id(url)
 }
 
 fn model_hit(hit: &SearchHit) -> Value {

@@ -393,30 +393,50 @@ pub async fn create_api_session(
         .ok_or_else(|| CommandError::not_found("Session"))
 }
 
-/// Send the caller's message: starts a turn when the session is idle and
-/// steers it when one is running. Text parts only for now, as the card says.
+/// Check a caller's message before anything is stored for it: a user
+/// message of text and inline image parts, with some content or files.
+/// Uploaded ids are refused because an execution caller has no upload route
+/// and ids are scoped to the org, not the caller; files go in `files`.
+pub fn check_api_message(message: &InputMessage, has_files: bool) -> Result<(), CommandError> {
+    if message.role != MessageRole::User {
+        return Err(CommandError::bad_request("only user messages can be sent"));
+    }
+    if message.content.is_empty() && !has_files {
+        return Err(CommandError::bad_request(
+            "message content must have at least one part",
+        ));
+    }
+    if !message.content.iter().all(|part| {
+        matches!(
+            part,
+            everruns_core::InputContentPart::Text(_) | everruns_core::InputContentPart::Image(_)
+        )
+    }) {
+        return Err(CommandError::bad_request(
+            "message content must be text and image parts; send files in `files`",
+        ));
+    }
+    Ok(())
+}
+
+/// Send the caller's message, followed by `files` (parts [`receive_files`]
+/// made from the caller's files): starts a turn when the session is idle and
+/// steers it when one is running.
+///
+/// [`receive_files`]: crate::domains::messages::intake::receive_files
+#[allow(clippy::too_many_arguments)]
 pub async fn send_api_message(
     message_service: &MessageService,
     context: &IngressContext,
     channel: &IngressChannel,
     caller: &ApiCaller,
     session_id: SessionId,
-    message: InputMessage,
+    mut message: InputMessage,
+    files: Vec<everruns_core::InputContentPart>,
     request_id: Option<String>,
 ) -> Result<crate::domains::messages::types::Message, CommandError> {
-    if message.role != MessageRole::User {
-        return Err(CommandError::bad_request("only user messages can be sent"));
-    }
-    if message.content.is_empty()
-        || !message
-            .content
-            .iter()
-            .all(|part| matches!(part, everruns_core::InputContentPart::Text(_)))
-    {
-        return Err(CommandError::bad_request(
-            "message content must be one or more text parts",
-        ));
-    }
+    check_api_message(&message, !files.is_empty())?;
+    message.content.extend(files);
     let mut metadata: std::collections::HashMap<String, Value> = [
         ("source", json!("api_channel")),
         ("api_channel_id", json!(channel.public_id.to_string())),

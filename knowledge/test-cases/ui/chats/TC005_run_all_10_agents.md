@@ -16,7 +16,7 @@ Verify that the global chat agent can run all 10 previously created agents seque
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 - All 10 agents from TC003 exist
@@ -31,7 +31,7 @@ Verify that the global chat agent can run all 10 previously created agents seque
 
 1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat is already selected
 2. Send the message from test data above
-3. Wait for the chat agent to create sessions and run each agent (may take 2-5 minutes)
+3. Record pre-existing session IDs. Wait up to five minutes for the requested runs and record the new session/agent IDs from the tool trace and final result
 4. Observe the response
 
 ## Expected Result
@@ -52,12 +52,6 @@ Verify that the global chat agent can run all 10 previously created agents seque
 | Debug Assistant | Response explains null pointer causes |
 | Doc Generator | Response contains a docstring |
 
-## Validation Commands
+## Validation
 
-```bash
-# Assert: 10 sessions with agent assignments exist
-curl -s "http://localhost:9300/api/v1/sessions" | jq '[.data[] | select(.agent_id != null)] | length >= 10'
-
-# Assert: each session reached idle
-curl -s "http://localhost:9300/api/v1/sessions" | jq '[.data[] | select(.agent_id != null and .status == "idle")] | length >= 10'
-```
+Compare the recorded new session IDs with the requested ten agent IDs. Require one completed task and relevant non-empty response per requested agent. Existing sessions cannot satisfy the assertion. Follow each returned run link into Trace and compare its task/response with the relayed result.

@@ -7,12 +7,16 @@ import http.server
 import json
 import sys
 import threading
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, "scripts/chaos")
 import topology  # noqa: E402
+import run as chaos_run  # noqa: E402
+from check import Report, actor_worker_overlap  # noqa: E402
 from load import Driver, SessionRun  # noqa: E402
 
 
@@ -80,6 +84,45 @@ class SharedEventDeliveryTests(unittest.TestCase):
     def test_unreachable_health_counts_as_unshared(self):
         self.assertEqual(topology.unshared_event_delivery({"server-0": None}), ["server-0=unknown"])
         self.assertEqual(topology.unshared_event_delivery({"server-0": "nats"}), [])
+
+
+class ActorOverlapTests(unittest.TestCase):
+    def test_default_filter_captures_shared_actor_boundaries(self):
+        with patch.object(sys, "argv", ["chaos", "--server-bin", "/bin/true",
+                                       "--worker-bin", "/bin/true"]):
+            args = chaos_run.parse_args()
+        directives = args.rust_log.split(",")
+        self.assertIn("everruns_core::host::session_actor=debug", directives)
+        self.assertIn("everruns_worker::actor_runtime=debug", directives)
+
+    def report(self, release, active_after_handoff=False):
+        sid = "session_" + "a" * 32
+        def line(second, message):
+            return f"2026-10-14T00:00:{second:06.3f}Z {message} session_id={sid}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            old = line(16, "ReasonAtom: starting LLM call") + line(22, "turn-end hooks finished")
+            if active_after_handoff:
+                old += line(27.8, "ReasonAtom: LLM call completed")
+            old += line(28 if active_after_handoff else 22.1, "Actor turn execution finished")
+            (Path(directory)/"worker-0.log").write_text(old + line(28.2, release))
+            (Path(directory)/"worker-1.log").write_text(
+                line(27, "InputAtom: turn started") + line(29, "Actor turn execution finished")
+                + line(29.2, "Actor released"))
+            report = Report()
+            actor_worker_overlap(directory, 2, report)
+            return report
+
+    def test_delayed_release_acknowledgements_do_not_extend_work(self):
+        for release in ("Actor released", "Actor lease lost before release",
+                        "Actor release failed; the lease will expire"):
+            with self.subTest(release=release):
+                self.assertFalse(self.report(release).failures)
+
+    def test_actual_activity_after_handoff_still_fails(self):
+        for release in ("Actor released", "Actor lease lost before release",
+                        "Actor release failed; the lease will expire"):
+            with self.subTest(release=release):
+                self.assertEqual(len(self.report(release, True).failures["session_on_two_workers"]), 1)
 
 
 class WorkflowTests(unittest.TestCase):

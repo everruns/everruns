@@ -12,12 +12,13 @@ export type { FileUploadResponse };
 
 export function validateFileUpload(file: File): string | null {
   const ext = "." + (file.name.split(".").pop() ?? "").toLowerCase();
-  const mime = file.type || (ext === ".pdf" ? "application/pdf" : "");
+  const mime =
+    file.type || (ext === ".pdf" ? "application/pdf" : ext === ".zip" ? "application/zip" : "");
   if (
     !(ALLOWED_FILE_EXTENSIONS as readonly string[]).includes(ext) &&
     !(ALLOWED_FILE_TYPES as readonly string[]).includes(mime)
   ) {
-    return `Unsupported file type: ${file.name}. Only PDF files are supported.`;
+    return `Unsupported file type: ${file.name}. Only PDF and zip files are supported.`;
   }
   if (file.size > MAX_FILE_SIZE) {
     return `File too large: ${file.name}. Maximum size is 32 MB.`;

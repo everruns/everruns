@@ -665,6 +665,7 @@ pub struct GetEvalRunDataset {
     name = "get_eval_run_dataset",
     category = "evals",
     description = "Fetch an eval-run dataset export handle (status + NDJSON body).",
+    summary = "Get an eval run's dataset export",
     method = "GET",
     cli = CliRoute::new(&["evals", "runs", "dataset"], "get").with_examples(&[CliExample::new("Poll a dataset export until it completes, then read its NDJSON", "everruns evals runs dataset get --eval-id eval_01h9 --run-id evalrun_01h9 --dataset-id evaldataset_01h9")]),
     path = "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",

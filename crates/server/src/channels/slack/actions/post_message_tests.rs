@@ -530,3 +530,167 @@ async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
     assert_eq!(payload["channel"], "D1");
     assert!(payload.get("thread_ts").is_none(), "{payload}");
 }
+
+/// A session on a Slack channel whose binding is `strategy`.
+async fn setup_bound(strategy: &str) -> (Fixture, SessionId, String, String) {
+    let fixture = Fixture::new();
+    let (app, endpoint, endpoint_public) = fixture
+        .seed_app_with_channel(1, "slack", "xoxb-endpoint")
+        .await;
+    fixture
+        .db
+        .update_channel_by_id(
+            endpoint,
+            crate::storage::UpdateChannelByIdRow {
+                channel_config: Some(json!({
+                    "signing_secret": "s",
+                    "bot_token": "xoxb-endpoint",
+                    "session_strategy": strategy,
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let session = fixture
+        .seed_session(1, Some(app), Some(endpoint), vec![])
+        .await;
+    let app_public = crate::domains::apps::queries::get_by_internal_id(&fixture.db, None, 1, app)
+        .await
+        .unwrap()
+        .unwrap()
+        .public_id
+        .to_string();
+    (fixture, session, app_public, endpoint_public)
+}
+
+/// The input a session schedule injects: schedule provenance, no Slack metadata.
+async fn scheduled_input(fixture: &Fixture, session: SessionId) -> MessageId {
+    let id = MessageId::new();
+    let schedule_id = everruns_contracts::typed_id::ScheduleId::new();
+    fixture
+        .db
+        .create_event(CreateEventRow {
+            session_id: session,
+            event_type: "input.message".into(),
+            ts: chrono::Utc::now(),
+            context: json!({"input_message_id": id}),
+            data: json!({"message": {"id": id, "metadata": {
+                "source": "schedule",
+                "schedule_id": schedule_id.to_string(),
+            }}}),
+            metadata: Some(crate::execution_metadata::scheduled_run_metadata(
+                schedule_id,
+                everruns_contracts::typed_id::PrincipalId::from_seed(1),
+                None,
+            )),
+            tags: None,
+        })
+        .await
+        .unwrap();
+    id
+}
+
+async fn post_scheduled(
+    fixture: &Fixture,
+    session: SessionId,
+    slack: &MockServer,
+    input_message_id: MessageId,
+) -> Result<SlackActionOutcome, SlackActionError> {
+    fixture
+        .invoker(1, session)
+        .with_api_base(slack.uri())
+        .invoke(SlackAction::PostMessage {
+            input_message_id: input_message_id.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "07:00 briefing".into(),
+        })
+        .await
+}
+
+async fn slack_ok() -> MockServer {
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    slack
+}
+
+fn posted(requests: &[wiremock::Request]) -> Vec<Value> {
+    requests
+        .iter()
+        .map(|r| serde_json::from_slice::<Value>(&r.body).unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_scheduled_turn_in_a_dm_session_posts_inline_in_the_dm() {
+    let (fixture, session, app, endpoint) = setup_bound("per_user").await;
+    let slack = slack_ok().await;
+    let id = MessageId::new();
+    fixture.db.create_event(CreateEventRow {
+        session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
+        context:json!({"input_message_id":id}),
+        data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":"D1","slack_thread_ts":"3.4","slack_reply_inline":true}}}),
+        metadata:Some(json!({"initiator":{"type":"channel","channel_id":app}})),
+        tags:None,
+    }).await.unwrap();
+    let scheduled = scheduled_input(&fixture, session).await;
+    post_scheduled(&fixture, session, &slack, scheduled)
+        .await
+        .unwrap();
+    let payloads = posted(&slack.received_requests().await.unwrap());
+    assert_eq!(payloads.len(), 1);
+    assert_eq!(payloads[0]["channel"], "D1");
+    assert!(payloads[0].get("thread_ts").is_none(), "{}", payloads[0]);
+}
+
+#[tokio::test]
+async fn a_scheduled_turn_in_a_per_channel_session_posts_top_level() {
+    let (fixture, session, app, endpoint) = setup_bound("per_channel").await;
+    let slack = slack_ok().await;
+    input(&fixture, session, &app, &endpoint, "C1", "3.4", true).await;
+    // An unsigned input claiming another conversation cannot pick the target.
+    input(&fixture, session, &app, &endpoint, "C_EVIL", "6.6", false).await;
+    let scheduled = scheduled_input(&fixture, session).await;
+    post_scheduled(&fixture, session, &slack, scheduled)
+        .await
+        .unwrap();
+    let payloads = posted(&slack.received_requests().await.unwrap());
+    assert_eq!(payloads.len(), 1);
+    assert_eq!(payloads[0]["channel"], "C1");
+    assert!(payloads[0].get("thread_ts").is_none(), "{}", payloads[0]);
+}
+
+#[tokio::test]
+async fn a_scheduled_turn_in_a_thread_session_posts_in_its_thread() {
+    let (fixture, session, app, endpoint) = setup_bound("per_thread").await;
+    let slack = slack_ok().await;
+    input(&fixture, session, &app, &endpoint, "C1", "3.4", true).await;
+    let scheduled = scheduled_input(&fixture, session).await;
+    post_scheduled(&fixture, session, &slack, scheduled)
+        .await
+        .unwrap();
+    let payloads = posted(&slack.received_requests().await.unwrap());
+    assert_eq!(payloads.len(), 1);
+    assert_eq!(payloads[0]["channel"], "C1");
+    assert_eq!(payloads[0]["thread_ts"], "3.4");
+}
+
+#[tokio::test]
+async fn a_scheduled_turn_without_a_signed_slack_input_has_no_slack_session() {
+    let (fixture, session, app, endpoint) = setup_bound("per_user").await;
+    let slack = slack_ok().await;
+    // Caller-controlled metadata alone, and a sibling endpoint, authorize nothing.
+    input(&fixture, session, &app, &endpoint, "D1", "3.4", false).await;
+    input(&fixture, session, &app, "appchan_wrong", "D2", "3.4", true).await;
+    let scheduled = scheduled_input(&fixture, session).await;
+    let result = post_scheduled(&fixture, session, &slack, scheduled).await;
+    assert!(
+        matches!(result, Err(SlackActionError::NoSlackSession)),
+        "{result:?}"
+    );
+    assert!(slack.received_requests().await.unwrap().is_empty());
+}

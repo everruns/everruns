@@ -24,8 +24,7 @@ use axum::{
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::host::HostComposition;
 use everruns_core::{
-    Caller, DeploymentGrade, OrgRole, PermissionResolver, ResourceConfigResponse,
-    evaluate_policies_with,
+    Caller, DeploymentGrade, PermissionResolver, ResourceConfigResponse, evaluate_policies_with,
 };
 
 use super::common::{
@@ -245,6 +244,7 @@ pub fn routes(state: AppState) -> Router {
             get(get_health_check),
         )
         .merge(super::agent_activity::routes())
+        .command::<crate::domains::agents::failures::ListAgentFailures>()
         .merge(super::agent_mcp_attachments::routes())
         .merge(super::agent_avatars::routes())
         .route(
@@ -268,28 +268,6 @@ pub fn routes(state: AppState) -> Router {
             post(resume_agent_exposures),
         )
         .with_state(state)
-}
-
-/// TM-AGENT-005: Reject if any requested capabilities are high-risk and the
-/// caller does not have at least Admin role.
-pub(crate) fn require_admin_for_high_risk(
-    org: &ResolvedOrg,
-    caps: &[everruns_contracts::CapabilityRef],
-    capability_service: &CapabilityService,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if caps.is_empty() || org.role.has_permission(OrgRole::Admin) {
-        return Ok(());
-    }
-    let refs: Vec<&str> = caps.iter().map(|c| c.capability_id()).collect();
-    let high = capability_service.high_risk_ids(&refs);
-    if !high.is_empty() {
-        return Err(ErrorResponse::new(format!(
-            "Admin role required to assign high-risk capabilities: {}",
-            high.join(", ")
-        ))
-        .into_response(StatusCode::FORBIDDEN));
-    }
-    Ok(())
 }
 
 /// POST /v1/agents - Create a new agent
@@ -651,6 +629,10 @@ pub async fn upsert_agent(
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
                     parallel_tool_calls: req.parallel_tool_calls,
+                    max_output_tokens: req.max_output_tokens.map_or(
+                        crate::storage::UpdateField::Unchanged,
+                        crate::storage::UpdateField::Set,
+                    ),
                     communication: Some(req.communication),
                     status: None,
                 };
@@ -805,133 +787,24 @@ pub async fn import_agent(
     ))
 }
 
-/// Import an agent from a built-in example by name.
-/// Tag prefix that records the example an agent was adopted from.
-pub const EXAMPLE_TAG_PREFIX: &str = "example:";
-
+/// Import an agent from a built-in example by name: the `adopt_agent_example`
+/// command, so REST, CLI and MCP adopt through one path.
 async fn import_from_example(
     org: ResolvedOrg,
     state: &AppState,
     name: &str,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    let seed = crate::agent_templates::find_agent_example(name)
-        .ok_or_else(|| ErrorResponse::not_found(&format!("agent example '{name}'")))?;
-
-    // Check dev-only
-    if seed.dev_only && !state.grade.experimental_features_enabled() {
-        return Err(ErrorResponse::not_found(&format!("agent example '{name}'")));
+    let agent = crate::domains::agents::AdoptAgentExample {
+        name: name.to_string(),
     }
-
-    // Check capabilities registered
-    let missing: Vec<&str> = seed
-        .capabilities
-        .iter()
-        .map(|c| c.id)
-        .filter(|id| !state.host_composition.capability_registry().has(id))
-        .collect();
-    if !missing.is_empty() {
-        return Err(ErrorResponse::new(format!(
-            "Example requires unregistered capabilities: {missing:?}"
-        ))
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-
-    let capabilities: Vec<everruns_contracts::CapabilityRef> = seed
-        .capabilities
-        .iter()
-        .map(|cap| {
-            let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-            everruns_contracts::CapabilityRef::with_config(cap.id.to_string(), config)
-        })
-        .collect();
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    require_admin_for_high_risk(&org, &capabilities, &state.capability_service)?;
-
-    let _caller = Caller::from(&org);
-
-    // If an agent with the same name exists, keep trying suffixed variants
-    // to avoid one-shot collisions and reduce failures under concurrency.
-    let unique_name = {
-        use rand::RngExt;
-
-        let base = seed.name;
-        let mut selected = None;
-
-        for attempt in 0..10 {
-            let candidate = if attempt == 0 {
-                base.to_string()
-            } else {
-                let suffix: String = rand::rng()
-                    .sample_iter(&rand::distr::Alphanumeric)
-                    .take(5)
-                    .map(|c| (c as char).to_ascii_lowercase())
-                    .collect();
-                format!("{base}-{suffix}")
-            };
-
-            let result = crate::domains::agents::CheckAgentName {
-                name: candidate.clone(),
-                exclude_id: None,
-            }
-            .run(&state.ctx(&org))
-            .await?;
-            let available = result.available;
-
-            if available {
-                selected = Some(candidate);
-                break;
-            }
-        }
-
-        selected.ok_or_else(ErrorResponse::internal_error)?
-    };
-
-    let req = CreateAgentRequest {
-        service_virtual_user_id: None,
-
-        id: None,
-        name: unique_name,
-        display_name: Some(seed.display_name.to_string()),
-        description: Some(seed.description.to_string()),
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: seed.system_prompt.to_string(),
-        default_model_id: None,
-        harness_id: None,
-        harness_name: Some(seed.harness_name.to_string()),
-        // `example:<name>` records which example the agent was adopted from,
-        // so the Agents page can tell a guided example whose setup never
-        // finished (no trigger yet) from an agent someone built by hand.
-        tags: seed
-            .tags
-            .iter()
-            .map(|s| s.to_string())
-            .chain(std::iter::once(format!(
-                "{EXAMPLE_TAG_PREFIX}{}",
-                seed.name
-            )))
-            .collect(),
-        capabilities,
-        sandbox_policy: None,
-        initial_files: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        communication: Default::default(),
-    };
-
-    let agent = crate::domains::agents::CreateAgent(req)
-        .run(&state.ctx(&org))
-        .await?;
-
+    .run(&state.ctx(&org))
+    .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
+/// Validate an agent package and its dependencies
+///
 /// Validate an agent package and its destination dependencies without mutation.
 #[utoipa::path(post, path = "/v1/agents/validate", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Validation diagnostics", body = serde_json::Value)), tag = "agents")]
 pub async fn validate_agent_package(
@@ -955,6 +828,8 @@ pub async fn validate_agent_package(
     ))
 }
 
+/// Diff an agent package against an existing agent
+///
 /// Generate a semantic diff against an existing agent without mutation.
 #[utoipa::path(post, path = "/v1/agents/diff", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Semantic changes", body = serde_json::Value)), tag = "agents")]
 pub async fn diff_agent_package(
@@ -1170,11 +1045,8 @@ pub async fn get_latest_health_check(
     Ok(Json(result))
 }
 
-// Regression tests for fix(capabilities): restore high-risk levels for
-// bash/fetch (#1500). `require_admin_for_high_risk` is the HTTP-side gate
-// that enforces TM-AGENT-005: a member cannot assign `bashkit_shell` or
-// `web_fetch` to an agent. The fix re-classified both capabilities as
-// High; without that classification this gate silently becomes a no-op
-// for the two most dangerous capabilities.
+// HTTP-side authorization helpers and response shapes. TM-AGENT-005 (a
+// member cannot assign high-risk capabilities) is enforced in the agent
+// domain commands (`check_high_risk_caps`), which every route runs through.
 #[cfg(test)]
 mod high_risk_admin_gate_tests;

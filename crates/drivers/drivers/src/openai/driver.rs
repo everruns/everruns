@@ -15,8 +15,8 @@ use everruns_contracts::OpenAIProtocolChatDriver;
 use everruns_contracts::OpenResponsesProtocolChatDriver;
 use everruns_contracts::credential_schema::CredentialFormSchema;
 use everruns_contracts::driver_registry::{
-    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    EmbeddingsDriverFactory, LlmCallConfig, LlmResponse, LlmResponseStream, Message, ServiceKind,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmResponse, LlmResponseStream, Message, ServiceKind,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::openai_protocol::{
@@ -27,16 +27,21 @@ use everruns_contracts::{
 };
 
 use crate::openai::types::OpenAiModelsResponse;
+#[cfg(not(target_arch = "wasm32"))]
+use everruns_contracts::EmbeddingsDriverFactory;
 
 /// Ready-to-use OpenAI Responses provider assembly.
 pub fn provider(
     id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> Provider {
-    Provider::new(id, OpenAIChatDriver::new())
+    let provider = Provider::new(id, OpenAIChatDriver::new());
+    #[cfg(not(target_arch = "wasm32"))]
+    let provider = provider
         .with_embeddings(crate::openai::embeddings::OpenAIEmbeddingsDriver::new())
         .with_decisions(crate::openai::decisions::OpenAIDecisionDriver::new())
-        .with_realtime(crate::openai::realtime::OpenAIRealtimeDriver::new())
+        .with_realtime(crate::openai::realtime::OpenAIRealtimeDriver::new());
+    provider
         .base_url("https://api.openai.com/v1")
         .auth(BearerAuth::new(api_key))
 }
@@ -113,7 +118,8 @@ impl OpenAIChatDriver {
                 .with_hosted_tools(true)
                 .with_prompt_cache_options(true)
                 .with_background_mode(true)
-                .with_websocket_support(true),
+                .with_websocket_support(true)
+                .with_inline_tool_changes(true),
         }
     }
 
@@ -125,6 +131,15 @@ impl OpenAIChatDriver {
     /// that cannot connect or drops before the first event falls back to SSE.
     pub fn with_websocket_transport(mut self, enabled: bool) -> Self {
         self.inner = self.inner.with_websocket_default(enabled);
+        self
+    }
+
+    /// Use an application-supplied HTTP transport, including host fetch on WASM.
+    pub fn with_transport(
+        mut self,
+        transport: std::sync::Arc<dyn everruns_contracts::http_transport::HttpTransport>,
+    ) -> Self {
+        self.inner = self.inner.with_transport(transport);
         self
     }
 
@@ -265,7 +280,7 @@ impl ChatDriver for OpenAIChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(&self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.http_client(), endpoint, &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -334,6 +349,15 @@ impl OpenAICompletionsChatDriver {
         Self {
             inner: OpenAIProtocolChatDriver::new(),
         }
+    }
+
+    /// Use an application-supplied HTTP transport, including host fetch on WASM.
+    pub fn with_transport(
+        mut self,
+        transport: std::sync::Arc<dyn everruns_contracts::http_transport::HttpTransport>,
+    ) -> Self {
+        self.inner = self.inner.with_transport(transport);
+        self
     }
 
     /// Configure retries for `429` and transient `5xx` responses.
@@ -407,7 +431,7 @@ impl ChatDriver for OpenAICompletionsChatDriver {
         }
 
         let models_url = models_url_for_api_url(&api_url);
-        list_openai_models(&self.inner.client(), endpoint, &models_url).await
+        list_openai_models(&self.inner.http_client(), endpoint, &models_url).await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -433,7 +457,7 @@ impl std::fmt::Debug for OpenAICompletionsChatDriver {
 
 /// Fetch and filter OpenAI models (shared between both OpenAI drivers)
 async fn list_openai_models(
-    client: &reqwest::Client,
+    client: &everruns_contracts::http_transport::HttpClient,
     endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
@@ -526,6 +550,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// and calibrated decisions, so the descriptor declares those services
 /// alongside Chat.
 pub fn descriptor() -> DriverDescriptor {
+    #[cfg(not(target_arch = "wasm32"))]
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
         Provider::new(config.provider.clone(), OpenAIChatDriver::new())
             .base_url(
@@ -558,8 +583,11 @@ pub fn descriptor() -> DriverDescriptor {
         // `openai::decisions` through the host's egress path.
         services: vec![
             ServiceKind::Chat,
+            #[cfg(not(target_arch = "wasm32"))]
             ServiceKind::Realtime,
+            #[cfg(not(target_arch = "wasm32"))]
             ServiceKind::Embeddings,
+            #[cfg(not(target_arch = "wasm32"))]
             ServiceKind::Decisions,
         ],
         // Matches the openai SDK's own variables.
@@ -568,6 +596,7 @@ pub fn descriptor() -> DriverDescriptor {
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
         base_url_env: Some("OPENAI_BASE_URL".into()),
+        #[cfg(not(target_arch = "wasm32"))]
         embeddings: Some(openai_embeddings_factory),
         ..DriverDescriptor::chat_only(DriverId::OpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
@@ -862,7 +891,9 @@ mod tests {
             .await;
         let service = provider("catalog", "synthetic-key").base_url(format!("{}/v1", server.uri()));
         let models = list_openai_models(
-            &reqwest::Client::new(),
+            &everruns_contracts::http_transport::HttpClient::new(std::sync::Arc::new(
+                reqwest::Client::new(),
+            )),
             service.endpoint(),
             &format!("{}/v1/models", server.uri()),
         )

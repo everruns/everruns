@@ -28,6 +28,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | `everruns login` | Interactive login (localhost OAuth callback) |
 | `everruns logout` | Remove stored credentials |
 | `everruns status` | Show current user and org |
+| `everruns whoami` | Show who the server says you are, and your token's access |
 
 ## Command groups
 

@@ -56,35 +56,98 @@ impl LocalSessionTaskRegistry {
                     FOREIGN KEY(task_id) REFERENCES local_tasks(id)
                  );
                  CREATE INDEX IF NOT EXISTS idx_local_task_messages_task
-                    ON local_task_messages(task_id, seq);",
+                    ON local_task_messages(task_id, seq);
+                 CREATE TABLE IF NOT EXISTS local_task_recovery_wakes (
+                    session_id TEXT NOT NULL,
+                    task_id    TEXT NOT NULL,
+                    attempt    INTEGER NOT NULL,
+                    snapshot   TEXT NOT NULL,
+                    PRIMARY KEY(session_id, task_id, attempt),
+                    FOREIGN KEY(task_id) REFERENCES local_tasks(id)
+                 );",
             )
         })
         .map_err(AgentLoopError::from)?;
         Ok(Self { db })
     }
 
-    fn load_task(&self, task_id: &str) -> Result<Option<SessionTask>> {
-        let snapshot: Option<String> = self
-            .db
-            .with_conn(|conn| {
-                conn.query_row(
-                    "SELECT snapshot FROM local_tasks WHERE id = ?1",
-                    [task_id],
-                    |row| row.get(0),
-                )
-                .optional()
-            })
-            .map_err(AgentLoopError::from)?;
-        match snapshot {
-            Some(json) => Ok(Some(
-                serde_json::from_str(&json)
-                    .map_err(|e| AgentLoopError::from(LocalError::from(e)))?,
-            )),
-            None => Ok(None),
-        }
+    // Persist the terminal wake with its transition. Delivery is at least once; consumers
+    // must make terminal wakes idempotent by task id and attempt.
+    fn store_recovery_wake(conn: &::rusqlite::Connection, task: &SessionTask) -> Result<()> {
+        let snapshot = serde_json::to_string(task).map_err(LocalError::from)?;
+        conn.execute(
+            "INSERT OR IGNORE INTO local_task_recovery_wakes
+                (session_id, task_id, attempt, snapshot) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![task.session_id.to_string(), task.id, task.attempt, snapshot],
+        )
+        .map_err(LocalError::from)?;
+        Ok(())
     }
 
-    fn store_task(&self, task: &SessionTask) -> Result<()> {
+    pub(crate) fn pending_recovery_wakes(
+        db: &SqliteDb,
+        session_id: Option<SessionId>,
+    ) -> Result<Vec<SessionTask>> {
+        let snapshots = db
+            .with_conn(|conn| {
+                let session_id = session_id.map(|id| id.to_string());
+                let mut statement = conn.prepare(
+                    "SELECT snapshot FROM local_task_recovery_wakes
+                     WHERE (?1 IS NULL OR session_id = ?1) ORDER BY task_id, attempt",
+                )?;
+                statement
+                    .query_map([session_id.as_deref()], |row| row.get::<_, String>(0))?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+            })
+            .map_err(AgentLoopError::from)?;
+        snapshots
+            .into_iter()
+            .map(|snapshot| {
+                serde_json::from_str(&snapshot)
+                    .map_err(LocalError::from)
+                    .map_err(AgentLoopError::from)
+            })
+            .collect()
+    }
+
+    pub(crate) fn acknowledge_recovery_wake(db: &SqliteDb, task: &SessionTask) -> Result<()> {
+        db.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM local_task_recovery_wakes
+                 WHERE session_id = ?1 AND task_id = ?2 AND attempt = ?3",
+                rusqlite::params![task.session_id.to_string(), task.id, task.attempt],
+            )?;
+            Ok(())
+        })
+        .map_err(AgentLoopError::from)
+    }
+
+    fn load_task(&self, task_id: &str) -> Result<Option<SessionTask>> {
+        self.db
+            .with_conn(|conn| Ok(Self::load_task_from(conn, task_id)))
+            .map_err(AgentLoopError::from)?
+    }
+
+    fn load_task_from(
+        conn: &rusqlite::QueryConnection,
+        task_id: &str,
+    ) -> Result<Option<SessionTask>> {
+        let snapshot: Option<String> = conn
+            .query_row(
+                "SELECT snapshot FROM local_tasks WHERE id = ?1",
+                [task_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(LocalError::from)?;
+        snapshot
+            .map(|json| {
+                serde_json::from_str(&json).map_err(|e| AgentLoopError::from(LocalError::from(e)))
+            })
+            .transpose()
+    }
+
+    fn store_task(conn: &rusqlite::QueryConnection, task: &SessionTask) -> Result<()> {
         // SessionTask's public serializer redacts webhook secrets. Local snapshots
         // are persistence, not presentation, so restore the raw spec before storage.
         let mut snapshot =
@@ -92,47 +155,67 @@ impl LocalSessionTaskRegistry {
         snapshot["spec"] = task.spec.clone();
         let snapshot = serde_json::to_string(&snapshot)
             .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
-        let id = task.id.clone();
-        let session_id = task.session_id.to_string();
-        let kind = task.kind.clone();
-        let state = task.state.to_string();
-        self.db
-            .with_conn(|conn| {
-                conn.execute(
-                    "INSERT INTO local_tasks (id, session_id, kind, state, snapshot)
-                     VALUES (?1, ?2, ?3, ?4, ?5)
-                     ON CONFLICT(id) DO UPDATE SET
-                        session_id = excluded.session_id,
-                        kind = excluded.kind,
-                        state = excluded.state,
-                        snapshot = excluded.snapshot",
-                    rusqlite::params![id, session_id, kind, state, snapshot],
-                )
-            })
-            .map_err(AgentLoopError::from)?;
+        conn.execute(
+            "INSERT INTO local_tasks (id, session_id, kind, state, snapshot)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                session_id = excluded.session_id,
+                kind = excluded.kind,
+                state = excluded.state,
+                snapshot = excluded.snapshot",
+            rusqlite::params![
+                task.id,
+                task.session_id.to_string(),
+                task.kind,
+                task.state.to_string(),
+                snapshot,
+            ],
+        )
+        .map_err(LocalError::from)?;
         Ok(())
+    }
+
+    fn with_task_transaction<T>(
+        &self,
+        operation: impl FnOnce(&rusqlite::QueryConnection) -> Result<T>,
+    ) -> Result<T> {
+        self.db
+            .with_conn_mut(|conn| {
+                // Lock the writer before reading: the connection mutex alone
+                // cannot serialize registries opened on the same file.
+                let tx =
+                    conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                let result = operation(&tx);
+                if result.is_ok() {
+                    tx.commit()?;
+                }
+                Ok(result)
+            })
+            .map_err(AgentLoopError::from)?
     }
 }
 
 #[async_trait]
 impl SessionTaskRegistry for LocalSessionTaskRegistry {
     async fn create(&self, input: CreateSessionTask) -> Result<SessionTask> {
-        // Idempotent on a caller-supplied id, but only within the same session.
-        // Reusing an id across sessions is rejected, matching the canonical
-        // DB-backed registry, so a caller cannot alias another session's task.
-        if let Some(id) = &input.id
-            && let Some(existing) = self.load_task(id)?
-        {
-            if existing.session_id == input.session_id {
-                return Ok(existing);
+        self.with_task_transaction(|conn| {
+            // Idempotent on a caller-supplied id, but only within the same session.
+            // Reusing an id across sessions is rejected, matching the canonical
+            // DB-backed registry, so a caller cannot alias another session's task.
+            if let Some(id) = &input.id
+                && let Some(existing) = Self::load_task_from(conn, id)?
+            {
+                if existing.session_id == input.session_id {
+                    return Ok(existing);
+                }
+                return Err(AgentLoopError::store(format!(
+                    "task id {id} already exists under a different session"
+                )));
             }
-            return Err(AgentLoopError::store(format!(
-                "task id {id} already exists under a different session"
-            )));
-        }
-        let task = new_session_task(input, Utc::now());
-        self.store_task(&task)?;
-        Ok(task)
+            let task = new_session_task(input, Utc::now());
+            Self::store_task(conn, &task)?;
+            Ok(task)
+        })
     }
 
     async fn update(
@@ -141,16 +224,33 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
         task_id: &str,
         update: SessionTaskUpdate,
     ) -> Result<Option<SessionTask>> {
-        let Some(mut task) = self.load_task(task_id)? else {
-            return Ok(None);
-        };
-        // Session-scoped: ignore updates targeting a task in another session.
-        if task.session_id != session_id {
-            return Ok(None);
-        }
-        apply_task_update(&mut task, update, Utc::now());
-        self.store_task(&task)?;
-        Ok(Some(task))
+        self.with_task_transaction(|conn| {
+            let Some(mut task) = Self::load_task_from(conn, task_id)? else {
+                return Ok(None);
+            };
+            // Session-scoped: ignore updates targeting a task in another session.
+            if task.session_id != session_id {
+                return Ok(None);
+            }
+            if update.expected_recovery.as_ref().is_some_and(|guard| {
+                !guard.matches(&task)
+                    || update
+                        .expected_attempt
+                        .is_some_and(|attempt| attempt != task.attempt)
+            }) {
+                return Ok(None);
+            }
+            let recovery_wake = update.expected_recovery.is_some()
+                && update.increment_attempt
+                && update.state.is_some_and(|state| state.is_terminal());
+            let prior_attempt = task.attempt;
+            apply_task_update(&mut task, update, Utc::now());
+            Self::store_task(conn, &task)?;
+            if recovery_wake && task.state.is_terminal() && task.attempt != prior_attempt {
+                Self::store_recovery_wake(conn, &task)?;
+            }
+            Ok(Some(task))
+        })
     }
 
     async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
@@ -221,18 +321,21 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
         session_id: SessionId,
         task_id: &str,
     ) -> Result<Option<SessionTask>> {
-        let Some(mut task) = self.load_task(task_id)? else {
-            return Ok(None);
-        };
-        // Session-scoped: do not record cancel intent on another session's task.
-        if task.session_id != session_id {
-            return Ok(None);
-        }
-        // Cooperative cancel: record intent, do not change state. Idempotent.
-        task.cancel_requested_at.get_or_insert_with(Utc::now);
-        task.updated_at = Utc::now();
-        self.store_task(&task)?;
-        Ok(Some(task))
+        self.with_task_transaction(|conn| {
+            let Some(mut task) = Self::load_task_from(conn, task_id)? else {
+                return Ok(None);
+            };
+            if task.session_id != session_id {
+                return Ok(None);
+            }
+            if !task.state.is_terminal() && task.cancel_requested_at.is_none() {
+                let now = Utc::now();
+                task.cancel_requested_at = Some(now);
+                task.updated_at = now;
+                Self::store_task(conn, &task)?;
+            }
+            Ok(Some(task))
+        })
     }
 
     async fn record_message(
@@ -241,67 +344,65 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
         task_id: &str,
         message: NewTaskMessage,
     ) -> Result<TaskMessage> {
-        // Session-scoped: a message may only be appended to a task that belongs
-        // to the calling session (mirrors the DB-backed registry).
-        let mut task = self
-            .get(session_id, task_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
-        // Stale-attempt fence: reject writes from a superseded executor so the
-        // thread cannot grow under a zombie. Mirrors the postgres backend.
-        if let Some(expected) = message.expected_attempt
-            && expected != task.attempt
-        {
-            return Err(AgentLoopError::tool(format!(
-                "stale attempt for task {task_id}: expected {expected}, current {}",
-                task.attempt
-            )));
-        }
+        self.with_task_transaction(|conn| {
+            // Session-scoped: a message may only be appended to a task that belongs
+            // to the calling session (mirrors the DB-backed registry).
+            let mut task = Self::load_task_from(conn, task_id)?
+                .filter(|task| task.session_id == session_id)
+                .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
+            // Stale-attempt fence: reject writes from a superseded executor so the
+            // thread cannot grow under a zombie. Mirrors the postgres backend.
+            if let Some(expected) = message.expected_attempt
+                && expected != task.attempt
+            {
+                return Err(AgentLoopError::tool(format!(
+                    "stale attempt for task {task_id}: expected {expected}, current {}",
+                    task.attempt
+                )));
+            }
 
-        let record = TaskMessage {
-            id: generate_task_message_id(),
-            task_id: task_id.to_string(),
-            direction: message.direction,
-            content: message.content,
-            in_reply_to: message.in_reply_to.clone(),
-            created_at: Utc::now(),
-        };
-        let snapshot = serde_json::to_string(&record)
-            .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
-        let id = record.id.clone();
-        let tid = task_id.to_string();
-        self.db
-            .with_conn(|conn| {
-                conn.execute(
-                    "INSERT INTO local_task_messages (id, task_id, snapshot)
-                     VALUES (?1, ?2, ?3)",
-                    rusqlite::params![id, tid, snapshot],
-                )
-            })
-            .map_err(AgentLoopError::from)?;
+            let record = TaskMessage {
+                id: generate_task_message_id(),
+                task_id: task_id.to_string(),
+                direction: message.direction,
+                content: message.content,
+                in_reply_to: message.in_reply_to.clone(),
+                created_at: Utc::now(),
+            };
+            let snapshot = serde_json::to_string(&record)
+                .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+            let id = record.id.clone();
+            let tid = task_id.to_string();
+            conn.execute(
+                "INSERT INTO local_task_messages (id, task_id, snapshot)
+             VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, tid, snapshot],
+            )
+            .map_err(LocalError::from)?;
 
-        // An inbound answer (in_reply_to set) clears a matching pending input
-        // request and returns the task to running. Only inbound messages resume
-        // the task, matching the DB-backed registry; outbound messages never do.
-        if message.direction == TaskMessageDirection::Inbound
-            && let Some(reply_id) = &message.in_reply_to
-            && task
-                .input_request
-                .as_ref()
-                .is_some_and(|req| &req.id == reply_id)
-        {
-            apply_task_update(
-                &mut task,
-                SessionTaskUpdate {
-                    state: Some(SessionTaskState::Running),
-                    ..Default::default()
-                },
-                Utc::now(),
-            );
-            self.store_task(&task)?;
-        }
+            // An inbound answer (in_reply_to set) clears a matching pending input
+            // request and returns the task to running. Only inbound messages resume
+            // the task, matching the DB-backed registry; outbound messages never do.
+            if message.direction == TaskMessageDirection::Inbound
+                && let Some(reply_id) = &message.in_reply_to
+                && task
+                    .input_request
+                    .as_ref()
+                    .is_some_and(|req| &req.id == reply_id)
+            {
+                apply_task_update(
+                    &mut task,
+                    SessionTaskUpdate {
+                        state: Some(SessionTaskState::Running),
+                        ..Default::default()
+                    },
+                    Utc::now(),
+                );
+                Self::store_task(conn, &task)?;
+            }
 
-        Ok(record)
+            Ok(record)
+        })
     }
 
     async fn list_messages(

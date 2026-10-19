@@ -6,6 +6,7 @@ kind: breaking
 significance: minor
 products: [platform, cloud]
 surfaces: [agent, operations]
+release: "0.48.0"
 links:
   docs: [/features/change-history/#reasons]
   prs: [everruns/everruns#4271, everruns/everruns#4552]
@@ -16,6 +17,13 @@ fails with the `reason_required` code and a `retry` action, and the agent
 retries with `--reason`. Built-in tools that change sessions on the agent's
 behalf, such as `spawn_agent` and handoffs, give their own reasons, so they keep
 working.
+
+```bash
+# Before: accepted from an agent. After: refused with reason_required
+everruns agents update agent_01h9 --model gpt-6.1-sol
+# After: the agent retries with a reason
+everruns agents update agent_01h9 --model gpt-6.1-sol --reason "Support asked for faster answers"
+```
 
 This is the **Require reasons from agents** feature flag, now on by default. An
 organization can turn it off to let such changes through with a warning, which

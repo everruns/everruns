@@ -201,6 +201,7 @@ pub struct GetSessionTrace {
     name = "get_session_trace",
     category = "sessions",
     description = "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    summary = "Summarize a session's trace",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace",
     policy = SESSION_VIEW,
@@ -281,6 +282,7 @@ pub struct ListSessionTraceTurns {
     name = "list_session_trace_turns",
     category = "sessions",
     description = "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    summary = "List a page of a session's trace turns",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace/turns",
     policy = SESSION_VIEW,
@@ -480,6 +482,7 @@ pub struct ListSessionTraceSteps {
     name = "list_session_trace_steps",
     category = "sessions",
     description = "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    summary = "List the steps of one trace turn",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
     policy = SESSION_VIEW,
@@ -554,6 +557,7 @@ pub struct GetSessionTraceStep {
     name = "get_session_trace_step",
     category = "sessions",
     description = "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    summary = "Get one step of a session's trace in full",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
     policy = SESSION_VIEW,
@@ -959,7 +963,32 @@ fn request_summary(data: &Value, new_from: i32) -> TraceRequestSummary {
             .map(|(i, m)| message_out(i, m, &names, None))
             .collect(),
         usage: request_usage(data),
+        tool_changes: request_tool_changes(data),
     }
+}
+
+/// The tool change recorded on the call, by tool name.
+fn request_tool_changes(data: &Value) -> Option<TraceToolChanges> {
+    let changes = data.pointer("/metadata/tool_changes")?;
+    let names = |key: &str| -> Vec<String> {
+        changes
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item.as_str().or_else(|| item.get("name")?.as_str()))
+            .map(str::to_string)
+            .collect()
+    };
+    Some(TraceToolChanges {
+        baseline_tools: changes
+            .get("baseline")
+            .and_then(Value::as_array)
+            .map(|tools| i32::try_from(tools.len()).unwrap_or(i32::MAX)),
+        added: names("added"),
+        redefined: names("redefined"),
+        removed: names("removed"),
+    })
 }
 
 fn request_tools(data: &Value) -> Vec<TraceRequestTool> {
@@ -1016,6 +1045,7 @@ pub struct ListSessionTraceRequest {
     name = "list_session_trace_request",
     category = "sessions",
     description = "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    summary = "List the messages sent in one model call",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
     policy = SESSION_VIEW,
@@ -1129,6 +1159,7 @@ pub struct ListSessionTraceTurnEvents {
     name = "list_session_trace_turn_events",
     category = "sessions",
     description = "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    summary = "List the raw events of one trace turn",
     method = "GET",
     path = "/v1/sessions/{session_id}/trace/turns/{turn}/events",
     policy = SESSION_VIEW,
@@ -1216,6 +1247,25 @@ mod tests {
                 "request_options": {"prompt_cache": {"enabled": true, "strategy": "auto"}}
             }
         })
+    }
+
+    #[test]
+    fn recorded_tool_changes_are_listed_by_name() {
+        let mut data = stored_request();
+        assert!(request_tool_changes(&data).is_none());
+        let tool = |name: &str| json!({"type": "client_side", "name": name, "description": "d", "parameters": {}});
+        data["metadata"]["tool_changes"] = json!({"baseline": [tool("a"), tool("b")]});
+        let baseline = request_tool_changes(&data).unwrap();
+        assert_eq!(baseline.baseline_tools, Some(2));
+        assert!(baseline.added.is_empty());
+
+        data["metadata"]["tool_changes"] =
+            json!({"added": [tool("c")], "redefined": [tool("a")], "removed": ["b"]});
+        let change = request_summary(&data, 0).tool_changes.unwrap();
+        assert_eq!(change.baseline_tools, None);
+        assert_eq!(change.added, ["c"]);
+        assert_eq!(change.redefined, ["a"]);
+        assert_eq!(change.removed, ["b"]);
     }
 
     #[test]

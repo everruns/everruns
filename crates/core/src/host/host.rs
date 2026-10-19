@@ -277,12 +277,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
-    /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::durability::StreamHeartbeater>> {
-        None
-    }
-
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
     fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
@@ -661,6 +655,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations,
                 duration_ms: None,
@@ -1189,15 +1184,22 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         reason_capability_registry.clone(),
         adapter.event_emitter(),
     );
-    if let Some(image_resolver) = adapter.image_resolver(org_id) {
-        atom = atom.with_image_resolver(image_resolver);
-    }
-    if let Some(file_resolver) = adapter.file_resolver(org_id) {
-        atom = atom.with_file_resolver(file_resolver);
-    }
-    if let Some(hb) = adapter.stream_heartbeater() {
-        atom = atom.with_stream_heartbeater(hb);
-    }
+    // A host without an upload store keeps attachments in the session's own
+    // files; read them back from there.
+    let session_attachments = || {
+        Arc::new(crate::host::SessionAttachmentFiles::for_session(
+            adapter.file_store(org_id),
+            &input.context,
+        ))
+    };
+    atom = match adapter.image_resolver(org_id) {
+        Some(image_resolver) => atom.with_image_resolver(image_resolver),
+        None => atom.with_image_resolver(session_attachments()),
+    };
+    atom = match adapter.file_resolver(org_id) {
+        Some(file_resolver) => atom.with_file_resolver(file_resolver),
+        None => atom.with_file_resolver(session_attachments()),
+    };
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
     }
@@ -1432,14 +1434,16 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         .mcp_executor(org_id, input.context.session_id, input.agent_id)
         .await
     {
-        let invoker: Arc<dyn crate::McpToolInvoker> = mcp;
+        // THREAT[TM-TOOL-063]: registry and context services share the turn's
+        // attachment guard before any hosted connection can be resolved.
+        let invoker = Arc::new(crate::ScopedMcpToolInvoker::new(
+            &input.tool_definitions,
+            mcp,
+        ));
         for tool in crate::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);
         }
-        mcp_invoker = Some(Arc::new(crate::ScopedMcpToolInvoker::new(
-            &input.tool_definitions,
-            invoker,
-        )));
+        mcp_invoker = Some(invoker);
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());

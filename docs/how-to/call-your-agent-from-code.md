@@ -4,11 +4,11 @@ description: Give an application its own key to one agent, call it from Python, 
 appliesTo: [platform, cloud]
 ---
 
-An application that only needs to talk to one agent should not hold a personal access token, which reaches everything you can manage. Give it an **agent key** instead: it works on one agent's session routes and nothing else. This guide uses the Agent API channel ([Channels](/features/channels/)).
+An application that only needs to talk to one agent should not hold a personal access token, which reaches everything you can manage. Give it an **agent key** instead: it works on one agent's session routes and nothing else. This guide uses the Agent API channel; the [Agent API](/features/agent-api/) reference covers every route and setting.
 
 ## 1. Publish the agent with an Agent API channel
 
-In the agent's **Channels** tab, add an **Agent API** channel, then create a key in its **Agent keys** card. The secret (`evr_ak_…`) is shown once. The channel shows its **agent URL**, for example `https://app.everruns.com/api/v1/channels/apichan_…`.
+In the agent's **Integrations** tab, add an **Agent API** channel, then create a key in its **Agent keys** card. The secret (`evr_ak_…`) is shown once. The channel shows its **agent URL**, for example `https://app.everruns.com/api/v1/channels/appchan_…`.
 
 Name each key after the application that holds it, so you know which one to revoke. Rotating gives a new secret and keeps the old one working for an overlap you choose, so you can deploy the new secret first.
 
@@ -57,6 +57,33 @@ curl -N "$EVERRUNS_AGENT_URL/sessions/$SESSION_ID/sse?after_sequence=0" \
 
 A key sees only the sessions it started. What the stream shows is the channel's **visibility**: by default messages plus "a tool ran", never tool names, arguments, or internal errors.
 
+### Send files
+
+A message can carry files in `files`, each as base64 `data` or a public `https` `url` that the server downloads. The Agent finds them in the session's `/attachments` folder. Message `content` holds text and image parts; for anything else use `files`.
+
+```json
+{
+  "message": {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Check this invoice against order 42."
+      }
+    ]
+  },
+  "files": [
+    {
+      "name": "invoice.pdf",
+      "media_type": "application/pdf",
+      "url": "https://example.com/invoices/42.pdf"
+    }
+  ]
+}
+```
+
+A request body is limited in size, so send large files by `url`. A file that cannot be taken becomes a note the Agent reads instead ([Files people send](/features/channels/#files-people-send)).
+
 ## 3. Retry safely
 
 Send an `Idempotency-Key` header (the SDKs take an `idempotency_key` argument) when you create a session or send a message. A retry with the same key and the same request within 24 hours returns the first response instead of starting a second session or sending the message twice.
@@ -92,6 +119,7 @@ Set **Daily spending limit per caller** on the channel. When one key or one end 
 ## Related
 
 - [Tutorial: Serve an Agent and Call It from Code](/framework/serve-tutorial/): the same `AgentClient` against an agent you run yourself with serve.
-- [Channels](/features/channels/): the Agent API channel's settings in full.
+- [Agent API](/features/agent-api/): every route, credential, channel setting and status code.
+- [Channels](/features/channels/): every channel type and the shared lifecycle.
 - [Stream events](/how-to/stream-events/): the event stream and reconnection.
 - [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/).

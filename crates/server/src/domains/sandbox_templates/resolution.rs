@@ -221,6 +221,42 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     })
 }
 
+/// The organization account a `session_user` template uses when the Session
+/// has no user to hold a provider account.
+///
+/// A trigger, schedule or channel ingress starts its Session without a person,
+/// so "the Session user's account" names nobody. The organization's account for
+/// the provider is the only owner left, and it is used only when it is the one
+/// account for that provider: with several, picking one would silently bill an
+/// arbitrary account, so the template has to name it instead.
+pub(crate) fn sole_organization_account<T>(
+    provider: &str,
+    accounts: impl IntoIterator<Item = T>,
+    provider_of: impl Fn(&T) -> &str,
+) -> Result<T, String> {
+    let mut matching = accounts
+        .into_iter()
+        .filter(|account| provider_of(account) == provider);
+    let first = matching.next();
+    let others = matching.count();
+    match (first, others) {
+        (Some(account), 0) => Ok(account),
+        (None, _) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has no {provider} account. Add an organization {provider} \
+             account, or set the template's account to one."
+        )),
+        (Some(_), others) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has {} {provider} accounts. Set the template's account to the \
+             one it should use.",
+            others + 1
+        )),
+    }
+}
+
 fn validate_credential_binding(
     target: &crate::domains::sandbox_templates::record::SandboxTargetSpec,
 ) -> Result<(), String> {
@@ -987,6 +1023,26 @@ mod tests {
     }
 
     #[test]
+    fn userless_session_uses_the_sole_organization_account() {
+        let accounts = vec![("brave_search", 1), ("daytona", 2), ("e2b", 3)];
+        assert_eq!(
+            sole_organization_account("daytona", accounts, |a| a.0).unwrap(),
+            ("daytona", 2)
+        );
+    }
+
+    #[test]
+    fn userless_session_fails_without_exactly_one_organization_account() {
+        let none = sole_organization_account("daytona", vec![("e2b", 1)], |a| a.0).unwrap_err();
+        assert!(none.contains("no daytona account"), "{none}");
+
+        let many =
+            sole_organization_account("daytona", vec![("daytona", 1), ("daytona", 2)], |a| a.0)
+                .unwrap_err();
+        assert!(many.contains("has 2 daytona accounts"), "{many}");
+    }
+
+    #[test]
     fn managed_profile_replaces_the_session_filesystem_tool_surface() {
         let resolved = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
         assert_eq!(
@@ -1005,6 +1061,77 @@ mod tests {
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "session_sandbox"]
         );
+    }
+
+    /// Sandbox Worker inherits Worker's session file system. Under a managed
+    /// template the sandbox must own every file tool the model can call, or a
+    /// file the sandbox just cloned reads as "File not found".
+    #[tokio::test]
+    async fn sandbox_worker_under_a_managed_template_exposes_no_vfs_file_tool() {
+        use everruns_contracts::capability::BuiltInHarnessPreset;
+        use everruns_core::capabilities::{
+            SESSION_FILE_TOOL_NAMES, SystemPromptContext, collect_capabilities_with_configs,
+            resolve_capability_configs,
+        };
+
+        let managed = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        // Sandbox Worker adds no capability of its own; Worker is its whole set.
+        let harness = BuiltInHarnessPreset::Worker.effective_capabilities();
+        let session = apply_sandbox_to_capabilities(&[], &harness, Some(&managed));
+        let effective = everruns_core::merge_capabilities(&harness, &session);
+        let registry = crate::platform::oss_capability_registry_for_grade(DeploymentGrade::Dev);
+        let resolved = resolve_capability_configs(&effective, &registry).unwrap();
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
+        let collected = collect_capabilities_with_configs(&resolved, &registry, &ctx).await;
+
+        // Skills and output persistence still need the VFS capability.
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system")
+        );
+        let mut definitions = collected.tool_definitions;
+        for hook in &collected.tool_definition_hooks {
+            definitions = hook.transform(definitions);
+        }
+        for name in SESSION_FILE_TOOL_NAMES {
+            let matching: Vec<_> = definitions.iter().filter(|d| d.name() == *name).collect();
+            assert!(matching.len() <= 1, "{name} offered twice");
+            if let Some(definition) = matching.first() {
+                assert_eq!(
+                    definition.hints().capability_id.as_deref(),
+                    Some("session_sandbox"),
+                    "{name} must run in the sandbox"
+                );
+            }
+            let tool = collected.tools.iter().rfind(|t| t.name() == *name);
+            assert_eq!(
+                tool.is_some(),
+                !matching.is_empty(),
+                "{name}: definition and implementation disagree"
+            );
+            if let Some(tool) = tool {
+                assert_eq!(
+                    tool.to_definition().concurrency_class(),
+                    Some("session_sandbox"),
+                    "{name} must execute in the sandbox"
+                );
+            }
+        }
+        for name in [
+            "read_file",
+            "read_many_files",
+            "list_directory",
+            "glob",
+            "grep",
+        ] {
+            assert!(
+                definitions.iter().any(|d| d.name() == name),
+                "{name} missing"
+            );
+        }
     }
 
     #[test]

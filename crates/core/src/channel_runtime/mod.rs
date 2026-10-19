@@ -19,12 +19,17 @@
 use everruns_contracts::runtime::channel::*;
 
 mod approval;
+mod attachments;
 mod delivery;
 mod host;
 mod progress;
 mod store;
 
 pub use approval::{REQUEST_APPROVAL_TOOL, approval_prompt};
+pub use attachments::{
+    AttachmentIntake, AttachmentPolicy, AttachmentStore, DOWNLOAD_TIMEOUT, MAX_DOWNLOAD_REDIRECTS,
+    ReceivedAttachment, not_received_note,
+};
 
 pub use delivery::{
     DeliveryEvent, DeliveryOptions, DeliveryStep, STREAM_FLUSH_CHARS, TurnDelivery,
@@ -33,8 +38,8 @@ pub use delivery::{
 pub use host::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DEFAULT_DELIVERY_LEASE,
-    DEFAULT_FLUSH_INTERVAL, NewChannelSession, ResolvedChannel, SendOutcome, StreamTurn,
-    TurnDeliveryPlanner,
+    DEFAULT_FLUSH_INTERVAL, NewChannelSession, ResolvedChannel, SendOutcome, SendResolution,
+    StreamTurn, TurnDeliveryPlanner,
 };
 pub use progress::TaskProgress;
 pub use store::{ChannelStore, MemoryChannelStore, PendingDelivery};

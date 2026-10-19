@@ -13,16 +13,28 @@ Sandbox Templates and Harnesses are separate. A Harness defines behavior and may
 policy or let an Agent offer template bindings. A template selects Bashkit, Daytona, or another
 execution target without changing the ordinary shell and file tools the model uses.
 
+With a managed provider, every file tool works on the Sandbox's `/workspace`: `read_file`,
+`read_many_files`, `write_file`, `edit_file`, `glob`, `grep`, and `list_directory`. Tools that only
+exist for the Session's own files, such as `grep_files` and `delete_file`, are not offered. Skills
+under `/workspace/.agents/skills/` and saved tool output under `/workspace/outputs/` stay readable:
+when the Sandbox does not hold such a file, the read falls back to the Session's files.
+
 ## Create a Sandbox Template
 
 1. Open **Sandbox Templates** and select **New Sandbox Template**.
 2. Give it a stable name and display name.
 3. Select Bashkit or an available managed provider: Daytona, E2B, or Modal (when enabled).
-4. For a managed provider, choose where its credential comes from:
-   - **Person starting the Session** uses that user's connection.
-   - **This Agent** uses the Agent Virtual User's connection.
-   - **Organization provider account** uses one account managed by an organization admin under
-     **Sandboxes → Provider Accounts**.
+4. For a managed provider, choose its **Provider account**: whose connection the Sandbox uses,
+   and so whose provider account pays. Each choice is labelled with the provider, for example
+   **Daytona · Personal**:
+   - **Personal** uses the connection of the person starting the Session. A Session started by a
+     trigger or a channel has no user, so it uses the organization's provider account instead,
+     when the organization has exactly one for that provider. With none or several, the Session
+     fails to start and names the problem; pick **Organization account** to choose one.
+   - **This Agent** uses the Agent Virtual User's connection for every Session.
+   - **Organization account** uses one shared account managed by an organization admin under
+     **Sandboxes → Provider accounts**. When the organization has none for the provider, the
+     picker links there to add one.
 5. Configure durability, lifecycle, and bootstrap options, then save.
 
 Editing a Sandbox Template creates a new immutable revision. Existing Sessions keep the revision
@@ -32,7 +44,7 @@ provisioned by Everruns and cannot be edited or archived.
 ## Configure an Agent
 
 1. Open **Agents**, then open the Agent.
-2. Under **More**, select **Primary sandbox**.
+2. Under **More**, select **Sandbox**.
 3. Add a Sandbox Template. The Agent stores its exact revision, not a moving pointer.
 4. Choose the policy mode:
    - **Fixed**: every Session gets the single configured Sandbox; Session overrides are rejected.

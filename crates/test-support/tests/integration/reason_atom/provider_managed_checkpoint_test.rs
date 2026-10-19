@@ -1084,3 +1084,148 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
         );
     }
 }
+
+/// A control plane whose checkpoint read times out, as a pool timeout does.
+struct UnreachableCheckpointStore {
+    reads: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl everruns_core::CompactionCheckpointStore for UnreachableCheckpointStore {
+    async fn get_latest(
+        &self,
+        _session_id: SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<everruns_core::CompactionCheckpoint>> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        Err(everruns_contracts::error::AgentLoopError::store(
+            "gRPC error (Internal): Failed to load compaction checkpoint: pool timed out while waiting for an open connection",
+        ))
+    }
+
+    async fn install(
+        &self,
+        _checkpoint: everruns_core::CompactionCheckpoint,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(true)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_contracts::error::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+        Ok(None)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: everruns_core::ProactiveCompactionAttempt,
+    ) -> everruns_contracts::error::Result<()> {
+        Ok(())
+    }
+}
+
+// Chaos harness: a pool timeout on the control plane's checkpoint read was
+// reported as "LLM call failed", and the turn failed for good with a
+// provider-error message. A control-plane read failure is not the model's:
+// the atom returns it, so the turn is retried instead of failed.
+#[tokio::test]
+async fn a_control_plane_read_failure_is_returned_not_reported_as_a_model_failure() {
+    use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
+    use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
+    use everruns_core::execution_loading::SessionStore;
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+    let provider_type = DriverId::Anthropic;
+    set_default_test_model(
+        &provider_store,
+        provider_type.clone(),
+        "eligible-model",
+        Some("fake-api-key"),
+    )
+    .await;
+    let mut session = session_store
+        .get_session(session_id.into())
+        .await
+        .unwrap()
+        .unwrap();
+    session.capabilities = vec![AgentCapabilityConfig::with_config(
+        INFINITY_CONTEXT_CAPABILITY_ID,
+        json!({"context_budget_tokens":120_000}),
+    )];
+    session_store.add_session(session).await;
+    message_retriever
+        .seed(session_id.into(), vec![RuntimeMessage::user("hello")])
+        .await;
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let driver = ProviderManagedCheckpointDriver {
+        calls: calls.clone(),
+        fail_stream: Arc::new(AtomicBool::new(false)),
+        exhaust_stream: Arc::new(AtomicBool::new(false)),
+    };
+    let mut drivers = DriverRegistry::new();
+    drivers.register(provider_type, move |_| Box::new(driver.clone()));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(InfinityContextCapability);
+    let reads = Arc::new(AtomicUsize::new(0));
+    let events = InMemoryEventEmitter::new();
+    let atom = reason_atom_with_stores(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capabilities,
+        drivers,
+        events.clone(),
+    )
+    .with_compaction_checkpoint_store(Arc::new(UnreachableCheckpointStore {
+        reads: reads.clone(),
+    }));
+
+    let error = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect_err("a control-plane read failure is returned to the turn driver");
+
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    assert!(
+        matches!(
+            error,
+            everruns_contracts::error::AgentLoopError::MessageStore(_)
+        ),
+        "{error:?}"
+    );
+    assert!(!error.is_non_retryable());
+    assert!(calls.lock().await.is_empty(), "the model is never called");
+    assert!(
+        !events
+            .events()
+            .await
+            .iter()
+            .any(|event| event.event_type == "output.message.completed"),
+        "no provider-error message for the user"
+    );
+}

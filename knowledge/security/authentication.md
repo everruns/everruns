@@ -51,18 +51,21 @@ Authorization: Bearer <personal_access_token>
 - Personal access tokens are prefixed with `evr_pat_` for identification, the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full token shown only at creation, stored hashed (SHA-256)
-- Expiration is supported and enforced. Stored scopes are enforced on REST and
-  `/v1/commands` only, not yet on `/mcp` or as an execution API org member. To
-  avoid advertising a control that is not fully honored, token creation only
-  accepts the full-access wildcard (`scopes` omitted or `["*"]`); any narrower
-  scope is rejected with `unsupported_pat_scopes` until every surface enforces
-  it. See EVE-701, and
-  [Personal Access Token Scopes](pat-scopes.md) for the approved enforcement
-  design (`*` and `read`). REST and `/v1/commands` enforce stored scopes
-  (`403 insufficient_scope`); legacy tokens stored with any scope other than
-  `["*"]` were deleted by migration when enforcement shipped. Under that design a `read`
-  token can never download the full personal data export
-  (`GET /v1/users/me/export`).
+- Expiration is supported and enforced.
+- Every token carries exactly one scope, chosen at creation and immutable:
+  `*` (full access, the default when `scopes` is omitted) or `read`
+  (read-only). Creation accepts only `[]`, `["*"]` or `["read"]`; anything
+  else is `400 unsupported_pat_scopes`. A `read` token reaches only routes
+  classified `Read`, in every org the user belongs to, on REST,
+  `/v1/commands`, `/mcp` and as an execution API org member; anything else is
+  `403 insufficient_scope`. It never reaches token management, the auth
+  surface, membership, credential minting or the full personal data export
+  (`GET /v1/users/me/export`). `GET /v1/auth/me` reports the request's
+  `token_scope` (`null` for non-PAT credentials), and the
+  `auth.personal_access_token.created` audit event records `scopes`. Design
+  and route classification: [Personal Access Token Scopes](pat-scopes.md).
+  Legacy tokens stored with any other scope were deleted by migration when
+  enforcement shipped.
 - Used for programmatic access
 - Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
@@ -86,9 +89,11 @@ machine credential.
 - The target org for a given request is selected per-request (`X-Org-Id`
   header / `everruns_org` cookie / single-org fallback), never baked into the
   token. The same token is used across orgs by changing that selector.
-- Implication: treat a personal access token as equivalent to the user's own
-  full access (hence the "Full account access" warning in the UI). It is not a
-  way to grant narrow, org-scoped, or non-human access. If org-scoped or
+- Implication: treat a `*` token as equivalent to the user's own full access,
+  and a `read` token as the user's full read access (hence the "Account-wide
+  access" warning in the UI, and the picker's "read access to all your
+  organizations", never "safe to share"). Scopes narrow actions, not orgs: no
+  token is a way to grant org-scoped or non-human access. If org-scoped or
   service credentials are ever needed, they would be a new, separate concept,
   not a variant of this one. That concept is the channel-scoped,
   execution-only **agent key**; see [Agent Execution API](../integrations/agent-execution-api.md).

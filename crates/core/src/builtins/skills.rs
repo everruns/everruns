@@ -1680,11 +1680,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1712,11 +1709,8 @@ mod tests {
         let store = Arc::new(MockFileStore::new());
 
         let ctx = SystemPromptContext {
-            session_id: SessionId::new(),
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(SessionId::new())
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1779,11 +1773,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1820,11 +1811,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1855,11 +1843,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store.clone()),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2087,11 +2072,8 @@ mod tests {
         // SkillsCapability dynamic prompt should include the mounted skill
         let skills_cap = SkillsCapability;
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
         let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("pdf-tool"));
@@ -2349,11 +2331,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2381,11 +2360,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();

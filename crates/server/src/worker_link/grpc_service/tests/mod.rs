@@ -93,6 +93,8 @@ impl CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::TurnCompletedData {
+                    termination_reason: None,
+                    issue_count: None,
                     turn_id: everruns_contracts::typed_id::TurnId::new(),
                     iterations: 1,
                     duration_ms: None,
@@ -910,6 +912,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
                 max_iterations: None,
                 network_access: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -1465,4 +1468,5 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
 }
 
 mod actors;
+mod checkpoint_encryption;
 mod runtime_command_view;

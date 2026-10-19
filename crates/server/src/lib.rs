@@ -99,6 +99,9 @@ pub mod session_sqldb;
 // The server's turn requests on the `TurnBackend` entry point
 pub mod turns;
 
+// Tenant egress proxy (`everruns-egress-proxy` binary)
+pub mod egress_proxy;
+
 // `--health-check` probe for distroless container healthchecks
 pub mod health_probe;
 
@@ -111,6 +114,8 @@ pub mod valkey;
 
 // Per-agent GitHub Apps: manifest creation, installation, token minting
 pub mod github_apps;
+mod github_installation_token;
+pub mod github_user_token;
 
 // Channel-specific plumbing (Slack: delivery, actions, events, install)
 pub mod channels;

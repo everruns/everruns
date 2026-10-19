@@ -334,6 +334,10 @@ SSE subscription per owning session.
 
 ## Agent-facing tools
 
+Task lists keep outcome summaries bounded so diagnostics cannot crowd out task
+IDs and lifecycle states. Full summaries remain available through `get_task` and
+durable artifacts. Use the exact returned task ID; run IDs are independent.
+
 Generic tools replace the per-kind query/messaging tools:
 
 ```
@@ -394,8 +398,8 @@ cancellation, seal, and max-iterations leave undrained wakes in the queue for
 the next turn (between-turn fallback); a completion landing mid-loop is visible
 to the very next iteration. Within a process the queue gives exactly-once;
 durable exactly-once across a worker restart is a property of the *persistent*
-transition source (the durable signal store), fenced by task `attempt`
-(`expected_attempt`), not of the in-memory queue.
+transition source (the session log a platform worker's turn reads), fenced by
+task `attempt` (`expected_attempt`), not of the in-memory queue.
 
 ## Durability and recovery
 
@@ -624,10 +628,9 @@ No backward compatibility is required; data migrates forward once:
   message before the LLM call and continuing a would-idle turn while wakes are
   pending. `wake_text_for` renders the same terminal/awaiting_input/message text
   the between-turn waker uses, so both paths agree on *when* a wake fires. The
-  server durable-worker path (draining the queue at
-  `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
-  through the durable signal store, with exactly-once across worker restart) is
-  **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
+  platform worker path (draining wakes at a session actor's turn inbox,
+  persisted through the session log, with exactly-once across worker restart)
+  is **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
   deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
   builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
   (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips
@@ -674,3 +677,26 @@ stays as `schedule + monitor` composition.
 - Per-org retention TTL overrides (global TTL ships first; see Retention).
 - A dedicated task-definition / recurrence primitive, see the decision above;
   recurrence ships as schedule + monitor composition.
+
+## Local profile recovery
+
+Local task persistence serializes load, guard checks and mutation in one immediate
+SQLite transaction, including across independent connections. Recovery checks the exact
+observed state, attempt, worker, heartbeat and cancellation request, then advances the
+attempt when settling a lost execution. Late worker writes cannot resurrect it.
+
+The local facade reconciles owned running attempts on startup, scoped registry reads,
+cancellation and periodic maintenance. Typed executors provide ownership evidence;
+unrecognized ownership, live owners, legacy records without ownership metadata and
+scheduled monitors are not guessed dead. No interrupted command is replayed. Executor-
+confirmed execution loss can settle cancellation. A missing owner process without
+proof that execution stopped instead fails with an unverified execution outcome.
+
+The terminal transition stores a pending wake atomically. Observer failure or a crash
+before wake acknowledgement leaves it available for retry. Terminal wakes are at least
+once and carry the task/attempt identity; embedders must make inbox delivery idempotent.
+The direct runtime wake observer avoids recursively traversing an observing registry.
+
+Recovery does not reuse live-execution artifact finalizers or rewrite partial logs and
+result files. The guarded task registry transition is authoritative for the recovered
+attempt; preserved artifacts may describe an interrupted execution.

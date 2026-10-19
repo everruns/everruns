@@ -19,8 +19,9 @@ pub use profiles::{
     profiles_for_provider, selected_profiles, selected_profiles_for_provider,
 };
 pub use types::{
-    CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, MID_CONVERSATION_SYSTEM_PARAMETER,
-    Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
+    CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, INLINE_TOOL_ADDITIONS_PARAMETER,
+    INLINE_TOOL_CHANGES_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER, Modality, ModelCost,
+    ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
     ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig, SpeedValue,
     Verbosity, VerbosityConfig, VerbosityValue,
 };

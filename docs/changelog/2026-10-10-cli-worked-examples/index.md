@@ -6,6 +6,7 @@ kind: improvement
 significance: notable
 products: [cli]
 surfaces: [cli]
+release: "0.48.0"
 links:
   docs: [/reference/cli/, /features/cli/]
   prs: [everruns/everruns#4433]

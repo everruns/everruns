@@ -89,25 +89,28 @@ impl SessionTaskWaker for InjectedMessageWaker {
             external_actor: None,
             created_at: Utc::now(),
         };
-        self.event_service
-            .emit(everruns_core::EventRequest::new(
-                session_id,
-                everruns_core::events::EventContext::empty(),
-                everruns_core::events::InputMessageData::new(core_message),
-            ))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))?;
-
-        if let Some(runner) = self.runner.clone() {
-            let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
-            let request = crate::turns::stored_message(session_id, scope, message_id, None);
-            // Awaited, not spawned: marking the session's actor runnable joins
-            // the caller's transaction, if any, with the wake message.
-            if let Err(e) = crate::turns::start(&*runner, request).await {
-                tracing::warn!(%session_id, "SessionTaskWaker: failed to start turn: {e}");
+        let store = async {
+            self.event_service
+                .emit(everruns_core::EventRequest::new(
+                    session_id,
+                    everruns_core::events::EventContext::empty(),
+                    everruns_core::events::InputMessageData::new(core_message),
+                ))
+                .await
+                .map(drop)
+                .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))
+        };
+        match self.runner.clone() {
+            // The wake message and its turn commit together (see
+            // `turns::store_input_and_start`): a wake whose turn cannot start
+            // stores nothing and fails, so the caller can wake again.
+            Some(runner) => {
+                let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
+                let request = crate::turns::stored_message(session_id, scope, message_id, None);
+                crate::turns::store_input_and_start(&self.db, &*runner, store, request).await
             }
+            None => store.await,
         }
-        Ok(())
     }
 }
 

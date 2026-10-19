@@ -11,8 +11,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agent-examples — list all available examples */
-    get: operations["list_examples"];
+    /**
+     * List all available examples
+     * @description list all available examples
+     */
+    get: operations["list_agent_examples"];
     put?: never;
     post?: never;
     delete?: never;
@@ -28,10 +31,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents - List all active agents */
+    /** List all active agents */
     get: operations["list_agents"];
     put?: never;
-    /** POST /v1/agents - Create a new agent */
+    /** Create a new agent */
     post: operations["create_agent"];
     delete?: never;
     options?: never;
@@ -46,7 +49,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/activity - Org-wide agent and channel activity */
+    /** Org-wide agent and channel activity */
     get: operations["get_agent_activity"];
     put?: never;
     post?: never;
@@ -66,7 +69,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/agents/analyze - Run advisory checks against an agent shape
+     * Run advisory checks against an agent shape
      * @description Runs built-in rules plus on-demand LLM analysis
      *     and returns merged advisory findings. Requires the system utility LLM
      *     service to be configured.
@@ -86,7 +89,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/agents/check-name
+     * Check agent name
      * @description Returns whether an agent name is available for use. Optionally excludes
      *     a specific agent ID (for edit forms where the agent's own name is valid).
      */
@@ -106,7 +109,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/config */
+    /** Agent config */
     get: operations["agent_config"];
     put?: never;
     post?: never;
@@ -125,7 +128,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Generate a semantic diff against an existing agent without mutation. */
+    /**
+     * Diff an agent package against an existing agent
+     * @description Generate a semantic diff against an existing agent without mutation.
+     */
     post: operations["diff_agent_package"];
     delete?: never;
     options?: never;
@@ -142,7 +148,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created. */
+    /**
+     * Revise an agent draft with the agent builder
+     * @description Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.
+     */
     post: operations["draft_agent"];
     delete?: never;
     options?: never;
@@ -160,7 +169,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/agents/import - Import agent from file or built-in example
+     * Import agent from file or built-in example
      * @description Two modes:
      *     1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
      *     2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
@@ -192,7 +201,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/agents/preview - Preview the final agent shape with capabilities applied
+     * Preview the final agent shape with capabilities applied
      * @description Returns the merged system prompt and all tools that would be available to the agent.
      *     This is useful for previewing what the agent will look like before saving.
      */
@@ -212,7 +221,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Validate an agent package and its destination dependencies without mutation. */
+    /**
+     * Validate an agent package and its dependencies
+     * @description Validate an agent package and its destination dependencies without mutation.
+     */
     post: operations["validate_agent_package"];
     delete?: never;
     options?: never;
@@ -228,24 +240,24 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/agents/{agent_id} - Get agent by ID or name
+     * Get agent by ID or name
      * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
      *     name (e.g. `customer-support`). Names are resolved within the caller's org.
      */
     get: operations["get_agent"];
     /**
-     * PUT /v1/agents/{agent_id} - Create or update agent (upsert)
+     * Create or update agent (upsert)
      * @description Accepts either an agent ID (e.g. `agent_01933b5a...`) or a
      *     name (e.g. `customer-support`). If the agent exists, update it; if not,
      *     create it. Returns 201 on create, 200 on update.
      */
     put: operations["upsert_agent"];
     post?: never;
-    /** DELETE /v1/agents/{agent_id} - Archive agent */
+    /** Archive agent */
     delete: operations["delete_agent"];
     options?: never;
     head?: never;
-    /** PATCH /v1/agents/{agent_id} - Update agent */
+    /** Update agent */
     patch: operations["update_agent"];
     trace?: never;
   };
@@ -258,12 +270,12 @@ export interface paths {
     };
     get?: never;
     /**
-     * PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar
+     * Upload the agent's avatar
      * @description Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.
      */
     put: operations["upload_agent_avatar"];
     post?: never;
-    /** DELETE /v1/agents/{agent_id}/avatar - Remove the agent's avatar */
+    /** Remove the agent's avatar */
     delete: operations["delete_agent_avatar"];
     options?: never;
     head?: never;
@@ -277,9 +289,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent. */
+    /**
+     * Get the agent's current avatar preset
+     * @description Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
+     */
     get: operations["get_avatar_preset_selection"];
-    /** Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons. */
+    /**
+     * Set an agent's avatar from a curated preset
+     * @description Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
+     */
     put: operations["select_avatar_preset"];
     post?: never;
     delete?: never;
@@ -297,7 +315,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. */
+    /**
+     * Set an agent's avatar from a preset or an image
+     * @description Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.
+     */
     post: operations["set_agent_avatar"];
     delete?: never;
     options?: never;
@@ -312,10 +333,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List ingress channels owned by an Agent. */
+    /**
+     * List agent channels
+     * @description List ingress channels owned by an Agent.
+     */
     get: operations["list_agent_channels"];
     put?: never;
-    /** @description Create an ingress channel owned by an Agent. */
+    /**
+     * Create agent channel
+     * @description Create an ingress channel owned by an Agent.
+     */
     post: operations["create_agent_channel"];
     delete?: never;
     options?: never;
@@ -330,15 +357,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one ingress channel owned by an Agent. */
+    /**
+     * Get agent channel
+     * @description Get one ingress channel owned by an Agent.
+     */
     get: operations["get_agent_channel"];
     put?: never;
     post?: never;
-    /** @description Delete an ingress channel owned by an Agent. */
+    /**
+     * Delete agent channel
+     * @description Delete an ingress channel owned by an Agent.
+     */
     delete: operations["delete_agent_channel"];
     options?: never;
     head?: never;
-    /** @description Update an ingress channel owned by an Agent. */
+    /**
+     * Update agent channel
+     * @description Update an ingress channel owned by an Agent.
+     */
     patch: operations["update_agent_channel"];
     trace?: never;
   };
@@ -349,10 +385,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the agent keys of an agent's API channel. Secrets are never returned. */
+    /**
+     * List agent keys
+     * @description List the agent keys of an agent's API channel. Secrets are never returned.
+     */
     get: operations["list_agent_keys"];
     put?: never;
-    /** @description Create an agent key for an agent's API channel. The secret is in this response only. */
+    /**
+     * Create agent key
+     * @description Create an agent key for an agent's API channel. The secret is in this response only.
+     */
     post: operations["create_agent_key"];
     delete?: never;
     options?: never;
@@ -369,7 +411,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revoke an agent key. It never works again, including a secret still in its rotation overlap. */
+    /**
+     * Revoke agent key
+     * @description Revoke an agent key. It never works again, including a secret still in its rotation overlap.
+     */
     post: operations["revoke_agent_key"];
     delete?: never;
     options?: never;
@@ -386,7 +431,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap. */
+    /**
+     * Rotate agent key
+     * @description Replace an agent key's secret, keeping its id. The new secret is in this response only; the old one keeps working for the overlap.
+     */
     post: operations["rotate_agent_key"];
     delete?: never;
     options?: never;
@@ -403,7 +451,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Publish an Agent channel so it can accept ingress traffic. */
+    /**
+     * Publish agent channel
+     * @description Publish an Agent channel so it can accept ingress traffic.
+     */
     post: operations["publish_agent_channel"];
     delete?: never;
     options?: never;
@@ -420,7 +471,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a published Agent schedule channel now. */
+    /**
+     * Trigger agent channel
+     * @description Run a published Agent schedule channel now.
+     */
     post: operations["trigger_agent_channel"];
     delete?: never;
     options?: never;
@@ -437,7 +491,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Unpublish an Agent channel so it no longer accepts ingress traffic. */
+    /**
+     * Unpublish agent channel
+     * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
+     */
     post: operations["unpublish_agent_channel"];
     delete?: never;
     options?: never;
@@ -454,7 +511,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent. */
+    /**
+     * Create channel call
+     * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
+     */
     post: operations["create_channel_call"];
     delete?: never;
     options?: never;
@@ -472,7 +532,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/agents/{agent_id}/copy - Copy an agent
+     * Copy an agent
      * @description Creates a new agent with the same configuration as the source agent.
      *     The new agent's name will be "{original name} (copy)".
      */
@@ -490,10 +550,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values. */
+    /**
+     * List credentials
+     * @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.
+     */
     get: operations["list_credentials"];
     put?: never;
-    /** @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately. */
+    /**
+     * Create credential binding
+     * @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.
+     */
     post: operations["create_credential_binding"];
     delete?: never;
     options?: never;
@@ -509,10 +575,16 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Encrypt and replace the write-only value for an agent credential binding. */
+    /**
+     * Set credential value
+     * @description Encrypt and replace the write-only value for an agent credential binding.
+     */
     put: operations["set_credential_value"];
     post?: never;
-    /** @description Revoke an agent credential binding and permanently remove its encrypted value. */
+    /**
+     * Delete credential binding
+     * @description Revoke an agent credential binding and permanently remove its encrypted value.
+     */
     delete: operations["delete_credential_binding"];
     options?: never;
     head?: never;
@@ -527,12 +599,14 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * List agent endpoints
      * @deprecated
      * @description List ingress channels owned by an Agent.
      */
     get: operations["list_agent_endpoints"];
     put?: never;
     /**
+     * Create agent endpoint
      * @deprecated
      * @description Create an ingress channel owned by an Agent.
      */
@@ -551,6 +625,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get agent endpoint
      * @deprecated
      * @description Get one ingress channel owned by an Agent.
      */
@@ -558,6 +633,7 @@ export interface paths {
     put?: never;
     post?: never;
     /**
+     * Delete agent endpoint
      * @deprecated
      * @description Delete an ingress channel owned by an Agent.
      */
@@ -565,6 +641,7 @@ export interface paths {
     options?: never;
     head?: never;
     /**
+     * Update agent endpoint
      * @deprecated
      * @description Update an ingress channel owned by an Agent.
      */
@@ -581,6 +658,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Publish agent endpoint
      * @deprecated
      * @description Publish an Agent channel so it can accept ingress traffic.
      */
@@ -601,6 +679,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Trigger agent endpoint
      * @deprecated
      * @description Run a published Agent schedule channel now.
      */
@@ -621,6 +700,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Unpublish agent endpoint
      * @deprecated
      * @description Unpublish an Agent channel so it no longer accepts ingress traffic.
      */
@@ -641,6 +721,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Create endpoint call
      * @deprecated
      * @description Call an agent's voice channel. Starts a new session for the call, or continues an existing session of the agent.
      */
@@ -658,7 +739,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter */
+    /** Export agent in Markdown format with YAML front matter */
     get: operations["export_agent"];
     put?: never;
     post?: never;
@@ -677,7 +758,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/agents/{agent_id}/exposures/resume - Let live endpoints serve again */
+    /** Let live endpoints serve again */
     post: operations["resume_agent_exposures"];
     delete?: never;
     options?: never;
@@ -694,8 +775,28 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/agents/{agent_id}/exposures/suspend - Take every endpoint offline */
+    /** Take every endpoint offline */
     post: operations["suspend_agent_exposures"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/failures": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List sessions with failed turns
+     * @description List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+     */
+    get: operations["list_agent_failures"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -709,11 +810,17 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. */
+    /**
+     * Get an agent's GitHub App status
+     * @description Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.
+     */
     get: operations["get_agent_github"];
     put?: never;
     post?: never;
-    /** Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization). */
+    /**
+     * Disconnect an agent from GitHub
+     * @description Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).
+     */
     delete: operations["disconnect_agent_github"];
     options?: never;
     head?: never;
@@ -729,8 +836,31 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub). */
+    /**
+     * Connect an agent to GitHub through its own App
+     * @description Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).
+     */
     post: operations["connect_agent_github"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/github/everruns-app": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Make an agent act as the shared Everruns GitHub App
+     * @description Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+     */
+    post: operations["use_agent_everruns_app"];
     delete?: never;
     options?: never;
     head?: never;
@@ -744,10 +874,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/health-checks - List recent health check runs */
+    /** List recent health check runs */
     get: operations["list_health_checks"];
     put?: never;
-    /** POST /v1/agents/{agent_id}/health-checks - Trigger a behavioral health check */
+    /** Trigger a behavioral health check */
     post: operations["trigger_health_check"];
     delete?: never;
     options?: never;
@@ -762,7 +892,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/health-checks/latest - Latest run + stale flag */
+    /** Latest run + stale flag */
     get: operations["get_latest_health_check"];
     put?: never;
     post?: never;
@@ -779,7 +909,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/health-checks/{run_id} - Get a health check run */
+    /** Get a health check run */
     get: operations["get_health_check"];
     put?: never;
     post?: never;
@@ -796,7 +926,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller. */
+    /**
+     * List agent mcp attachments
+     * @description Lists the effective MCP attachments after capability, harness, and agent layers are merged. Connection state and permitted actions are resolved for the current caller.
+     */
     get: operations["list_agent_mcp_attachments"];
     put?: never;
     post?: never;
@@ -816,7 +949,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged. */
+    /**
+     * Revoke agent mcp connection
+     * @description Revokes the current caller's user connection or the virtual user's shared service connection for an effective MCP attachment. The attachment configuration remains unchanged.
+     */
     delete: operations["revoke_agent_mcp_connection"];
     options?: never;
     head?: never;
@@ -830,10 +966,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts. */
+    /**
+     * List agent scripts
+     * @description List an agent's saved scripts with their bodies. Set include_archived=true to also return archived scripts.
+     */
     get: operations["list_agent_scripts"];
     put?: never;
-    /** @description Save a new script for an agent. The name must be unique among the agent's active scripts. */
+    /**
+     * Create agent script
+     * @description Save a new script for an agent. The name must be unique among the agent's active scripts.
+     */
     post: operations["create_agent_script"];
     delete?: never;
     options?: never;
@@ -848,15 +990,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one saved script, including its body and input schema. */
+    /**
+     * Get agent script
+     * @description Get one saved script, including its body and input schema.
+     */
     get: operations["get_agent_script"];
     put?: never;
     post?: never;
-    /** @description Archive a saved script. It is hidden from the agent and its name becomes free again. */
+    /**
+     * Delete agent script
+     * @description Archive a saved script. It is hidden from the agent and its name becomes free again.
+     */
     delete: operations["delete_agent_script"];
     options?: never;
     head?: never;
-    /** @description Update a saved script's description, input schema or body. Omitted fields stay unchanged. */
+    /**
+     * Update agent script
+     * @description Update a saved script's description, input schema or body. Omitted fields stay unchanged.
+     */
     patch: operations["update_agent_script"];
     trace?: never;
   };
@@ -867,7 +1018,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/stats - Get aggregate usage stats for an agent */
+    /** Get aggregate usage stats for an agent */
     get: operations["get_agent_stats"];
     put?: never;
     post?: never;
@@ -884,10 +1035,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List an agent's triggers. Set include_archived=true to also return archived triggers. */
+    /**
+     * List agent triggers
+     * @description List an agent's triggers. Set include_archived=true to also return archived triggers.
+     */
     get: operations["list_agent_triggers"];
     put?: never;
-    /** POST /v1/agents/{agent_id}/triggers */
+    /** Create agent trigger */
     post: operations["create_agent_trigger"];
     delete?: never;
     options?: never;
@@ -902,11 +1056,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/agents/{agent_id}/triggers/{trigger_id} */
+    /** Get agent trigger */
     get: operations["get_agent_trigger"];
     put?: never;
     post?: never;
-    /** DELETE /v1/agents/{agent_id}/triggers/{trigger_id} */
+    /** Delete agent trigger */
     delete: operations["delete_agent_trigger"];
     options?: never;
     head?: never;
@@ -921,7 +1075,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed. */
+    /**
+     * List agent trigger deliveries
+     * @description List recent events delivered to an agent trigger, newest first, with what happened to each: dispatched, filtered, duplicate or failed.
+     */
     get: operations["list_agent_trigger_deliveries"];
     put?: never;
     post?: never;
@@ -938,7 +1095,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the ten most recent durable execution outcomes for an agent trigger. */
+    /**
+     * List agent trigger runs
+     * @description List the ten most recent durable execution outcomes for an agent trigger.
+     */
     get: operations["list_agent_trigger_runs"];
     put?: never;
     post?: never;
@@ -957,7 +1117,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger */
+    /** Trigger agent trigger */
     post: operations["trigger_agent_trigger"];
     delete?: never;
     options?: never;
@@ -974,7 +1134,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Permanently delete an archived agent. */
+    /** Permanently delete an archived agent */
     post: operations["destroy_agent"];
     delete?: never;
     options?: never;
@@ -990,6 +1150,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * List apps
      * @deprecated
      * @description List archival App records. This endpoint is read-only and deprecated.
      */
@@ -1010,6 +1171,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get app
      * @deprecated
      * @description Get an archival App record. This endpoint is read-only and deprecated.
      */
@@ -1031,7 +1193,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/apps/{app_id}/a2a/{channel_id} */
+    /** Invoke a2a legacy */
     post: operations["invoke_a2a_legacy"];
     delete?: never;
     options?: never;
@@ -1046,7 +1208,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json */
+    /**
+     * Get an A2A agent card (legacy app route)
+     * @description GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
+     */
     get: operations["agent_card_legacy"];
     put?: never;
     post?: never;
@@ -1064,13 +1229,14 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * `GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same
+     * `GET /v1/apps/{app_id}/fcp` — handshake
+     * @description `GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same
      *     generic 404 body for unknown apps so the endpoint cannot be used to
      *     probe which app ids are real.
      */
     get: operations["handshake"];
     put?: never;
-    /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out. */
+    /** `POST /v1/apps/{app_id}/fcp` — text-in, text-out */
     post: operations["message_legacy"];
     delete?: never;
     options?: never;
@@ -1087,7 +1253,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
+    /**
+     * Invoke webhook legacy
+     * @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.
+     */
     post: operations["invoke_webhook_legacy"];
     delete?: never;
     options?: never;
@@ -1102,7 +1271,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** The public catalog contains presentation metadata only, never agent configuration. */
+    /**
+     * List curated avatar presets
+     * @description The public catalog contains presentation metadata only, never agent configuration.
+     */
     get: operations["list_avatar_presets"];
     put?: never;
     post?: never;
@@ -1119,7 +1291,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes. */
+    /**
+     * Get a PNG preview of a curated avatar preset
+     * @description Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.
+     */
     get: operations["get_avatar_preset_variant"];
     put?: never;
     post?: never;
@@ -1137,7 +1312,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/avatars/{avatar_id}/{variant} - Avatar image
+     * Avatar image
      * @description Public, immutable avatar image. `variant` is `square-{size}.png` or `circle-{size}.png` for a size in the avatar's `sizes`, or `source.png` for the uploaded square crop.
      */
     get: operations["get_avatar_variant"];
@@ -1156,10 +1331,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List budgets. Filter by subject_type and subject_id. */
+    /**
+     * List budgets
+     * @description List budgets. Filter by subject_type and subject_id.
+     */
     get: operations["list_budgets"];
     put?: never;
-    /** Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency. */
+    /**
+     * Create a budget for a subject (session, agent, user, org)
+     * @description Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.
+     */
     post: operations["create_budget"];
     delete?: never;
     options?: never;
@@ -1174,15 +1355,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get a single budget by ID. */
+    /** Get a single budget by ID */
     get: operations["get_budget"];
     put?: never;
     post?: never;
-    /** Delete a budget. */
+    /** Delete a budget */
     delete: operations["delete_budget"];
     options?: never;
     head?: never;
-    /** Update a budget limit, status, or metadata. */
+    /** Update a budget limit, status, or metadata */
     patch: operations["update_budget"];
     trace?: never;
   };
@@ -1193,7 +1374,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Check budget status for a session-scoped budget. */
+    /** Check budget status for a session-scoped budget */
     get: operations["check_budget"];
     put?: never;
     post?: never;
@@ -1210,7 +1391,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List ledger entries for a budget. */
+    /** List ledger entries for a budget */
     get: operations["list_budget_ledger"];
     put?: never;
     post?: never;
@@ -1229,7 +1410,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive. */
+    /**
+     * Add credits to a budget
+     * @description Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.
+     */
     post: operations["top_up_budget"];
     delete?: never;
     options?: never;
@@ -1244,10 +1428,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities - List available capabilities with pagination */
+    /** List available capabilities with pagination */
     get: operations["list_capabilities"];
     put?: never;
-    /** POST /v1/capabilities - Create a persisted declarative capability. */
+    /** Create a persisted declarative capability */
     post: operations["create_declarative_capability"];
     delete?: never;
     options?: never;
@@ -1262,7 +1446,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities/declarative - List persisted declarative resources. */
+    /** List persisted declarative resources */
     get: operations["list_declarative_capabilities"];
     put?: never;
     post?: never;
@@ -1279,7 +1463,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities/declarative/config */
+    /** Declarative capabilities config */
     get: operations["declarative_capabilities_config"];
     put?: never;
     post?: never;
@@ -1296,15 +1480,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities/declarative/{capability_id} - Get a declarative resource. */
+    /** Get a declarative resource */
     get: operations["get_declarative_capability"];
     put?: never;
     post?: never;
-    /** DELETE /v1/capabilities/declarative/{capability_id} - Archive a declarative resource. */
+    /** Archive a declarative resource */
     delete: operations["delete_declarative_capability"];
     options?: never;
     head?: never;
-    /** PATCH /v1/capabilities/declarative/{capability_id} - Update a declarative resource. */
+    /** Update a declarative resource */
     patch: operations["update_declarative_capability"];
     trace?: never;
   };
@@ -1317,7 +1501,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/capabilities/declarative/{capability_id}/delete - Permanently delete archived resource. */
+    /** Permanently delete archived resource */
     post: operations["destroy_declarative_capability"];
     delete?: never;
     options?: never;
@@ -1334,7 +1518,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text. */
+    /** Evaluate guardrail checks against sample text */
     post: operations["dry_run_guardrails"];
     delete?: never;
     options?: never;
@@ -1349,7 +1533,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities/guardrails/examples - List adoptable guardrail presets. */
+    /** List adoptable guardrail presets */
     get: operations["list_guardrail_examples"];
     put?: never;
     post?: never;
@@ -1366,7 +1550,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/capabilities/{capability_id} - Get a specific capability */
+    /** Get a specific capability */
     get: operations["get_capability"];
     put?: never;
     post?: never;
@@ -1383,7 +1567,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Agent card of an api channel: what a caller needs to start talking to the agent. */
+    /**
+     * Get agent card
+     * @description Agent card of an api channel: what a caller needs to start talking to the agent.
+     */
     get: operations["agent_api_get_card"];
     put?: never;
     post?: never;
@@ -1402,7 +1589,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration. */
+    /**
+     * Invoke a2a channel
+     * @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.
+     */
     post: operations["invoke_a2a_channel"];
     delete?: never;
     options?: never;
@@ -1417,7 +1607,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the public Agent Card for a published A2A endpoint. */
+    /**
+     * Agent card channel
+     * @description Get the public Agent Card for a published A2A endpoint.
+     */
     get: operations["agent_card_channel"];
     put?: never;
     post?: never;
@@ -1436,7 +1629,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token. */
+    /**
+     * Message channel
+     * @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.
+     */
     post: operations["message_channel"];
     delete?: never;
     options?: never;
@@ -1453,7 +1649,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Exchange verified channel authentication for a bounded runtime credential. */
+    /** Create a runtime token */
     post: operations["exchange"];
     delete?: never;
     options?: never;
@@ -1468,10 +1664,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description The calling key's sessions on an api channel, most recently active first. */
+    /**
+     * List sessions
+     * @description The calling key's sessions on an api channel, most recently active first.
+     */
     get: operations["agent_api_list_sessions"];
     put?: never;
-    /** @description Start a session on an api channel. The session starts idle; send a message to start a turn. */
+    /**
+     * Start a session
+     * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
+     */
     post: operations["agent_api_create_session"];
     delete?: never;
     options?: never;
@@ -1486,7 +1688,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description One of the caller's sessions on an api channel, with the questions and approvals it waits on. */
+    /**
+     * Get a session
+     * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
+     */
     get: operations["agent_api_get_session"];
     put?: never;
     post?: never;
@@ -1505,7 +1710,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Cancel the running turn of one of the caller's sessions. */
+    /**
+     * Cancel a turn
+     * @description Cancel the running turn of one of the caller's sessions.
+     */
     post: operations["agent_api_cancel"];
     delete?: never;
     options?: never;
@@ -1520,7 +1728,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description A session's events, oldest first, as the channel's visibility allows. */
+    /**
+     * Read events
+     * @description A session's events, oldest first, as the channel's visibility allows.
+     */
     get: operations["agent_api_list_events"];
     put?: never;
     post?: never;
@@ -1539,7 +1750,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one. */
+    /**
+     * Send a message
+     * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
+     */
     post: operations["agent_api_send_message"];
     delete?: never;
     options?: never;
@@ -1556,7 +1770,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Answer the question set the agent asked with `ask_user`, and resume the turn. */
+    /**
+     * Answer questions
+     * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
+     */
     post: operations["agent_api_answer_questions"];
     delete?: never;
     options?: never;
@@ -1571,7 +1788,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection. */
+    /**
+     * Stream events
+     * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
+     */
     get: operations["agent_api_stream_events"];
     put?: never;
     post?: never;
@@ -1590,7 +1810,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`. */
+    /**
+     * Approve tool calls
+     * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
+     */
     post: operations["agent_api_submit_tool_approvals"];
     delete?: never;
     options?: never;
@@ -1607,7 +1830,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token. */
+    /**
+     * Invoke webhook channel
+     * @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.
+     */
     post: operations["invoke_webhook_channel"];
     delete?: never;
     options?: never;
@@ -1622,7 +1848,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/commands - List the command contract */
+    /** List the command contract */
     get: operations["list_commands"];
     put?: never;
     post?: never;
@@ -1641,7 +1867,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/commands/{name} - Run one command */
+    /** Run one command */
     post: operations["execute_command"];
     delete?: never;
     options?: never;
@@ -1656,7 +1882,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List providers available to this runtime account and endpoint. */
+    /**
+     * List providers available to this runtime
+     * @description List providers available to this runtime account and endpoint.
+     */
     get: operations["list_runtime_connectors"];
     put?: never;
     post?: never;
@@ -1673,12 +1902,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/context/{entity_ref} - Read an entity's manager context */
+    /** Read an entity's manager context */
     get: operations["get_manager_context"];
-    /** PUT /v1/context/{entity_ref} - Replace an entity's manager context */
+    /** Replace an entity's manager context */
     put: operations["set_manager_context"];
     post?: never;
-    /** DELETE /v1/context/{entity_ref} - Empty an entity's manager context */
+    /** Empty an entity's manager context */
     delete: operations["clear_manager_context"];
     options?: never;
     head?: never;
@@ -1694,7 +1923,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/context/{entity_ref}/append - Add a paragraph to an entity's manager context */
+    /** Add a paragraph to an entity's manager context */
     post: operations["append_manager_context"];
     delete?: never;
     options?: never;
@@ -1709,7 +1938,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/circuit-breakers - List circuit breakers */
+    /** List circuit breakers */
     get: operations["list_circuit_breakers"];
     put?: never;
     post?: never;
@@ -1726,11 +1955,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/circuit-breakers/:key - Get a single circuit breaker */
+    /** Get a single circuit breaker */
     get: operations["get_circuit_breaker"];
     put?: never;
     post?: never;
-    /** DELETE /v1/durable/circuit-breakers/:key - Delete/reset a circuit breaker */
+    /** Delete/reset a circuit breaker */
     delete: operations["delete_circuit_breaker"];
     options?: never;
     head?: never;
@@ -1746,7 +1975,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/circuit-breakers/:key/close - Force close a circuit breaker */
+    /** Force close a circuit breaker */
     post: operations["force_close_circuit_breaker"];
     delete?: never;
     options?: never;
@@ -1763,7 +1992,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/circuit-breakers/:key/open - Force open a circuit breaker */
+    /** Force open a circuit breaker */
     post: operations["force_open_circuit_breaker"];
     delete?: never;
     options?: never;
@@ -1778,7 +2007,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/config - Durable policy results for UI gating. */
+    /** Durable policy results for UI gating */
     get: operations["durable_config"];
     put?: never;
     post?: never;
@@ -1795,7 +2024,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/dlq - List dead letter queue entries */
+    /** List dead letter queue entries */
     get: operations["list_dlq"];
     put?: never;
     post?: never;
@@ -1814,7 +2043,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/dlq/:dlq_id/retry - Retry a DLQ entry */
+    /** Retry a DLQ entry */
     post: operations["retry_dlq"];
     delete?: never;
     options?: never;
@@ -1829,7 +2058,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/executions/:execution_id - Get execution details */
+    /** Get execution details */
     get: operations["get_execution"];
     put?: never;
     post?: never;
@@ -1846,7 +2075,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/health - Get system health */
+    /** Get system health */
     get: operations["get_health"];
     put?: never;
     post?: never;
@@ -1863,8 +2092,65 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/metrics/timeseries - Get metrics time series */
+    /** Get metrics time series */
     get: operations["get_metrics_timeseries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get platform-wide execution monitoring
+     * @description Get platform-wide execution monitoring. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List a bounded platform-wide page of session actors */
+    get: operations["list_fleet_monitoring_actors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/durable/monitoring/actors/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Inspect a session actor across organizations
+     * @description Inspect a session actor across organizations. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_actor"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1880,10 +2166,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/schedules - List schedules */
+    /** List schedules */
     get: operations["list_schedules"];
     put?: never;
-    /** POST /v1/durable/schedules - Create a new schedule */
+    /** Create a new schedule */
     post: operations["create_schedule"];
     delete?: never;
     options?: never;
@@ -1898,15 +2184,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/schedules/:schedule_id - Get schedule details */
+    /** Get schedule details */
     get: operations["get_schedule"];
     put?: never;
     post?: never;
-    /** DELETE /v1/durable/schedules/:schedule_id - Delete schedule */
+    /** Delete schedule */
     delete: operations["delete_schedule"];
     options?: never;
     head?: never;
-    /** PATCH /v1/durable/schedules/:schedule_id - Update schedule */
+    /** Update schedule */
     patch: operations["update_schedule"];
     trace?: never;
   };
@@ -1917,7 +2203,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/schedules/:schedule_id/executions - List schedule executions */
+    /** List schedule executions */
     get: operations["list_schedule_executions"];
     put?: never;
     post?: never;
@@ -1936,7 +2222,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/schedules/:schedule_id/pause - Pause schedule */
+    /** Pause schedule */
     post: operations["pause_schedule"];
     delete?: never;
     options?: never;
@@ -1953,7 +2239,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/schedules/:schedule_id/resume - Resume schedule */
+    /** Resume schedule */
     post: operations["resume_schedule"];
     delete?: never;
     options?: never;
@@ -1968,7 +2254,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/schedules/:schedule_id/stats - Get schedule statistics */
+    /** Get schedule statistics */
     get: operations["get_schedule_stats"];
     put?: never;
     post?: never;
@@ -1987,7 +2273,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/schedules/:schedule_id/trigger - Manually trigger schedule */
+    /** Manually trigger schedule */
     post: operations["trigger_schedule"];
     delete?: never;
     options?: never;
@@ -2003,7 +2289,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/durable/sse - Stream global durable state (SSE)
+     * Stream global durable state (SSE)
      * @description Establishes a Server-Sent Events (SSE) connection for real-time durable system monitoring.
      *
      *     ## Connection Lifecycle Events
@@ -2041,10 +2327,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/tasks - List tasks */
-    get: operations["list_tasks"];
+    /** List tasks */
+    get: operations["list_durable_tasks"];
     put?: never;
-    /** POST /v1/durable/tasks - Enqueue a standalone task (generic queue) */
+    /** Enqueue a standalone task (generic queue) */
     post: operations["enqueue_task"];
     delete?: never;
     options?: never;
@@ -2059,7 +2345,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/workers - List workers */
+    /** List workers */
     get: operations["list_workers"];
     put?: never;
     post?: never;
@@ -2078,7 +2364,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/workers/:worker_id/drain - Drain a worker */
+    /** Drain a worker */
     post: operations["drain_worker"];
     delete?: never;
     options?: never;
@@ -2095,7 +2381,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/workers/:worker_id/resume - Resume a draining worker */
+    /** Resume a draining worker */
     post: operations["resume_worker"];
     delete?: never;
     options?: never;
@@ -2110,7 +2396,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/workflows - List workflows */
+    /** List workflows */
     get: operations["list_workflows"];
     put?: never;
     post?: never;
@@ -2127,7 +2413,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/workflows/:workflow_id - Get workflow details */
+    /** Get workflow details */
     get: operations["get_workflow"];
     put?: never;
     post?: never;
@@ -2146,7 +2432,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/durable/workflows/:workflow_id/cancel - Cancel a workflow */
+    /** Cancel a workflow */
     post: operations["cancel_workflow"];
     delete?: never;
     options?: never;
@@ -2161,27 +2447,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/durable/workflows/:workflow_id/events - Get workflow events */
+    /** Get workflow events */
     get: operations["get_workflow_events"];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/durable/workflows/{workflow_id}/signal": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** POST /v1/durable/workflows/:workflow_id/signal - Send signal to workflow */
-    post: operations["send_signal"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2196,7 +2465,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/durable/workflows/:workflow_id/sse - Stream workflow state (SSE)
+     * Stream workflow state (SSE)
      * @description Establishes a Server-Sent Events (SSE) connection for real-time workflow monitoring.
      *
      *     ## Connection Lifecycle Events
@@ -2234,6 +2503,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Invoke a2a endpoint
      * @deprecated
      * @description Invoke a published A2A endpoint with JSON-RPC 2.0. Authentication follows the endpoint channel configuration.
      */
@@ -2252,6 +2522,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Agent card endpoint
      * @deprecated
      * @description Get the public Agent Card for a published A2A endpoint.
      */
@@ -2274,6 +2545,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Message endpoint
      * @deprecated
      * @description Send a message to a published FCP endpoint. Authenticate with Authorization: Bearer or X-Everruns-FCP-Token when the endpoint requires a token.
      */
@@ -2294,6 +2566,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Start a session
      * @deprecated
      * @description Start a session on an api channel. The session starts idle; send a message to start a turn.
      */
@@ -2312,6 +2585,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Get a session
      * @deprecated
      * @description One of the caller's sessions on an api channel, with the questions and approvals it waits on.
      */
@@ -2334,6 +2608,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Cancel a turn
      * @deprecated
      * @description Cancel the running turn of one of the caller's sessions.
      */
@@ -2354,6 +2629,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Send a message
      * @deprecated
      * @description Send a user message to one of the caller's sessions: starts a turn, or steers the running one.
      */
@@ -2374,6 +2650,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Answer questions
      * @deprecated
      * @description Answer the question set the agent asked with `ask_user`, and resume the turn.
      */
@@ -2392,6 +2669,7 @@ export interface paths {
       cookie?: never;
     };
     /**
+     * Stream events
      * @deprecated
      * @description Follow a session's events live, as the channel's visibility allows. Same framing as `/v1/sessions/{id}/sse`: `connected`, `id:` on durable events (resume with `since_id`), a heartbeat, and `disconnecting` before the server cycles the connection.
      */
@@ -2414,6 +2692,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Approve tool calls
      * @deprecated
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
@@ -2434,6 +2713,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
+     * Invoke webhook endpoint
      * @deprecated
      * @description Invoke a published webhook endpoint. Authenticate with its channel token in Authorization: Bearer or X-Everruns-Webhook-Token.
      */
@@ -2454,7 +2734,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Exchange verified channel authentication for a bounded runtime credential.
+     * Create a runtime token
      * @deprecated
      */
     post: operations["exchange_legacy"];
@@ -2471,10 +2751,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List evals. */
+    /** List evals */
     get: operations["list_evals"];
     put?: never;
-    /** Create a new eval. */
+    /** Create a new eval */
     post: operations["create_eval"];
     delete?: never;
     options?: never;
@@ -2491,7 +2771,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Import externally-executed eval results. */
+    /** Import externally-executed eval results */
     post: operations["import_eval_run"];
     delete?: never;
     options?: never;
@@ -2506,7 +2786,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Report whether the caller can import eval results. */
+    /** Report whether the caller can import eval results */
     get: operations["eval_import_preflight"];
     put?: never;
     post?: never;
@@ -2523,15 +2803,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get a single eval. */
+    /** Get a single eval */
     get: operations["get_eval"];
     put?: never;
     post?: never;
-    /** Delete an eval. */
+    /** Delete an eval */
     delete: operations["delete_eval"];
     options?: never;
     head?: never;
-    /** Update an eval. */
+    /** Update an eval */
     patch: operations["update_eval"];
     trace?: never;
   };
@@ -2544,7 +2824,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Import ATIF trajectories as eval cases. */
+    /** Import ATIF trajectories as eval cases */
     post: operations["import_atif"];
     delete?: never;
     options?: never;
@@ -2559,10 +2839,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List eval cases. */
+    /** List eval cases */
     get: operations["list_eval_cases"];
     put?: never;
-    /** Create an eval case. */
+    /** Create an eval case */
     post: operations["create_eval_case"];
     delete?: never;
     options?: never;
@@ -2577,15 +2857,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get an eval case. */
+    /** Get an eval case */
     get: operations["get_eval_case"];
     put?: never;
     post?: never;
-    /** Delete an eval case. */
+    /** Delete an eval case */
     delete: operations["delete_eval_case"];
     options?: never;
     head?: never;
-    /** Update an eval case. */
+    /** Update an eval case */
     patch: operations["update_eval_case"];
     trace?: never;
   };
@@ -2596,10 +2876,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List eval runs. */
+    /** List eval runs */
     get: operations["list_eval_runs"];
     put?: never;
-    /** Create an eval run. */
+    /** Create an eval run */
     post: operations["create_eval_run"];
     delete?: never;
     options?: never;
@@ -2614,7 +2894,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get an eval run. */
+    /** Get an eval run */
     get: operations["get_eval_run"];
     put?: never;
     post?: never;
@@ -2631,7 +2911,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Export eval run artifacts as NDJSON. */
+    /** Export eval run artifacts as NDJSON */
     get: operations["export_run_artifacts"];
     put?: never;
     post?: never;
@@ -2650,7 +2930,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Cancel an eval run. */
+    /** Cancel an eval run */
     post: operations["cancel_eval_run"];
     delete?: never;
     options?: never;
@@ -2668,7 +2948,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Start an async dataset export for an eval run.
+     * Start an async dataset export for an eval run
      * @description The NDJSON is produced by a background job; fetch it once ready via
      *     `GET .../dataset/{dataset_id}`.
      */
@@ -2686,7 +2966,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Fetch an eval-run dataset export handle (status + NDJSON body). */
+    /**
+     * Get an eval run's dataset export
+     * @description Fetch an eval-run dataset export handle (status + NDJSON body).
+     */
     get: operations["get_eval_run_dataset"];
     put?: never;
     post?: never;
@@ -2709,7 +2992,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** Update scores for one eval result. */
+    /** Update scores for one eval result */
     patch: operations["update_eval_result_scores"];
     trace?: never;
   };
@@ -2726,7 +3009,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** Bulk update scores for all results in an eval run. */
+    /** Bulk update scores for all results in an eval run */
     patch: operations["bulk_update_eval_run_scores"];
     trace?: never;
   };
@@ -2737,12 +3020,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Whether an eval run has an active share link. */
+    /** Whether an eval run has an active share link */
     get: operations["get_eval_run_share"];
     put?: never;
-    /** Mint a read-only share link for an eval run. */
+    /** Mint a read-only share link for an eval run */
     post: operations["create_eval_run_share"];
-    /** Revoke all share links for an eval run. */
+    /** Revoke all share links for an eval run */
     delete: operations["revoke_eval_run_share"];
     options?: never;
     head?: never;
@@ -2756,10 +3039,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List uploaded files, newest first. */
+    /** List uploaded files, newest first */
     get: operations["list_files"];
     put?: never;
-    /** Upload a PDF file for use as model input. */
+    /** Upload a PDF or zip file as a message attachment */
     post: operations["upload_file"];
     delete?: never;
     options?: never;
@@ -2774,11 +3057,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Download a stored file's bytes. */
+    /** Download a stored file's bytes */
     get: operations["get_file"];
     put?: never;
     post?: never;
-    /** Delete a stored file. */
+    /** Delete a stored file */
     delete: operations["delete_file"];
     options?: never;
     head?: never;
@@ -2792,8 +3075,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/harness-examples — list all available harness examples. */
-    get: operations["list_examples_get_v1_harness_examples"];
+    /**
+     * List all available harness examples
+     * @description list all available harness examples.
+     */
+    get: operations["list_examples"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2809,10 +3095,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/harnesses */
+    /** List harnesses */
     get: operations["list_harnesses"];
     put?: never;
-    /** POST /v1/harnesses */
+    /** Create harness */
     post: operations["create_harness"];
     delete?: never;
     options?: never;
@@ -2828,7 +3114,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/harnesses/check-name
+     * Check harness name
      * @description Returns whether a harness name is available for use. Optionally excludes
      *     a specific harness ID (for edit forms where the harness's own name is valid).
      */
@@ -2849,7 +3135,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/harnesses/config
+     * Harness config
      * @description Returns which harness policies the caller satisfies.
      *     UI uses this to show/hide controls (e.g. delete button).
      */
@@ -2872,7 +3158,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.
+     * Adopt a harness example as a regular org-owned harness
      * @description Creates a normal harness (`is_built_in = false`) from a code-defined
      *     example. The new harness inherits from the org's `generic` harness by
      *     name — no UUIDs are hardcoded. Capabilities and other config flow through
@@ -2898,7 +3184,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/harnesses/preview */
+    /** Preview harness */
     post: operations["preview_harness"];
     delete?: never;
     options?: never;
@@ -2914,7 +3200,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/harnesses/{harness_id}
+     * Get harness
      * @description Accepts either a harness ID (e.g. `harness_01933b5a...`) or a
      *     name (e.g. `generic`). The virtual name `default` resolves to the org's
      *     configured default harness. Names are resolved within the caller's org.
@@ -2922,11 +3208,11 @@ export interface paths {
     get: operations["get_harness"];
     put?: never;
     post?: never;
-    /** DELETE /v1/harnesses/{harness_id} */
+    /** Delete harness */
     delete: operations["delete_harness"];
     options?: never;
     head?: never;
-    /** PATCH /v1/harnesses/{harness_id} */
+    /** Update harness */
     patch: operations["update_harness"];
     trace?: never;
   };
@@ -2940,7 +3226,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/harnesses/{harness_id}/copy - Copy a harness
+     * Copy a harness
      * @description Creates a new harness with the same configuration as the source harness.
      *     The new harness's name will be "{original name} (copy)".
      */
@@ -2958,7 +3244,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness */
+    /** Get aggregate usage stats for a harness */
     get: operations["get_harness_stats"];
     put?: never;
     post?: never;
@@ -2977,7 +3263,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Permanently delete an archived harness. */
+    /** Permanently delete an archived harness */
     post: operations["destroy_harness"];
     delete?: never;
     options?: never;
@@ -2992,7 +3278,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List pending operational health issues visible to the caller in the current organization. */
+    /**
+     * List pending health issues in the organization
+     * @description List pending operational health issues visible to the caller in the current organization.
+     */
     get: operations["list_health_issues"];
     put?: never;
     post?: never;
@@ -3009,7 +3298,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get current issue evidence and recovery guidance in the current organization. */
+    /**
+     * Get a health issue with evidence and recovery steps
+     * @description Get current issue evidence and recovery guidance in the current organization.
+     */
     get: operations["get_health_issue"];
     put?: never;
     post?: never;
@@ -3028,7 +3320,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown. */
+    /**
+     * Re-check a health issue
+     * @description Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.
+     */
     post: operations["check_health_issue"];
     delete?: never;
     options?: never;
@@ -3045,7 +3340,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Snooze the authenticated user's reminders for one day while keeping the shared issue pending. */
+    /**
+     * Snooze reminders for a health issue for one day
+     * @description Snooze the authenticated user's reminders for one day while keeping the shared issue pending.
+     */
     post: operations["snooze_health_issue"];
     delete?: never;
     options?: never;
@@ -3060,7 +3358,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/history - Changes across the organization */
+    /** Changes across the organization */
     get: operations["list_org_history"];
     put?: never;
     post?: never;
@@ -3077,7 +3375,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/history/{entity_ref} - Changes to one entity */
+    /** Changes to one entity */
     get: operations["list_entity_history"];
     put?: never;
     post?: never;
@@ -3094,7 +3392,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/history/{entity_ref}/diff - Two revisions compared field by field */
+    /** Two revisions compared field by field */
     get: operations["diff_entity_revisions"];
     put?: never;
     post?: never;
@@ -3113,7 +3411,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change */
+    /** Bring a revision back as a new change */
     post: operations["restore_entity_revision"];
     delete?: never;
     options?: never;
@@ -3128,7 +3426,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision */
+    /** The entity at one revision */
     get: operations["show_entity_revision"];
     put?: never;
     post?: never;
@@ -3145,10 +3443,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/images - List images */
+    /** List images */
     get: operations["list_images"];
     put?: never;
-    /** POST /v1/images - Upload an image */
+    /** Upload an image */
     post: operations["upload_image"];
     delete?: never;
     options?: never;
@@ -3163,11 +3461,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/images/{image_id} - Get image (returns binary data) */
+    /** Get image (returns binary data) */
     get: operations["get_image"];
     put?: never;
     post?: never;
-    /** DELETE /v1/images/{image_id} - Delete an image */
+    /** Delete an image */
     delete: operations["delete_image"];
     options?: never;
     head?: never;
@@ -3181,7 +3479,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/images/{image_id}/thumbnail - Get image thumbnail */
+    /** Get image thumbnail */
     get: operations["get_thumbnail"];
     put?: never;
     post?: never;
@@ -3198,10 +3496,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge bases. */
+    /**
+     * List kbs
+     * @description List knowledge bases.
+     */
     get: operations["list_kbs"];
     put?: never;
-    /** @description Create a new knowledge base. */
+    /**
+     * Create kb
+     * @description Create a new knowledge base.
+     */
     post: operations["create_kb"];
     delete?: never;
     options?: never;
@@ -3216,15 +3520,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge base by ID. */
+    /**
+     * Get kb
+     * @description Get a knowledge base by ID.
+     */
     get: operations["get_kb"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge base. */
+    /**
+     * Delete kb
+     * @description Delete a knowledge base.
+     */
     delete: operations["delete_kb"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge base. Only provided fields are modified. */
+    /**
+     * Update kb
+     * @description Update a knowledge base. Only provided fields are modified.
+     */
     patch: operations["update_kb"];
     trace?: never;
   };
@@ -3235,10 +3548,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge base entries. */
+    /**
+     * List entries
+     * @description List knowledge base entries.
+     */
     get: operations["list_entries"];
     put?: never;
-    /** @description Create a new knowledge base entry. */
+    /**
+     * Create entry
+     * @description Create a new knowledge base entry.
+     */
     post: operations["create_entry"];
     delete?: never;
     options?: never;
@@ -3253,15 +3572,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge base entry by ID. */
+    /**
+     * Get entry
+     * @description Get a knowledge base entry by ID.
+     */
     get: operations["get_entry"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge base entry. */
+    /**
+     * Delete entry
+     * @description Delete a knowledge base entry.
+     */
     delete: operations["delete_entry"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge base entry. Only provided fields are modified. */
+    /**
+     * Update entry
+     * @description Update a knowledge base entry. Only provided fields are modified.
+     */
     patch: operations["update_entry"];
     trace?: never;
   };
@@ -3272,7 +3600,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). */
+    /**
+     * Export okf
+     * @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter).
+     */
     get: operations["export_okf"];
     put?: never;
     post?: never;
@@ -3291,7 +3622,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. */
+    /**
+     * Import okf
+     * @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates.
+     */
     post: operations["import_okf"];
     delete?: never;
     options?: never;
@@ -3306,10 +3640,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List knowledge indexes. */
+    /**
+     * List indexes
+     * @description List knowledge indexes.
+     */
     get: operations["list_indexes"];
     put?: never;
-    /** @description Create a new knowledge index. */
+    /**
+     * Create index
+     * @description Create a new knowledge index.
+     */
     post: operations["create_index"];
     delete?: never;
     options?: never;
@@ -3324,15 +3664,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a knowledge index by ID. */
+    /**
+     * Get index
+     * @description Get a knowledge index by ID.
+     */
     get: operations["get_index"];
     put?: never;
     post?: never;
-    /** @description Delete a knowledge index. */
+    /**
+     * Delete index
+     * @description Delete a knowledge index.
+     */
     delete: operations["delete_index"];
     options?: never;
     head?: never;
-    /** @description Update a knowledge index. Only provided fields are modified. */
+    /**
+     * Update index
+     * @description Update a knowledge index. Only provided fields are modified.
+     */
     patch: operations["update_index"];
     trace?: never;
   };
@@ -3343,7 +3692,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List documents inside a knowledge index. */
+    /**
+     * List documents
+     * @description List documents inside a knowledge index.
+     */
     get: operations["list_documents"];
     put?: never;
     post?: never;
@@ -3362,7 +3714,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Enqueue a manual sync of a knowledge index. */
+    /**
+     * Sync index
+     * @description Enqueue a manual sync of a knowledge index.
+     */
     post: operations["sync_index"];
     delete?: never;
     options?: never;
@@ -3377,10 +3732,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/mcp-servers - List all MCP servers */
+    /** List all MCP servers */
     get: operations["list_mcp_servers"];
     put?: never;
-    /** POST /v1/mcp-servers - Create a new MCP server */
+    /** Create a new MCP server */
     post: operations["create_mcp_server"];
     delete?: never;
     options?: never;
@@ -3395,7 +3750,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization. */
+    /**
+     * List mcp server catalog
+     * @description List a cursor-paginated MCP server catalog with active-agent usage counts for the selected organization.
+     */
     get: operations["list_mcp_server_catalog"];
     put?: never;
     post?: never;
@@ -3413,7 +3771,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/mcp-servers/config
+     * Mcp server config
      * @description Returns which MCP server policies the caller satisfies.
      */
     get: operations["mcp_server_config"];
@@ -3434,7 +3792,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server. */
+    /**
+     * Re-check an OAuth MCP server's sign-in service
+     * @description Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.
+     */
     post: operations["check_mcp_server_connection"];
     delete?: never;
     options?: never;
@@ -3451,7 +3812,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Permanently delete an archived MCP server. */
+    /** Permanently delete an archived MCP server */
     post: operations["destroy_mcp_server"];
     delete?: never;
     options?: never;
@@ -3466,7 +3827,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the tools an MCP server offers, with each tool's annotations and saved risk label. */
+    /**
+     * List an MCP server's tools with their risk labels
+     * @description List the tools an MCP server offers, with each tool's annotations and saved risk label.
+     */
     get: operations["list_mcp_server_tools"];
     put?: never;
     post?: never;
@@ -3485,7 +3849,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label. */
+    /**
+     * Suggest risk labels for an MCP server's unlabeled tools
+     * @description Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.
+     */
     post: operations["suggest_mcp_tool_labels"];
     delete?: never;
     options?: never;
@@ -3501,7 +3868,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears. */
+    /**
+     * Set or clear a person's risk label for one MCP server tool
+     * @description Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.
+     */
     put: operations["set_mcp_tool_label"];
     post?: never;
     delete?: never;
@@ -3517,15 +3887,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/mcp-servers/{server_id} - Get MCP server by ID */
+    /** Get MCP server by ID */
     get: operations["get_mcp_server"];
     put?: never;
     post?: never;
-    /** DELETE /v1/mcp-servers/{server_id} - Delete MCP server */
+    /** Delete MCP server */
     delete: operations["delete_mcp_server"];
     options?: never;
     head?: never;
-    /** PATCH /v1/mcp-servers/{server_id} - Update MCP server */
+    /** Update MCP server */
     patch: operations["update_mcp_server"];
     trace?: never;
   };
@@ -3536,7 +3906,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the bounded active-agent impact summary used before archiving an MCP server preset. */
+    /**
+     * Get mcp server usage
+     * @description Get the bounded active-agent impact summary used before archiving an MCP server preset.
+     */
     get: operations["get_mcp_server_usage"];
     put?: never;
     post?: never;
@@ -3553,7 +3926,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List actionable organization invitations addressed to the authenticated user's verified email. */
+    /**
+     * List my invitations
+     * @description List actionable organization invitations addressed to the authenticated user's verified email.
+     */
     get: operations["list_my_invitations"];
     put?: never;
     post?: never;
@@ -3572,7 +3948,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Accept an actionable organization invitation addressed to the authenticated user's verified email. */
+    /**
+     * Accept my invitation
+     * @description Accept an actionable organization invitation addressed to the authenticated user's verified email.
+     */
     post: operations["accept_my_invitation"];
     delete?: never;
     options?: never;
@@ -3587,10 +3966,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List workspace memories. */
+    /**
+     * List memories
+     * @description List workspace memories.
+     */
     get: operations["list_memories"];
     put?: never;
-    /** @description Create a new workspace memory. */
+    /**
+     * Create memory
+     * @description Create a new workspace memory.
+     */
     post: operations["create_memory"];
     delete?: never;
     options?: never;
@@ -3605,15 +3990,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a workspace memory by ID. */
+    /**
+     * Get memory
+     * @description Get a workspace memory by ID.
+     */
     get: operations["get_memory"];
     put?: never;
     post?: never;
-    /** @description Delete a workspace memory. */
+    /**
+     * Delete memory
+     * @description Delete a workspace memory.
+     */
     delete: operations["delete_memory"];
     options?: never;
     head?: never;
-    /** @description Update a workspace memory. Only provided fields are modified. */
+    /**
+     * Update memory
+     * @description Update a workspace memory. Only provided fields are modified.
+     */
     patch: operations["update_memory"];
     trace?: never;
   };
@@ -3624,7 +4018,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List immediate children of the Memory root. */
+    /**
+     * List root
+     * @description List immediate children of the Memory root.
+     */
     get: operations["list_root"];
     put?: never;
     post?: never;
@@ -3641,7 +4038,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Download raw bytes of a Memory file. */
+    /**
+     * Download action
+     * @description Download raw bytes of a Memory file.
+     */
     get: operations["download_action"];
     put?: never;
     post?: never;
@@ -3660,7 +4060,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Search Memory files by regex. */
+    /**
+     * Grep action
+     * @description Search Memory files by regex.
+     */
     post: operations["grep_action"];
     delete?: never;
     options?: never;
@@ -3677,7 +4080,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Stat a file or directory inside a Memory. */
+    /**
+     * Stat action
+     * @description Stat a file or directory inside a Memory.
+     */
     post: operations["stat_action"];
     delete?: never;
     options?: never;
@@ -3692,14 +4098,26 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Read a file or list a directory inside a Memory. */
-    get: operations["get_file_get_v1_memories_memory_id_fs_path"];
-    /** @description Update a file's content. Directories cannot be updated. */
+    /**
+     * Get memory file
+     * @description Read a file or list a directory inside a Memory.
+     */
+    get: operations["get_memory_file"];
+    /**
+     * Update file
+     * @description Update a file's content. Directories cannot be updated.
+     */
     put: operations["update_file"];
-    /** @description Create a file or directory inside a Memory. */
+    /**
+     * Create file
+     * @description Create a file or directory inside a Memory.
+     */
     post: operations["create_file"];
-    /** @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories. */
-    delete: operations["delete_file_delete_v1_memories_memory_id_fs_path"];
+    /**
+     * Delete memory file
+     * @description Delete a file or directory. Pass `recursive=true` to delete non-empty directories.
+     */
+    delete: operations["delete_memory_file"];
     options?: never;
     head?: never;
     patch?: never;
@@ -3714,7 +4132,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Trigger a synchronous sync of a memory now. */
+    /**
+     * Sync memory now
+     * @description Trigger a synchronous sync of a memory now.
+     */
     post: operations["sync_memory_now"];
     delete?: never;
     options?: never;
@@ -3729,7 +4150,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider. */
+    /**
+     * List model profiles
+     * @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.
+     */
     get: operations["list_model_profiles"];
     put?: never;
     post?: never;
@@ -3746,7 +4170,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication. */
+    /**
+     * Get model profile
+     * @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.
+     */
     get: operations["get_model_profile"];
     put?: never;
     post?: never;
@@ -3780,7 +4207,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/models/config */
+    /** Model config */
     get: operations["model_config"];
     put?: never;
     post?: never;
@@ -3797,9 +4224,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null. */
+    /**
+     * Get default decision model
+     * @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.
+     */
     get: operations["get_default_decision_model"];
-    /** @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default. */
+    /**
+     * Set default decision model
+     * @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.
+     */
     put: operations["set_default_decision_model"];
     post?: never;
     delete?: never;
@@ -3815,7 +4248,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Resolve the default for empty drafts without persisting a session. */
+    /**
+     * Get the default model for a new draft
+     * @description Resolve the default for empty drafts without persisting a session.
+     */
     get: operations["get_default_model"];
     put?: never;
     post?: never;
@@ -3844,6 +4280,74 @@ export interface paths {
     patch: operations["update_model"];
     trace?: never;
   };
+  "/v1/monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get organization execution monitoring */
+    get: operations["get_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/actors": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List organization session actors */
+    get: operations["list_monitoring_actors"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/actors/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Inspect an organization actor and its lease history */
+    get: operations["get_monitoring_actor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/monitoring/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Resolve organization monitoring read authority */
+    get: operations["monitoring_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/notifications": {
     parameters: {
       query?: never;
@@ -3851,7 +4355,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List notifications for the current user. */
+    /** List notifications for the current user */
     get: operations["list_notifications"];
     put?: never;
     post?: never;
@@ -3870,7 +4374,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Mark a notification as viewed. */
+    /** Mark a notification as viewed */
     post: operations["mark_notification_viewed"];
     delete?: never;
     options?: never;
@@ -3885,10 +4389,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List observers. */
+    /** List observers */
     get: operations["list_observers"];
     put?: never;
-    /** Create an observer (online scoring). */
+    /** Create an observer (online scoring) */
     post: operations["create_observer"];
     delete?: never;
     options?: never;
@@ -3903,15 +4407,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get a single observer. */
+    /** Get a single observer */
     get: operations["get_observer"];
     put?: never;
     post?: never;
-    /** Archive an observer. */
+    /** Archive an observer */
     delete: operations["delete_observer"];
     options?: never;
     head?: never;
-    /** Update an observer. */
+    /** Update an observer */
     patch: operations["update_observer"];
     trace?: never;
   };
@@ -3922,7 +4426,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List trace scores produced by an observer. */
+    /** List trace scores produced by an observer */
     get: operations["list_observer_scores"];
     put?: never;
     post?: never;
@@ -3939,10 +4443,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/orgs - List organizations the current user belongs to */
+    /** List organizations the current user belongs to */
     get: operations["list_organizations"];
     put?: never;
-    /** POST /v1/orgs - Create a new organization */
+    /** Create a new organization */
     post: operations["create_organization"];
     delete?: never;
     options?: never;
@@ -3957,14 +4461,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/orgs/:org - Get organization details */
+    /** Get organization details */
     get: operations["get_organization"];
     put?: never;
     post?: never;
     delete?: never;
     options?: never;
     head?: never;
-    /** PATCH /v1/orgs/:org - Update organization */
+    /** Update organization */
     patch: operations["update_organization"];
     trace?: never;
   };
@@ -3975,7 +4479,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters. */
+    /**
+     * List audit logs for the caller's organization
+     * @description List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.
+     */
     get: operations["list_audit_logs"];
     put?: never;
     post?: never;
@@ -3992,9 +4499,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. */
+    /**
+     * Get the organization's outbound allowlist extension
+     * @description Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.
+     */
     get: operations["get_org_egress_allowlist"];
-    /** Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix. */
+    /**
+     * Replace the organization's outbound allowlist extension
+     * @description Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.
+     */
     put: operations["set_org_egress_allowlist"];
     post?: never;
     delete?: never;
@@ -4011,7 +4524,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value. */
+    /**
+     * Grant or revoke an organization's egress extension
+     * @description Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.
+     */
     put: operations["set_org_egress_allowlist_grant"];
     post?: never;
     delete?: never;
@@ -4027,14 +4543,20 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/orgs/{org}/feature-flags — effective flags for the organization. */
+    /**
+     * Effective flags for the organization
+     * @description effective flags for the organization.
+     */
     get: operations["get_org_feature_flags"];
     put?: never;
     post?: never;
     delete?: never;
     options?: never;
     head?: never;
-    /** PATCH /v1/orgs/{org}/feature-flags — update org opt-in (admin only). */
+    /**
+     * Update org opt-in (admin only)
+     * @description update org opt-in (admin only).
+     */
     patch: operations["update_org_feature_flags"];
     trace?: never;
   };
@@ -4046,9 +4568,11 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
+     * List every feature flag for the operator console
+     * @description GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
      *     platform-managed ones, for the operator console.
-     * @description Platform users only. The tenant-facing settings route deliberately omits
+     *
+     *     Platform users only. The tenant-facing settings route deliberately omits
      *     these rows, so this is where an operator sees what a tenant is enrolled in.
      */
     get: operations["get_platform_feature_flag_settings"];
@@ -4058,8 +4582,8 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
-     *     platform-managed feature.
+     * Enrol an organization in a
+     *     platform-managed feature
      * @description Platform users may enroll internal and adoption features. Tenant admins retain
      *     adoption authority; production preferences and deployment availability stay
      *     outside this route. Omitted overrides are unchanged.
@@ -4074,11 +4598,74 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state. */
+    /**
+     * Catalog with system/org/effective state
+     * @description catalog with system/org/effective state.
+     */
     get: operations["get_org_feature_flag_settings"];
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/github/everruns-app": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the org's Everruns GitHub App links
+     * @description List the organization's links to the shared Everruns GitHub App.
+     */
+    get: operations["list_links"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/github/everruns-app/authorize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Link an Everruns GitHub App installation
+     * @description Start linking a shared Everruns GitHub App installation to the organization.
+     */
+    get: operations["authorize_link"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/github/everruns-app/{connection_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Unlink an Everruns GitHub App installation
+     * @description Unlink a shared Everruns GitHub App installation and remove every agent's choice of it.
+     */
+    delete: operations["unlink"];
     options?: never;
     head?: never;
     patch?: never;
@@ -4094,8 +4681,8 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as
-     *     finished (or skipped). Idempotent: the timestamp is set only when NULL.
+     * Mark the org's onboarding wizard as
+     *     finished (or skipped)
      * @description Authz mirrors the org-scoped mutations above (admin+), but resolves
      *     membership/role from the DB rather than the auth token — a brand-new org may
      *     not yet appear in the caller's token, and onboarding completion is exactly
@@ -4115,7 +4702,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts. */
+    /**
+     * List connections
+     * @description List non-secret metadata for organization-owned provider accounts: sandbox provider accounts and web search accounts.
+     */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -4134,7 +4724,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search. */
+    /**
+     * Create connection
+     * @description Create and validate an encrypted organization-owned account for a connector that declares sandbox_provisioning or web_search.
+     */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -4150,10 +4743,16 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** @description Replace the name and credential for an organization-owned provider account. */
+    /**
+     * Update connection
+     * @description Replace the name and credential for an organization-owned provider account.
+     */
     put: operations["update_connection"];
     post?: never;
-    /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
+    /**
+     * Delete connection
+     * @description Delete an organization-owned provider account when no active sandbox configuration or lease references it.
+     */
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
@@ -4169,7 +4768,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Revalidate an organization-owned provider credential without returning the secret. */
+    /**
+     * Verify connection
+     * @description Revalidate an organization-owned provider credential without returning the secret.
+     */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -4184,10 +4786,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List payment accounts. */
+    /**
+     * List payment accounts
+     * @description List payment accounts.
+     */
     get: operations["list_payment_accounts"];
     put?: never;
-    /** @description Create a new payment account. */
+    /**
+     * Create payment account
+     * @description Create a new payment account.
+     */
     post: operations["create_payment_account"];
     delete?: never;
     options?: never;
@@ -4202,15 +4810,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a payment account by ID. */
+    /**
+     * Get payment account
+     * @description Get a payment account by ID.
+     */
     get: operations["get_payment_account"];
     put?: never;
     post?: never;
-    /** @description Disable a payment account without deleting it. */
+    /**
+     * Disable payment account
+     * @description Disable a payment account without deleting it.
+     */
     delete: operations["disable_payment_account"];
     options?: never;
     head?: never;
-    /** @description Update a payment account. Only provided fields are modified. */
+    /**
+     * Update payment account
+     * @description Update a payment account. Only provided fields are modified.
+     */
     patch: operations["update_payment_account"];
     trace?: never;
   };
@@ -4221,7 +4838,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List recent payment attempts (operator audit view). */
+    /**
+     * List payment attempts
+     * @description List recent payment attempts (operator audit view).
+     */
     get: operations["list_payment_attempts"];
     put?: never;
     post?: never;
@@ -4238,10 +4858,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List payment policies. */
+    /**
+     * List payment policies
+     * @description List payment policies.
+     */
     get: operations["list_payment_policies"];
     put?: never;
-    /** @description Create a new payment policy. */
+    /**
+     * Create payment policy
+     * @description Create a new payment policy.
+     */
     post: operations["create_payment_policy"];
     delete?: never;
     options?: never;
@@ -4256,15 +4882,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a payment policy by ID. */
+    /**
+     * Get payment policy
+     * @description Get a payment policy by ID.
+     */
     get: operations["get_payment_policy"];
     put?: never;
     post?: never;
-    /** @description Disable a payment policy without deleting it. */
+    /**
+     * Disable payment policy
+     * @description Disable a payment policy without deleting it.
+     */
     delete: operations["disable_payment_policy"];
     options?: never;
     head?: never;
-    /** @description Update a payment policy. Only provided fields are modified. */
+    /**
+     * Update payment policy
+     * @description Update a payment policy. Only provided fields are modified.
+     */
     patch: operations["update_payment_policy"];
     trace?: never;
   };
@@ -4275,10 +4910,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/plugin_marketplaces */
+    /** List plugin marketplaces */
     get: operations["list_plugin_marketplaces"];
     put?: never;
-    /** POST /v1/plugin_marketplaces */
+    /** Create plugin marketplace */
     post: operations["create_plugin_marketplace"];
     delete?: never;
     options?: never;
@@ -4293,15 +4928,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/plugin_marketplaces/{id} */
+    /** Get plugin marketplace */
     get: operations["get_plugin_marketplace"];
     put?: never;
     post?: never;
-    /** DELETE /v1/plugin_marketplaces/{id} */
+    /** Delete plugin marketplace */
     delete: operations["delete_plugin_marketplace"];
     options?: never;
     head?: never;
-    /** PATCH /v1/plugin_marketplaces/{id} */
+    /** Update plugin marketplace */
     patch: operations["update_plugin_marketplace"];
     trace?: never;
   };
@@ -4312,7 +4947,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/plugin_marketplaces/{id}/plugins */
+    /** Get marketplace catalog */
     get: operations["get_marketplace_catalog"];
     put?: never;
     post?: never;
@@ -4331,7 +4966,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/plugin_marketplaces/{id}/sync */
+    /** Sync plugin marketplace */
     post: operations["sync_plugin_marketplace"];
     delete?: never;
     options?: never;
@@ -4346,10 +4981,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/plugins */
+    /** List plugins */
     get: operations["list_plugins"];
     put?: never;
-    /** POST /v1/plugins */
+    /** Install plugin */
     post: operations["install_plugin"];
     delete?: never;
     options?: never;
@@ -4364,15 +4999,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/plugins/{id} */
+    /** Get plugin */
     get: operations["get_plugin"];
     put?: never;
     post?: never;
-    /** DELETE /v1/plugins/{id} */
+    /** Uninstall plugin */
     delete: operations["uninstall_plugin"];
     options?: never;
     head?: never;
-    /** PATCH /v1/plugins/{id} */
+    /** Patch installed plugin */
     patch: operations["patch_installed_plugin"];
     trace?: never;
   };
@@ -4385,7 +5020,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/plugins/{id}/update */
+    /** Update plugin */
     post: operations["update_plugin"];
     delete?: never;
     options?: never;
@@ -4421,8 +5056,10 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Check whether a provider accepts an API key, without storing it
-     * @description Used by org setup so a key the provider will reject is caught at entry
+     * Check a provider API key without storing it
+     * @description Check whether a provider accepts an API key, without storing it
+     *
+     *     Used by org setup so a key the provider will reject is caught at entry
      *     instead of at the first agent run. Nothing is persisted.
      */
     post: operations["check_credentials"];
@@ -4439,7 +5076,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/providers/config */
+    /** Provider config */
     get: operations["provider_config"];
     put?: never;
     post?: never;
@@ -4518,7 +5155,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read the owner's personal ChatGPT connection.
+     * Read the owner's personal ChatGPT connection
      * @description Returns connection state and non-secret installation metadata. Another user's
      *     provider is hidden even from organization administrators.
      */
@@ -4526,7 +5163,7 @@ export interface paths {
     put?: never;
     post?: never;
     /**
-     * Disconnect the owner's ChatGPT account.
+     * Disconnect the owner's ChatGPT account
      * @description Cancels pending sign-in and revokes a stored grant before clearing credentials.
      *     A failed revocation retains credentials so the owner can retry.
      */
@@ -4546,7 +5183,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Import a private login-helper document.
+     * Import a private login-helper document
      * @description Verifies installation, signed identity, nonce, issuing client, and account binding
      *     before persisting credentials. Only the provider's owner may import the document.
      */
@@ -4567,7 +5204,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Start a personal ChatGPT sign-in.
+     * Start a personal ChatGPT sign-in
      * @description Creates a bounded loopback callback listener and returns the authorization URL.
      *     Requires deployment enablement, organization opt-in, encryption, and exact ownership.
      */
@@ -4605,7 +5242,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a reporting projector to refresh derived data (operator action). */
+    /**
+     * Backfill reporting
+     * @description Run a reporting projector to refresh derived data (operator action).
+     */
     post: operations["backfill_reporting"];
     delete?: never;
     options?: never;
@@ -4620,7 +5260,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Return diagnostics for the reporting subsystem (operator view). */
+    /**
+     * Get diagnostics
+     * @description Return diagnostics for the reporting subsystem (operator view).
+     */
     get: operations["get_diagnostics"];
     put?: never;
     post?: never;
@@ -4637,7 +5280,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Return the available reporting datasets and their schemas. */
+    /**
+     * Get catalog
+     * @description Return the available reporting datasets and their schemas.
+     */
     get: operations["get_catalog"];
     put?: never;
     post?: never;
@@ -4656,7 +5302,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a reporting projector to refresh derived data (operator action). */
+    /**
+     * Run projector
+     * @description Run a reporting projector to refresh derived data (operator action).
+     */
     post: operations["run_projector"];
     delete?: never;
     options?: never;
@@ -4673,7 +5322,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run an ad-hoc reporting query against a registered dataset. */
+    /**
+     * Run query
+     * @description Run an ad-hoc reporting query against a registered dataset.
+     */
     post: operations["run_query"];
     delete?: never;
     options?: never;
@@ -4690,7 +5342,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run an ad-hoc reporting query and stream the result as CSV. */
+    /**
+     * Export query
+     * @description Run an ad-hoc reporting query and stream the result as CSV.
+     */
     post: operations["export_query"];
     delete?: never;
     options?: never;
@@ -4705,10 +5360,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List saved reports. */
+    /**
+     * List saved reports
+     * @description List saved reports.
+     */
     get: operations["list_saved_reports"];
     put?: never;
-    /** @description Create a new saved report. */
+    /**
+     * Create saved report
+     * @description Create a new saved report.
+     */
     post: operations["create_saved_report"];
     delete?: never;
     options?: never;
@@ -4723,15 +5384,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a saved report by ID. */
+    /**
+     * Get saved report
+     * @description Get a saved report by ID.
+     */
     get: operations["get_saved_report"];
     put?: never;
     post?: never;
-    /** @description Delete a saved report. */
+    /**
+     * Delete saved report
+     * @description Delete a saved report.
+     */
     delete: operations["delete_saved_report"];
     options?: never;
     head?: never;
-    /** @description Update a saved report. Only provided fields are modified. */
+    /**
+     * Update saved report
+     * @description Update a saved report. Only provided fields are modified.
+     */
     patch: operations["update_saved_report"];
     trace?: never;
   };
@@ -4744,7 +5414,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a previously saved reporting query and stream the result as CSV. */
+    /**
+     * Export saved report
+     * @description Run a previously saved reporting query and stream the result as CSV.
+     */
     post: operations["export_saved_report"];
     delete?: never;
     options?: never;
@@ -4761,7 +5434,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Run a previously saved reporting query and return the result. */
+    /**
+     * Run saved report
+     * @description Run a previously saved reporting query and return the result.
+     */
     post: operations["run_saved_report"];
     delete?: never;
     options?: never;
@@ -4777,7 +5453,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/resolve-org — resolve the owning org for a resource id.
+     * Resolve the owning org for a resource id
      * @description Returns the owning organization only when it is one the authenticated
      *     caller already belongs to. For every other case (unknown id, unknown
      *     prefix, resource belongs to a non-member org) the endpoint returns 404 —
@@ -4800,7 +5476,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the Sandbox targets this deployment can offer, with the capabilities each one actually has. */
+    /**
+     * List sandbox targets
+     * @description List the Sandbox targets this deployment can offer, with the capabilities each one actually has.
+     */
     get: operations["list_sandbox_targets"];
     put?: never;
     post?: never;
@@ -4817,10 +5496,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List active reusable Sandbox Templates available to the organization. */
+    /**
+     * List sandbox templates
+     * @description List active reusable Sandbox Templates available to the organization.
+     */
     get: operations["list_sandbox_templates"];
     put?: never;
-    /** @description Create a reusable Sandbox Template and its first immutable revision. */
+    /**
+     * Create sandbox template
+     * @description Create a reusable Sandbox Template and its first immutable revision.
+     */
     post: operations["create_sandbox_template"];
     delete?: never;
     options?: never;
@@ -4835,12 +5520,21 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get one reusable Sandbox Template and its current immutable revision. */
+    /**
+     * Get sandbox template
+     * @description Get one reusable Sandbox Template and its current immutable revision.
+     */
     get: operations["get_sandbox_template"];
-    /** @description Create the next immutable revision of a reusable Sandbox Template. */
+    /**
+     * Revise sandbox template
+     * @description Create the next immutable revision of a reusable Sandbox Template.
+     */
     put: operations["revise_sandbox_template"];
     post?: never;
-    /** @description Archive a user-managed Sandbox Template without changing pinned Sessions. */
+    /**
+     * Archive sandbox template
+     * @description Archive a user-managed Sandbox Template without changing pinned Sessions.
+     */
     delete: operations["archive_sandbox_template"];
     options?: never;
     head?: never;
@@ -4854,7 +5548,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters. */
+    /**
+     * List the organization's Sandboxes across providers
+     * @description List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.
+     */
     get: operations["list_sandboxes"];
     put?: never;
     post?: never;
@@ -4871,7 +5568,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention. */
+    /**
+     * Summarize the organization's Sandboxes
+     * @description Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.
+     */
     get: operations["get_sandbox_fleet_stats"];
     put?: never;
     post?: never;
@@ -4888,7 +5588,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Show when each Sandbox was running, paused or lost over a time window, with how many ran at once. */
+    /**
+     * Show Sandbox activity over a time window
+     * @description Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.
+     */
     get: operations["get_sandbox_timeline"];
     put?: never;
     post?: never;
@@ -4905,7 +5608,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get one Sandbox with its provider resources and full state history. */
+    /**
+     * Get a Sandbox with its resources and state history
+     * @description Get one Sandbox with its provider resources and full state history.
+     */
     get: operations["get_sandbox"];
     put?: never;
     post?: never;
@@ -4922,7 +5628,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults. */
+    /**
+     * List search providers
+     * @description List the web search providers of the active organization: built-in free and model provider search, connected model providers that search natively, connectors that hold search accounts, connected search accounts with status, and the organization's web search defaults.
+     */
     get: operations["list_search_providers"];
     put?: never;
     post?: never;
@@ -4941,7 +5650,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only). */
+    /**
+     * Preview search plan
+     * @description Resolve an agent's web search setting and model to the ordered plan its searches follow, with the organization's current defaults. Optionally run a test query against one provider (`free` or `account:<id>`; organization admins only).
+     */
     post: operations["preview_search_plan"];
     delete?: never;
     options?: never;
@@ -4956,10 +5668,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions - List sessions in organization */
-    get: operations["list_sessions"];
+    /** List sessions in organization */
+    get: operations["list_platform_sessions"];
     put?: never;
-    /** POST /v1/sessions - Create a new session */
+    /** Create a new session */
     post: operations["create_session"];
     delete?: never;
     options?: never;
@@ -4974,7 +5686,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/facets - Facet counts and masthead metrics */
+    /** Facet counts and masthead metrics */
     get: operations["get_session_facets"];
     put?: never;
     post?: never;
@@ -4993,7 +5705,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Open the current user's permanent platform conversation, creating it only when absent. */
+    /**
+     * Open the current user's platform conversation
+     * @description Open the current user's permanent platform conversation, creating it only when absent.
+     */
     post: operations["ensure_platform_chat"];
     delete?: never;
     options?: never;
@@ -5008,7 +5723,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/stats - Get session counts by status */
+    /** Get session counts by status */
     get: operations["get_session_stats"];
     put?: never;
     post?: never;
@@ -5025,15 +5740,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id} - Get session */
+    /** Get session */
     get: operations["get_session"];
     put?: never;
     post?: never;
-    /** DELETE /v1/sessions/{session_id} - Delete session */
+    /** Delete session */
     delete: operations["delete_session"];
     options?: never;
     head?: never;
-    /** PATCH /v1/sessions/{session_id} - Update session */
+    /** Update session */
     patch: operations["update_session"];
     trace?: never;
   };
@@ -5045,10 +5760,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** PUT /v1/sessions/{session_id}/archive - Archive session */
+    /** Archive session */
     put: operations["archive_session"];
     post?: never;
-    /** DELETE /v1/sessions/{session_id}/archive - Restore an archived session */
+    /** Restore an archived session */
     delete: operations["unarchive_session"];
     options?: never;
     head?: never;
@@ -5062,7 +5777,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Check all budgets for a session. */
+    /** Check all budgets for a session */
     get: operations["check_session_budgets"];
     put?: never;
     post?: never;
@@ -5079,7 +5794,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List all budgets for a session. */
+    /** List all budgets for a session */
     get: operations["list_session_budgets"];
     put?: never;
     post?: never;
@@ -5099,7 +5814,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/sessions/{session_id}/cancel - Cancel current turn
+     * Cancel current turn
      * @description Cancels the currently running turn in the session. If no turn is running,
      *     this is a no-op and returns success (idempotent). When a turn is active:
      *     1. Cancel the underlying workflow execution
@@ -5121,7 +5836,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/context-report - Latest context breakdown */
+    /** Latest context breakdown */
     get: operations["get_session_context_report"];
     put?: never;
     post?: never;
@@ -5138,10 +5853,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/databases */
+    /** List databases */
     get: operations["list_databases"];
     put?: never;
-    /** POST /v1/sessions/{session_id}/databases */
+    /** Create database */
     post: operations["create_database"];
     delete?: never;
     options?: never;
@@ -5156,11 +5871,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/databases/{name} */
+    /** Get database */
     get: operations["get_database"];
     put?: never;
     post?: never;
-    /** DELETE /v1/sessions/{session_id}/databases/{name} */
+    /** Delete database */
     delete: operations["delete_database"];
     options?: never;
     head?: never;
@@ -5174,7 +5889,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/databases/{name}/schema */
+    /** Get schema */
     get: operations["get_schema"];
     put?: never;
     post?: never;
@@ -5192,7 +5907,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/sessions/{session_id}/events - List events (JSON)
+     * List events (JSON)
      * @description Returns events for a session as a JSON array. Supports filtering by event type
      *     via `types` (positive: only these types) and `exclude` (negative: remove these types).
      *     When both are provided, `types` narrows first, then `exclude` removes from that set.
@@ -5225,7 +5940,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/events/summary - one-shot debug summary */
+    /**
+     * One-shot debug summary
+     * @description one-shot debug summary
+     */
     get: operations["events_summary"];
     put?: never;
     post?: never;
@@ -5243,8 +5961,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Export session messages as a JSONL file (default) or as an ATIF trajectory
-     * @description Default (`format=jsonl`): all materialized messages (user, agent) as
+     * Export session messages as JSONL or ATIF
+     * @description Export session messages as a JSONL file (default) or as an ATIF trajectory
+     *
+     *     Default (`format=jsonl`): all materialized messages (user, agent) as
      *     newline-delimited JSON, one complete JSON object per line; delta events are
      *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
      *     folded from the session's event log; image
@@ -5272,7 +5992,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List your good and bad ratings of the messages in a session. */
+    /**
+     * List your message ratings in a session
+     * @description List your good and bad ratings of the messages in a session.
+     */
     get: operations["list_message_feedback"];
     put?: never;
     post?: never;
@@ -5291,7 +6014,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy */
+    /** Fork a session into an independent copy */
     post: operations["fork_session"];
     delete?: never;
     options?: never;
@@ -5308,7 +6031,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/sessions/{session_id}/git/branches */
+    /** Create branch */
     post: operations["create_branch"];
     delete?: never;
     options?: never;
@@ -5326,7 +6049,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** DELETE /v1/sessions/{session_id}/git/branches/{name} */
+    /** Delete branch */
     delete: operations["delete_branch"];
     options?: never;
     head?: never;
@@ -5342,7 +6065,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/sessions/{session_id}/git/commit */
+    /** Commit */
     post: operations["commit"];
     delete?: never;
     options?: never;
@@ -5357,7 +6080,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/git/diff */
+    /** Diff */
     get: operations["diff"];
     put?: never;
     post?: never;
@@ -5374,7 +6097,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/git/log */
+    /** Log */
     get: operations["log"];
     put?: never;
     post?: never;
@@ -5391,7 +6114,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/git/refs */
+    /** List refs */
     get: operations["list_refs"];
     put?: never;
     post?: never;
@@ -5411,7 +6134,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/sessions/{session_id}/mcp-elicitation-consent
+     * Submit elicitation consent
      * @description Records a user's decision about a URL an MCP server asked them to open, and
      *     resumes the paused turn.
      */
@@ -5430,7 +6153,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List the MCP servers added to this chat only.
+     * List the MCP servers added to this chat only
      * @description Servers a person added with "this chat only" join every later turn of this
      *     session and no other. Sign-in state is the viewer's own.
      */
@@ -5453,7 +6176,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Remove an MCP server added to this chat only. Its tools leave from the next turn. */
+    /**
+     * Remove an MCP server added to this chat only
+     * @description Remove an MCP server added to this chat only. Its tools leave from the next turn.
+     */
     delete: operations["remove_chat_mcp_server"];
     options?: never;
     head?: never;
@@ -5467,10 +6193,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/messages - List messages (PRIMARY data) */
+    /** List messages (PRIMARY data) */
     get: operations["list_messages"];
     put?: never;
-    /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
+    /** Create message (user message triggers workflow) */
     post: operations["create_message"];
     delete?: never;
     options?: never;
@@ -5486,7 +6212,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Rate one message in a session good or bad, with an optional comment. A null rating clears your rating. */
+    /**
+     * Rate a message in a session
+     * @description Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.
+     */
     put: operations["set_message_feedback"];
     post?: never;
     delete?: never;
@@ -5502,10 +6231,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/participants - List session participants */
+    /** List session participants */
     get: operations["list_session_participants"];
     put?: never;
-    /** POST /v1/sessions/{session_id}/participants - Add a session participant */
+    /** Add a session participant */
     post: operations["add_session_participant"];
     delete?: never;
     options?: never;
@@ -5523,7 +6252,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant */
+    /** Leave a participant */
     delete: operations["leave_session_participant"];
     options?: never;
     head?: never;
@@ -5538,10 +6267,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** PUT /v1/sessions/{session_id}/pin - Pin session for current user */
+    /** Pin session for current user */
     put: operations["pin_session"];
     post?: never;
-    /** DELETE /v1/sessions/{session_id}/pin - Unpin session for current user */
+    /** Unpin session for current user */
     delete: operations["unpin_session"];
     options?: never;
     head?: never;
@@ -5558,7 +6287,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/sessions/{session_id}/question-answers
+     * Submit question answers
      * @description Answers the question set an agent raised with `ask_user`, and resumes the
      *     paused turn.
      */
@@ -5576,7 +6305,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model */
+    /** Resolve the session's active model */
     get: operations["get_session_resolved_model"];
     put?: never;
     post?: never;
@@ -5593,7 +6322,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List all resources registered in the session resource registry. */
+    /**
+     * List the session's registered resources
+     * @description List all resources registered in the session resource registry.
+     */
     get: operations["list_resources"];
     put?: never;
     post?: never;
@@ -5612,7 +6344,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Resume all paused session budgets for a session. */
+    /** Resume all paused session budgets for a session */
     post: operations["resume_session_budgets"];
     delete?: never;
     options?: never;
@@ -5627,10 +6359,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the primary Sandbox a Session runs in: template, target, containment, and capabilities. */
+    /**
+     * Get session sandbox
+     * @description Get the primary Sandbox a Session runs in: template, target, containment, and capabilities.
+     */
     get: operations["get_session_sandbox"];
     put?: never;
-    /** @description Manage the session sandbox lifecycle (start, stop, reset). */
+    /**
+     * Manage sandbox
+     * @description Manage the session sandbox lifecycle (start, stop, reset).
+     */
     post: operations["manage_sandbox"];
     delete?: never;
     options?: never;
@@ -5646,7 +6384,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/sessions/{session_id}/sse - Stream events (SSE notifications)
+     * Stream events (SSE notifications)
      * @description Establishes a Server-Sent Events (SSE) connection for real-time event streaming.
      *
      *     ## Connection Lifecycle Events
@@ -5701,7 +6439,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs */
+    /** List all key-value pairs */
     get: operations["list_keys"];
     put?: never;
     post?: never;
@@ -5718,10 +6456,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/sessions/{session_id}/storage/secrets - List all secrets (names only) */
+    /** List all secrets (names only) */
     get: operations["list_secrets"];
     /**
-     * PUT /v1/sessions/{session_id}/storage/secrets - Batch set secrets
+     * Batch set secrets
      * @description Encrypts and stores multiple secrets in a single request.
      *     Existing secrets with the same name are overwritten.
      */
@@ -5743,7 +6481,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** @description Delete a user-managed encrypted secret from one session. */
+    /**
+     * Delete secret
+     * @description Delete a user-managed encrypted secret from one session.
+     */
     delete: operations["delete_secret"];
     options?: never;
     head?: never;
@@ -5757,8 +6498,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List background tasks owned by a session. */
-    get: operations["list_tasks_get_v1_sessions_session_id_tasks"];
+    /** List background tasks owned by a session */
+    get: operations["list_tasks"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5774,7 +6515,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get one session task with its recent message thread. */
+    /** Get one session task with its recent message thread */
     get: operations["get_task"];
     put?: never;
     post?: never;
@@ -5793,7 +6534,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Request cooperative cancellation of a session task. */
+    /** Request cooperative cancellation of a session task */
     post: operations["cancel_task"];
     delete?: never;
     options?: never;
@@ -5810,7 +6551,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Send an inbound message to a session task. */
+    /** Send an inbound message to a session task */
     post: operations["post_task_message"];
     delete?: never;
     options?: never;
@@ -5825,10 +6566,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List per-task push-notification configs. */
+    /** List per-task push-notification configs */
     get: operations["list_push_configs"];
     put?: never;
-    /** Create a per-task push-notification config. */
+    /** Create a per-task push-notification config */
     post: operations["create_push_config"];
     delete?: never;
     options?: never;
@@ -5846,7 +6587,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Delete a per-task push-notification config. */
+    /** Delete a per-task push-notification config */
     delete: operations["delete_push_config"];
     options?: never;
     head?: never;
@@ -5863,7 +6604,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/sessions/{session_id}/tool-approvals
+     * Submit tool approvals
      * @description Records a person's decisions about tool calls an agent's `tool_approval`
      *     gate held back, and resumes the paused turn.
      */
@@ -5884,7 +6625,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/sessions/{session_id}/tool-results - Submit client-side tool results
+     * Submit client-side tool results
      * @description Accepts tool results executed by the client and resumes the agent workflow.
      *     Session must be in `waiting_for_tool_results` status.
      */
@@ -5902,7 +6643,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. */
+    /**
+     * Summarize a session's trace
+     * @description Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.
+     */
     get: operations["get_session_trace"];
     put?: never;
     post?: never;
@@ -5919,7 +6663,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. */
+    /**
+     * List a page of a session's trace turns
+     * @description List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.
+     */
     get: operations["list_session_trace_turns"];
     put?: never;
     post?: never;
@@ -5936,7 +6683,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. */
+    /**
+     * List the raw events of one trace turn
+     * @description List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.
+     */
     get: operations["list_session_trace_turn_events"];
     put?: never;
     post?: never;
@@ -5953,7 +6703,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Page through the steps of one turn of a session's trace, optionally only the failed ones. */
+    /**
+     * List the steps of one trace turn
+     * @description Page through the steps of one turn of a session's trace, optionally only the failed ones.
+     */
     get: operations["list_session_trace_steps"];
     put?: never;
     post?: never;
@@ -5970,7 +6723,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. */
+    /**
+     * Get one step of a session's trace in full
+     * @description Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.
+     */
     get: operations["get_session_trace_step"];
     put?: never;
     post?: never;
@@ -5987,7 +6743,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Page through the messages a model call in a session's trace was sent, with each message's full content. */
+    /**
+     * List the messages sent in one model call
+     * @description Page through the messages a model call in a session's trace was sent, with each message's full content.
+     */
     get: operations["list_session_trace_request"];
     put?: never;
     post?: never;
@@ -6006,7 +6765,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent. */
+    /**
+     * Create call
+     * @description Start a voice call on a session (the chat microphone). Uses the settings of a voice channel of the session's agent.
+     */
     post: operations["create_call"];
     delete?: never;
     options?: never;
@@ -6023,7 +6785,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description End a voice call. */
+    /**
+     * End call
+     * @description End a voice call.
+     */
     post: operations["end_call"];
     delete?: never;
     options?: never;
@@ -6038,10 +6803,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List all active skills. Use search for name search, include_archived=true to include archived. */
+    /**
+     * List all active skills
+     * @description List all active skills. Use search for name search, include_archived=true to include archived.
+     */
     get: operations["list_skills"];
     put?: never;
-    /** Create a new skill from SKILL.md content. */
+    /** Create a new skill from SKILL.md content */
     post: operations["create_skill"];
     delete?: never;
     options?: never;
@@ -6056,7 +6824,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/skills/config */
+    /** Skill config */
     get: operations["skill_config"];
     put?: never;
     post?: never;
@@ -6075,7 +6843,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/skills/upload - Create skill from ZIP archive */
+    /** Create skill from ZIP archive */
     post: operations["upload_skill"];
     delete?: never;
     options?: never;
@@ -6090,7 +6858,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Count agents and harnesses referencing each skill capability. */
+    /**
+     * Count agents and harnesses using each skill
+     * @description Count agents and harnesses referencing each skill capability.
+     */
     get: operations["list_skills_usage"];
     put?: never;
     post?: never;
@@ -6109,7 +6880,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/skills/validate - Validate SKILL.md content */
+    /** Validate SKILL.md content */
     post: operations["validate_skill"];
     delete?: never;
     options?: never;
@@ -6124,15 +6895,21 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get a single skill by ID. */
+    /** Get a single skill by ID */
     get: operations["get_skill"];
     put?: never;
     post?: never;
-    /** Archive a skill (soft delete). Can be restored. */
+    /**
+     * Archive a skill (soft delete)
+     * @description Archive a skill (soft delete). Can be restored.
+     */
     delete: operations["delete_skill"];
     options?: never;
     head?: never;
-    /** Update a skill. Only provided fields are changed. */
+    /**
+     * Update a skill
+     * @description Update a skill. Only provided fields are changed.
+     */
     patch: operations["update_skill"];
     trace?: never;
   };
@@ -6143,7 +6920,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get full skill content (SKILL.md + files). */
+    /** Get full skill content (SKILL.md + files) */
     get: operations["get_skill_content"];
     put?: never;
     post?: never;
@@ -6162,7 +6939,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Permanently delete an archived skill. */
+    /** Permanently delete an archived skill */
     post: operations["destroy_skill"];
     delete?: never;
     options?: never;
@@ -6177,10 +6954,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List all task webhooks configured for the organization. */
+    /** List all task webhooks configured for the organization */
     get: operations["list_webhooks"];
     put?: never;
-    /** Create a new task webhook for the organization. */
+    /** Create a new task webhook for the organization */
     post: operations["create_webhook"];
     delete?: never;
     options?: never;
@@ -6195,15 +6972,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get a single task webhook. */
+    /** Get a single task webhook */
     get: operations["get_webhook"];
     put?: never;
     post?: never;
-    /** Delete a task webhook. */
+    /** Delete a task webhook */
     delete: operations["delete_webhook"];
     options?: never;
     head?: never;
-    /** Update a task webhook. */
+    /** Update a task webhook */
     patch: operations["update_webhook"];
     trace?: never;
   };
@@ -6214,7 +6991,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List background tasks across every session in the caller's org. */
+    /**
+     * List background tasks across the organization
+     * @description List background tasks across every session in the caller's org.
+     */
     get: operations["list_org_tasks"];
     put?: never;
     post?: never;
@@ -6232,7 +7012,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List the AI clients you connected to Everruns MCP.
+     * List the AI clients you connected to Everruns MCP
      * @description External MCP clients (Claude, ChatGPT, Cursor, ...) you approved to act as you on `/mcp`, most recently used first.
      */
     get: operations["list_connected_clients"];
@@ -6255,7 +7035,7 @@ export interface paths {
     put?: never;
     post?: never;
     /**
-     * Disconnect an AI client.
+     * Disconnect an AI client
      * @description Revokes the grant: the client's refresh tokens are deleted and `/mcp` rejects its access tokens within about 30 seconds. Reconnecting needs a new approval.
      */
     delete: operations["revoke_connected_client"];
@@ -6271,7 +7051,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List legacy credentials requiring an explicit organization destination. */
+    /**
+     * List legacy credentials awaiting an organization
+     * @description List legacy credentials requiring an explicit organization destination.
+     */
     get: operations["list_pending_connection_migrations"];
     put?: never;
     post?: never;
@@ -6290,7 +7073,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Move one legacy credential into the selected organization without copying it. */
+    /**
+     * Move a legacy credential into an organization
+     * @description Move one legacy credential into the selected organization without copying it.
+     */
     post: operations["migrate_pending_connection"];
     delete?: never;
     options?: never;
@@ -6305,7 +7091,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List the current user's cursor-paginated MCP OAuth connections in the selected organization. */
+    /**
+     * List mcp connections
+     * @description List the current user's cursor-paginated MCP OAuth connections in the selected organization.
+     */
     get: operations["list_mcp_connections"];
     put?: never;
     post?: never;
@@ -6323,7 +7112,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/users - List users in current organization
+     * List users in current organization
      * @description Lists users that belong to the current organization with optional search filtering.
      *     TM-TENANT-008: Enforces org isolation to prevent cross-tenant user enumeration.
      */
@@ -6347,14 +7136,14 @@ export interface paths {
     put?: never;
     post?: never;
     /**
-     * DELETE /v1/users/me - Delete current user's account
+     * Delete current user's account
      * @description Hard-deletes the user and all associated data (API keys, memberships, tokens).
      *     This action is irreversible.
      */
     delete: operations["delete_account"];
     options?: never;
     head?: never;
-    /** PATCH /v1/users/me - Update current user's profile */
+    /** Update current user's profile */
     patch: operations["update_profile"];
     trace?: never;
   };
@@ -6366,7 +7155,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/users/me/export - Export current user's data
+     * Export current user's data
      * @description Returns all user-owned data in a structured JSON format for GDPR compliance.
      */
     get: operations["export_user_data"];
@@ -6388,7 +7177,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * POST /v1/users/me/switch-org - Switch current organization
+     * Switch current organization
      * @description Sets a cookie with the selected organization. This org will be used for all
      *     subsequent requests (including SSE connections via EventSource).
      *     The user must be a member of the requested organization.
@@ -6407,10 +7196,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List virtual users. */
+    /** List virtual users */
     get: operations["list_virtual_users"];
     put?: never;
-    /** Create virtual user. */
+    /** Create virtual user */
     post: operations["create_virtual_user"];
     delete?: never;
     options?: never;
@@ -6425,14 +7214,17 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read the authenticated consumer runtime account. */
+    /** Read the authenticated consumer runtime account */
     get: operations["get_me"];
     put?: never;
     post?: never;
     delete?: never;
     options?: never;
     head?: never;
-    /** Update the runtime profile without changing management identity or lifecycle. */
+    /**
+     * Update the runtime user's profile
+     * @description Update the runtime profile without changing management identity or lifecycle.
+     */
     patch: operations["update_me"];
     trace?: never;
   };
@@ -6443,15 +7235,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get virtual user. */
+    /** Get virtual user */
     get: operations["get_virtual_user"];
     put?: never;
     post?: never;
-    /** Delete virtual user. */
+    /** Delete virtual user */
     delete: operations["delete_virtual_user"];
     options?: never;
     head?: never;
-    /** Update virtual user. */
+    /** Update virtual user */
     patch: operations["update_virtual_user"];
     trace?: never;
   };
@@ -6462,7 +7254,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List verified external identity bindings. */
+    /** List verified external identity bindings */
     get: operations["list_bindings"];
     put?: never;
     post?: never;
@@ -6482,7 +7274,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Revoke an external binding and its runtime self authority. */
+    /** Revoke an external binding and its runtime self authority */
     delete: operations["revoke_binding"];
     options?: never;
     head?: never;
@@ -6496,8 +7288,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List connections. */
-    get: operations["list_connections_get_v1_virtual_users_identity_id_connections"];
+    /** List virtual user connections */
+    get: operations["list_virtual_user_connections"];
     put?: never;
     post?: never;
     delete?: never;
@@ -6515,10 +7307,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create api key connection. */
+    /** Create api key connection */
     post: operations["create_api_key_connection"];
-    /** Delete connection. */
-    delete: operations["delete_connection_delete_v1_virtual_users_identity_id_connections_provider"];
+    /** Delete a virtual user connection */
+    delete: operations["delete_virtual_user_connection"];
     options?: never;
     head?: never;
     patch?: never;
@@ -6531,10 +7323,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Start provider setup bound to the authorized virtual user. */
+    /** Start provider setup bound to the authorized virtual user */
     get: operations["authorize_target_connection"];
     put?: never;
-    /** Create a target-bound provider setup URL. */
+    /** Create a target-bound provider setup URL */
     post: operations["start_target_connection"];
     delete?: never;
     options?: never;
@@ -6551,8 +7343,8 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Verify connection. */
-    post: operations["verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify"];
+    /** Verify a virtual user connection */
+    post: operations["verify_virtual_user_connection"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6568,7 +7360,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Destroy virtual user. */
+    /** Destroy virtual user */
     post: operations["destroy_virtual_user"];
     delete?: never;
     options?: never;
@@ -6583,10 +7375,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the person's own MCP servers. */
+    /** List the person's own MCP servers */
     get: operations["list_user_mcp_servers"];
     put?: never;
-    /** Add an MCP server for the person, from the catalog or by URL. */
+    /**
+     * Add an MCP server for the person
+     * @description Add an MCP server for the person, from the catalog or by URL.
+     */
     post: operations["add_user_mcp_server"];
     delete?: never;
     options?: never;
@@ -6601,15 +7396,18 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read one of the person's MCP servers. */
+    /** Read one of the person's MCP servers */
     get: operations["get_user_mcp_server"];
     put?: never;
     post?: never;
-    /** Remove one of the person's MCP servers and its sign-in. */
+    /** Remove one of the person's MCP servers and its sign-in */
     delete: operations["remove_user_mcp_server"];
     options?: never;
     head?: never;
-    /** Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers. */
+    /**
+     * Update one of the person's MCP servers
+     * @description Rename, enable, disable, set on-demand loading of, or replace the API key of one of the person's MCP servers.
+     */
     patch: operations["update_user_mcp_server"];
     trace?: never;
   };
@@ -6620,7 +7418,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List the tools of one of the person's custom MCP servers, asked live, with their risk labels. */
+    /**
+     * List the tools of one of the person's MCP servers
+     * @description List the tools of one of the person's custom MCP servers, asked live, with their risk labels.
+     */
     get: operations["list_user_mcp_server_tools"];
     put?: never;
     post?: never;
@@ -6638,7 +7439,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Set or clear the person's risk label for one tool of their custom MCP server. */
+    /**
+     * Set the person's risk label for an MCP tool
+     * @description Set or clear the person's risk label for one tool of their custom MCP server.
+     */
     put: operations["set_user_mcp_tool_label"];
     post?: never;
     delete?: never;
@@ -6654,7 +7458,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List agent-facing preferences. */
+    /** List agent-facing preferences */
     get: operations["list_preferences"];
     put?: never;
     post?: never;
@@ -6671,12 +7475,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read one agent-facing preference. */
+    /** Read one agent-facing preference */
     get: operations["get_preference"];
-    /** Set a bounded agent-facing preference. */
+    /** Set a bounded agent-facing preference */
     put: operations["set_preference"];
     post?: never;
-    /** Delete an agent-facing preference. */
+    /** Delete an agent-facing preference */
     delete: operations["delete_preference"];
     options?: never;
     head?: never;
@@ -6690,8 +7494,11 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List recent sessions associated with the authorized virtual user. */
-    get: operations["list_sessions_get_v1_virtual_users_identity_id_sessions"];
+    /**
+     * List the virtual user's recent sessions
+     * @description List recent sessions associated with the authorized virtual user.
+     */
+    get: operations["list_sessions"];
     put?: never;
     post?: never;
     delete?: never;
@@ -6707,11 +7514,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description List Workspaces. */
+    /**
+     * List workspaces
+     * @description List Workspaces.
+     */
     get: operations["list_workspaces"];
     put?: never;
-    /** @description Create a Workspace. */
-    post: operations["create_workspace"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6725,15 +7534,24 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get a Workspace by ID. */
+    /**
+     * Get workspace
+     * @description Get a Workspace by ID.
+     */
     get: operations["get_workspace"];
     put?: never;
     post?: never;
-    /** @description Archive a Workspace. */
+    /**
+     * Delete workspace
+     * @description Archive a Workspace.
+     */
     delete: operations["delete_workspace"];
     options?: never;
     head?: never;
-    /** @description Update a Workspace. */
+    /**
+     * Update workspace
+     * @description Update a Workspace.
+     */
     patch: operations["update_workspace"];
     trace?: never;
   };
@@ -6744,7 +7562,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/workspaces/{workspace_id}/fs - Workspace root listing */
+    /** Workspace root listing */
     get: operations["get_root"];
     put?: never;
     post?: never;
@@ -6763,7 +7581,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/workspaces/{workspace_id}/fs/_/copy - Copy a file */
+    /** Copy a file */
     post: operations["copy_file"];
     delete?: never;
     options?: never;
@@ -6778,7 +7596,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes */
+    /** Download raw file bytes */
     get: operations["download_path"];
     put?: never;
     post?: never;
@@ -6797,7 +7615,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/workspaces/{workspace_id}/fs/_/grep - Search files */
+    /** Search files */
     post: operations["grep_files"];
     delete?: never;
     options?: never;
@@ -6814,7 +7632,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory */
+    /** Move/rename a file or directory */
     post: operations["move_file"];
     delete?: never;
     options?: never;
@@ -6830,7 +7648,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render
+     * Sandboxed HTML render
      * @description Serves an HTML file as a `text/html` document carrying a strict `sandbox`
      *     CSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside
      *     an iframe without exposing everruns cookies, storage, the parent DOM, or
@@ -6855,7 +7673,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** POST /v1/workspaces/{workspace_id}/fs/_/stat - File metadata */
+    /** File metadata */
     post: operations["stat_file"];
     delete?: never;
     options?: never;
@@ -6870,13 +7688,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/workspaces/{workspace_id}/fs/{path} - Read file or list directory */
+    /** Read file or list directory */
     get: operations["get_path"];
-    /** PUT /v1/workspaces/{workspace_id}/fs/{path} - Update file content */
+    /** Update file content */
     put: operations["update_path"];
-    /** POST /v1/workspaces/{workspace_id}/fs/{path} - Create file or directory */
+    /** Create file or directory */
     post: operations["create_path"];
-    /** DELETE /v1/workspaces/{workspace_id}/fs/{path} - Delete file or directory */
+    /** Delete file or directory */
     delete: operations["delete_path"];
     options?: never;
     head?: never;
@@ -6903,7 +7721,9 @@ export interface components {
       duration_ms?: number | null;
       /**
        * Format: int32
-       * @description Number of failed tool calls
+       * @description Number of failed tool calls. Each failure went back to the model as a
+       *     tool result, so these are issues (severity `issue`), not turn errors;
+       *     the field keeps its historical name.
        */
       error_count: number;
       /** @description Human-readable headline for the completed batch */
@@ -7067,6 +7887,15 @@ export interface components {
        * @example 50
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response, sent to the provider as
+       *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+       *     output limit when known. Lower it when a provider rejects calls because
+       *     the balance can only afford fewer tokens.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -7182,6 +8011,11 @@ export interface components {
        */
       hours: number;
       totals: components["schemas"]["AgentActivityTotals"];
+      /**
+       * Format: date-time
+       * @description Exact exclusive lower bound of the run and failure window.
+       */
+      window_start: string;
     };
     /** @description Org-wide totals for the page masthead. */
     AgentActivityTotals: {
@@ -7368,13 +8202,17 @@ export interface components {
       id: string;
       status: components["schemas"]["ChannelStatus"];
     };
-    /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
+    /**
+     * @description Metadata for a write-only credential bound to one agent: either an MCP
+     *     tool parameter or an HTTP API the agent's shell calls.
+     */
     AgentCredentialBinding: {
       /**
        * @description Agent that exclusively owns and may use this credential.
        * @example agent_01933b5a000070008000000000000001
        */
       agent_id: string;
+      binding?: components["schemas"]["SecretBinding"] | null;
       /**
        * @description Whether an encrypted value has been provisioned.
        * @example true
@@ -7391,47 +8229,59 @@ export interface components {
        */
       description?: string | null;
       /**
+       * @description Env var the agent's shell uses as a placeholder (`http`).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
        * Format: uuid
        * @description Stable credential binding identifier.
        * @example 01933b5a-0000-7000-8000-000000000001
        */
       id: string;
+      /** @description How the credential is injected. */
+      kind: components["schemas"]["AgentCredentialKind"];
       /**
        * @description Human-readable credential label.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of the attached MCP server.
+       * @description Name of the attached MCP server (`mcp_parameter`).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Exact MCP endpoint authorized to receive the credential.
+       * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
        * @example https://visti.sh/mcp
        */
-      mcp_server_url: string;
+      mcp_server_url?: string | null;
       /**
-       * @description Top-level tool argument injected by the server.
+       * @description Top-level tool argument injected by the server (`mcp_parameter`).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
        * @description Relative UI route where the user can securely provision the value.
        * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
        */
       setup_url: string;
       /**
-       * @description MCP tool whose outbound call receives the credential.
+       * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
       /**
        * @description RFC 3339 last-update time.
        * @example 2026-08-08T16:05:00Z
        */
       updated_at: string;
     };
+    /**
+     * @description How a write-only agent credential reaches the outside world.
+     * @enum {string}
+     */
+    AgentCredentialKind: "mcp_parameter" | "http";
     /**
      * @description The agent the builder is shaping. Nothing is created from it until the
      *     user confirms.
@@ -7570,6 +8420,34 @@ export interface components {
        */
       trigger: Record<string, unknown>;
     };
+    AgentFailedSession: {
+      error?: string | null;
+      /** Format: date-time */
+      failed_at: string;
+      /** Format: int64 */
+      failed_turns: number;
+      /**
+       * Format: int32
+       * @description Sequence of the latest terminal failure in the requested window.
+       */
+      failure_sequence: number;
+      session: components["schemas"]["Session"];
+    };
+    AgentFailureSessions: {
+      /** Format: date-time */
+      after: string;
+      /** Format: date-time */
+      before: string;
+      data: components["schemas"]["AgentFailedSession"][];
+      /** Format: int64 */
+      failed_turns: number;
+      /** Format: int32 */
+      limit: number;
+      /** Format: int32 */
+      offset: number;
+      /** Format: int64 */
+      total_sessions: number;
+    };
     /** @description Result of disconnecting an agent from GitHub. */
     AgentGitHubDisconnect: {
       outcome: components["schemas"]["GitHubDisconnectOutcome"];
@@ -7583,12 +8461,38 @@ export interface components {
        *     installation was removed.
        */
       app_created: boolean;
+      /**
+       * @description The App's settings page on GitHub, where its logo is uploaded
+       *     (GitHub has no API for that). `None` when the owner's account kind is
+       *     not known, since user and organization Apps live at different paths.
+       */
+      app_settings_url?: string | null;
       app_slug?: string | null;
       app_url?: string | null;
-      /** @description An installation is bound, so tools and triggers work. */
+      /**
+       * @description The login GitHub shows for the agent, e.g. `pr-summarizer[bot]`, or the
+       *     shared App's (`everruns[bot]`) when the agent chose it and the
+       *     deployment names its slug; `None` otherwise.
+       */
+      bot_login?: string | null;
+      /**
+       * @description An installation is bound, so tools and triggers work: the agent's own
+       *     App's, or a shared Everruns App installation the agent chose.
+       */
       connected: boolean;
+      /**
+       * @description Shared Everruns App installations an org admin linked, which this agent
+       *     can choose instead of an App of its own (D3). Empty when none is linked
+       *     or the deployment has no shared App.
+       */
+      everruns_app_installations: components["schemas"]["EverrunsAppInstallation"][];
       /** @description The agent's identity, once it has one; disconnect goes through it. */
       identity_id?: string | null;
+      /**
+       * @description Which GitHub identity the agent acts as: `agent_app` (its own App) or
+       *     `everruns_app` (the shared Everruns App). `None` before either exists.
+       */
+      kind?: string | null;
       /**
        * @description Permissions new Apps request that this installation lacks (`name:level`),
        *     e.g. `actions:read` for CI triggers on an App created before them.
@@ -8463,6 +9367,15 @@ export interface components {
     /** @description Batch secret set request */
     BatchSetSecretsRequest: {
       /**
+       * @description Optional bindings keyed by secret name. A bound secret is write-only:
+       *     the agent's shell sees `$NAME` as a placeholder, and the platform puts
+       *     the value on requests to the bound URL only. A name set without a
+       *     binding becomes an ordinary secret again.
+       */
+      bindings?: {
+        [key: string]: components["schemas"]["SecretBinding"];
+      };
+      /**
        * @description Map of secret names to values. Names are case-sensitive; values are stored encrypted
        *     and never returned by list/read endpoints. Existing keys are overwritten.
        *     Example: `{"OPENAI_API_KEY": "sk-...", "GITHUB_TOKEN": "ghp_..."}`.
@@ -8637,7 +9550,8 @@ export interface components {
     BuiltInSearchProvider: {
       description: string;
       /**
-       * @description `free` or `native`.
+       * @description `free`, `native`, or `hosted` (the deployment's own search, when it
+       *     offers one).
        * @example free
        */
       id: string;
@@ -10004,7 +10918,11 @@ export interface components {
       /** @description Whether the channel can accept ingress traffic. */
       enabled?: boolean;
     };
-    /** @description Declare a credential requirement for an agent's attached MCP tool. */
+    /**
+     * @description Declare a credential requirement for an agent: an attached MCP tool's
+     *     parameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP
+     *     API the agent's shell calls (`env_name`, `url`, `auth`).
+     */
     CreateAgentCredentialBinding: {
       /**
        * @description Agent ID, populated from the request path by the HTTP API.
@@ -10012,30 +10930,51 @@ export interface components {
        */
       agent_id?: string;
       /**
+       * @description `bearer` (default) sends `Authorization: Bearer <value>`; `header`
+       *     sends the value in `header_name` (HTTP API).
+       * @example bearer
+       */
+      auth?: string | null;
+      /**
        * @description Optional explanation of how the credential will be used.
        * @example Delivers scheduled status notifications
        */
       description?: string | null;
+      /**
+       * @description Env var name the agent's shell uses as a placeholder (HTTP API).
+       * @example JEV_API_KEY
+       */
+      env_name?: string | null;
+      /**
+       * @description Header that carries the value when `auth` is `header` (HTTP API).
+       * @example X-Api-Key
+       */
+      header_name?: string | null;
       /**
        * @description Human-readable label shown in the secure setup UI.
        * @example Visti channel key
        */
       label: string;
       /**
-       * @description Name of an MCP server attached to the agent.
+       * @description Name of an MCP server attached to the agent (MCP tool parameter).
        * @example visti
        */
-      mcp_server_name: string;
+      mcp_server_name?: string | null;
       /**
-       * @description Top-level tool argument to inject outside model context.
+       * @description Top-level tool argument to inject outside model context (MCP tool parameter).
        * @example channel_key
        */
-      parameter_name: string;
+      parameter_name?: string | null;
       /**
-       * @description MCP tool whose outbound call requires the credential.
+       * @description MCP tool whose outbound call requires the credential (MCP tool parameter).
        * @example visti_send
        */
-      tool_name: string;
+      tool_name?: string | null;
+      /**
+       * @description HTTPS URL prefix the value may be sent to (HTTP API).
+       * @example https://api.typesafe.ai
+       */
+      url?: string | null;
     };
     /** @description Request to create an ingress channel owned by an Agent. */
     CreateAgentEndpointRequest: {
@@ -10143,6 +11082,14 @@ export interface components {
        * @example 20
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response (sent as `max_tokens`).
+       *     Omit to use the provider default. Must be at least 1; clamped to the
+       *     model's output limit when known.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -10310,6 +11257,20 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Schedule only: the conversation on `target_channel_id`, keyed the way
+       *     the channel binds sessions: `slack:user:{user_id}` (a direct message)
+       *     or `slack:channel:{channel_id}` (top-level posts).
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Schedule only: the agent's channel whose conversation each run speaks
+       *     in, instead of a session of the trigger's own. Needs
+       *     `target_binding_key`.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
@@ -11004,6 +11965,11 @@ export interface components {
        */
       subject_type: string;
     };
+    /** @description Start an idle session on an Agent API channel. The body may be empty. Send a message to begin a turn. */
+    CreatePlatformAgentSessionRequest: {
+      /** @description Optional title for the session. */
+      title?: string | null;
+    };
     /** @description Request body for creating a plugin marketplace. */
     CreatePluginMarketplaceRequest: {
       /**
@@ -11327,14 +12293,6 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       virtual_user_id?: string | null;
-      /**
-       * @description Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
-       *     instead of auto-creating a default per-session workspace. The workspace
-       *     must exist in the caller's org and be `active`. Lets multiple sessions
-       *     share one working filesystem. Omit for the default 1:1 behavior.
-       * @example wsp_01933b5a00007000800000000000001
-       */
-      workspace_id?: string | null;
     };
     /** @description Request to create a skill from SKILL.md content */
     CreateSkillRequest: {
@@ -11389,12 +12347,6 @@ export interface components {
       timezone?: string | null;
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
-    };
-    CreateWorkspaceRequest: {
-      /** @example Shared workspace for the Q4 research project */
-      description?: string | null;
-      /** @example team-research */
-      name: string;
     };
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
@@ -12657,6 +13609,55 @@ export interface components {
        */
       turn_count: number;
     };
+    /** @description A shared Everruns App installation the org links, as an agent can choose it. */
+    EverrunsAppInstallation: {
+      /** @description GitHub account the installation is on. */
+      account: string;
+      /** @description GitHub's account type: `User` or `Organization`, when known. */
+      account_type?: string | null;
+      /**
+       * Format: uuid
+       * @description The org link's connection id; pass it to choose this installation.
+       */
+      connection_id: string;
+      /** @description `all` or `selected`, when known. */
+      repository_selection?: string | null;
+    };
+    /** @description One shared App installation linked to the org. */
+    EverrunsAppLink: {
+      /**
+       * @description GitHub account the installation is on.
+       * @example acme
+       */
+      account: string;
+      /** @description GitHub's account type: `User` or `Organization`. */
+      account_type?: string | null;
+      /** @description Agents in the org acting through this link. */
+      agent_count: number;
+      /**
+       * Format: uuid
+       * @description Connection id agents choose the link by.
+       */
+      id: string;
+      /**
+       * Format: int64
+       * @description GitHub installation id.
+       * @example 4242
+       */
+      installation_id: number;
+      /** Format: date-time */
+      linked_at: string;
+      /** @description `all` or `selected`. */
+      repository_selection?: string | null;
+    };
+    /** @description The org's links to the shared Everruns GitHub App. */
+    EverrunsAppLinks: {
+      /** @description The shared App's slug; agents that choose it show up as `<slug>[bot]`. */
+      app_slug?: string | null;
+      /** @description The deployment has a shared App; without one nothing can be linked. */
+      configured: boolean;
+      installations: components["schemas"]["EverrunsAppLink"][];
+    };
     /**
      * @description Execution phase for assistant messages in multi-step tool-calling flows.
      *
@@ -12884,6 +13885,17 @@ export interface components {
       updated_at: string;
     };
     /**
+     * @description How bad a recorded failure is, decided by whether work stopped.
+     *
+     *     The runtime assigns this, not the client: a failed tool call is reported
+     *     back to the model as a result and the turn keeps going, so it is an
+     *     `issue`. A failure that ends the work (a failed turn, a failed task) is an
+     *     `error`. Clients render issues as warnings and reserve
+     *     error styling for `error`.
+     * @enum {string}
+     */
+    FailureSeverity: "issue" | "error";
+    /**
      * @description Rollout policy for one feature, independent of the running deployment grade.
      * @enum {string}
      */
@@ -12933,7 +13945,7 @@ export interface components {
     /** @description Stored file metadata (no binary data). */
     FileInfo: {
       /**
-       * @description MIME type of the stored file (currently always application/pdf).
+       * @description MIME type of the stored file: application/pdf or application/zip.
        * @example application/pdf
        */
       content_type: string;
@@ -12997,7 +14009,7 @@ export interface components {
     /** @description File metadata returned after a successful upload (no binary data). */
     FileUploadResponse: {
       /**
-       * @description MIME type of the stored file (currently always application/pdf).
+       * @description MIME type of the stored file: application/pdf or application/zip.
        * @example application/pdf
        */
       content_type: string;
@@ -14847,6 +15859,15 @@ export interface components {
          * @example 50
          */
         max_iterations?: number | null;
+        /**
+         * Format: int32
+         * @description Ceiling on output tokens per model response, sent to the provider as
+         *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+         *     output limit when known. Lower it when a provider rejects calls because
+         *     the balance can only afford fewer tokens.
+         * @example 4096
+         */
+        max_output_tokens?: number | null;
         /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -14926,6 +15947,7 @@ export interface components {
          * @example agent_01933b5a000070008000000000000001
          */
         agent_id: string;
+        binding?: components["schemas"]["SecretBinding"] | null;
         /**
          * @description Whether an encrypted value has been provisioned.
          * @example true
@@ -14942,41 +15964,48 @@ export interface components {
          */
         description?: string | null;
         /**
+         * @description Env var the agent's shell uses as a placeholder (`http`).
+         * @example JEV_API_KEY
+         */
+        env_name?: string | null;
+        /**
          * Format: uuid
          * @description Stable credential binding identifier.
          * @example 01933b5a-0000-7000-8000-000000000001
          */
         id: string;
+        /** @description How the credential is injected. */
+        kind: components["schemas"]["AgentCredentialKind"];
         /**
          * @description Human-readable credential label.
          * @example Visti channel key
          */
         label: string;
         /**
-         * @description Name of the attached MCP server.
+         * @description Name of the attached MCP server (`mcp_parameter`).
          * @example visti
          */
-        mcp_server_name: string;
+        mcp_server_name?: string | null;
         /**
-         * @description Exact MCP endpoint authorized to receive the credential.
+         * @description Exact MCP endpoint authorized to receive the credential (`mcp_parameter`).
          * @example https://visti.sh/mcp
          */
-        mcp_server_url: string;
+        mcp_server_url?: string | null;
         /**
-         * @description Top-level tool argument injected by the server.
+         * @description Top-level tool argument injected by the server (`mcp_parameter`).
          * @example channel_key
          */
-        parameter_name: string;
+        parameter_name?: string | null;
         /**
          * @description Relative UI route where the user can securely provision the value.
          * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
          */
         setup_url: string;
         /**
-         * @description MCP tool whose outbound call receives the credential.
+         * @description MCP tool whose outbound call receives the credential (`mcp_parameter`).
          * @example visti_send
          */
-        tool_name: string;
+        tool_name?: string | null;
         /**
          * @description RFC 3339 last-update time.
          * @example 2026-08-08T16:05:00Z
@@ -16326,6 +17355,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
          *     or `organization` (the org's default decision model).
@@ -16387,6 +17418,7 @@ export interface components {
     ListResponse_SecretInfo: {
       /** @description Array of items returned by the list operation. */
       data: {
+        binding?: components["schemas"]["SecretBinding"] | null;
         /** @description When the secret was created */
         created_at: string;
         /** @description The secret name */
@@ -17568,6 +18600,12 @@ export interface components {
        */
       tool_calls_truncated_executed?: number;
       /**
+       * @description Tool change recorded for this generation: the baseline tool list when
+       *     it started an epoch, or what was added, redefined or removed since
+       *     (see [`crate::tool_changes`]). Omitted when the tools did not change.
+       */
+      tool_changes?: Record<string, unknown> | null;
+      /**
        * @description What the output-truncation gate did because this generation lost tool
        *     calls (`finish_reason` `length`, or arguments that did not parse):
        *     `retried` (the model was told and the turn ran another generation) or
@@ -17772,6 +18810,11 @@ export interface components {
       intro_markdown?: string | null;
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response. Omission keeps the provider default.
+       */
+      max_output_tokens?: number | null;
       /** @description Named scoped MCP definitions. Credential placeholders require explicit host bindings. */
       mcpServers?: {
         [key: string]: components["schemas"]["ScopedMcpServer"];
@@ -18616,6 +19659,11 @@ export interface components {
       last_updated?: string | null;
       limits?: components["schemas"]["ModelLimits"] | null;
       modalities?: components["schemas"]["ModelModalities"] | null;
+      /**
+       * @description The vendor's model card or system card for this model: capabilities,
+       *     evaluations, safety testing and known limits, in the vendor's words.
+       */
+      model_card_url?: string | null;
       /** @description Display name of the model */
       name: string;
       /** @description Whether the model has open weights */
@@ -18780,6 +19828,432 @@ export interface components {
        * @example 2026-05-27T15:24:00Z
        */
       updated_at: string;
+    };
+    /** @description Session actor ownership, lease validity, and durable progress cursors. */
+    MonitoringActor: {
+      /**
+       * Format: int32
+       * @description Lease attempts accumulated since the last release.
+       * @example 1
+       */
+      attempts_since_release?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC cancellation request timestamp; null when cancellation is not requested.
+       * @example 2026-10-14T12:00:02Z
+       */
+      cancel_requested_at?: string | null;
+      /**
+       * Format: int64
+       * @description Persisted consumed event cursor; its difference from inbox_seq is not a pending-message count.
+       * @example 39
+       */
+      consumed_seq?: number | null;
+      /**
+       * Format: int64
+       * @description Monotonic ownership fence; null when no actor row exists.
+       * @example 17
+       */
+      fence?: number | null;
+      /**
+       * @description Current recorded holder, or previous holder for an expired lease; null when unleased.
+       * @example worker-01
+       */
+      holder?: string | null;
+      /**
+       * Format: int64
+       * @description Durable inbox progress cursor; it is not a message count.
+       * @example 42
+       */
+      inbox_seq?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC deadline of the recorded lease; null when unleased.
+       * @example 2026-10-14T12:00:10Z
+       */
+      lease_expires_at?: string | null;
+      /**
+       * Format: date-time
+       * @description Last persisted acquisition or renewal acknowledgement in UTC; null before an acknowledgement or after release.
+       * @example 2026-10-14T12:00:00Z
+       */
+      lease_renewed_at?: string | null;
+      /**
+       * @description Observed lease validity: held, expired, or unleased.
+       * @example held
+       */
+      lease_state: string;
+      /**
+       * Format: int64
+       * @description Positive interval between renewal acknowledgement and expiry in milliseconds; null when unavailable.
+       * @example 10000
+       */
+      lease_ttl_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Persisted next-input progress cursor.
+       * @example 12
+       */
+      next_input_seq?: number | null;
+      /**
+       * @description Public identifier of the owning session's organization.
+       * @example org_00000000000000000000000000000001
+       */
+      org_id: string;
+      /**
+       * @description Observed execution state; idle is also possible for a released actor detail.
+       * @example model
+       */
+      phase: string;
+      /**
+       * Format: date-time
+       * @description UTC timestamp of the committed observation used to classify the phase.
+       * @example 2026-10-14T12:00:01Z
+       */
+      phase_since: string;
+      /**
+       * Format: int64
+       * @description Milliseconds awaiting a valid lease; null for held or parked actors.
+       * @example 3000
+       */
+      runnable_age_ms?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC timestamp when the actor became runnable; null for parked work.
+       * @example 2026-10-14T11:59:59Z
+       */
+      runnable_since?: string | null;
+      /**
+       * @description Canonical session identifier whose actor is being inspected.
+       * @example session_01933b5a000070008000000000000001
+       */
+      session_id: string;
+      /**
+       * @description Persisted session lifecycle status.
+       * @example active
+       */
+      session_status: string;
+    };
+    /** @description Authorized actor inspection with bounded ownership history and trace timing. */
+    MonitoringActorDetail: {
+      /** @description Actor observation after validating the owning session's organization. */
+      actor: components["schemas"]["MonitoringActor"];
+      /**
+       * Format: date-time
+       * @description UTC observation time for actor ownership and timing.
+       * @example 2026-10-14T12:00:03Z
+       */
+      generated_at: string;
+      /** @description Up to 50 newest ownership changes from the retained one-day history. */
+      ownership_history: components["schemas"]["MonitoringLeaseEvent"][];
+      /** @description Up to 100 projected steps from the latest turn, newest first; no conversation payloads. */
+      steps: components["schemas"]["MonitoringStep"][];
+    };
+    /** @description Bounded page of current session actor observations. */
+    MonitoringActorPage: {
+      /** @description Up to 200 matching actors, ordered by expired leases and oldest runnable work. */
+      actors: components["schemas"]["MonitoringActor"][];
+      /**
+       * Format: date-time
+       * @description UTC observation time for this actor page.
+       * @example 2026-10-14T12:00:03Z
+       */
+      generated_at: string;
+      /**
+       * Format: int32
+       * @description Offset for the next page; null when there are no further matching actors.
+       * @example 200
+       */
+      next_offset?: number | null;
+    };
+    /** @description Bounded execution breakdown for one organization and live lease holder. */
+    MonitoringCohort: {
+      /**
+       * Format: int64
+       * @description Sessions in this phase, organization, and holder cohort.
+       * @example 32
+       */
+      count: number;
+      /**
+       * @description Public identifier of the organization owning these sessions.
+       * @example org_00000000000000000000000000000001
+       */
+      org_id: string;
+      /**
+       * @description Execution state shared by this organization and live holder cohort.
+       * @example model
+       */
+      phase: string;
+      /**
+       * @description Live lease holder; null for unleased or expired ownership.
+       * @example worker-01
+       */
+      worker_id?: string | null;
+    };
+    /** @description Persisted actor ownership transition, excluding renewal noise. */
+    MonitoringLeaseEvent: {
+      /**
+       * Format: date-time
+       * @description New lease deadline in UTC; null for a release.
+       * @example 2026-10-14T12:00:10Z
+       */
+      expires_at?: string | null;
+      /**
+       * Format: int64
+       * @description Ownership fence associated with this transition.
+       * @example 18
+       */
+      fence: number;
+      /**
+       * @description Holder acquiring ownership, or the holder relinquishing a released lease.
+       * @example worker-02
+       */
+      holder: string;
+      /**
+       * @description Ownership transition: acquired, reacquired, or released; renewals produce no history entry.
+       * @example reacquired
+       */
+      kind: string;
+      /**
+       * Format: date-time
+       * @description UTC time of the persisted ownership transition.
+       * @example 2026-10-14T12:00:00Z
+       */
+      occurred_at: string;
+      /**
+       * Format: date-time
+       * @description Previous lease deadline in UTC, when recorded.
+       * @example 2026-10-14T11:59:59Z
+       */
+      previous_expires_at?: string | null;
+      /**
+       * @description Holder preceding acquisition or reacquisition, when recorded.
+       * @example worker-01
+       */
+      previous_holder?: string | null;
+    };
+    /** @description Valid actor ownership linking an organization to a worker. */
+    MonitoringOwnership: {
+      /**
+       * Format: int64
+       * @description Valid actor leases held by this worker within this organization.
+       * @example 32
+       */
+      actor_leases: number;
+      /**
+       * @description Public identifier of the sessions' owning organization.
+       * @example org_00000000000000000000000000000001
+       */
+      org_id: string;
+      /**
+       * @description Worker currently holding the valid actor leases.
+       * @example worker-01
+       */
+      worker_id: string;
+    };
+    /** @description Population and age of one committed execution state. */
+    MonitoringPhase: {
+      /**
+       * Format: int64
+       * @description Complete number of sessions observed in this execution state.
+       * @example 2800
+       */
+      count: number;
+      /**
+       * Format: int64
+       * @description Age of the oldest committed phase observation in milliseconds; may be partial when cohorts are truncated.
+       * @example 3200
+       */
+      oldest_ms: number;
+      /**
+       * @description Execution state: runnable, model, tools, waiting, or setup.
+       * @example model
+       */
+      phase: string;
+    };
+    /** @description Live execution population, ownership, and event-window summary. */
+    MonitoringSnapshot: {
+      /**
+       * Format: int64
+       * @description Complete count of actor leases valid at the observation time.
+       * @example 3700
+       */
+      actor_leases: number;
+      /**
+       * Format: int64
+       * @description Complete population of live sessions and runnable or held session actors.
+       * @example 5000
+       */
+      actors: number;
+      /** @description Bounded phase, organization, and live holder breakdown; consult cohorts_truncated. */
+      cohorts: components["schemas"]["MonitoringCohort"][];
+      /**
+       * @description Whether ownership cohort detail exceeded its limit; population and phase counts remain complete.
+       * @example false
+       */
+      cohorts_truncated: boolean;
+      /**
+       * @description Committed lifecycle event counts in the lookback window, not lifetime totals.
+       * @example {
+       *       "reason.started": 350,
+       *       "tool.started": 240,
+       *       "turn.started": 120
+       *     }
+       */
+      events: {
+        [key: string]: number;
+      };
+      /**
+       * Format: int64
+       * @description Held leases whose deadline has passed, regardless of worker heartbeat.
+       * @example 3
+       */
+      expired_leases: number;
+      /**
+       * Format: date-time
+       * @description UTC observation time used to classify lease validity and event windows.
+       * @example 2026-10-14T12:00:03Z
+       */
+      generated_at: string;
+      /**
+       * @description Acquisition, reacquisition, and release counts in the lookback window; renewals are excluded.
+       * @example {
+       *       "acquired": 120,
+       *       "reacquired": 3,
+       *       "released": 110
+       *     }
+       */
+      lease_events: {
+        [key: string]: number;
+      };
+      /**
+       * Format: int64
+       * @description Age of the oldest work awaiting a valid lease, in milliseconds; null when none is runnable.
+       * @example 3000
+       */
+      oldest_runnable_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Distinct organizations represented in the current population.
+       * @example 12
+       */
+      organizations: number;
+      /** @description Organization-to-worker mapping derived only from valid actor leases. */
+      ownership: components["schemas"]["MonitoringOwnership"][];
+      /** @description Complete counts by execution state, with observed phase ages. */
+      phases: components["schemas"]["MonitoringPhase"][];
+      /**
+       * @description Monitoring boundary: organization or fleet.
+       * @example fleet
+       */
+      scope: string;
+      /**
+       * Format: int32
+       * @description Lookback window for lifecycle and ownership event counts, in seconds.
+       * @example 60
+       */
+      window_seconds: number;
+      /** @description Bounded worker observations; global telemetry is redacted for organization callers. */
+      workers: components["schemas"]["MonitoringWorker"][];
+      /**
+       * @description Whether worker detail exceeded its limit; population and phase counts remain complete.
+       * @example false
+       */
+      workers_truncated: boolean;
+    };
+    /** @description Payload-free timing projection of one step in the latest turn. */
+    MonitoringStep: {
+      /**
+       * Format: int64
+       * @description Recorded step duration in milliseconds; null until duration is available.
+       * @example 820
+       */
+      duration_ms?: number | null;
+      /**
+       * @description Trace-step category, without tool arguments, results, or agent names.
+       * @example tool
+       */
+      kind: string;
+      /**
+       * Format: date-time
+       * @description UTC time at which the projected step started.
+       * @example 2026-10-14T12:00:01Z
+       */
+      started_at: string;
+      /**
+       * @description Projected execution status of the trace step.
+       * @example completed
+       */
+      status: string;
+      /**
+       * Format: int32
+       * @description Projected step ordinal within the turn.
+       * @example 3
+       */
+      step_no: number;
+      /**
+       * Format: int32
+       * @description Projected turn ordinal for this trace step.
+       * @example 2
+       */
+      turn_no: number;
+    };
+    /** @description Scope-aware actor ownership with platform-only worker telemetry. */
+    MonitoringWorker: {
+      /**
+       * @description Last reported admission flag; null in organization scope.
+       * @example true
+       */
+      accepting_work?: boolean | null;
+      /**
+       * Format: int64
+       * @description Valid actor leases in this monitoring scope; not occupied work slots.
+       * @example 32
+       */
+      actor_leases: number;
+      /**
+       * Format: int64
+       * @description Reported maximum worker concurrency; null in organization scope.
+       * @example 50
+       */
+      capacity?: number | null;
+      /**
+       * Format: int64
+       * @description Reported worker activity load, distinct from actor leases; null in organization scope.
+       * @example 8
+       */
+      current_load?: number | null;
+      /**
+       * @description Worker identifier recorded by actor ownership or the fleet registry.
+       * @example worker-01
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Last worker heartbeat in UTC; null in organization scope.
+       * @example 2026-10-14T12:00:00Z
+       */
+      last_heartbeat_at?: string | null;
+      /**
+       * @description Leased session counts by execution state within this scope.
+       * @example {
+       *       "model": 20,
+       *       "tools": 12
+       *     }
+       */
+      phases: {
+        [key: string]: number;
+      };
+      /**
+       * @description Fleet-only worker status, including stale heartbeats; null in organization scope.
+       * @example active
+       */
+      status?: string | null;
+      /**
+       * @description Registered worker group; null in organization scope.
+       * @example execution
+       */
+      worker_group?: string | null;
     };
     /** @description Request to move/rename a file */
     MoveFileRequest: {
@@ -19217,6 +20691,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
        *     or `organization` (the org's default decision model).
@@ -19518,6 +20994,14 @@ export interface components {
          * @example false
          */
         is_pinned?: boolean | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -20114,6 +21598,14 @@ export interface components {
          * @example false
          */
         is_pinned?: boolean | null;
+        /**
+         * Format: date-time
+         * @description Timestamp of the latest input or completed assistant message.
+         *     Populated on session lists; session edits and tool events do not advance it.
+         */
+        last_message_at?: string | null;
+        /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+        last_turn_status?: string | null;
         /**
          * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
          * @example en-US
@@ -22624,8 +24116,24 @@ export interface components {
       script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
+      target?: components["schemas"]["ScheduleTriggerTarget"] | null;
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
+    };
+    /**
+     * @description A conversation a schedule trigger runs in: the session a message from that
+     *     conversation would land in, created and bound on the first run.
+     *
+     *     Slack only. `binding_key` names the conversation the way the channel binds
+     *     it: `slack:user:{user_id}` (a direct message with that person) on a
+     *     `per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a
+     *     `per_channel` one.
+     */
+    ScheduleTriggerTarget: {
+      /** @description The conversation's binding key on that channel. */
+      binding_key: string;
+      /** @description The agent's channel the conversation belongs to. */
+      channel_id: string;
     };
     /** @description Schedules list response */
     SchedulesListResponse: {
@@ -22954,7 +24462,14 @@ export interface components {
      * @description Which provider web search uses.
      * @enum {string}
      */
-    SearchProviderSetting: "org_default" | "auto" | "native" | "brave" | "account" | "free";
+    SearchProviderSetting:
+      | "org_default"
+      | "auto"
+      | "native"
+      | "brave"
+      | "parallel"
+      | "account"
+      | "free";
     /** @description What a test query returned. */
     SearchTestOutcome: {
       /** Format: int64 */
@@ -22981,8 +24496,33 @@ export interface components {
       title: string;
       url: string;
     };
+    /**
+     * @description How a bound secret is put on an outbound request.
+     *
+     *     Header-only by design: a value
+     *     is never placed in a URL or a body.
+     */
+    SecretAuth:
+      | {
+          /** @enum {string} */
+          type: "bearer";
+        }
+      | {
+          /** @description Header name. */
+          name: string;
+          /** @enum {string} */
+          type: "header";
+        };
+    /** @description Where a bound secret may be sent, and how. */
+    SecretBinding: {
+      /** @description How the value is attached. */
+      auth: components["schemas"]["SecretAuth"];
+      /** @description `https://host[:port][/path-prefix]` the value may be sent to. */
+      url: string;
+    };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
+      binding?: components["schemas"]["SecretBinding"] | null;
       /** @description When the secret was created */
       created_at: string;
       /** @description The secret name */
@@ -22997,19 +24537,6 @@ export interface components {
        * @example familiars-patch
        */
       preset_id: string;
-    };
-    /** @description Request to send a signal to a workflow */
-    SendSignalRequest: {
-      /**
-       * @description Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).
-       *     Example: `{"approved": true, "approver": "user_01933b5a00007000800000000000001"}`.
-       */
-      payload?: unknown;
-      /**
-       * @description Signal name. Must match a signal the running workflow listens for.
-       * @example user_response_received
-       */
-      signal_type: string;
     };
     /**
      * @description A typed service a provider driver can offer.
@@ -23165,6 +24692,14 @@ export interface components {
        * @example false
        */
       is_pinned?: boolean | null;
+      /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
       /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
@@ -24639,6 +26174,7 @@ export interface components {
       narration?: string | null;
       /** @description Result content (for successful calls) */
       result?: components["schemas"]["ContentPart"][] | null;
+      severity?: components["schemas"]["FailureSeverity"] | null;
       /** @description Status: "success", "error", "timeout", "cancelled" */
       status: string;
       /** @description Whether the tool call succeeded */
@@ -24886,6 +26422,7 @@ export interface components {
       display_name?: string | null;
       /** @description Human-readable narration for timeline rendering */
       narration?: string | null;
+      side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /** @description The tool call being executed */
       tool_call: components["schemas"]["ToolCall"];
       /** @description Stable fingerprint of tool name + normalized arguments. */
@@ -25287,6 +26824,7 @@ export interface components {
       new_messages: components["schemas"]["TraceRequestMessage"][];
       /** @description Start of the system prompt. */
       system_preview?: string | null;
+      tool_changes?: components["schemas"]["TraceToolChanges"] | null;
       /**
        * Format: int32
        * @description Tools offered in the call.
@@ -25548,6 +27086,26 @@ export interface components {
       /** @description Steps in step order. */
       steps: components["schemas"]["TraceStep"][];
     };
+    /**
+     * @description A tool change recorded for one model call. Models that take changes
+     *     inline keep the request's tool list fixed and receive these as messages;
+     *     others get the new tool list.
+     */
+    TraceToolChanges: {
+      /** @description Tools that became callable. */
+      added: string[];
+      /**
+       * Format: int32
+       * @description Tools fixed when this call started a new tool epoch (the first call, or
+       *     the first after a model switch or compaction).
+       * @example 9
+       */
+      baseline_tools?: number | null;
+      /** @description Tools whose definition changed, such as a searched tool's full schema. */
+      redefined: string[];
+      /** @description Tools no longer callable. */
+      removed: string[];
+    };
     /** @description One turn: what the user asked, how it went, and what happened. */
     TraceTurn: {
       /**
@@ -25784,6 +27342,14 @@ export interface components {
       input_content?: string | null;
       /**
        * Format: int32
+       * @description Number of issues the turn recovered from: tool calls the runtime ran
+       *     that failed and went back to the model as results. A completed turn
+       *     with issues still succeeded; a turn that stops on a failure emits
+       *     `turn.failed` instead. Absent when the host does not track it.
+       */
+      issue_count?: number | null;
+      /**
+       * Format: int32
        * @description Number of iterations in this turn
        */
       iterations: number;
@@ -25802,6 +27368,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -25819,7 +27386,11 @@ export interface components {
       turn_id: string;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
-    /** @description Data for turn.failed event */
+    /**
+     * @description Data for turn.failed event. A failed turn is always an error (severity
+     *     `error`): the work stopped. Recoverable tool failures never produce this
+     *     event; they surface as `tool.completed` issues.
+     */
     TurnFailedData: {
       /** @description Error message */
       error: string;
@@ -25894,6 +27465,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
@@ -25995,6 +27577,13 @@ export interface components {
        * @example 20
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response (sent as `max_tokens`).
+       *     Omit to leave unchanged; `null` clears it back to the provider default.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
@@ -26144,6 +27733,17 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Replacement target conversation; given with `target_channel_id`.
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Replacement target channel. An empty string removes the target, so
+       *     runs use a session of the trigger's own again.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description Replacement IANA timezone identifier.
        * @example UTC
@@ -26673,6 +28273,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Shared small chat model for lightweight work. Omit to preserve the selection;
+       *     pass null to clear it. Does not change the main chat or decision default.
+       */
+      small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
@@ -26887,6 +28492,12 @@ export interface components {
        */
       locale?: string | null;
       /**
+       * @description Model for this session's turns. `null` clears it so turns follow the
+       *     agent's default model again.
+       * @example model_01933b5a00007000800000000000001
+       */
+      model_id?: string | null;
+      /**
        * @description Tags for organizing and filtering sessions.
        * @example [
        *       "resolved"
@@ -26962,6 +28573,15 @@ export interface components {
       description?: string | null;
       name?: string | null;
       status?: string | null;
+    };
+    /** @description Which org link to act through. */
+    UseEverrunsAppRequest: {
+      /**
+       * Format: uuid
+       * @description Connection id of one of the org's linked installations, from the
+       *     agent's GitHub status (`everruns_app_installations`).
+       */
+      connection_id: string;
     };
     /** @description User response for listing */
     User: {
@@ -27407,7 +29027,8 @@ export interface components {
        */
       allow_native?: boolean;
       /**
-       * @description Automatic order: `native`, search account ids, and `free`, which is
+       * @description Automatic order: `native`, search account ids, `hosted` (the
+       *     deployment's own search, when it offers one) and `free`, which is
        *     always last. Entries left out keep their natural place.
        */
       automatic_order?: string[];
@@ -27548,6 +29169,15 @@ export interface components {
        * @example 50
        */
       max_iterations?: number | null;
+      /**
+       * Format: int32
+       * @description Ceiling on output tokens per model response, sent to the provider as
+       *     `max_tokens`. Unset keeps the provider default. Clamped to the model's
+       *     output limit when known. Lower it when a provider rejects calls because
+       *     the balance can only afford fewer tokens.
+       * @example 4096
+       */
+      max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -28827,6 +30457,14 @@ export interface components {
        */
       is_pinned?: boolean | null;
       /**
+       * Format: date-time
+       * @description Timestamp of the latest input or completed assistant message.
+       *     Populated on session lists; session edits and tool events do not advance it.
+       */
+      last_message_at?: string | null;
+      /** @description Outcome of the latest terminal turn, distinguishing cancellation from failure. */
+      last_turn_status?: string | null;
+      /**
        * @description Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
        * @example en-US
        */
@@ -29308,7 +30946,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  list_examples: {
+  list_agent_examples: {
     parameters: {
       query?: never;
       header?: never;
@@ -31285,6 +32923,36 @@ export interface operations {
       };
     };
   };
+  list_agent_failures: {
+    parameters: {
+      query?: {
+        /** @description Exclusive lower bound on failure time; defaults to 24 hours before `before`. */
+        after?: string;
+        /** @description Inclusive upper bound, normally the Agents activity response's generated_at. */
+        before?: string;
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentFailureSessions"];
+        };
+      };
+    };
+  };
   get_agent_github: {
     parameters: {
       query?: never;
@@ -31372,6 +33040,54 @@ export interface operations {
       };
       /** @description Agent not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  use_agent_everruns_app: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UseEverrunsAppRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentGitHubStatus"];
+        };
+      };
+      /** @description Agent or linked installation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The agent has a GitHub App of its own */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The shared Everruns App is not configured */
+      503: {
         headers: {
           [name: string]: unknown;
         };
@@ -33546,9 +35262,14 @@ export interface operations {
       cookie?: never;
     };
     /** @description Optional title. May be empty. */
-    requestBody: {
+    requestBody?: {
       content: {
-        "application/json": components["schemas"]["CreateAgentSessionRequest"];
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
       };
     };
     responses: {
@@ -33781,7 +35502,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;
@@ -34852,6 +36573,103 @@ export interface operations {
       };
     };
   };
+  get_fleet_monitoring: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform-wide execution monitoring */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringSnapshot"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_fleet_monitoring_actors: {
+    parameters: {
+      query?: {
+        /**
+         * @description Zero-based offset for fixed 200-actor pages; maximum 1000000.
+         * @example 0
+         */
+        offset?: number;
+        /**
+         * @description Filter by a valid current lease holder, up to 256 UTF-8 bytes.
+         * @example worker-01
+         */
+        worker_id?: string;
+        /**
+         * @description Filter by runnable, model, tools, waiting, or setup execution state.
+         * @example model
+         */
+        phase?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform actor page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorPage"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_actor: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Platform actor diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorDetail"];
+        };
+      };
+      /** @description Actor not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_schedules: {
     parameters: {
       query?: {
@@ -35384,7 +37202,7 @@ export interface operations {
       };
     };
   };
-  list_tasks: {
+  list_durable_tasks: {
     parameters: {
       query?: {
         /** @description Filter by status */
@@ -35710,49 +37528,6 @@ export interface operations {
       };
     };
   };
-  send_signal: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Workflow ID */
-        workflow_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["SendSignalRequest"];
-      };
-    };
-    responses: {
-      /** @description Signal sent */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Workflow not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Internal server error */
-      500: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   stream_workflow_sse: {
     parameters: {
       query?: never;
@@ -35981,9 +37756,14 @@ export interface operations {
       cookie?: never;
     };
     /** @description Optional title. May be empty. */
-    requestBody: {
+    requestBody?: {
       content: {
-        "application/json": components["schemas"]["CreateAgentSessionRequest"];
+        /**
+         * @example {
+         *       "title": "Order 42"
+         *     }
+         */
+        "application/json": components["schemas"]["CreatePlatformAgentSessionRequest"];
       };
     };
     responses: {
@@ -36159,7 +37939,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}}` */
+    /** @description `{"message": {"role": "user", "content": [{"type": "text", "text": …}]}, "files": [MessageFile]}`. Content holds text and image parts; `files` (optional) carries files as base64 `data` or a public https `url`, each kept in the session's `/attachments`. */
     requestBody: {
       content: {
         "application/json": unknown;
@@ -37367,7 +39147,7 @@ export interface operations {
       };
     };
   };
-  list_examples_get_v1_harness_examples: {
+  list_examples: {
     parameters: {
       query?: never;
       header?: never;
@@ -40113,7 +41893,7 @@ export interface operations {
       };
     };
   };
-  get_file_get_v1_memories_memory_id_fs_path: {
+  get_memory_file: {
     parameters: {
       query?: never;
       header?: never;
@@ -40257,7 +42037,7 @@ export interface operations {
       };
     };
   };
-  delete_file_delete_v1_memories_memory_id_fs_path: {
+  delete_memory_file: {
     parameters: {
       query?: never;
       header?: never;
@@ -40634,6 +42414,132 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_monitoring: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization execution monitoring */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringSnapshot"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not enrolled */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_monitoring_actors: {
+    parameters: {
+      query?: {
+        /**
+         * @description Zero-based offset for fixed 200-actor pages; maximum 1000000.
+         * @example 0
+         */
+        offset?: number;
+        /**
+         * @description Filter by a valid current lease holder, up to 256 UTF-8 bytes.
+         * @example worker-01
+         */
+        worker_id?: string;
+        /**
+         * @description Filter by runnable, model, tools, waiting, or setup execution state.
+         * @example model
+         */
+        phase?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization actor page */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorPage"];
+        };
+      };
+    };
+  };
+  get_monitoring_actor: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization actor diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringActorDetail"];
+        };
+      };
+      /** @description Actor not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  monitoring_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Monitoring authorization */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResourceConfigResponse"];
+        };
       };
     };
   };
@@ -41352,6 +43258,98 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_links: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EverrunsAppLinks"];
+        };
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  authorize_link: {
+    parameters: {
+      query?: {
+        return_to?: string;
+      };
+      header?: never;
+      path: {
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Redirect to GitHub */
+      303: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  unlink: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Unlinked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Admin access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Link not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -43881,7 +45879,7 @@ export interface operations {
       };
     };
   };
-  list_sessions: {
+  list_platform_sessions: {
     parameters: {
       query?: {
         /** @description Exclude the permanent Chat from side-conversation pages. */
@@ -46169,7 +48167,7 @@ export interface operations {
       };
     };
   };
-  list_tasks_get_v1_sessions_session_id_tasks: {
+  list_tasks: {
     parameters: {
       query?: {
         /** @description Filter by state */
@@ -48138,7 +50136,7 @@ export interface operations {
       };
     };
   };
-  list_connections_get_v1_virtual_users_identity_id_connections: {
+  list_virtual_user_connections: {
     parameters: {
       query?: never;
       header?: never;
@@ -48229,7 +50227,7 @@ export interface operations {
       };
     };
   };
-  delete_connection_delete_v1_virtual_users_identity_id_connections_provider: {
+  delete_virtual_user_connection: {
     parameters: {
       query?: never;
       header?: never;
@@ -48340,7 +50338,7 @@ export interface operations {
       };
     };
   };
-  verify_connection_post_v1_virtual_users_identity_id_connections_provider_verify: {
+  verify_virtual_user_connection: {
     parameters: {
       query?: never;
       header?: never;
@@ -48919,7 +50917,7 @@ export interface operations {
       };
     };
   };
-  list_sessions_get_v1_virtual_users_identity_id_sessions: {
+  list_sessions: {
     parameters: {
       query?: never;
       header?: never;
@@ -48974,48 +50972,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_Workspace"];
-        };
-      };
-    };
-  };
-  create_workspace: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateWorkspaceRequest"];
-      };
-    };
-    responses: {
-      /** @description Created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Workspace"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Name conflict */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

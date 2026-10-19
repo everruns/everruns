@@ -1,6 +1,6 @@
 ---
 title: everruns virtual-users
-description: "Runtime accounts for consumers or services. CLI reference for everruns virtual-users."
+description: "Runtime accounts for consumers or services. CLI reference for everruns virtual-users: usage, flags and examples."
 sidebar:
   label: virtual-users
 appliesTo: [platform, cloud]

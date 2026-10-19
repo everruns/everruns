@@ -14,7 +14,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::SessionId;
 
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
 };
 use crate::core::TURN_STARTED;
 use crate::host::InProcessRuntime;
@@ -32,12 +32,18 @@ pub(super) struct Row {
     pub fence: u64,
     pub expires: Option<Instant>,
     pub cancel_requested: bool,
+    /// The inbox position the pending cancel targets.
+    pub cancel_inbox_seq: i64,
     pub cancel_reported: bool,
 }
 
 impl Row {
     fn leased(&self) -> bool {
         self.holder.is_some() && self.expires.is_some_and(|at| at > Instant::now())
+    }
+
+    fn cancel(&self) -> Option<i64> {
+        self.cancel_requested.then_some(self.cancel_inbox_seq)
     }
 }
 
@@ -53,6 +59,9 @@ pub(super) struct MemoryActors {
     rows: Mutex<HashMap<SessionId, Row>>,
     line: Mutex<u64>,
     renews: AtomicUsize,
+    /// Renews still to fail with a store error, as during a control-plane
+    /// outage.
+    failing_renews: AtomicUsize,
 }
 
 impl MemoryActors {
@@ -62,6 +71,7 @@ impl MemoryActors {
             rows: Mutex::new(HashMap::new()),
             line: Mutex::new(0),
             renews: AtomicUsize::new(0),
+            failing_renews: AtomicUsize::new(0),
         }
     }
 
@@ -69,6 +79,11 @@ impl MemoryActors {
         let mut line = self.line.lock().unwrap();
         *line += 1;
         *line
+    }
+
+    /// Fail the next `count` renews with a store error.
+    pub(super) fn fail_renews(&self, count: usize) {
+        self.failing_renews.store(count, Ordering::SeqCst);
     }
 
     /// Renews that reached the index, by any holder.
@@ -131,6 +146,7 @@ impl MemoryActors {
         };
         if row.leased() {
             row.cancel_requested = true;
+            row.cancel_inbox_seq = row.inbox_seq;
             row.cancel_reported = false;
             Cancel::Requested
         } else {
@@ -142,6 +158,13 @@ impl MemoryActors {
             row.cancel_requested = false;
             row.cancel_reported = false;
             Cancel::Withdrawn
+        }
+    }
+
+    /// A renew committed the cursor up to `sequence` before the holder died.
+    pub(super) fn commit(&self, session_id: SessionId, sequence: i64) {
+        if let Some(row) = self.rows.lock().unwrap().get_mut(&session_id) {
+            row.consumed_seq = row.consumed_seq.max(sequence);
         }
     }
 
@@ -187,7 +210,7 @@ impl ActorLeaseStore for MemoryActors {
                 org_id: row.org_id,
                 fence: row.fence,
                 inbox_seq: row.inbox_seq,
-                cancel_requested: row.cancel_requested,
+                cancel_inbox_seq: row.cancel(),
                 consumed_seq: row.consumed_seq,
                 next_input_seq: row.next_input_seq,
                 attempts: row.attempts,
@@ -195,7 +218,10 @@ impl ActorLeaseStore for MemoryActors {
         }
         Ok(leased)
     }
+}
 
+#[async_trait]
+impl SessionActorStore for MemoryActors {
     async fn renew_actor_lease(
         &self,
         session_id: SessionId,
@@ -205,6 +231,15 @@ impl ActorLeaseStore for MemoryActors {
         consumed_seq: i64,
     ) -> Result<Option<ActorRenewal>> {
         self.renews.fetch_add(1, Ordering::SeqCst);
+        if self
+            .failing_renews
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok()
+        {
+            return Err(AgentLoopError::store("control plane unavailable"));
+        }
         let mut rows = self.rows.lock().unwrap();
         // No row at all: the session was deleted (EVE-1235).
         let Some(row) = rows.get_mut(&session_id) else {
@@ -218,7 +253,7 @@ impl ActorLeaseStore for MemoryActors {
         row.consumed_seq = row.consumed_seq.max(consumed_seq);
         Ok(Some(ActorRenewal {
             inbox_seq: row.inbox_seq,
-            cancel_requested: row.cancel_requested,
+            cancel_inbox_seq: row.cancel(),
         }))
     }
 

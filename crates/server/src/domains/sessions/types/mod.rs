@@ -11,15 +11,13 @@ use crate::kernel_imports::{
 };
 use crate::storage::UpdateField;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
-use everruns_contracts::typed_id::{
-    AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
-};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId, VirtualUserId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 // `CreateSessionRequest` keeps its own file; it shares this module's imports.
 mod create_request;
-pub use create_request::CreateSessionRequest;
+pub use create_request::{CreateSessionRequest, WORKSPACE_ATTACH_RETIRED};
 
 /// Request to fork a session. Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
@@ -189,6 +187,15 @@ pub struct UpdateSessionRequest {
         nullable = true
     )]
     pub virtual_user_id: UpdateField<VirtualUserId>,
+    /// Model for this session's turns. `null` clears it so turns follow the
+    /// agent's default model again.
+    #[serde(default, with = "crate::domains::change_history::update_field")]
+    #[schema(
+        value_type = Option<String>,
+        example = "model_01933b5a00007000800000000000001",
+        nullable = true
+    )]
+    pub model_id: UpdateField<ModelId>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]

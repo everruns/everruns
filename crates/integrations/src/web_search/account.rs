@@ -21,8 +21,13 @@ use everruns_contracts::runtime::web_search::{
 use everruns_contracts::typed_id::SessionId;
 use tracing::debug;
 
-use super::BRAVE_SEARCH_CONNECTION_PROVIDER;
-use super::brave::BraveSearchDriver;
+use super::brave::{BRAVE_API_BASE, BraveSearchDriver};
+use super::cloudflare::{CLOUDFLARE_API_BASE, CloudflareSearchDriver, CloudflareSearchOptions};
+use super::parallel::{PARALLEL_API_BASE, ParallelSearchDriver};
+use super::{
+    BRAVE_SEARCH_CONNECTION_PROVIDER, CLOUDFLARE_WEB_SEARCH_CONNECTION_PROVIDER,
+    PARALLEL_CONNECTION_PROVIDER,
+};
 
 /// How long a worker reuses an organization's web search settings.
 pub const ORG_SETTINGS_TTL: Duration = WEB_SEARCH_SETTINGS_TTL;
@@ -39,34 +44,108 @@ pub(super) async fn org_settings(context: &ToolContext) -> Option<Arc<WebSearchO
     cached_web_search_settings(resolver.as_ref(), &key, context.session_id).await
 }
 
+/// API endpoints of the keyed drivers; tests point them at mock servers.
+#[derive(Clone)]
+pub(super) struct DriverBases {
+    pub(super) brave: String,
+    pub(super) parallel: String,
+    pub(super) cloudflare: String,
+}
+
+impl Default for DriverBases {
+    fn default() -> Self {
+        Self {
+            brave: BRAVE_API_BASE.to_string(),
+            parallel: PARALLEL_API_BASE.to_string(),
+            cloudflare: CLOUDFLARE_API_BASE.to_string(),
+        }
+    }
+}
+
+impl DriverBases {
+    /// The driver for a search account's connection provider, key and
+    /// stored options, or `None` when no driver exists for that provider or
+    /// its options are missing or invalid.
+    pub(super) fn driver(
+        &self,
+        provider: &str,
+        key: String,
+        options: Option<&serde_json::Value>,
+    ) -> Option<Arc<dyn SearchDriver>> {
+        match provider {
+            BRAVE_SEARCH_CONNECTION_PROVIDER => {
+                Some(Arc::new(BraveSearchDriver::with_base_url(key, &self.brave)))
+            }
+            PARALLEL_CONNECTION_PROVIDER => Some(Arc::new(ParallelSearchDriver::with_base_url(
+                key,
+                &self.parallel,
+            ))),
+            CLOUDFLARE_WEB_SEARCH_CONNECTION_PROVIDER => {
+                let options = match CloudflareSearchOptions::from_value(options?) {
+                    Ok(options) => options,
+                    Err(error) => {
+                        debug!("cloudflare search account options rejected: {error}");
+                        return None;
+                    }
+                };
+                Some(Arc::new(CloudflareSearchDriver::with_base_url(
+                    key,
+                    options,
+                    &self.cloudflare,
+                )))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The search driver for an organization search account's connection
+/// provider (`brave_search`, `parallel`, `cloudflare_web_search`), key and
+/// stored options, or `None` when this build has no driver for the provider.
+/// The server's account test uses it.
+pub fn account_search_driver(
+    provider: &str,
+    key: String,
+    options: Option<&serde_json::Value>,
+) -> Option<Arc<dyn SearchDriver>> {
+    DriverBases::default().driver(provider, key, options)
+}
+
 /// A search driver for one organization account, or `None` when this host
 /// has no driver for the account's provider.
 pub(super) fn account_driver(
     account: &SearchAccount,
     resolver: Arc<dyn UserConnectionResolver>,
     session_id: SessionId,
-    brave_base: &str,
+    bases: &DriverBases,
 ) -> Option<Arc<dyn SearchDriver>> {
-    (account.provider == BRAVE_SEARCH_CONNECTION_PROVIDER).then(|| {
-        Arc::new(AccountDriver {
-            id: format!("account:{}", account.id),
-            label: format!("Brave Search · {}", account.name),
-            account: account.id,
-            session_id,
-            resolver,
-            brave_base: brave_base.to_string(),
-        }) as Arc<dyn SearchDriver>
-    })
+    // A probe driver supplies the label, capabilities and hosts; the real
+    // one is built with the key when the plan reaches this account.
+    let probe = bases.driver(&account.provider, String::new(), account.options.as_ref())?;
+    Some(Arc::new(AccountDriver {
+        id: format!("account:{}", account.id),
+        label: format!("{} · {}", probe.label(), account.name),
+        provider: account.provider.clone(),
+        options: account.options.clone(),
+        probe,
+        account: account.id,
+        session_id,
+        resolver,
+        bases: bases.clone(),
+    }))
 }
 
-/// Brave Search with an organization account's key, fetched on use.
+/// A search account's driver with the key fetched on use.
 struct AccountDriver {
     id: String,
     label: String,
+    provider: String,
+    options: Option<serde_json::Value>,
+    probe: Arc<dyn SearchDriver>,
     account: uuid::Uuid,
     session_id: SessionId,
     resolver: Arc<dyn UserConnectionResolver>,
-    brave_base: String,
+    bases: DriverBases,
 }
 
 #[async_trait]
@@ -80,11 +159,11 @@ impl SearchDriver for AccountDriver {
     }
 
     fn capabilities(&self) -> SearchDriverCapabilities {
-        BraveSearchDriver::new("").capabilities()
+        self.probe.capabilities()
     }
 
     fn egress_hosts(&self) -> &'static [&'static str] {
-        BraveSearchDriver::new("").egress_hosts()
+        self.probe.egress_hosts()
     }
 
     async fn search(
@@ -112,8 +191,15 @@ impl SearchDriver for AccountDriver {
                 ));
             }
         };
-        BraveSearchDriver::with_base_url(key, &self.brave_base)
-            .search(request, context)
-            .await
+        match self
+            .bases
+            .driver(&self.provider, key, self.options.as_ref())
+        {
+            Some(driver) => driver.search(request, context).await,
+            None => Err(SearchFailure::new(
+                SearchFailureKind::NotConfigured,
+                "This host has no driver for the search account",
+            )),
+        }
     }
 }

@@ -80,6 +80,14 @@ async fn runtime_running(
     max_iterations: usize,
     script: Vec<SimTurn>,
 ) -> (InProcessRuntime, everruns_contracts::typed_id::SessionId) {
+    runtime_running_with(seed, max_iterations, LlmSimConfig::scripted(script)).await
+}
+
+async fn runtime_running_with(
+    seed: u128,
+    max_iterations: usize,
+    llm_sim: LlmSimConfig,
+) -> (InProcessRuntime, everruns_contracts::typed_id::SessionId) {
     let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(seed);
     let agent_id = everruns_contracts::typed_id::AgentId::from_seed(seed);
     let session_id = everruns_contracts::typed_id::SessionId::from_seed(seed);
@@ -89,7 +97,7 @@ async fn runtime_running(
         .harness(harness(harness_id))
         .agent(agent(agent_id, max_iterations))
         .session(session(session_id, harness_id, agent_id))
-        .llm_sim_as_default(LlmSimConfig::scripted(script))
+        .llm_sim_as_default(llm_sim)
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .build()
         .await
@@ -407,19 +415,23 @@ async fn cancelling_a_turn_leaves_the_runtime_usable() {
     // The facade cancels by dropping the `run_turn` future. Nothing in the
     // engine-planned loop holds a lock across an await point, so a later turn on
     // the same session still runs to completion.
-    let (runtime, session_id) = runtime_running(
+    // The model answers after a delay, so the turn is still in flight when
+    // its future is dropped: an llmsim turn that never waits can finish on
+    // its first poll, leaving nothing to cancel.
+    let (runtime, session_id) = runtime_running_with(
         906,
         8,
-        vec![
+        LlmSimConfig::scripted(vec![
             SimTurn::ToolCalls(vec![add("call_1", 2, 2)]),
             SimTurn::Assistant("4".to_string()),
             SimTurn::Assistant("still here".to_string()),
-        ],
+        ])
+        .with_response_delay(std::time::Duration::from_millis(50)),
     )
     .await;
 
     let cancelled = tokio::time::timeout(
-        std::time::Duration::from_nanos(1),
+        std::time::Duration::from_millis(5),
         runtime.run_text_turn(session_id, "start something"),
     )
     .await;
@@ -462,6 +474,7 @@ fn planner_state_survives_a_restart_between_every_step() {
         cumulative_usage: None,
         tool_call_count: 0,
         llm_call_count: 0,
+        issue_count: 0,
         time_to_first_token_ms: None,
         final_message_id: None,
         final_answer_preview: None,

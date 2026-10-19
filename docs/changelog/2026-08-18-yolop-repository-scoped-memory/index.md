@@ -20,5 +20,14 @@ projects.
 
 The agent picks the scope when it calls the tool, and the system prompt labels
 global and repository memory separately. Any other scope value is rejected.
+A `remember` call that saves a note for the current repository:
+
+```json
+{
+  "title": "Test command",
+  "memory": "Run cargo test --workspace before pushing.",
+  "scope": "repository"
+}
+```
 
 See [Skills, memory, and hooks](https://github.com/everruns/yolop#skills-memory-and-hooks) and [#584](https://github.com/everruns/yolop/pull/584).

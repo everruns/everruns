@@ -1,35 +1,10 @@
-// Workflow step implementations
+// Inputs and type names of the durable activities the worker runs.
 //
-// Steps are the units of work scheduled by the durable workflow orchestrator.
-// Each step runs as a task and returns a result.
-// Decision: Workers communicate with control-plane via gRPC for all operations.
-//
-// These implementations use Atoms from everruns-core for the actual work:
-// - InputAtom: Retrieves user input message
-// - ReasonAtom: LLM call with context preparation
-// - ActAtom: Parallel tool execution
-//
-// Atoms handle message loading internally via MessageRetriever trait.
-// Atoms emit events via EventEmitter for observability.
+// Turns are not queued activities: a worker runs a session's whole turn on an
+// actor lease (`actor_runtime`). The queue carries only the activities below;
+// `task_driver` runs them.
 
-use crate::host::HostComposition;
-use crate::host::{
-    execute_act_activity as runtime_execute_act_activity,
-    execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity,
-};
-use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
-use crate::grpc_adapters::GrpcClient;
-use crate::grpc_worker_adapters::GrpcWorkerAdapters;
-use crate::runtime_host::WorkerRuntimeHost;
-
-// Re-export atom types for activity callers
-pub use crate::engine::{
-    ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
-};
 
 /// Durable schedule target input for an endpoint addressed through its legacy
 /// App alias. Field names are persisted in schedule targets.
@@ -50,153 +25,28 @@ pub struct ScheduledAgentTriggerInput {
 }
 
 // ============================================================================
-// Activity Implementations
-// ============================================================================
-
-/// Process user input using InputAtom
-///
-/// This activity:
-/// 1. Sets session status to "active" and emits session.activated event
-/// 2. Emits turn.started event
-/// 3. Retrieves the user message from the message store
-/// 4. Returns the message for downstream processing
-pub async fn input_activity(
-    grpc_client: GrpcClient,
-    org_id: i64,
-    input: InputAtomInput,
-) -> Result<InputAtomResult> {
-    tracing::info!(
-        org_id = org_id,
-        session_id = %input.context.session_id,
-        turn_id = %input.context.turn_id,
-        input_message_id = %input.context.input_message_id,
-        "Executing input_activity"
-    );
-
-    let host = WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client(grpc_client));
-    let result = runtime_execute_input_activity(&host, org_id, input).await;
-    // The turn's start events are stored in the background; store them
-    // before anything the next step emits.
-    host.flush_events().await;
-    result.context("InputAtom execution failed")
-}
-
-/// Call the LLM model for reasoning using ReasonAtom
-///
-/// This activity:
-/// 1. Emits reason.started event
-/// 2. Retrieves agent and session configuration
-/// 3. Loads messages and prepares context
-/// 4. Calls the LLM with the messages
-/// 5. Stores the assistant response
-/// 6. Emits reason.completed event
-/// 7. Returns the result with tool calls (if any)
-/// 8. If turn completes (no tool calls), emits turn.completed, sets session status to "idle" and emits session.idled
-///
-/// Note: API key decryption is handled by the control-plane gRPC service.
-pub async fn reason_activity(
-    grpc_client: GrpcClient,
-    org_id: i64,
-    input: ReasonInput,
-    host_composition: &HostComposition,
-    stream_heartbeater: Option<Arc<dyn crate::core::durability::StreamHeartbeater>>,
-) -> Result<ReasonResult> {
-    tracing::info!(
-        org_id = org_id,
-        session_id = %input.context.session_id,
-        turn_id = %input.context.turn_id,
-        agent_id = ?input.agent_id,
-        "Executing reason_activity"
-    );
-
-    let mut adapters = GrpcWorkerAdapters::from_client_with_host_composition(
-        grpc_client,
-        host_composition.clone(),
-    );
-    if let Some(hb) = stream_heartbeater {
-        adapters = adapters.with_stream_heartbeater(hb);
-    }
-    let result = runtime_execute_reason_activity(&WorkerRuntimeHost::new(adapters), org_id, input)
-        .await
-        .context("ReasonAtom execution failed")?;
-
-    // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
-    // emitted here. They are deferred to the workflow scheduler which checks for
-    // pending steering signals (mid-turn user messages) before deciding whether
-    // the turn is truly done. This ensures turn.completed is emitted exactly once
-    // and prevents the idle→active flicker when steering continues the turn.
-
-    Ok(result)
-}
-
-/// Execute tools in parallel using ActAtom
-///
-/// This activity:
-/// 1. Emits act.started event
-/// 2. Executes all tool calls in parallel (emitting tool.started/completed for each)
-/// 3. Handles errors, timeouts, and cancellations gracefully
-/// 4. Stores tool result messages
-/// 5. Emits act.completed event
-/// 6. Returns comprehensive results for all tools
-///
-/// Supports both built-in tools and MCP tools (via remote MCP servers).
-pub async fn act_activity(
-    grpc_client: GrpcClient,
-    org_id: i64,
-    input: ActInput,
-    host_composition: &HostComposition,
-) -> Result<ActResult> {
-    tracing::info!(
-        org_id = org_id,
-        session_id = %input.context.session_id,
-        turn_id = %input.context.turn_id,
-        tool_count = %input.tool_calls.len(),
-        "Executing act_activity"
-    );
-
-    runtime_execute_act_activity(
-        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_host_composition(
-            grpc_client,
-            host_composition.clone(),
-        )),
-        input,
-    )
-    .await
-    .context("ActAtom execution failed")
-}
-
-// ============================================================================
 // Activity Type Constants
 // ============================================================================
 
-/// Activity type constants for workflow scheduling
+/// Activity types the worker claims. Every value is persisted in schedule
+/// targets and task rows: keep them stable.
 pub mod activity_types {
-    pub const INPUT: &str = "input";
-    pub const REASON: &str = "reason";
-    pub const ACT: &str = "act";
+    pub const LEASED_RESOURCE_CLEANUP: &str = "leased_resource_cleanup";
+    pub const SESSION_TASK_REAPER: &str = "session_task_reaper";
     /// The value is the App-era activity type: durable schedules created before
     /// the App retirement persist it in their targets, so it cannot change.
     pub const INVOKE_SCHEDULED_CHANNEL: &str = "invoke_scheduled_app_channel";
     pub const INVOKE_AGENT_TRIGGER: &str = "invoke_agent_trigger";
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn durable_activity_io_is_the_engine_contract() {
-        assert_eq!(
-            std::any::type_name::<ActInput>(),
-            std::any::type_name::<crate::engine::ActInput>(),
-        );
-        assert_eq!(
-            std::any::type_name::<ReasonResult>(),
-            std::any::type_name::<crate::engine::ReasonResult>(),
-        );
-    }
+/// The activity types a worker registers for and claims.
+pub fn all() -> Vec<String> {
+    [
+        activity_types::LEASED_RESOURCE_CLEANUP,
+        activity_types::SESSION_TASK_REAPER,
+        activity_types::INVOKE_SCHEDULED_CHANNEL,
+        activity_types::INVOKE_AGENT_TRIGGER,
+    ]
+    .map(String::from)
+    .to_vec()
 }

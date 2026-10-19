@@ -237,6 +237,8 @@ pub struct UserInfoResponse {
     /// Organizations the user belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organizations: Option<Vec<OrgMembershipResponse>>,
+    /// Scope of the authenticating PAT (`*` or `read`); null for cookie or JWT.
+    pub token_scope: Option<&'static str>,
 }
 
 /// Refresh token request
@@ -1026,12 +1028,9 @@ pub async fn logout(State(state): State<BuiltinAuthBackend>, jar: CookieJar) -> 
         .remove(Cookie::build("refresh_token").path("/"))
 }
 
-/// GET /v1/auth/me - Get current user info
-/// Also sets everruns_org cookie if missing (using user's first org)
-///
-/// Queries the database for the user's actual organization memberships so that
-/// newly created orgs appear immediately (the auth middleware may cache a stale
-/// or hardcoded list, e.g. AuthUser::anonymous() in none mode).
+/// GET /v1/auth/me - Current user info, with `token_scope` for a PAT. Sets the
+/// everruns_org cookie if missing (first org). Reads memberships from the DB so new
+/// orgs appear at once (the middleware may cache a stale list, e.g. anonymous()).
 pub async fn get_current_user(
     State(state): State<BuiltinAuthBackend>,
     user: AuthUser,
@@ -1110,6 +1109,7 @@ pub async fn get_current_user(
             avatar_url: None,
             email_verified,
             organizations,
+            token_scope: user.pat_scope.map(|scope| scope.as_str()),
         }),
     )
 }

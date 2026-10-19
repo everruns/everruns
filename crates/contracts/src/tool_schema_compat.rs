@@ -32,6 +32,87 @@ pub fn strict_openai_tool_schema(schema: &Value) -> Option<Value> {
     Some(normalized)
 }
 
+/// Reverse only the null placeholders introduced by strict schema conversion.
+/// Required nulls, explicitly nullable values and unknown fields are preserved
+/// for ordinary tool validation. Run at the provider boundary before calls are
+/// recorded, fingerprinted or approved; execution hooks must not rewrite them.
+pub fn restore_strict_openai_tool_arguments(schema: &Value, arguments: &mut Value) {
+    if strict_openai_tool_schema(schema).is_some() {
+        restore_argument_node(schema, arguments);
+    }
+}
+
+#[cfg(feature = "http")]
+pub(crate) fn restore_strict_openai_tool_calls(
+    tools: &[crate::tool_types::ToolDefinition],
+    calls: &mut [crate::tool_types::ToolCall],
+) {
+    for call in calls {
+        if let Some(tool) = tools.iter().find(|tool| tool.name() == call.name) {
+            restore_strict_openai_tool_arguments(tool.parameters(), &mut call.arguments);
+        }
+    }
+}
+
+fn accepts_null(schema: &Value) -> bool {
+    let type_allows = schema.get("type").is_none_or(|kind| match kind {
+        Value::String(kind) => kind == "null",
+        Value::Array(kinds) => kinds.iter().any(|kind| kind.as_str() == Some("null")),
+        _ => false,
+    });
+    type_allows
+        && schema.get("enum").is_none_or(|values| {
+            values
+                .as_array()
+                .is_some_and(|values| values.contains(&Value::Null))
+        })
+        && schema.get("anyOf").is_none_or(|variants| {
+            variants
+                .as_array()
+                .is_some_and(|variants| variants.iter().any(accepts_null))
+        })
+}
+
+fn restore_argument_node(schema: &Value, arguments: &mut Value) {
+    if let (Some(properties), Some(object)) = (
+        schema.get("properties").and_then(Value::as_object),
+        arguments.as_object_mut(),
+    ) {
+        let required = schema.get("required").and_then(Value::as_array);
+        object.retain(|name, value| {
+            let Some(property) = properties.get(name) else {
+                return true;
+            };
+            let required = required
+                .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some(name)));
+            if value.is_null() && !required && !accepts_null(property) {
+                return false;
+            }
+            restore_argument_node(property, value);
+            true
+        });
+    }
+    if let (Some(items), Some(array)) = (schema.get("items"), arguments.as_array_mut()) {
+        for value in array {
+            restore_argument_node(items, value);
+        }
+    }
+    if let Some(variants) = schema.get("anyOf").and_then(Value::as_array) {
+        // Do not guess which union branch the model intended. Only a unanimous
+        // inverse is safe; ambiguous arguments remain for authoritative validation.
+        let mut proposals = variants.iter().map(|variant| {
+            let mut restored = arguments.clone();
+            restore_argument_node(variant, &mut restored);
+            restored
+        });
+        if let Some(first) = proposals.next()
+            && proposals.all(|other| other == first)
+        {
+            *arguments = first;
+        }
+    }
+}
+
 fn normalize_strict_node(node: &mut Value) -> Option<()> {
     let object = node.as_object_mut()?;
 
@@ -477,5 +558,48 @@ mod strict_tests {
             }},"required":["labels"]});
             assert_eq!(strict_openai_tool_schema(&input), None, "{input}");
         }
+    }
+}
+
+#[cfg(test)]
+mod strict_argument_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn restores_optional_placeholders_without_weakening_validation() {
+        let schema = json!({"type":"object", "properties":{
+            "optional":{"type":"string"},
+            "required":{"type":"string"},
+            "nullable":{"type":["string","null"]},
+            "enum":{"type":"string","enum":["a"]},
+            "nested":{"type":"object","properties":{"flag":{"type":"boolean"}}},
+            "array":{"type":"array","items":{"type":"object","properties":{"flag":{"type":"boolean"}}}}
+        },"required":["required"]});
+        let mut args = json!({"optional":null,"required":null,"nullable":null,"enum":null,"unknown":null,"nested":{"flag":null},"array":[{"flag":null}]});
+        restore_strict_openai_tool_arguments(&schema, &mut args);
+        assert_eq!(
+            args,
+            json!({"required":null,"nullable":null,"unknown":null,"nested":{},"array":[{}]})
+        );
+        let mut explicit = json!({"optional":"value","enum":"a","required":"ok"});
+        let before = explicit.clone();
+        restore_strict_openai_tool_arguments(&schema, &mut explicit);
+        assert_eq!(explicit, before);
+    }
+
+    #[test]
+    fn nonstrict_schemas_and_ambiguous_unions_keep_the_arguments() {
+        let open = json!({"type":"object","properties":{"value":{"type":"string"}},"additionalProperties":true});
+        let mut args = json!({"value":null});
+        restore_strict_openai_tool_arguments(&open, &mut args);
+        assert_eq!(args, json!({"value":null}));
+        let union = json!({"type":"object","properties":{"value":{"anyOf":[
+            {"type":"object","properties":{"a":{"type":"string"}}},
+            {"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}
+        ]}}});
+        let mut args = json!({"value":{"a":null}});
+        restore_strict_openai_tool_arguments(&union, &mut args);
+        assert_eq!(args, json!({"value":{"a":null}}));
     }
 }

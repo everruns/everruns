@@ -38,6 +38,12 @@ use std::collections::HashSet;
 /// `kv_store` tool.
 pub const DEFERRED_MCP_REVEAL_KV_PREFIX: &str = "mcp_reveal:";
 
+/// Session key-value prefix holding the tools a server listed last, so a turn
+/// whose `tools/list` fails keeps them. The suffix is the server's tool
+/// prefix. Reserved from the user-facing `kv_store` tool: a record here is
+/// published to the model as callable tools of that server.
+pub const MCP_LAST_TOOLS_KV_PREFIX: &str = "mcp_tools:";
+
 /// Category the placeholder tools are grouped under.
 const MCP_SERVERS_CATEGORY: &str = "MCP Servers";
 

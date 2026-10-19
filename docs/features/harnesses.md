@@ -69,8 +69,19 @@ Conversation is the default. Deprecated harnesses keep working for existing bind
 2. **Does it need a workspace, instructions, skills or delegation?** Choose a Worker.
 3. **Where does it run commands?**
    - Nowhere, it works through tools and MCP servers: Worker.
-   - In a virtual shell that needs no sandbox provider: Bashkit Worker.
-   - In a real machine with processes and packages: Sandbox Worker, plus an Agent sandbox policy that names a container or managed Sandbox Template.
+   - In a virtual shell that needs no sandbox provider: Bashkit Worker. Bashkit runs Bash-like commands over a durable virtual filesystem, so it suits scripting, file work and light automation. It cannot install native packages, start processes or servers, open ports or attach a terminal.
+   - In a real machine with processes and packages: Sandbox Worker, plus an Agent sandbox policy that names a container or managed Sandbox Template. Choose it for coding, builds, test runs and browser automation.
+
+When in doubt, start on the smallest harness that works and move the agent up when it needs more. A child harness cannot remove what its parent adds, so starting large means the agent carries tools it never uses.
+
+Some common agents and their harness:
+
+| Agent | Harness |
+|---|---|
+| Support bot, Q&A over a knowledge base | Conversation |
+| Linear or GitHub triage, Slack assistant, research over MCP servers | Worker |
+| Report generation, CSV clean-up, operations scripts | Bashkit Worker |
+| Coding agent, PR reviewer that runs tests | Sandbox Worker |
 
 Bashkit Worker and Sandbox Worker each fix one rule, and the rule is inherited by custom harnesses built on them. Bashkit Worker rejects an Agent sandbox policy, since its sandbox is always Bashkit. Sandbox Worker rejects a policy that only allows Bashkit, and a session on it fails with a clear message when no full Sandbox Template is available rather than quietly running on Bashkit.
 

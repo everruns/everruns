@@ -404,7 +404,7 @@ pub fn declared(name: &str) -> Change {
 
     match name {
         // Agents and what hangs off them.
-        "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
+        "create_agent" | "copy_agent" | "adopt_agent_example" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
@@ -413,6 +413,7 @@ pub fn declared(name: &str) -> Change {
         "set_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
+        "use_agent_everruns_app" => on(K::Agent, Attached, Param("agent_id")),
         "connect_agent_github" => {
             Change::Exempt("starts GitHub's install flow; GitHub's callback records the connection")
         }
@@ -534,7 +535,6 @@ pub fn declared(name: &str) -> Change {
         "sync_plugin_marketplace" => Change::Exempt("a sync run refreshes the catalog"),
 
         // Organization.
-        "create_workspace" => on(K::Workspace, Created, ID),
         "update_workspace" => on(K::Workspace, Updated, ID),
         "delete_workspace" => on(K::Workspace, Deleted, Param("workspace_id")),
 
@@ -635,6 +635,10 @@ pub fn declared(name: &str) -> Change {
         | "worker_set_session_secret"
         | "worker_delete_session_secret" => {
             Change::Exempt("the runtime's session storage is the session's working state")
+        }
+        // POST only because the answer carries plaintext; it reads, never writes.
+        "worker_resolve_bound_secrets" => {
+            Change::Exempt("reads bound secrets for the shell's HTTP layer; changes nothing")
         }
         // Never `Subject`: a recorded change captures the params, and these
         // carry credential material (TM-AUTHZ-023).

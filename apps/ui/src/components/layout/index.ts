@@ -9,7 +9,6 @@ export {
   defaultQualityNavigation,
   defaultBottomNavigation,
   defaultDurableNavigation,
-  defaultSandboxesNavigation,
   defaultDevNavigation,
 } from "./sidebar";
 export { MainLayout } from "./main-layout";

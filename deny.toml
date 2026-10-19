@@ -13,8 +13,8 @@ unmaintained = "none"
 # affected crate over ignoring; only ignore when no upstream fix path exists and
 # the advisory is not reachable in our usage.
 ignore = [
-    # Empty: every advisory in the tree must be fixed by upgrading, not ignored.
-    # Entries here need a justification comment and a removal condition.
+    # Empty: the PostgreSQL archive compatibility patch selects ZIP9, so the
+    # ZIP advisories need no exceptions. Fix new advisories rather than ignore.
 ]
 
 [licenses]
@@ -46,6 +46,49 @@ exceptions = [
     # PostgreSQL License: OSI-approved, permissive (BSD/MIT-like). Covers the
     # dev/test-only embedded cluster in crates/pg-embedded.
     { allow = ["PostgreSQL"], crate = "postgresql_archive" },
+    { allow = ["PostgreSQL"], crate = "postgresql_commands" },
+    { allow = ["PostgreSQL"], crate = "postgresql_embedded" },
+    # Python-2.0: OSI-approved, permissive (BSD-like) historical CPython
+    # license. Covers the embedded CPython 3.14 interpreter payload shipped
+    # inside bashkit-cpython-wasm for the bash `python3` builtin.
+    { allow = ["Python-2.0"], crate = "bashkit-cpython-wasm" },
+    # Apache-2.0 WITH LLVM-exception: Apache-2.0 plus LLVM's patent/attribution
+    # exception (same terms the LLVM, Swift, and rustc-llvm projects ship
+    # under). Covers the wasmtime 48 execution engine and its cranelift codegen
+    # family that powers the bash `python3` WASM sandbox.
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "asmlinkage" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cobs" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-assembler-x64" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-assembler-x64-meta" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-bforest" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-bitset" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-codegen" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-codegen-meta" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-codegen-shared" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-control" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-entity" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-frontend" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-isle" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-native" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-srcgen" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "cranelift-wasm" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "ittapi-sys" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "pulley-interpreter" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "pulley-macros" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "regalloc2" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "target-lexicon" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasi-common" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-environ" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-component-util" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-core" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-cranelift" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-fiber" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-jit-icache-coherence" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-unwinder" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-versioned-export-macros" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wasmtime-internal-wit-parser" },
+    { allow = ["Apache-2.0 WITH LLVM-exception"], crate = "wat" },
 ]
 
 # Clarify specific dependencies if needed

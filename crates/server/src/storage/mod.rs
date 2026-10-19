@@ -17,6 +17,7 @@ pub mod backend;
 pub mod blob_store;
 pub mod command_idempotency;
 pub mod connection_resolver;
+pub(crate) mod embedded_postgres;
 pub mod encryption;
 pub mod entity_changes;
 mod health_issues;

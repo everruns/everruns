@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, framework, cli]
 surfaces: [ui, api, code, agent]
+release: "0.48.0"
 links:
   docs: [/features/explicit-communication/]
   prs: [everruns/everruns#4447]
@@ -21,5 +22,13 @@ agent should answer only when it has something to add. The setting is on the
 agent in the web UI, the API, agent packages, the Framework builder and the CLI,
 and it replaces Slack's per-endpoint reply mode. Every sent message is recorded
 as a `conversation.message` event.
+
+```toml
+# agent.toml
+schema_version = 1
+name = "release-coordinator"
+instructions = "You coordinate releases for the team."
+communication = "explicit"
+```
 
 See [Explicit communication](/features/explicit-communication/) and [#4447](https://github.com/everruns/everruns/pull/4447).

@@ -25,14 +25,20 @@ pub const WEB_SEARCH_CONNECTOR_CAPABILITY: &str = "web_search";
 /// Connection providers whose organization accounts have a search driver.
 /// Their connectors declare [`WEB_SEARCH_CONNECTOR_CAPABILITY`]; a test in
 /// `everruns-integrations` keeps the two in step.
-pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] = &["brave_search"];
+pub const WEB_SEARCH_ACCOUNT_PROVIDERS: &[&str] =
+    &["brave_search", "parallel", "cloudflare_web_search"];
 
 /// Model provider types whose drivers run the model's own search (native
-/// search, billed by the model provider). Anthropic and Gemini join when their
-/// driver adapters land; until then their models search with the next
-/// provider of the plan.
-pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] =
-    &["openai", "azure_openai", "chatgpt", "openrouter"];
+/// search, billed by the model provider). Bedrock is not here: Anthropic does
+/// not offer web search there, and its driver has no server tools.
+pub const NATIVE_WEB_SEARCH_PROVIDER_TYPES: &[&str] = &[
+    "openai",
+    "azure_openai",
+    "chatgpt",
+    "openrouter",
+    "anthropic",
+    "gemini",
+];
 
 /// Plain-words price of native search, shown wherever it is offered.
 pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
@@ -41,10 +47,39 @@ pub const NATIVE_WEB_SEARCH_PRICE_NOTE: &str =
 /// Entry names in the Automatic order besides account ids.
 pub const AUTOMATIC_NATIVE: &str = "native";
 pub const AUTOMATIC_FREE: &str = "free";
+/// The deployment's own search, when the host offers one (on
+/// app.everruns.com, Everruns search). A host without one skips the entry,
+/// the way a model without search skips `native`.
+pub const AUTOMATIC_HOSTED: &str = "hosted";
+
+/// A driver registered outside this crate (an external driver id) whose
+/// provider runs native search, declared with `inventory::submit!` so the
+/// search provider catalog and plan preview see it like the built-in types.
+///
+/// ```ignore
+/// inventory::submit! {
+///     NativeWebSearchDriver { provider_type: "acme", supports_model: |model| model.starts_with("acme-") }
+/// }
+/// ```
+pub struct NativeWebSearchDriver {
+    /// Provider type as stored on the provider row (the driver id).
+    pub provider_type: &'static str,
+    /// Whether this model searches natively through the driver.
+    pub supports_model: fn(&str) -> bool,
+}
+
+inventory::collect!(NativeWebSearchDriver);
+
+fn registered_native_driver(provider_type: &str) -> Option<&'static NativeWebSearchDriver> {
+    inventory::iter::<NativeWebSearchDriver>
+        .into_iter()
+        .find(|driver| driver.provider_type == provider_type)
+}
 
 /// Whether models of this provider type offer native search.
 pub fn native_web_search_supported(provider_type: &str) -> bool {
     NATIVE_WEB_SEARCH_PROVIDER_TYPES.contains(&provider_type)
+        || registered_native_driver(provider_type).is_some()
 }
 
 /// Whether this model searches natively through its provider's driver: the
@@ -55,7 +90,11 @@ pub fn native_web_search_supported_model(provider_type: &str, model: &str) -> bo
             crate::native_web_search::openai_has_native_web_search(model)
         }
         "openrouter" => crate::native_web_search::openrouter_native_vendor(model).is_some(),
-        _ => false,
+        "anthropic" => crate::native_web_search::anthropic_has_native_web_search(model),
+        "gemini" => crate::native_web_search::gemini_has_native_web_search(model),
+        other => {
+            registered_native_driver(other).is_some_and(|driver| (driver.supports_model)(model))
+        }
     }
 }
 
@@ -97,6 +136,7 @@ pub fn native_search_first(
                     })
         }
         SearchProviderSetting::Brave
+        | SearchProviderSetting::Parallel
         | SearchProviderSetting::Account
         | SearchProviderSetting::Free => false,
     }
@@ -149,6 +189,9 @@ pub enum SearchProviderSetting {
     /// Brave Search with a key from the session, the user, the application, or
     /// else the organization's first Brave account.
     Brave,
+    /// Parallel with a key from the session, the user, the application, or
+    /// else the organization's first Parallel account.
+    Parallel,
     /// One named organization search account (`account_id`).
     Account,
     /// Keyless best-effort search.
@@ -162,6 +205,7 @@ impl SearchProviderSetting {
             Self::Auto => "auto",
             Self::Native => "native",
             Self::Brave => "brave",
+            Self::Parallel => "parallel",
             Self::Account => "account",
             Self::Free => "free",
         }
@@ -192,7 +236,8 @@ pub struct WebSearchDefaults {
     /// The search account when `provider` is `account`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_id: Option<Uuid>,
-    /// Automatic order: `native`, search account ids, and `free`, which is
+    /// Automatic order: `native`, search account ids, `hosted` (the
+    /// deployment's own search, when it offers one) and `free`, which is
     /// always last. Entries left out keep their natural place.
     #[serde(default = "default_automatic_order")]
     pub automatic_order: Vec<String>,
@@ -250,7 +295,7 @@ impl WebSearchDefaults {
             SearchProviderSetting::OrgDefault => {
                 return Err(
                     "web_search_defaults.provider cannot be org_default; choose auto, native, \
-                     brave, account or free"
+                     brave, parallel, account or free"
                         .into(),
                 );
             }
@@ -287,7 +332,7 @@ impl WebSearchDefaults {
                 ));
             }
             match entry.as_str() {
-                AUTOMATIC_NATIVE => {}
+                AUTOMATIC_NATIVE | AUTOMATIC_HOSTED => {}
                 AUTOMATIC_FREE if index == last => {}
                 AUTOMATIC_FREE => {
                     return Err(
@@ -297,8 +342,8 @@ impl WebSearchDefaults {
                 other => {
                     let id = Uuid::parse_str(other).map_err(|_| {
                         format!(
-                            "web_search_defaults.automatic_order entries are native, free or a \
-                             search account id, got {other:?}"
+                            "web_search_defaults.automatic_order entries are native, hosted, free \
+                             or a search account id, got {other:?}"
                         )
                     })?;
                     if !account_ids.contains(&id) {
@@ -388,6 +433,10 @@ pub struct SearchAccount {
     pub provider: String,
     /// Account name the admin gave it.
     pub name: String,
+    /// Non-secret settings stored with the connection when its provider needs
+    /// more than a key (Cloudflare: account id, AI Gateway, search index).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<serde_json::Value>,
 }
 
 /// What a running agent needs from its organization to plan a search.
@@ -435,6 +484,21 @@ mod tests {
             [account.to_string(), "native".into(), "free".into()]
         );
         assert_eq!(defaults.blocked_domains, ["pinterest.com"]);
+    }
+
+    #[test]
+    fn the_automatic_order_may_place_the_hosted_search() {
+        let account = id(7);
+        let defaults = WebSearchDefaults {
+            automatic_order: vec!["hosted".into(), account.to_string()],
+            ..WebSearchDefaults::default()
+        }
+        .validated(&[account])
+        .unwrap();
+        assert_eq!(
+            defaults.automatic_order,
+            ["hosted".to_string(), account.to_string(), "free".into()]
+        );
     }
 
     #[test]
@@ -543,9 +607,19 @@ mod tests {
     #[test]
     fn native_search_is_a_provider_type_and_model_property() {
         assert!(native_web_search_supported("openrouter"));
-        // Anthropic and Gemini adapters are not in yet.
-        assert!(!native_web_search_supported("anthropic"));
+        assert!(native_web_search_supported("anthropic"));
+        assert!(native_web_search_supported("gemini"));
+        assert!(!native_web_search_supported("bedrock"));
         assert!(!native_web_search_supported("mistral"));
+        assert!(native_web_search_supported("test_native_driver"));
+        assert!(native_web_search_supported_model(
+            "test_native_driver",
+            "searcher-1"
+        ));
+        assert!(!native_web_search_supported_model(
+            "test_native_driver",
+            "plain-1"
+        ));
         assert!(native_web_search_supported_model("openai", "gpt-6.1-sol"));
         assert!(!native_web_search_supported_model(
             "openai",
@@ -559,8 +633,24 @@ mod tests {
             "openrouter",
             "mistralai/mistral-large"
         ));
+        assert!(native_web_search_supported_model(
+            "anthropic",
+            "claude-opus-5-5"
+        ));
         assert!(!native_web_search_supported_model(
             "anthropic",
+            "claude-3-5-sonnet-20241022"
+        ));
+        assert!(native_web_search_supported_model(
+            "gemini",
+            "gemini-3.8-flash"
+        ));
+        assert!(!native_web_search_supported_model(
+            "gemini",
+            "gemini-1.5-pro"
+        ));
+        assert!(!native_web_search_supported_model(
+            "bedrock",
             "claude-opus-5-5"
         ));
     }
@@ -574,6 +664,7 @@ mod tests {
                     id: *id,
                     provider: "brave_search".into(),
                     name: "Team".into(),
+                    options: None,
                 })
                 .collect(),
         }
@@ -610,6 +701,7 @@ mod tests {
             (Native, None, true),
             (Free, None, false),
             (Brave, None, false),
+            (Parallel, None, false),
             (OrgDefault, Some(&fresh), true),
             (Auto, Some(&fresh), true),
             (Auto, Some(&off), false),
@@ -679,5 +771,12 @@ mod tests {
         let mut options = HashMap::new();
         resolve_native_web_search(&mut options, Some(&blocking));
         assert!(options.is_empty());
+    }
+
+    inventory::submit! {
+        NativeWebSearchDriver {
+            provider_type: "test_native_driver",
+            supports_model: |model| model.starts_with("searcher-"),
+        }
     }
 }

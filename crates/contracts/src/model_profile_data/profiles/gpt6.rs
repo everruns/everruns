@@ -11,8 +11,8 @@ use super::effort;
 use super::speed::priced_speed;
 use super::verbosity_standard;
 use crate::model_profile_data::types::{
-    CostTier, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ReasoningEffort,
-    ReasoningEffortConfig, Speed, SpeedConfig,
+    CostTier, INLINE_TOOL_CHANGES_PARAMETER, Modality, ModelCost, ModelLimits, ModelModalities,
+    ModelProfile, ReasoningEffort, ReasoningEffortConfig, Speed, SpeedConfig,
 };
 
 pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
@@ -174,9 +174,13 @@ fn profile(
         speed: Some(speeds(Speed::Priority, false)),
         verbosity: Some(verbosity_standard()),
         tool_search: true,
-        supported_parameters: Vec::new(),
+        // Inline tool changes (`additional_tools`): a redefinition kept the
+        // prompt cache in a live round trip on every GPT-6 tier
+        // (`test_openai_tool_reveal_keeps_prompt_cache`, 2026-10-12).
+        supported_parameters: vec![INLINE_TOOL_CHANGES_PARAMETER.to_string()],
         supports_phases: true,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     }
 }

@@ -15,10 +15,10 @@ use everruns_contracts::driver_registry::{
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::runtime_provider::ProviderEndpoint;
 use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_core::builtins::OutputTruncationCapability;
 use everruns_core::events::EventData;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::turn::TurnStopReason;
 use everruns_test_support::InMemoryAgenticLoop;
 use futures::stream;
 use serde_json::{Value, json};

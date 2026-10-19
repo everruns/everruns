@@ -78,7 +78,7 @@ tracing-subscriber.workspace = true
 # Decision: no default features. The replayed workflow engine (`Workflow`
 # trait, `WorkflowExecutor`, timers and child workflows) that once sat behind a
 # default `workflows` feature was removed: nothing ran it in production, and
-# Everruns' turn driver and cluster jobs drive the task queue directly.
+# Everruns' cluster jobs drive the task queue directly.
 default = []
 failpoints = ["fail/failpoints"]
 postgres-tests = []

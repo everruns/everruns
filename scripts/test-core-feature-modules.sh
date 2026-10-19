@@ -9,6 +9,11 @@ for pair in 'host host' 'engine engine' 'builtins builtins' 'mcp mcp' 'ag_ui ag-
   read -r module feature <<<"$pair"
   printf '#[cfg(feature = "%s")]\npub mod %s;\n' "$feature" "$module" >> "$work/lib.rs"
 done
+cat >> "$work/lib.rs" <<'PORTABLE'
+#[cfg(all(feature = "execution-host", not(feature = "host")))]
+#[path = "portable_host.rs"]
+pub mod host;
+PORTABLE
 assert_core_feature_module_gates "$work/lib.rs"
 for feature in host mcp ag-ui a2a channel-auth; do
   sed "/cfg.*\"$feature\"/d" "$work/lib.rs" > "$work/ungated.rs"
@@ -18,8 +23,15 @@ for feature in host mcp ag-ui a2a channel-auth; do
   fi
   grep -q 'must stay behind feature' "$work/out"
 done
+sed '/cfg.*"execution-host"/d' "$work/lib.rs" > "$work/ungated.rs"
+if assert_core_feature_module_gates "$work/ungated.rs" > "$work/out" 2>&1; then
+  echo "FAIL: an ungated portable host escaped the guard"
+  exit 1
+fi
+grep -q 'portable core::host must stay behind execution-host' "$work/out"
 mkdir -p "$work/crates/core/src/host" "$work/crates/core/src/mcp" "$work/crates/core/src/ag_ui" "$work/crates/core/src/a2a" "$work/crates/core/src/channel_auth"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/kernel.rs"
+printf 'reqwest::Client;\n' > "$work/crates/core/src/portable_host.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/host/transport.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/a2a.rs"
 printf 'reqwest::Client;\n' > "$work/crates/core/src/a2a/network.rs"
@@ -27,7 +39,7 @@ printf 'reqwest::Client;\n' > "$work/crates/core/src/channel_auth/verifier.rs"
 cd "$work"
 files="$(core_kernel_source_files)"
 grep -q 'kernel.rs' <<<"$files"
-if grep -qE '/host/|/mcp/|/ag_ui/|/a2a/|/a2a.rs|/channel_auth/' <<<"$files"; then
+if grep -qE '/host/|/mcp/|/ag_ui/|/a2a/|/a2a.rs|/channel_auth/|/portable_host.rs' <<<"$files"; then
   echo 'FAIL: feature-owned source leaked into the default kernel source list'
   exit 1
 fi

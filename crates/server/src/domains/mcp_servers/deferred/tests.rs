@@ -103,3 +103,37 @@ async fn eager_servers_are_listed_as_before() {
     );
     assert_eq!(egress.calls.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn a_failed_listing_keeps_the_tools_listed_last() {
+    let servers = ScopedMcpServers::from([("docs".to_string(), server(false))]);
+    let session = SessionId::new();
+    let storage = InMemorySessionStorageStore::new();
+    let egress = CatalogPreviewEgress::default();
+
+    assert_eq!(
+        turn(&servers, session, &storage, &egress).await,
+        ["mcp_docs__echo"]
+    );
+
+    // The server goes down: the turn keeps the tools it listed last instead
+    // of dropping them, so the model's tool list does not change.
+    egress.down.store(true, Ordering::SeqCst);
+    assert_eq!(
+        turn(&servers, session, &storage, &egress).await,
+        ["mcp_docs__echo"]
+    );
+
+    // A session with no earlier listing has nothing to keep.
+    assert!(
+        turn(&servers, SessionId::new(), &storage, &egress)
+            .await
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn the_last_listed_record_is_reserved_from_kv_store() {
+    let key = format!("{}docs", everruns_core::MCP_LAST_TOOLS_KV_PREFIX);
+    assert!(everruns_core::host::session_services::capabilities::is_internal_session_kv_key(&key));
+}

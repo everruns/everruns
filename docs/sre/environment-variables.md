@@ -14,16 +14,19 @@ a working default; each row links to the section that documents it.
 | [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode ignores it and starts its own temporary PostgreSQL. |
 | [`AUTH_MODE`](#other-server-variables) | API | Yes, unless the grade is `dev` | Startup fails: unset means `none`, which is allowed only at `dev` grade. |
 | [`WORKER_GRPC_AUTH_TOKEN`](#worker_grpc_auth_token) | API and workers (same value) | Yes, unless `DEV_MODE=true` | The API fails to start its gRPC server; workers cannot authenticate. |
-| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. |
+| [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. Turns still run, in-process and on remote workers, without durable compaction checkpoints, native async tool journals, or the OpenAI Agents API runtime. |
 | [`DEV_MODE`](#dev_mode), [`DEPLOYMENT_GRADE`](#deployment_grade) | API and workers | No | Production behavior (`prod` grade). |
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
 | [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
 | [`NATS_URL`](#nats_url) | API and workers | No | PostgreSQL `NOTIFY` and in-memory broadcast. |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
-| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
+| [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
 | [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
+| [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
+| [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
+| [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
@@ -53,7 +56,8 @@ DEV_MODE=1 ./target/debug/everruns-server
   `~/.cache/everruns/postgres`, or `EVERRUNS_PG_CACHE`), starts a cluster on a free
   loopback port, and runs migrations into a fresh database. `DATABASE_URL` is ignored.
 - Data does not survive a restart. Use `just start-all` for a persistent local database.
-- When run as root, the cluster runs as `nobody`, because PostgreSQL refuses to run as root.
+- Run dev mode as a non-root user. Root callers receive a startup error; use a
+  non-root account or external PostgreSQL with `DEV_MODE=false`.
 - All data is lost when the server stops
 - gRPC server and worker communication are disabled
 - Stale task reclamation is disabled
@@ -506,6 +510,23 @@ Agents can also be given the TypeSafe capability directly, which is a
 Connections, never this deployment key. See
 [TypeSafe](/integrations/typesafe/) and [Guardrails](/capabilities/guardrails/).
 
+## Slack Manager App
+
+With a Slack manager app configured, an organization administrator connects a Slack workspace by approving it once in Slack, instead of pasting an app configuration token. Everruns then creates each Agent's Slack app in that workspace through the approval.
+
+| Variable | Description |
+|----------|-------------|
+| `SLACK_MANAGER_APP_CLIENT_ID` | Client ID of your Slack manager app. |
+| `SLACK_MANAGER_APP_CLIENT_SECRET` | Client secret of the same app. |
+
+Set both, or neither; one alone is ignored with a warning. The feature also needs `SECRETS_ENCRYPTION_KEY`. Configure the Slack app as follows:
+
+- User token scopes `app_configurations:read` and `app_configurations:write`; no bot scopes.
+- Redirect URL `<API base URL>/v1/slack/workspaces/oauth/callback`, for example `https://app.example.com/api/v1/slack/workspaces/oauth/callback`.
+- Token rotation turned on. Everruns refuses a grant that does not expire.
+
+Slack only lets an app request the `app_configurations` scopes once it has enabled manager app support for that app. Until then, leave these unset: the configuration token path works without them and stays available beside the approval.
+
 ## System Email Delivery
 
 System email delivery is an internal service used by product and operational flows. It is not an agent capability, public API, or UI setting.
@@ -527,6 +548,39 @@ RESEND_API_KEY=re_...
 - Set these on the control-plane process that performs system email sends.
 - The sender is fixed in code as `Everruns <no-reply@everruns.com>`.
 - The Resend account must have `everruns.com` verified and enabled for sending.
+
+## Outbound egress
+
+These apply to tenant traffic: requests an agent, capability, MCP server or integration chooses. Platform traffic (LLM providers, system email) is not affected. Set the same values on the control plane and workers. See [Outbound traffic](/advanced/physical-architecture/#outbound-traffic).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVERRUNS_EGRESS_POLICY` | `open` | `open`, `curated-writes` or `curated-all`. An unrecognized value enforces `curated-all`. |
+| `EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE` | `120` | Per-org, per-process limit on reads to hosts outside the allowlist in `curated-writes`. `0` turns those reads off. |
+| `EVERRUNS_EGRESS_REPUTATION` | `off` | `cloudflare-security` checks hosts against Cloudflare's security resolver before connecting; lookups that fail let the request through. |
+| `EVERRUNS_EGRESS_PROXY_URL` | unset | Send tenant traffic through a tenant egress proxy, for example `http://egress-proxy:4750`. |
+| `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
+
+## Tenant egress proxy
+
+Read by the `everruns-egress-proxy` binary. Every cap is off unless set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EVERRUNS_EGRESS_PROXY_SECRET` | required | Same value as on the control plane and workers, at least 32 bytes. The proxy refuses to start without it. |
+| `EGRESS_PROXY_ADDR` | `0.0.0.0:4750` | Proxy listener. Keep it on the private network. |
+| `EGRESS_PROXY_HEALTH_ADDR` | `0.0.0.0:4751` | Health listener, `GET /healthz`. |
+| `EGRESS_PROXY_ORG_RPM` | no cap | Requests per minute per org. |
+| `EGRESS_PROXY_ORG_HOST_RPM` | no cap | Requests per minute per org to one host. |
+| `EGRESS_PROXY_ORG_CONCURRENCY` | no cap | Open connections per org. |
+| `EGRESS_PROXY_ORG_BYTES_PER_DAY` | no cap | Bytes per org per UTC day. Counted per replica unless a control endpoint reports what was already used. |
+| `EGRESS_PROXY_GLOBAL_PER_HOST_RPM` | no cap | Requests per minute to one host across all orgs. |
+| `EGRESS_PROXY_REPLICAS` | `1` | Replicas sharing the caps; each enforces its share. |
+| `EGRESS_PROXY_BIND_ADDR` | unset | Source IP for outbound connections, when the host has a dedicated tenant address. |
+| `EGRESS_PROXY_INSTANCE` | hostname | Label on usage batches. |
+| `EGRESS_PROXY_CONTROL_URL` | unset | Control endpoint. The proxy asks `GET /internal/egress-proxy/orgs/{org}/limits` (cached 60 s) and posts usage to `POST /internal/egress-proxy/usage`, both with `Authorization: Bearer <secret>`. The `EGRESS_PROXY_ORG_*` caps then apply only while it cannot be reached. |
+
+Usage without a control endpoint is logged once per org, session and minute on the `everruns::egress::usage` target.
 
 ## UI API Proxy Architecture
 
@@ -650,6 +704,41 @@ Timeout in seconds for worker initial connection to control-plane gRPC.
 
 ```bash
 WORKER_GRPC_CONNECT_TIMEOUT=60
+```
+
+### WORKER_GRPC_REQUEST_TIMEOUT_SECS
+
+Deadline in seconds for each worker call to the control-plane gRPC service. A
+call that gets no answer by then fails as a retryable error, and the turn
+resumes from the session log instead of hanging.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `120` |
+
+**Example:**
+
+```bash
+WORKER_GRPC_REQUEST_TIMEOUT_SECS=120
+```
+
+### WORKER_ACTOR_STALL_TIMEOUT_SECS
+
+How long, in seconds, a worker may hold a session while making no progress
+before its turn starts or after it ends. Past it the worker lets the session
+go, and another worker runs the turn; a session that keeps stalling is stopped
+with a processing error.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No (worker only) |
+| **Default** | `300` |
+
+**Example:**
+
+```bash
+WORKER_ACTOR_STALL_TIMEOUT_SECS=300
 ```
 
 ### WORKER_GRPC_TLS_CERT

@@ -22,7 +22,7 @@ the address and signs the user in.
 ## Preconditions
 
 - `AUTH_MODE=full`
-- `AUTH_JWT_SECRET=MJ5SiIlm9mTmiVJV8O2NLrxnuEZDFuO/iXkjVXGqWD0=`
+- Private test-only JWT secret configured through the local environment
 - `AUTH_DISABLE_SIGNUP=false`, `AUTH_DISABLE_PASSWORD=false`
 - Confirm mode: `AUTH_SIGNUP_EMAIL_CONFIRM=true` + email delivery configured
 - No account exists for the test email

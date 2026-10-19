@@ -226,7 +226,7 @@ async fn an_approval_parks_the_task_until_the_v1_api_answers_it() {
         .as_str()
         .unwrap()
         .to_string();
-    host.resolve_approval(&session, &call, true).unwrap();
+    host.resolve_approval(&session, &call, true).await.unwrap();
     let second = pending.await.unwrap();
     assert_eq!(second["status"]["state"], "TASK_STATE_COMPLETED");
     assert_eq!(reply(&second), "guarded done");

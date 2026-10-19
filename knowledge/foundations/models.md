@@ -148,7 +148,14 @@ When `controls.reasoning.effort` is set, reasoning models generate chain-of-thou
 1. `controls.model_id` (from the last user message) - highest priority
 2. `session.model_id` - session-level override
 3. `agent.default_model_id` - agent's default model
-4. System default model - fallback if no model is configured above
+4. Harness default model
+5. System default model - fallback if no model is configured above
+
+`session.model_id` holds only a model someone chose for the session (at create,
+or later through `PATCH /v1/sessions/{id}`; `null` clears it). It never copies
+the agent or harness default: the fallback is resolved per turn, so changing the
+agent's default model reaches existing sessions, which is how an operator moves
+a run off a model whose provider is limiting it.
 
 ### Image
 
@@ -259,6 +266,7 @@ Key design points:
 - `enabled` flag: only enabled models appear in UI model pickers (Chat UI). All models remain available via API regardless of enabled status. See `crates/server/src/setup/seed/mod.rs` for default enabled models.
 - Model/provider assignment is editable so an existing model config can be moved to a different configured provider without deleting and recreating it.
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
+- Organization Small model: independent shared chat selection for lightweight consumers. Unset inherits the consumer's session model; unavailable selections never auto-elect another account. See [Session titles](../runtime-resources/session-titles.md).
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
 - First-run intelligence bootstrap: a provider gaining a credential (create, update, or a manual model sync) discovers its models and then, when the org has no enabled chat model, switches on a shortlist of the provider's catalog-known tool-calling models, stars the strongest few, and elects `organization_settings.default_model_id` when none resolves. Discovery alone creates models disabled and elects nothing, which left a freshly onboarded org with a keyed provider and a chat that could not resolve a model. The bootstrap only ever adds, so an org that deliberately disabled everything is never overridden. Ranking is curated-family first, then newest release, then fewest missing agent traits: the newest flagship must not become the default the day it ships, so OpenAI orgs land on GPT-6 Luna (the platform fallback) rather than the pricier GPT-6.1 Sol or Astra. See `ModelService::bootstrap_intelligence` in `crates/server/src/domains/models/service/mod.rs` and `provision_provider_models` in `crates/server/src/domains/providers/commands.rs`.
 

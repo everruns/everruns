@@ -28,6 +28,8 @@
 //! - A platform rename writes the title through the same no-op-suppressing
 //!   event the agent's retitle uses, so the two directions settle instead of
 //!   echoing.
+//! - Files a channel received become org uploads, the same as a chat user's,
+//!   so message creation stages them into `/attachments`.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -39,7 +41,7 @@ use everruns_contracts::runtime::message_retriever::InputMessage;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelSessionPort, DeliveryEvent, NewChannelSession,
-    SendOutcome,
+    ReceivedAttachment, SendOutcome,
 };
 use futures::StreamExt;
 
@@ -148,6 +150,31 @@ fn input_parts(content: Vec<ContentPart>) -> Vec<InputContentPart> {
 
 #[async_trait]
 impl ChannelSessionPort for ServerChannelPort {
+    /// A channel file becomes an upload of the channel's org; message creation
+    /// copies it into the session's `/attachments`.
+    async fn store_attachment(
+        &self,
+        channel: &ChannelConfig,
+        _session_id: Option<&str>,
+        attachment: ReceivedAttachment,
+    ) -> Result<ContentPart, ChannelError> {
+        let org_id = scope(channel)?.context.org_id;
+        crate::domains::messages::intake::store_received_attachment(&self.db, org_id, attachment)
+            .await
+    }
+
+    /// Downloads are attributed to the channel's org.
+    fn attachment_egress(
+        &self,
+        channel: &ChannelConfig,
+        egress: Arc<dyn everruns_core::EgressService>,
+    ) -> Arc<dyn everruns_core::EgressService> {
+        match scope(channel) {
+            Ok(scope) => crate::domains::messages::intake::org_egress(egress, scope.context.org_id),
+            Err(_) => egress,
+        }
+    }
+
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
         let ServerChannelScope {
             context,

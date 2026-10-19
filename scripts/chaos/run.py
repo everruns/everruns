@@ -62,7 +62,9 @@ def parse_args():
     p.add_argument("--valkey-url")
     # Fixed throwaway key: the chaos DB holds only llmsim test data.
     p.add_argument("--secrets-key", default="kek-local-v1:" + base64.b64encode(b"everruns-chaos-harness-local-key"[:32]).decode())
-    p.add_argument("--rust-log", default="info,everruns_worker::actor_runtime=debug")
+    # Completion/release records delimit the overlap oracle and disambiguate
+    # voluntary handoffs between lease samples. The driver now lives in core.
+    p.add_argument("--rust-log", default="info,everruns_worker::actor_runtime=debug,everruns_core::host::session_actor=debug")
     p.add_argument("--chaos", default=DEFAULT_CHAOS, help="comma list of kill|restart:<proc>@<seconds>")
     p.add_argument("--no-chaos", action="store_true")
     p.add_argument("--only", choices=["plain", "tools", "midturn", "cancel", "approval"])

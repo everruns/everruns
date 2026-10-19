@@ -1,6 +1,6 @@
 ---
 title: everruns harnesses
-description: "Reusable base setups (prompt plus capabilities) agents build on. CLI reference for everruns harnesses."
+description: "Reusable base setups (prompt plus capabilities) agents build on. CLI reference for everruns harnesses: usage, flags and examples."
 sidebar:
   label: harnesses
 appliesTo: [platform, cloud]

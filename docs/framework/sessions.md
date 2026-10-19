@@ -30,12 +30,12 @@ assert!(second.success);
 
 `Session` is always a live conversation. `send` accepts a message without
 waiting for a response. If a turn is active, the message steers that turn; if
-the previous turn has already finished, it starts a follow-up turn. The receipt
-reports which case occurred, so applications do not need to race on session
-state themselves:
+the previous turn has already finished, it starts a follow-up turn. Admission returns before the executor assigns a turn. The receipt
+reports `Pending`; query its authoritative assignment to learn whether it
+started or steered a turn:
 
 ```rust
-# use everruns::{Agent, Engine, Model, SendDisposition};
+# use everruns::{Agent, Engine, Model};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder().instructions("Remember input.").model(Model::simulated("Done.")).build()?;
@@ -44,23 +44,16 @@ let session = engine.create(agent);
 let initial = session.send("Plan my trip.").await?;
 let latest = session.send("Prefer trains.").await?;
 
-match latest.disposition {
-    SendDisposition::Steered => {
-        assert_eq!(latest.turn_id, initial.turn_id);
-    }
-    SendDisposition::Started => {
-        // The first turn completed before the second message was accepted.
-    }
-    _ => {}
-}
-
 let result = latest.wait().await?;
+if let Some(assignment) = latest.assignment().await? {
+    println!("turn: {}, steered: {}", assignment.turn_id, assignment.steered);
+}
 # let _ = result;
 # Ok(())
 # }
 ```
 
-Waiting on the latest receipt works in both cases. `send_and_wait` (also
+Waiting on the latest receipt works before or after assignment. `send_and_wait` (also
 available as the shorter `run` alias) is request/response convenience over the
 same live session, not a separate mode.
 
@@ -93,6 +86,31 @@ crash-durable local profile. See
 [Workspaces and Environments](/framework/workspaces-and-environments/) for
 exact-head resume, isolation, sharing, and lifecycle, and [Events and
 cancellation](/framework/events-and-cancellation/) to observe a turn in flight.
+
+### Send files
+
+`Session::attach` keeps a file in the session's own files at
+`/attachments/<id>/<name>`, read-only, and returns the part that sends it with a
+message. The model gets images and PDFs as content and other files by name and
+path, and can open any of them again with `read_file`, including after
+compaction. A zip is unpacked into a read-only folder next to it.
+
+```rust,no_run
+# async fn demo(session: everruns::Session) -> Result<(), Box<dyn std::error::Error>> {
+use everruns::InputMessage;
+
+let report = session
+    .attach("report.pdf", Some("application/pdf"), std::fs::read("report.pdf")?)
+    .await?;
+let mut message = InputMessage::user("Summarize the attached report.");
+message.content.push(report);
+session.run(message).await?;
+# Ok(())
+# }
+```
+
+The bytes decide the file's type, whatever the caller declared. Embedded
+channels keep the files people send (a Slack file, for example) the same way.
 
 ## History and resume
 
@@ -213,13 +231,13 @@ Framework history is a read-only projection of canonical events. Normal
 execution has one write path, the engine's event log, so a resumed session and a
 running session cannot disagree about the conversation.
 
-![Framework persistence ladder: Engine::new() keeps volatile state in memory for one Engine; adding LocalConfig gives a crash-durable event log and SQLite task and schedule state for one application process; the Everruns Platform stores PostgreSQL checkpoints and canonical events across a distributed server and workers.](./persistence-ladder.svg)
-
 | Deployment | Conversation state | Recovery boundary | Use when |
 | --- | --- | --- | --- |
-| `Engine::new()` | Volatile memory | One Engine in one process | Embedding, tests, and short-lived tools |
-| `Engine` with `LocalConfig` | Crash-durable local canonical events and catalog | One trusted application process | Desktop apps, CLIs, and single-node services |
-| Everruns Platform | PostgreSQL-backed durable workflow state and canonical events | Distributed server and workers | Restarts, retries, horizontal workers, and remote clients |
+| `Engine::new()` | Volatile coherent memory authority | One process | Embedding, tests and short-lived tools |
+| Engine with `SqliteHosting` | Transactional local session authority | The configured disk plus native supervisor | Durable single-node Framework services |
+| Engine with `ObjectHosting` | Per-session object authority | Platform storage and alarms | Native or Wasm execution on Cloudflare/celld |
+| Legacy `LocalConfig` | Local canonical events and catalog | One trusted application process | Existing local-store integrations |
+| Everruns Platform | PostgreSQL canonical events and actor authority | Distributed server and workers | Horizontal workers and remote clients |
 
 ### Default: engine-lifetime memory
 
@@ -234,6 +252,22 @@ volatile history.
 
 This default fits tests, command-line tools, short-lived workers, and
 applications that deliberately own a higher-level record elsewhere.
+
+### Coherent native and Durable Object hosting
+
+For durable admission and independently recoverable execution, choose a coherent
+session authority on Engine. Native `hosting::SqliteHosting` owns one transactional
+database; the [session hosting SPI](/framework/hosting/) supports external
+authorities for native or Wasm Engine placement. A source-only Durable Object
+reference demonstrates the extension. Register immutable `AgentBuild`
+identities and retained Environment factories before creating sessions. Start the
+native supervisor or configure platform alarms so recovery does not depend on a
+client reconnecting. See [Durable Object hosting](/framework/durable-objects/).
+
+`create_registered` and `send_with_id` accept caller-retained identities for retry
+after uncertain responses. Admissions, approvals, client results and cancellation
+are authority commands; the journal and wakeup obligation commit together.
+Resources such as workspace files and compute still require explicit host services.
 
 ### Local: crash-durable events
 
@@ -327,8 +361,9 @@ without an end. After resuming, `resumed.interrupted_turn()` reports such a
 turn and the tool calls it had not finished, and
 `resumed.resume_interrupted_turn()` continues it in the same turn. A call runs
 again only when that is safe: it waited on a person, which asks the approver
-or `ask_user` responder again under the same tool call id, or its tool is
-marked `FunctionTool::idempotent()`. Any other unfinished call is recorded as
+or `ask_user` responder again under the same tool call id, its tool is
+marked `FunctionTool::idempotent()`, or it never started (the log has no
+`tool.started` for it). Any other unfinished call is recorded as
 interrupted (listed in `not_rerun`), so the model learns its outcome is
 unknown and nothing runs twice. A turn cut off between steps reasons again.
 
@@ -381,11 +416,11 @@ that long before it resumes a turn the old process was running.
 
 ### Platform: distributed durable execution
 
-The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine as the
-Framework, driven by `everruns-durable-engine` on the `everruns-durable` engine. The server schedules work,
-workers claim each step over gRPC, execute it, and apply its effects, and PostgreSQL stores workflow
-checkpoints and canonical events. A worker can disappear between phases and a
-later worker can continue from the committed checkpoint.
+The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine and
+turn loop as the Framework. The server stores each input and marks the session runnable; a
+worker leases the session over gRPC and runs the whole turn, and PostgreSQL stores the canonical
+events. If a worker disappears mid-turn, its lease expires and a later worker resumes the turn
+from the session's event log.
 
 The Platform is a deployment boundary, not another configuration mode on
 `everruns::Engine`. Remote applications use the Platform API or an SDK; product

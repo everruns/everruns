@@ -199,9 +199,39 @@ serializable, so a per-step checkpoint stores what replay would recompute.
 Replay would need the planning logic restated as deterministic workflow code, a
 second planner beside `everruns_core::engine`. And a session's history keeps
 growing, so resuming one step would replay ever more events. The durable
-backend keeps queue plus per-step checkpoint; see
-[Execution Backends](../framework/execution-backends.md).
+backend kept queue plus per-step checkpoint until it was itself retired (next
+entry); see [Execution Backends](../framework/execution-backends.md).
 
 **Revisit if**: turns need workflow-only features, such as durable timers or
 child workflows, that the checkpoint driver cannot provide without
 reimplementing them.
+
+## Turns as queued, checkpointed steps
+
+**Status**: Retired 2026-10-12 (actor-based design, steps 6c and 7)
+
+**What it was**: The platform's turn model before session actors.
+`everruns-durable-engine` ran each turn as a workflow on the `everruns-durable`
+queue: `process_input`, `reason` and `act` were separate tasks that any worker
+could claim, the turn's state was checkpointed after every step, and steering
+arrived as `USER_MESSAGE` signals under the workflow lock. The facade exposed
+the same driver as its experimental `durable` feature.
+
+**Why considered**: It reused the generic durable queue (claims, heartbeats,
+retries, dead letters) and survived a worker crash by reclaiming the step.
+
+**Why dismissed**: The session event log already holds everything a turn
+needs, so a lease plus a log fold gives the same crash recovery without a
+second copy of the turn's state per step. Each step paid a queue round trip and
+a checkpoint write, and phase hand-offs re-read the session, harness and agent
+over the worker link. Cancel, steering and crash recovery needed signals, a
+stranded-run sweep and a deduplicated enqueue to stay exactly-once; the chaos
+harness (2 API servers, 3 workers, kills) found a cancel-then-message case that
+stranded sessions on it. The facade's PostgreSQL queue could not share work
+across processes. Numbers and the full record:
+[Execution Backends](../framework/execution-backends.md#retired-the-per-step-durable-backend)
+and [Load Testing](../operations/load-testing.md).
+
+**Revisit if**: a turn must be split across workers mid-turn (for example one
+step on GPU hardware and the next elsewhere), which a single lease holder per
+turn does not allow.

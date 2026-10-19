@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
+import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { McpAppResourceList } from "./mcp-app-resource-list";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import { BashToolCallCard, isBashTool } from "./bash-tool-call-card";
@@ -44,6 +45,8 @@ export function ToolCallCardFromEvent({
 
   const isComplete = !!toolResult;
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
+  // A failed call went back to the model: an issue, not a turn error.
+  const failureClass = failureTextClass(toolFailureSeverity(toolResult) ?? "issue");
 
   const argsPreview = formatArguments(toolCall.arguments);
 
@@ -76,7 +79,7 @@ export function ToolCallCardFromEvent({
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-destructive text-xs">✗</span>
+      <span className={`${failureClass} text-xs`}>✗</span>
     ) : (
       <Check className="h-3 w-3 text-success/80" />
     )
@@ -101,7 +104,7 @@ export function ToolCallCardFromEvent({
 
       {/* Error message */}
       {hasError && (
-        <div className="text-destructive ml-4 mt-0.5">
+        <div className={`${failureClass} ml-4 mt-0.5`}>
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

@@ -18,6 +18,14 @@ To use a Parallel API key, add a `Parallel` connection in Settings → My agent 
 
 To use Parallel's OAuth-compatible MCP endpoint, configure the capability with `endpoint: "oauth"`. This mode requires the `Parallel` connection because the endpoint rejects anonymous requests.
 
+## As a Web search provider
+
+A Parallel API key can also answer the provider-neutral [Web Search](/capabilities/web-search/)
+capability. Connect it as an organization search account in **Registers > Web search**
+(`parallel` connection), then pick it in an agent's Web search settings or put it in the
+Automatic order. Searches go to Parallel's Search API and are billed on that key. Use this
+instead of `parallel_search` when you want one `web_search` tool that can switch providers.
+
 ## Tools
 
 | Tool | Purpose |

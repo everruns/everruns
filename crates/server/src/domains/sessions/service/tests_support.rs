@@ -59,6 +59,7 @@ pub(crate) fn external_caller(org_id: i64) -> Caller {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 

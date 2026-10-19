@@ -19,6 +19,24 @@ both directions.
   webhooks for `session.completed`, `session.failed` and
   `session.input_required`. Callbacks must be public HTTPS URLs and are
   verified before the first event.
+
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "events/subscribe",
+    "params": {
+      "name": "session.completed",
+      "arguments": {},
+      "delivery": {
+        "mode": "webhook",
+        "url": "https://example.com/hooks/everruns",
+        "secret": "whsec_<base64 key>"
+      }
+    }
+  }
+  ```
+
 - An agent trigger with `trigger_type: "mcp_event"` subscribes to an event one
   of the agent's own MCP servers publishes, such as a tracker announcing new
   issues, and starts a session when it arrives.

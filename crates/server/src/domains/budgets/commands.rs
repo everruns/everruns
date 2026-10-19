@@ -538,6 +538,7 @@ mod tests {
             role,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         }
     }
 

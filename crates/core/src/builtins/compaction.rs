@@ -1275,7 +1275,6 @@ fn is_read_file_tool_name(tool_name: &str) -> bool {
             | "sandbox_read_file"
             | "e2b_read_file"
             | "docker_read_file"
-            | "deno_read_file"
             | "sprites_read_file"
             | "read_github_file"
     )
@@ -1370,7 +1369,7 @@ fn summarize_tool_result(
         tool_name if is_read_file_tool_name(tool_name) => {
             summarize_read_file_result(tool_name, object, value)
         }
-        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
+        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" => {
             summarize_exec_result(tool_name, object, value)
         }
         "list_directory" => summarize_list_directory_result(tool_name, object, value),
@@ -1616,6 +1615,7 @@ fn apply_observation_masking_with_protected(
                 phase: msg.phase,
                 reasoning: Vec::new(),
                 configuration_update: None,
+                tool_changes: None,
             });
             masked_count += 1;
         } else {
@@ -1655,12 +1655,9 @@ fn extract_text(content: &MessageContent) -> String {
         MessageContent::Text(t) => t.clone(),
         MessageContent::Parts(parts) => parts
             .iter()
-            .filter_map(|p| {
-                if let LlmContentPart::Text { text } = p {
-                    Some(text.clone())
-                } else {
-                    None
-                }
+            .filter_map(|p| match p {
+                LlmContentPart::Text { text } => Some(text.clone()),
+                other => crate::attachment_labels::attachment_label(other),
             })
             .collect::<Vec<_>>()
             .join(" "),
@@ -1736,6 +1733,7 @@ agent needs to continue working.
 <format>
 Produce a structured summary. Use sections. Be concise but complete.
 Do not include tool output verbatim — reference files by path.
+Mention attachments (images, files) the conversation relies on by their label.
 IMPORTANT: Any activate_skill tool results contain durable skill instructions.
 Include them verbatim in a dedicated "Active Skills" section — do not summarize
 or paraphrase skill instructions.
@@ -1807,6 +1805,7 @@ pub fn build_summary_message(summary_text: &str) -> Message {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     }
 }
 
@@ -1876,29 +1875,11 @@ mod tests {
     }
 
     fn make_user_msg(text: &str) -> Message {
-        Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::User,
-            content: MessageContent::Text(text.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
+        Message::text(MessageRole::User, text)
     }
 
     fn make_assistant_msg(text: &str) -> Message {
-        Message {
-            native_tool_calls: Vec::new(),
-            role: MessageRole::Assistant,
-            content: MessageContent::Text(text.to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-        }
+        Message::text(MessageRole::Assistant, text)
     }
 
     fn make_assistant_with_tool_call(call_id: &str, tool_name: &str) -> Message {
@@ -1915,6 +1896,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -1937,6 +1919,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -1950,6 +1933,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 

@@ -82,6 +82,30 @@
   },
   {
     "category": "agents",
+    "cli": "agents examples adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "input_schema": {
+      "description": "Create an agent from an agent example.",
+      "properties": {
+        "name": {
+          "description": "Example name from list_agent_examples, such as `pr-reviewer`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "adopt_agent_example",
+    "output_shape": "unknown",
+    "path": "/v1/agents/import",
+    "positional_arg": "name",
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents analyze",
     "description": "Run advisory checks (built-in rules plus LLM analysis) against an agent configuration.",
     "input_schema": {
@@ -753,7 +777,77 @@
     "cli": "sessions storage secrets batch",
     "description": "Encrypt and store multiple session secrets in one request.",
     "input_schema": {
+      "$defs": {
+        "SecretAuth": {
+          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body.",
+          "oneOf": [
+            {
+              "description": "`Authorization: Bearer <value>`.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "bearer"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
+              "properties": {
+                "name": {
+                  "description": "Header name.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SecretBinding": {
+          "description": "Where a bound secret may be sent, and how.",
+          "properties": {
+            "auth": {
+              "$ref": "#/$defs/SecretAuth",
+              "description": "How the value is attached."
+            },
+            "url": {
+              "description": "`https://host[:port][/path-prefix]` the value may be sent to.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "auth"
+          ],
+          "type": "object"
+        }
+      },
       "properties": {
+        "bindings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/SecretBinding"
+          },
+          "description": "Optional bindings keyed by secret name, e.g.\n`{\"JEV_API_KEY\": {\"url\": \"https://api.typesafe.ai\", \"auth\": {\"type\": \"bearer\"}}}`.\nA bound secret is write-only: the shell sees `$NAME` as a placeholder\nand the platform puts the value on requests to the bound URL only.",
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "secrets": {
           "additionalProperties": {
             "type": "string"
@@ -2402,6 +2496,16 @@
             "null"
           ]
         },
+        "max_output_tokens": {
+          "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to use the provider default. Must be at least 1; clamped to the\nmodel's output limit when known.",
+          "example": 4096,
+          "format": "int32",
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
           "description": "Remote MCP servers scoped to this agent."
@@ -2589,18 +2693,42 @@
   {
     "category": "agents",
     "cli": "agents credentials create",
-    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "description": "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "input_schema": {
-      "description": "Declare a credential requirement for an agent's attached MCP tool.",
+      "description": "Declare a credential requirement for an agent: an attached MCP tool's\nparameter (`mcp_server_name`, `tool_name`, `parameter_name`), or an HTTP\nAPI the agent's shell calls (`env_name`, `url`, `auth`).",
       "properties": {
         "agent_id": {
           "description": "Agent ID, populated from the request path by the HTTP API.",
           "example": "agent_01933b5a000070008000000000000001",
           "type": "string"
         },
+        "auth": {
+          "description": "`bearer` (default) sends `Authorization: Bearer <value>`; `header`\nsends the value in `header_name` (HTTP API).",
+          "example": "bearer",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "description": {
           "description": "Optional explanation of how the credential will be used.",
           "example": "Delivers scheduled status notifications",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env_name": {
+          "description": "Env var name the agent's shell uses as a placeholder (HTTP API).",
+          "example": "JEV_API_KEY",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "header_name": {
+          "description": "Header that carries the value when `auth` is `header` (HTTP API).",
+          "example": "X-Api-Key",
           "type": [
             "string",
             "null"
@@ -2612,25 +2740,39 @@
           "type": "string"
         },
         "mcp_server_name": {
-          "description": "Name of an MCP server attached to the agent.",
+          "description": "Name of an MCP server attached to the agent (MCP tool parameter).",
           "example": "visti",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "parameter_name": {
-          "description": "Top-level tool argument to inject outside model context.",
+          "description": "Top-level tool argument to inject outside model context (MCP tool parameter).",
           "example": "channel_key",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "tool_name": {
-          "description": "MCP tool whose outbound call requires the credential.",
+          "description": "MCP tool whose outbound call requires the credential (MCP tool parameter).",
           "example": "visti_send",
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "HTTPS URL prefix the value may be sent to (HTTP API).",
+          "example": "https://api.typesafe.ai",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "mcp_server_name",
-        "tool_name",
-        "parameter_name",
         "label"
       ],
       "type": "object"
@@ -2904,6 +3046,22 @@
             "subject_template": {
               "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
               "example": "{{webhook.json.action}}",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_binding_key": {
+              "description": "Schedule only: the conversation on `target_channel_id`, keyed the way\nthe channel binds sessions: `slack:user:{user_id}` (a direct message)\nor `slack:channel:{channel_id}` (top-level posts).",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Schedule only: the agent's channel whose conversation each run speaks\nin, instead of a session of the trigger's own. Needs\n`target_binding_key`.",
+              "example": "appchan_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -5097,7 +5255,7 @@
   {
     "category": "messages",
     "cli": "sessions messages create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "input_schema": {
       "$defs": {
         "AnnotationSource": {
@@ -5615,7 +5773,7 @@
         },
         "message": {
           "$ref": "#/$defs/InputMessage",
-          "description": "The user message: `{\"content\": [{\"type\": \"text\", \"text\": ...}]}`."
+          "description": "The user message as one JSON object whose `content` is an array of\ncontent parts, e.g. `{\"content\": [{\"type\": \"text\", \"text\": \"Hi\"}]}`."
         },
         "metadata": {
           "additionalProperties": {},
@@ -8052,14 +8210,6 @@
             "string",
             "null"
           ]
-        },
-        "workspace_id": {
-          "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
-          "example": "wsp_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "type": "object"
@@ -8241,36 +8391,6 @@
     "name": "create_virtual_user",
     "output_shape": "unknown",
     "path": "/v1/virtual-users",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "workspaces",
-    "cli": "workspaces create",
-    "description": "Create a new Workspace in the current organization.",
-    "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Optional human-readable description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable workspace name. Must be unique per org.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_workspace",
-    "output_shape": "unknown",
-    "path": "/v1/workspaces",
     "positional_arg": null,
     "read_only": false
   },
@@ -12543,6 +12663,75 @@
   },
   {
     "category": "agents",
+    "cli": "agents examples list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "input_schema": {
+      "description": "List the agent examples (blueprints) this deployment offers.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_examples",
+    "output_shape": "array",
+    "path": "/v1/agent-examples",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents failures list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "input_schema": {
+      "properties": {
+        "after": {
+          "description": "Exclusive lower bound on failure time; defaults to 24 hours before `before`.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent_id": {
+          "type": "string"
+        },
+        "before": {
+          "description": "Inclusive upper bound, normally the Agents activity response's generated_at.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_failures",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/failures",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
     "cli": "agents health-checks list",
     "description": "List recent health check runs for an agent.",
     "input_schema": {
@@ -13936,6 +14125,29 @@
     "name": "list_org_tasks",
     "output_shape": "unknown",
     "path": "/v1/tasks",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "organizations",
+    "cli": "orgs provider-accounts list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_organization_connections",
+    "output_shape": "array",
+    "path": "/v1/orgs/{org}/organization-connections",
     "positional_arg": null,
     "read_only": true
   },
@@ -18889,6 +19101,16 @@
                 "null"
               ]
             },
+            "max_output_tokens": {
+              "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to leave unchanged; `null` clears it back to the provider default.",
+              "example": 4096,
+              "format": "int32",
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "mcpServers": {
               "oneOf": [
                 {
@@ -19408,6 +19630,22 @@
             "subject_template": {
               "description": "Replacement subject template. An empty string removes it.",
               "example": "{{webhook.json.action}}",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_binding_key": {
+              "description": "Replacement target conversation; given with `target_channel_id`.",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Replacement target channel. An empty string removes the target, so\nruns use a session of the trigger's own again.",
+              "example": "appchan_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -23059,7 +23297,7 @@
   {
     "category": "sessions",
     "cli": "sessions update",
-    "description": "Update session title, tags, or locale.",
+    "description": "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     "input_schema": {
       "$defs": {
         "UpdateSessionRequest": {
@@ -23076,6 +23314,14 @@
             "locale": {
               "description": "Session locale (BCP 47, e.g. `uk-UA`).",
               "example": "uk-UA",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "model_id": {
+              "description": "Model for this session's turns. `null` clears it so turns follow the\nagent's default model again.",
+              "example": "model_01933b5a00007000800000000000001",
               "type": [
                 "string",
                 "null"
@@ -23796,6 +24042,16 @@
               "description": "Maximum number of LLM iterations per turn for this agent.",
               "example": 20,
               "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "max_output_tokens": {
+              "description": "Ceiling on output tokens per model response (sent as `max_tokens`).\nOmit to use the provider default. Must be at least 1; clamped to the\nmodel's output limit when known.",
+              "example": 4096,
+              "format": "int32",
+              "minimum": 1,
               "type": [
                 "integer",
                 "null"
@@ -24689,6 +24945,53 @@
     "name": "upsert_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents github use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "input_schema": {
+      "$defs": {
+        "UseEverrunsAppRequest": {
+          "description": "Which org link to act through.",
+          "properties": {
+            "connection_id": {
+              "description": "Connection id of one of the org's linked installations, from the\nagent's GitHub status (`everruns_app_installations`).",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connection_id"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UseEverrunsAppRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Make an agent act as the shared Everruns App through one org link."
+    },
+    "method": "POST",
+    "name": "use_agent_everruns_app",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/github/everruns-app",
     "positional_arg": null,
     "read_only": false
   },

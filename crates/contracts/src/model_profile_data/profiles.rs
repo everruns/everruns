@@ -409,6 +409,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
+    md(&["gemini-4-argon"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.8-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.7-flash"], ModelVendor::Google, GEMINI),
@@ -447,6 +448,11 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["mai-code-1-flash", "microsoft/mai-code-1-flash"],
         ModelVendor::Microsoft,
         MICROSOFT_MAI,
+    ),
+    md(
+        &["muse-wonder-1.0", "meta/muse-wonder-1.0"],
+        ModelVendor::Meta,
+        META_MUSE,
     ),
     md(
         &["muse-spark-1.3", "meta/muse-spark-1.3"],
@@ -738,6 +744,12 @@ pub fn get_model_service_kind(provider_type: &str, model_id: &str) -> ServiceKin
 /// availability and vendor tagging live in `REGISTRY`, not here. The segments
 /// are grouped by author for readability only — there is no provider dispatch.
 fn profile_data(canonical: &str) -> Option<ModelProfile> {
+    let mut profile = authored_profile_data(canonical)?;
+    profile.model_card_url = model_card_url(canonical).map(str::to_string);
+    Some(profile)
+}
+
+fn authored_profile_data(canonical: &str) -> Option<ModelProfile> {
     jev_profile_data(canonical)
         .or_else(|| openai_profile_data(canonical))
         .or_else(|| anthropic_profile_data(canonical))
@@ -749,6 +761,9 @@ fn profile_data(canonical: &str) -> Option<ModelProfile> {
 
 mod meta_profiles;
 use meta_profiles::meta_profile_data;
+
+mod model_cards;
+use model_cards::model_card_url;
 
 mod openai_profiles;
 use openai_profiles::openai_profile_data;
@@ -827,6 +842,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
         _ => None,
@@ -881,6 +897,7 @@ fn jev_profile(name: &str) -> ModelProfile {
         supported_parameters: Vec::new(),
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: Some(crate::model_profile_data::DecisionModelProfile {
             primitives: vec!["noul".into(), "choice".into(), "score".into()],
             calibrated: true,

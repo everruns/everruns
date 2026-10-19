@@ -17,6 +17,7 @@ fn person(org_id: i64, org_public_id: &str, role: OrgRole, platform: bool) -> Ca
         role,
         is_platform_user: platform,
         is_internal: false,
+        read_only: false,
     }
 }
 

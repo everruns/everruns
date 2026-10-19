@@ -32,8 +32,13 @@
 //!   first's turn (the `/v1` messages route behaves the same).
 //! - A pending approval or `ask_user` question parks the task in `working`
 //!   until it is answered through the `/v1` routes; A2A has no answer for
-//!   either here. The card advertises no security scheme: as on every serve
-//!   route, auth is what the developer puts in front.
+//!   either here.
+//! - With auth configured ([`crate::auth`]) the card lists one security
+//!   scheme per method kind and one requirement per scheme (any one lets a
+//!   caller in), named and shaped as the everruns server's card names them.
+//!   Without auth it lists none. Requirements go out in the A2A 1.0 shape
+//!   (`[{"schemes": {"apiKey": []}}]`), which the server publishes too; the
+//!   SDK's `AgentCard` would serialize the flat 0.3 shape.
 //! - The card's interface URL is absolute, from the request's `Host` (and
 //!   `X-Forwarded-Proto`, default `http`, since a serve app usually runs on
 //!   plain HTTP behind whatever terminates TLS).
@@ -156,13 +161,20 @@ async fn agent_card(State(source): State<CardSource>, headers: HeaderMap) -> Res
         }
         None => route(&source.agent),
     };
-    let card = card(&host, &source.agent, url);
+    let card = card_json(card(&host, &source.agent, url));
     ([(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")], Json(card)).into_response()
 }
 
 /// `agent`'s Agent Card, its one JSON-RPC interface at `url`.
 fn card(host: &Host, agent: &str, url: String) -> AgentCard {
     let manifest = host.app.manifest();
+    let (security_schemes, security_requirements) = match host.auth() {
+        Some(auth) => {
+            let (schemes, requirements) = auth.a2a_security();
+            (Some(schemes), Some(requirements))
+        }
+        None => (None, None),
+    };
     let description = manifest
         .agents
         .iter()
@@ -190,10 +202,26 @@ fn card(host: &Host, agent: &str, url: String) -> AgentCard {
         provider: None,
         documentation_url: None,
         icon_url: None,
-        security_schemes: None,
-        security_requirements: None,
+        security_schemes,
+        security_requirements,
         signatures: None,
     }
+}
+
+/// `card` as JSON, with `securityRequirements` in the A2A 1.0 shape: each
+/// requirement wrapped as `{"schemes": {...}}`, scopes a bare array (the
+/// form the everruns server publishes and every 1.0 parser accepts).
+fn card_json(card: AgentCard) -> serde_json::Value {
+    let mut value = serde_json::to_value(card).unwrap_or_default();
+    if let Some(requirements) = value
+        .get_mut("securityRequirements")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for requirement in requirements.iter_mut() {
+            *requirement = serde_json::json!({ "schemes": requirement.take() });
+        }
+    }
+    value
 }
 
 // --- Executor ------------------------------------------------------------------

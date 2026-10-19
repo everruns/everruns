@@ -111,10 +111,9 @@ Production event routing therefore prefers:
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
-   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the platform worker's turn driver (the facade no longer uses it: its sessions run on core's `ActorRunner`)
+   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Sprites lives in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/
@@ -140,13 +139,11 @@ everruns/
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── db/               # Database utilities: embedded SQLite, UpdateField
 │   ├── durable/          # Generic durable execution engine
-│   ├── durable-engine/   # Durable turn backend over durable
 │   └── drivers/          # Consolidated official LLM drivers and standalone simulator
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
 │   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
-│   ├── e2b/              # E2B cloud sandbox (inventory plugin)
-│   └── deno/             # Deno sandbox (inventory plugin)
+│   └── e2b/              # E2B cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── knowledge/            # OKF design and product knowledge
 │   └── test-cases/       # Manual test cases
@@ -167,7 +164,6 @@ graph TD
     drivers[drivers/*]
     protocol[internal-protocol]
     durable[durable]
-    durableEngine[durable-engine]
     worker[worker]
     server["server (control plane)"]
 
@@ -184,10 +180,8 @@ graph TD
     framework --> provider
     framework -.->|opt-in hosted composition| platform
     drivers --> provider
-    durableEngine --> durable
-    durableEngine --> host
     worker --> host
-    worker --> durableEngine
+    worker --> durable
     worker --> protocol
     worker --> platform
     server --> host
@@ -235,8 +229,8 @@ process should use `everruns-core` (`host` feature).
 - engine-owned Input/Reason/Act algorithms composed by the host
 
 `everruns-worker` provides the first-party adapter bridge from worker backends
-into that host contract via `WorkerRuntimeHost`, so both the immediate and
-durable paths reuse the same engine phase wiring.
+into that host contract via `WorkerRuntimeHost`, so a worker's session actors
+run turns on the same engine phase wiring as an in-process session.
 
 See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runtime contract.
 
@@ -344,13 +338,14 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, and platform effects via gRPC
    - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage and secrets, the session task registry, the connection and MCP credential resolver), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands). Image and file byte RPCs (create/get image artifact, image and file resolution) stay gRPC by design: they carry bytes up to 100 MiB
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
-   - `GrpcDurableStore` - Implements durable workflow operations via gRPC
+   - `GrpcDurableStore` - Implements the worker's task-queue operations via gRPC
 
-3. **Durable Execution gRPC Operations**:
-   - `ClaimDurableTasks` - Workers poll for pending tasks
+3. **Session actor and task-queue gRPC operations**:
+   - `LeaseActors` / `RenewActorLease` / `ReleaseActor` - Lease runnable sessions, keep the lease, hand it back with the input consumed
+   - `ReadActorJournal` - Read the session log tail a turn resumes from
+   - `ClaimDurableTasks` - Workers poll for pending non-turn tasks
    - `CompleteDurableTask` / `FailDurableTask` - Report task outcome
    - `HeartbeatDurableTask` - Liveness signal for long-running tasks
-   - `CreateDurableWorkflow` / `GetDurableWorkflowStatus` - Workflow lifecycle
 
 4. **Benefits**:
    - Workers don't need database credentials or encryption keys
@@ -372,19 +367,21 @@ sequenceDiagram
     participant EG as Egress Service
     participant LLM as LLM Provider
 
-    W->>CP: ClaimDurableTasks
-    CP->>DB: Claim pending task (SKIP LOCKED)
-    CP-->>W: Task with workflow_id
+    W->>CP: LeaseActors
+    CP->>DB: Lease runnable sessions (SKIP LOCKED, fence + 1)
+    CP-->>W: Session ids with fence and inbox cursor
+    W->>CP: ReadActorJournal(session_id)
+    CP-->>W: Log tail since the last turn.started
     W->>CP: GetTurnContext(session_id)
     CP-->>W: Agent + Session + Messages + Model
-    W->>CP: EmitEvent(turn.started)
+    W->>CP: EmitEvent(turn.started, fenced)
 
-    par Background Heartbeat
-        loop Every 10s while task runs
-            W->>CP: HeartbeatDurableTask
-            CP-->>W: OK / Cancel signal
+    par Lease renewal
+        loop Every third of the lease life while the turn runs
+            W->>CP: RenewActorLease
+            CP-->>W: OK / fence moved / cancel requested
         end
-    and Task Execution
+    and Turn Execution
         loop Reason-Act Loop
             W->>EG: Generate completion request
             EG->>LLM: Provider HTTP request
@@ -399,21 +396,21 @@ sequenceDiagram
         end
     end
 
-    W->>CP: EmitEvent(turn.completed)
-    W->>CP: CompleteDurableTask
-    CP->>DB: Mark task completed
+    W->>CP: EmitEvent(turn.completed, fenced)
+    W->>CP: ReleaseActor(consumed input)
+    CP->>DB: Advance the cursor, clear the lease
 ```
 
-**Note**: Workers send periodic heartbeats while executing tasks. If heartbeats stop (worker crash), the control-plane reclaims stale tasks after 30 seconds and re-queues them for another worker.
+**Note**: A worker renews its lease while a turn runs. If renewals stop (worker crash), the lease expires and another worker leases the session and resumes the turn from the log. Non-turn tasks on the durable queue heartbeat instead; the control plane reclaims a stale claim after 30 seconds and re-queues it.
 
 ### Task Worker Architecture
 
-The `TaskWorker` provides a unified worker implementation that works with any `WorkflowEventStore`: embedded PostgreSQL (DEV_MODE) or external PostgreSQL (production):
+The `TaskWorker` provides a unified worker implementation over any `TaskStore`: the server's PostgreSQL store in process (DEV_MODE) or the control plane's gRPC client (production):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         TaskWorker<S, A>                         │
-│  Generic over: S = WorkflowEventStore, A = WorkerAdapters       │
+│  Generic over: S = TaskStore, A = WorkerAdapters                │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
 │  │ Configuration   │  │ Task Polling     │  │ Heartbeating  │  │
@@ -423,12 +420,11 @@ The `TaskWorker` provides a unified worker implementation that works with any `W
 │  └─────────────────┘  └──────────────────┘  └───────────────┘  │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │               Activity Execution                          │   │
-│  │  ┌──────────┐    ┌───────────┐    ┌─────────┐           │   │
-│  │  │  input   │ →  │  reason   │ ⟷  │   act   │           │   │
-│  │  │ activity │    │ activity  │    │ activity│           │   │
-│  │  └──────────┘    └───────────┘    └─────────┘           │   │
-│  └──────────────────────────────────────────────────────────┘   │
+│  ┌───────────────────────────┐  ┌───────────────────────────┐   │
+│  │ Session actor loop        │  │ Task queue loop           │   │
+│  │ lease → drive_turn        │  │ cleanup, task reaper,     │   │
+│  │ (input → reason ⟷ act)    │  │ scheduled invocations     │   │
+│  └───────────────────────────┘  └───────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -452,12 +448,12 @@ The `TaskWorker` provides a unified worker implementation that works with any `W
 | Mode | Store | Adapters | Use Case |
 |------|-------|----------|----------|
 | DEV_MODE | `PostgresWorkflowEventStore` (embedded PostgreSQL) | `DirectWorkerAdapters` | Local development |
-| Production | `PostgresWorkflowEventStore` | `GrpcWorkerAdapters` | External workers |
+| Production | `GrpcDurableStore` (gRPC to the control plane) | `GrpcWorkerAdapters` | External workers |
 
 **Adapter Parity Principle**: Both `DirectWorkerAdapters` and `GrpcWorkerAdapters` must implement every `WorkerAdapters` method. The trait enforces this at compile time: store accessors have no default implementations, so adding a new store requires updating both adapters or the build fails. Methods return `Arc<dyn T>` (non-optional) to guarantee the store is available in both backends. The only exception is `sqldb_store()` which returns `Option` with a default `None` until gRPC support is added (tracked in EVE-44).
 
 **Benefits of Unified Architecture**:
-- Single codebase for activity implementations (input, reason, act)
+- Single codebase for turn phases (input, reason, act) and queued activities
 - `everruns-core` (`engine` feature) owns the shared turn planner and phase algorithms, so in-process and gRPC-backed workers use the same reason/act continuation, event ordering, and tool-results pause/resume policy
 - Shared task scheduling logic
 - Easy to test with mock adapters
@@ -492,9 +488,9 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
 pure turn planner. There is no generic public `Atom` trait. `everruns-core` (`host` feature)
-retains state in `InProcessExecution`; `everruns-durable-engine` checkpoints the same
-`TurnExecution` state between steps on the generic `everruns-durable` engine, for
-the worker and for the facade's experimental durable backend. Hosts inject core/provider contracts and keep
+retains state in `InProcessExecution`; a platform worker drives the same
+`TurnExecution` with `drive_turn` under a session lease and resumes it by
+folding the session log. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:

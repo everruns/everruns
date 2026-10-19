@@ -9,12 +9,15 @@ pub mod a2a_delegation;
 #[cfg(feature = "ag-ui")]
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
+pub mod automatic_session_titles;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
+pub mod citation_web;
 pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
+mod environment_file_tools;
 mod environment_tools;
 pub mod knowledge_base;
 pub mod knowledge_index;
@@ -24,8 +27,10 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+mod platform_skills;
 pub mod poppy_client;
 pub mod research;
+mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
@@ -44,6 +49,7 @@ pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
     RiskLevel, SpawnMode, SystemPromptContext,
 };
+pub use sandbox_workspace::{ManagedSandboxWorkspace, install_sandbox_workspace};
 
 #[cfg(feature = "a2a")]
 pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
@@ -60,6 +66,7 @@ pub use citation_verification::{
     CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
     CitationVerificationConfig, VerificationMode,
 };
+pub use citation_web::{CITATION_WEB_CAPABILITY_ID, CitationWebCapability};
 pub use coordination::{
     AssignmentTaskExecutor, COORDINATION_CAPABILITY_ID, CoordinationCapability,
     THREAD_RESOLVED_DETAIL,
@@ -201,6 +208,7 @@ pub fn register_hosted_capabilities(
     // sandbox provider — so they are composed here rather than shipped by the
     // kernel.
     registry.register(SessionCapability);
+    registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep
@@ -245,6 +253,7 @@ pub fn register_hosted_capabilities(
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);
     registry.register(CitationRetrievalCapability);
+    registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);
     // Inert unless the org flag lets it through to the worker snapshot.
     registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);

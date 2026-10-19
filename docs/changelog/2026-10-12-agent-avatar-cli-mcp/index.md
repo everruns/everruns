@@ -6,12 +6,13 @@ kind: feature
 significance: minor
 products: [platform, cloud, cli]
 surfaces: [cli, agent, api]
+release: "0.48.0"
 links:
   docs: [/reference/cli/agents/]
 ---
 
 Agent avatars could only be set from the UI or the multipart upload route. Two
-commands now cover the CLI and MCP: `list_avatar_presets` lists the curated
+commands now cover the CLI and MCP (see [`everruns agents`](/reference/cli/agents/)): `list_avatar_presets` lists the curated
 catalog, and `set_agent_avatar` sets either a preset or your own PNG, JPEG, GIF
 or WebP image, sent as base64 and at most 1 MB decoded. The agent's one-click
 Slack apps get the new icon, as with an upload.

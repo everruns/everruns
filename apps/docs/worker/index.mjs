@@ -12,6 +12,13 @@
 // behavior across everruns.com.
 const BASE = "/docs";
 
+// The former docs host. This Worker also takes the route `docs.everruns.com/*`
+// and sends every URL to the same path under everruns.com/docs, query kept. A
+// zone redirect rule would do the same, but the deploy token can manage Worker
+// routes, not rulesets, and this way the redirect is tested and versioned.
+const OLD_HOST = "docs.everruns.com";
+const SITE = "https://everruns.com";
+
 // Same lists as the landing site's src/middleware.ts: crawlers always get HTML,
 // AI clients get Markdown when they ask for it or identify themselves.
 const AI_USER_AGENT_PATTERNS = [
@@ -76,6 +83,10 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.hostname === OLD_HOST) {
+      return Response.redirect(`${SITE}${BASE}${url.pathname}${url.search}`, 301);
+    }
+
     // Preview deployments on workers.dev have nothing at the root.
     if (url.pathname === "/" || url.pathname === BASE) {
       return Response.redirect(new URL(`${BASE}/`, url), 301);
@@ -98,6 +109,17 @@ export default {
     }
 
     const response = await env.ASSETS.fetch(request);
+    // auto-trailing-slash answers `/docs/page` with a 307 to `/docs/page/`.
+    // That move is permanent, and a temporary redirect tells search engines to
+    // keep the slashless URL; answer 301 instead, query kept.
+    const location = response.headers.get("location");
+    if (response.status === 307 && location) {
+      const target = new URL(location, url);
+      if (target.origin === url.origin && target.pathname === `${url.pathname}/`) {
+        target.search = url.search;
+        return Response.redirect(target.toString(), 301);
+      }
+    }
     return withHeaders(response, [...vary, ...(markdown ? links : [])]);
   },
 };

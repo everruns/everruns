@@ -18,11 +18,11 @@ use uuid::Uuid;
 
 use everruns_durable::persistence::{
     DEFAULT_NO_PROGRESS_SEAL_THRESHOLD, DeadLetters, DlqFilter, EventLog, Pagination,
-    PostgresWorkflowEventStore, SignalStore, StoreError, TaskDefinition, TaskFailureOutcome,
-    TaskQueue, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkerRegistry, WorkflowStatus,
+    PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue,
+    TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkerRegistry, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
-use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
+use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent};
 
 /// Get test database URL from environment or use default
 fn get_database_url() -> String {
@@ -43,7 +43,6 @@ async fn reset_durable_tables(pool: &PgPool) {
     sqlx::query(
         r#"
         TRUNCATE TABLE
-            durable_signals,
             durable_dead_letter_queue,
             durable_task_queue,
             durable_workflow_events,
@@ -130,11 +129,6 @@ async fn cleanup_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
 /// Clean up test data for a specific workflow
 async fn cleanup_workflow(store: &PostgresWorkflowEventStore, workflow_id: Uuid) {
     // Delete in reverse dependency order
-    sqlx::query("DELETE FROM durable_signals WHERE workflow_id = $1")
-        .bind(workflow_id)
-        .execute(store.pool())
-        .await
-        .ok();
     sqlx::query("DELETE FROM durable_dead_letter_queue WHERE workflow_id = $1")
         .bind(workflow_id)
         .execute(store.pool())
@@ -876,62 +870,6 @@ async fn test_reclaim_stale_tasks() {
     cleanup_workflow(&store, workflow_id).await;
     cleanup_worker(&store, "dead-worker").await;
     cleanup_worker(&store, "new-worker").await;
-}
-
-// ============================================
-// Signal Tests
-// ============================================
-
-#[tokio::test]
-async fn test_signals() {
-    let store = create_test_store().await;
-    let workflow_id = Uuid::now_v7();
-
-    store
-        .create_workflow(workflow_id, "signal_test", json!({}), None)
-        .await
-        .unwrap();
-
-    // Send signals
-    store
-        .send_signal(
-            workflow_id,
-            WorkflowSignal {
-                signal_type: "approval".to_string(),
-                payload: json!({"approved": true}),
-                sent_at: Utc::now(),
-            },
-        )
-        .await
-        .unwrap();
-
-    store
-        .send_signal(
-            workflow_id,
-            WorkflowSignal {
-                signal_type: "update".to_string(),
-                payload: json!({"new_data": "value"}),
-                sent_at: Utc::now(),
-            },
-        )
-        .await
-        .unwrap();
-
-    // Get pending signals
-    let signals = store.get_pending_signals(workflow_id).await.unwrap();
-    assert_eq!(signals.len(), 2);
-    assert_eq!(signals[0].signal_type, "approval");
-    assert_eq!(signals[1].signal_type, "update");
-
-    // Mark first signal as processed
-    store.mark_signals_processed(workflow_id, 1).await.unwrap();
-
-    // Only one signal should remain
-    let signals = store.get_pending_signals(workflow_id).await.unwrap();
-    assert_eq!(signals.len(), 1);
-    assert_eq!(signals[0].signal_type, "update");
-
-    cleanup_workflow(&store, workflow_id).await;
 }
 
 // ============================================

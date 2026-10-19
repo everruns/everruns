@@ -156,20 +156,22 @@ async fn organization_settings_require_database_admin_role() {
         .await
         .unwrap();
 
-    let response = app
-        .oneshot(update_default_org_json_request(
-            r#"{"default_model_id":"model_01933b5a00007000800000000000030b"}"#,
-        ))
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(
-        json["detail"],
-        "Only organization admins can update organization settings"
-    );
+    for field in ["default_model_id", "small_model_id"] {
+        let response = app
+            .clone()
+            .oneshot(update_default_org_json_request(
+                serde_json::json!({(field): "model_01933b5a00007000800000000000030b"}).to_string(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json["detail"],
+            "Only organization admins can update organization settings"
+        );
+    }
 }
 
 #[tokio::test]
@@ -263,6 +265,7 @@ async fn organization_rejects_personal_model_and_service_defaults() {
         .unwrap();
     for body in [
         serde_json::json!({"default_model_id":model.id}),
+        serde_json::json!({"small_model_id":model.id}),
         serde_json::json!({"default_provider_per_service":{"realtime":provider.id}}),
     ] {
         let response = app
@@ -324,9 +327,10 @@ async fn organization_sets_validated_web_search_defaults() {
         org_id: DEFAULT_ORG_ID,
         name: name.to_string(),
         provider: provider.to_string(),
-        access_token_encrypted: vec![1, 2, 3],
+        access_token_encrypted: Some(vec![1, 2, 3]),
         provider_username: None,
         provider_metadata: None,
+        ..Default::default()
     };
     let brave = db
         .create_organization_connection(account("brave_search", "Team"))
@@ -851,4 +855,126 @@ async fn admins_set_and_clear_the_agentid_owner_cap() {
         db.agentid_agents_per_owner(org.org_id).await.unwrap(),
         crate::storage::agentid::DEFAULT_AGENTS_PER_OWNER
     );
+}
+
+#[tokio::test]
+async fn organization_small_model_is_independent_validated_and_clearable() {
+    use crate::storage::{CreateModelRow, CreateProviderRow, UpdateModel};
+    use serde_json::json;
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let provider = db
+        .create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "Shared".into(),
+                provider_type: "openai".into(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    let model_row = |name: &str, metadata| CreateModelRow {
+        provider_id: provider.id,
+        model_id: name.into(),
+        display_name: name.into(),
+        capabilities: vec![],
+        is_favorite: false,
+        enabled: true,
+        source: "manual".into(),
+        provider_metadata: metadata,
+    };
+    let main = db
+        .create_model(DEFAULT_ORG_ID, model_row("main", None))
+        .await
+        .unwrap()
+        .id;
+    let small = db
+        .create_model(DEFAULT_ORG_ID, model_row("small", None))
+        .await
+        .unwrap()
+        .id;
+    let decision = db
+        .create_model(
+            DEFAULT_ORG_ID,
+            model_row(
+                "decision",
+                Some(json!({"everruns_catalog":{"service":"decisions"}})),
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+    let foreign_org = db
+        .create_organization(crate::storage::CreateOrganizationRow {
+            public_id: generate_org_public_id(),
+            name: "Foreign".into(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let foreign = db
+        .create_model(foreign_org.org_id, model_row("foreign", None))
+        .await
+        .unwrap()
+        .id;
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+            )
+        }
+    };
+    let (status, org) = send(json!({"default_model_id":main,"small_model_id":small})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["small_model_id"], small.to_string());
+    let (_, org) = send(json!({})).await;
+    assert_eq!(org["small_model_id"], small.to_string());
+    assert_eq!(org["default_model_id"], main.to_string());
+    db.update_model(
+        DEFAULT_ORG_ID,
+        small.uuid(),
+        UpdateModel {
+            enabled: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let (_, org) = send(json!({})).await;
+    assert_eq!(org["small_model_id"], small.to_string());
+    for id in [
+        small,
+        decision,
+        foreign,
+        everruns_contracts::typed_id::ModelId::new(),
+    ] {
+        assert_eq!(
+            send(json!({"small_model_id":id})).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.small_model_id, Some(small));
+        assert_eq!(settings.default_model_id, Some(main));
+    }
+    let (status, org) = send(json!({"small_model_id":null})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(org["small_model_id"].is_null());
+    assert_eq!(org["default_model_id"], main.to_string());
 }

@@ -1,6 +1,6 @@
 ---
 title: Set up review and security agents
-description: Adopt the PR Reviewer and Security Scanner templates to review every pull request with inline comments and scan a repository for vulnerabilities on a schedule, on any model.
+description: Adopt the PR Reviewer and Security Scanner templates to review every pull request with inline comments and scan a repository for vulnerabilities on a schedule.
 appliesTo: [platform, cloud]
 ---
 

@@ -24,6 +24,7 @@ use everruns_core::truncation_info::TruncationInfo;
 use serde_json::{Value, json};
 use std::sync::LazyLock;
 
+use super::environment_file_tools::{EnvironmentListDirectoryTool, EnvironmentReadManyFilesTool};
 use super::environment_tools::{
     EnvironmentBashTool, EnvironmentEditFileTool, EnvironmentGlobTool, EnvironmentGrepTool,
     EnvironmentReadFileTool, EnvironmentWriteFileTool,
@@ -102,10 +103,12 @@ impl Capability for SessionSandboxCapability {
         vec![
             Box::new(EnvironmentBashTool::new(config.clone())),
             Box::new(EnvironmentReadFileTool::new(config.clone())),
+            Box::new(EnvironmentReadManyFilesTool::new(config.clone())),
             Box::new(EnvironmentWriteFileTool::new(config.clone())),
             Box::new(EnvironmentEditFileTool::new(config.clone())),
             Box::new(EnvironmentGlobTool::new(config.clone())),
             Box::new(EnvironmentGrepTool::new(config.clone())),
+            Box::new(EnvironmentListDirectoryTool::new(config.clone())),
         ]
     }
 
@@ -942,10 +945,12 @@ mod tests {
             vec![
                 "bash",
                 "read_file",
+                "read_many_files",
                 "write_file",
                 "edit_file",
                 "glob",
-                "grep"
+                "grep",
+                "list_directory"
             ]
         );
     }

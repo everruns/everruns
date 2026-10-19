@@ -6,6 +6,7 @@ kind: feature
 significance: notable
 products: [platform, cloud, cli]
 surfaces: [operations, cli]
+release: "0.48.0"
 links:
   docs: [/advanced/network-access/, /reference/cli/orgs/]
   prs: [everruns/everruns#4432, everruns/everruns#4437, everruns/everruns#4452, everruns/everruns#4476, everruns/everruns#4534]
@@ -23,6 +24,14 @@ its decision, host, status, organization and session.
 A platform administrator can let an organization extend the allowlist with up
 to 50 host patterns, or grant it open egress. Manage this with
 `everruns orgs egress-allowlist`.
+
+```bash
+# Server environment
+EVERRUNS_EGRESS_POLICY=curated-writes
+# Platform administrator, then organization admin
+everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'
+everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --reason 'Agents call our ticketing API'
+```
 
 See [Network access](/advanced/network-access/), the
 [orgs CLI reference](/reference/cli/orgs/) and [#4432](https://github.com/everruns/everruns/pull/4432), [#4437](https://github.com/everruns/everruns/pull/4437), [#4452](https://github.com/everruns/everruns/pull/4452), [#4534](https://github.com/everruns/everruns/pull/4534).

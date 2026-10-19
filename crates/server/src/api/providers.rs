@@ -166,6 +166,8 @@ pub struct CheckCredentialsRequest {
     pub base_url: Option<String>,
 }
 
+/// Check a provider API key without storing it
+///
 /// Check whether a provider accepts an API key, without storing it
 ///
 /// Used by org setup so a key the provider will reject is caught at entry
@@ -1199,6 +1201,7 @@ mod creation_tests {
             role: everruns_core::OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
 
         let ctx = state.ctx(&org);
@@ -1228,6 +1231,7 @@ mod creation_tests {
             role: everruns_core::OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
         for (provider_type, base_url) in [
             (DriverId::OpenAI, Some("https://127.0.0.1/v1")),

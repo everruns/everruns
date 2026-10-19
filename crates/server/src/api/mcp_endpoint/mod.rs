@@ -33,6 +33,7 @@ pub(crate) mod cards;
 pub(crate) mod discovery;
 pub mod elicitation;
 mod events;
+mod files;
 mod form_elicitation;
 mod resources;
 mod scope;
@@ -335,6 +336,9 @@ pub struct AppState {
     /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// The channel host Slack runs on, for schedule triggers fired by hand
+    /// that run in a channel conversation.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
     /// OAuth catalog preset connection check (`api::user_connections`).
     pub mcp_oauth_checker: Option<context::SharedMcpOAuthChecker>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
@@ -357,6 +361,8 @@ pub struct AppState {
     pub mcp_events: Option<Arc<crate::domains::mcp_servers::events::McpEventsService>>,
     /// Provider-domain services; `None` leaves `sync_provider_models` unavailable.
     pub provider_services: Option<ProviderServices>,
+    /// Downloads files sent by URL with `agent_run` / `session_send_message`.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 impl AppState {
@@ -385,6 +391,7 @@ impl AppState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
+            egress: host_composition.egress_service(),
             session_sandbox_service: None,
             capability_service,
             // Hosted connector catalog (EVE-879): defaults to the OSS
@@ -413,6 +420,7 @@ impl AppState {
             utility_llm_service: host_composition.utility_llm_service(),
             decisions: host_composition.decisions(),
             slack_provisioner: None,
+            channels: None,
             mcp_oauth_checker: None,
             health_check_service: None,
             resource_metadata_url: None,
@@ -441,14 +449,6 @@ impl AppState {
     /// Public root that URL mode elicitation pages are built from.
     pub fn with_elicitation_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.elicitation_base_url = Some(base_url.into());
-        self
-    }
-
-    pub fn with_mcp_events(
-        mut self,
-        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
-    ) -> Self {
-        self.mcp_events = Some(service);
         self
     }
 
@@ -1117,8 +1117,6 @@ async fn resolve_org_by_id(
             format!("Organization not found or you are not a member: {org_public_id}")
         })?;
 
-    let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
-
     let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_row.org_id,
@@ -1132,9 +1130,10 @@ async fn resolve_org_by_id(
         public_id: org_row.public_id.clone(),
         name: org_row.name.clone(),
         user_id: Some(auth_user.id),
-        role,
+        role: org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         is_platform_user: auth_user.is_platform_user,
         feature_flags,
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(auth_user.pat_scope),
     })
 }
 
@@ -1289,13 +1288,8 @@ async fn tool_agent_run(
     };
 
     // Send first message via catalog handler
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     let mut result = json!({
@@ -1331,13 +1325,8 @@ async fn tool_session_send_message(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     // Fetch session to get current status (create_message returns message, not session)
@@ -1563,6 +1552,7 @@ mod org_override_scope_tests {
             role: OrgRole::Member,
             is_platform_user: false,
             feature_flags: crate::records::FeatureFlags::default(),
+            read_only: false,
         }
     }
 
@@ -1742,13 +1732,12 @@ mod resources_read_policy_tests {
 
     fn test_caller() -> Caller {
         Caller {
-            org_id: 1,
-            org_public_id: "org_test".to_string(),
             user_id: None,
             // Member-level, so role rules don't accidentally pass in isolation.
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            ..Caller::internal(1)
         }
     }
 

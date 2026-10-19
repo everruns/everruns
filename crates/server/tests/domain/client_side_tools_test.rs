@@ -6,7 +6,7 @@
 //! - ToolCallRequestedData event
 //! - Session tools propagation
 //!
-//! No database required.
+//! Serialization cases need no database. HTTP cases use the private PostgreSQL fixture.
 //!
 //! Run with: cargo test -p everruns-server --test domain client_side_tools_test::
 use crate::test_harness;
@@ -718,7 +718,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
             data: json!({
                 "tool_calls": [{
                     "id": format!("call_{suffix}"),
-                    "name": "ask_user",
+                    "name": "render_client",
                     "arguments": {}
                 }]
             }),
@@ -728,6 +728,119 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .await
         .expect("emit pending client tool call");
     session
+}
+
+#[tokio::test]
+async fn shared_command_validates_a_batch_atomically_and_parks_partial_results() {
+    let (resume_tx, mut resume_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resumed_sessions: resume_tx,
+    }))
+    .await;
+    let session = create_waiting_client_tool_session(&server, "partial").await;
+    server
+        .db
+        .create_event(everruns_server::storage::CreateEventRow {
+            session_id: session.id,
+            event_type: "tool.call_requested".into(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({"tool_calls":[
+                {"id":"a","name":"render_client","arguments":{}},
+                {"id":"b","name":"render_client","arguments":{}}
+            ]}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    let path = format!("/v1/sessions/{}/tool-results", session.id);
+    server.post(&path, json!({"tool_results":[{"tool_call_id":"a","result":1},{"tool_call_id":"unknown","result":2}]}))
+        .await.assert_status(StatusCode::BAD_REQUEST);
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".into()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        completions.is_empty(),
+        "a rejected batch must not record its valid member"
+    );
+    let first = server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"a","result":1}]}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(first["status"], "waiting_for_tool_results");
+    assert_eq!(
+        server
+            .db
+            .get_session(1, session.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "waiting_for_tool_results"
+    );
+    assert!(matches!(
+        resume_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    // Already completed calls cannot be accepted again under a fresh command.
+    server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"a","result":99}]}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"b","result":2}]}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), resume_rx.recv())
+            .await
+            .unwrap(),
+        Some(session.id)
+    );
+    assert!(matches!(
+        resume_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".into()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(completions.len(), 2);
+    assert!(
+        completions
+            .iter()
+            .all(|event| event.data["tool_name"] == "render_client")
+    );
 }
 
 async fn abandon_message_resolution(server: &TestServer, session_id: SessionId) {

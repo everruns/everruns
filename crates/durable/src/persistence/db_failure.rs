@@ -112,9 +112,10 @@ pub(crate) fn store_failure(
     StoreError::Database(rendered)
 }
 
+/// Captures what a `tracing` call emitted, so tests can assert a failure was
+/// logged through [`log_database_failure`] rather than an ad-hoc `error!`.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod capture {
     use std::sync::{Arc, Mutex};
     use tracing_subscriber::Layer;
     use tracing_subscriber::layer::{Context, SubscriberExt};
@@ -122,10 +123,10 @@ mod tests {
 
     /// What a call actually emitted: the rendered message plus its fields.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct Emitted {
-        message: String,
-        subsystem: String,
-        db_failure: String,
+    pub(crate) struct Emitted {
+        pub(crate) message: String,
+        pub(crate) subsystem: String,
+        pub(crate) db_failure: String,
     }
 
     #[derive(Default)]
@@ -160,7 +161,8 @@ mod tests {
         }
     }
 
-    fn capture(emit: impl FnOnce()) -> Vec<Emitted> {
+    /// Run `emit` with a capturing subscriber installed as the thread default.
+    pub(crate) fn capture(emit: impl FnOnce()) -> Vec<Emitted> {
         let events = Arc::new(Mutex::new(Vec::new()));
         let subscriber = Registry::default().with(CaptureLayer(Arc::clone(&events)));
         let guard = tracing::subscriber::set_default(subscriber);
@@ -168,6 +170,12 @@ mod tests {
         drop(guard);
         events.lock().unwrap().clone()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture::capture;
+    use super::*;
 
     #[test]
     fn every_starved_subsystem_reports_one_incident_under_one_message() {

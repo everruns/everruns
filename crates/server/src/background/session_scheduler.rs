@@ -264,41 +264,36 @@ async fn poll_and_trigger(
             created_at: now,
         };
 
-        // Emit the input.message event
+        // Store the input.message event and start its turn in one
+        // transaction (see `turns::store_input_and_start`): a scheduled
+        // message whose turn cannot start is not stored either.
         let session_id_typed: SessionId = session_id;
-        if let Err(e) = event_service
-            .emit(
-                EventRequest::new(
-                    session_id_typed,
-                    EventContext::empty(),
-                    InputMessageData::new(core_message),
-                )
-                .with_metadata(execution_metadata::scheduled_run_metadata(
-                    schedule_id,
-                    session.owner_principal_id,
-                    session.virtual_user_id,
-                )),
-            )
-            .await
-        {
-            tracing::error!(
-                schedule_id = %schedule_id,
-                session_id = %session_id,
-                error = %e,
-                "Failed to emit schedule message event"
-            );
-            continue;
-        }
-
-        // Start the turn: mark the session's actor runnable for a worker.
         let scope = crate::turns::scope(org_id, harness_id, session.agent_id);
         let request = crate::turns::stored_message(session_id_typed, scope, message_id_typed, None);
-        if let Err(e) = crate::turns::start(&**runner, request).await {
+        let store = async {
+            event_service
+                .emit(
+                    EventRequest::new(
+                        session_id_typed,
+                        EventContext::empty(),
+                        InputMessageData::new(core_message),
+                    )
+                    .with_metadata(execution_metadata::scheduled_run_metadata(
+                        schedule_id,
+                        session.owner_principal_id,
+                        session.virtual_user_id,
+                    )),
+                )
+                .await
+                .map(drop)
+                .map_err(|e| anyhow::anyhow!("Failed to emit schedule message event: {e}"))
+        };
+        if let Err(e) = crate::turns::store_input_and_start(db, &**runner, store, request).await {
             tracing::error!(
                 schedule_id = %schedule_id,
                 session_id = %session_id,
                 error = %e,
-                "Failed to start turn for scheduled message"
+                "Failed to store the scheduled message and start its turn"
             );
         } else {
             tracing::info!(

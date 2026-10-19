@@ -54,6 +54,8 @@ fn test_is_merge_serialization_completed_events() {
 
     // turn.completed should have is_merge = Some(true)
     let turn_data = TurnCompletedData {
+        termination_reason: None,
+        issue_count: None,
         turn_id,
         iterations: 1,
         duration_ms: Some(1000),
@@ -230,6 +232,7 @@ fn test_is_merge_serialization_tool_events() {
         tool_call_fingerprint: None,
         display_name: None,
         narration: None,
+        side_effect_class: None,
     };
     let started_event = Event::new(
         SessionId::new(),
@@ -246,6 +249,7 @@ fn test_is_merge_serialization_tool_events() {
 
     // tool.completed - should have _is_merge: true
     let completed_data = ToolCompletedData {
+        severity: None,
         details: None,
         tool_call_id: "call_1".to_string(),
         tool_name: "search".to_string(),
@@ -435,6 +439,7 @@ fn test_tool_started_redacts_arguments_when_configured() {
             tool_call_fingerprint: None,
             display_name: Some("Execute".to_string()),
             narration: Some("Running exec".to_string()),
+            side_effect_class: None,
         }),
     );
 
@@ -476,6 +481,7 @@ fn test_tool_started_includes_labels_when_tool_args_full() {
             tool_call_fingerprint: None,
             display_name: Some("Execute".to_string()),
             narration: Some("Running exec".to_string()),
+            side_effect_class: None,
         }),
     );
 
@@ -608,6 +614,7 @@ fn test_tool_completed_summary_omits_text_preview() {
     let listener = BraintrustListener::new(test_config()).unwrap();
     let turn_id = TurnId::new();
     let data = ToolCompletedData {
+        severity: None,
         details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),
@@ -775,6 +782,8 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
         session_id,
         EventContext::turn(turn_id, input_message_id),
         EventData::TurnCompleted(TurnCompletedData {
+            termination_reason: None,
+            issue_count: None,
             turn_id,
             iterations: 1,
             duration_ms: Some(5),

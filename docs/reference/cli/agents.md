@@ -1,6 +1,6 @@
 ---
 title: everruns agents
-description: "Agent definitions and their configuration. CLI reference for everruns agents."
+description: "Agent definitions and their configuration. CLI reference for everruns agents: usage, flags and examples."
 sidebar:
   label: agents
 appliesTo: [platform, cloud]
@@ -45,12 +45,16 @@ Agent definitions and their configuration.
 | [`agents check-rules delete`](#agents-check-rules-delete) | Delete an agent check rule (built-in override or custom rule). |
 | [`agents check-rules list`](#agents-check-rules-list) | List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules. |
 | [`agents check-rules upsert`](#agents-check-rules-upsert) | Create or update an agent check rule (built-in override or custom rule). |
-| [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement for one attached MCP tool parameter. |
+| [`agents credentials create`](#agents-credentials-create) | Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). |
+| [`agents examples adopt`](#agents-examples-adopt) | Create an agent from an agent example by name (see list_agent_examples). |
+| [`agents examples list`](#agents-examples-list) | List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). |
 | [`agents exposures resume`](#agents-exposures-resume) | Let an agent's live channels accept traffic again. |
 | [`agents exposures suspend`](#agents-exposures-suspend) | Stop every channel on an agent from accepting traffic. |
+| [`agents failures list`](#agents-failures-list) | List sessions with failed turns. |
 | [`agents github connect`](#agents-github-connect) | Start connecting an agent to GitHub through its own GitHub App. |
 | [`agents github disconnect`](#agents-github-disconnect) | Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. |
 | [`agents github get`](#agents-github-get) | Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks. |
+| [`agents github use-everruns-app`](#agents-github-use-everruns-app) | Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. |
 | [`agents health-checks get`](#agents-health-checks-get) | Get a single agent health check run with its results. |
 | [`agents health-checks list`](#agents-health-checks-list) | List recent health check runs for an agent. |
 | [`agents health-checks trigger`](#agents-health-checks-trigger) | Run a behavioral health check (generated smoke tests) against an agent. |
@@ -379,6 +383,7 @@ everruns agents upsert [OPTIONS] --name <name> --system-prompt <system_prompt> [
 | `--initial-files <INITIAL_FILES>` | Starter files copied into each new session for this agent. |
 | `--intro-markdown <INTRO_MARKDOWN>` | Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed. |
 | `--max-iterations <MAX_ITERATIONS>` | Maximum number of LLM iterations per turn for this agent. |
+| `--max-output-tokens <MAX_OUTPUT_TOKENS>` | Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ... |
 | `--mcpServers <MCPSERVERS>` |  |
 | `--name <NAME>` | Required. Name, unique per org. |
 | `--network-access <NETWORK_ACCESS>` |  |
@@ -750,26 +755,67 @@ everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --en
 
 ## agents credentials create
 
-Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.
+Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.
 
 ```bash
-everruns agents credentials create [OPTIONS] --label <label> --mcp-server-name <mcp_server_name> --parameter-name <parameter_name> --tool-name <tool_name>
+everruns agents credentials create [OPTIONS] --label <label>
 ```
 
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Agent ID, populated from the request path by the HTTP API. |
+| `--auth <AUTH>` | `bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header... |
 | `--description <DESCRIPTION>` | Optional explanation of how the credential will be used. |
+| `--env-name <ENV_NAME>` | Env var name the agent's shell uses as a placeholder (HTTP API). |
+| `--header-name <HEADER_NAME>` | Header that carries the value when `auth` is `header` (HTTP API). |
 | `--label <LABEL>` | Required. Human-readable label shown in the secure setup UI. |
-| `--mcp-server-name <MCP_SERVER_NAME>` | Required. Name of an MCP server attached to the agent. |
-| `--parameter-name <PARAMETER_NAME>` | Required. Top-level tool argument to inject outside model context. |
-| `--tool-name <TOOL_NAME>` | Required. MCP tool whose outbound call requires the credential. |
+| `--mcp-server-name <MCP_SERVER_NAME>` | Name of an MCP server attached to the agent (MCP tool parameter). |
+| `--parameter-name <PARAMETER_NAME>` | Top-level tool argument to inject outside model context (MCP tool parameter). |
+| `--tool-name <TOOL_NAME>` | MCP tool whose outbound call requires the credential (MCP tool parameter). |
+| `--url <URL>` | HTTPS URL prefix the value may be sent to (HTTP API). |
 
 Example:
 
 ```bash
 # Declare that an MCP tool needs a secret the model must never see
 everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'
+
+# Declare an API key the agent's shell sends to one host without seeing it
+everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'
+```
+
+## agents examples adopt
+
+Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.
+
+```bash
+everruns agents examples adopt [OPTIONS] [NAME]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Example name from list_agent_examples, such as `pr-reviewer`. |
+
+Example:
+
+```bash
+# Start a pull request reviewer from its template
+everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'
+```
+
+## agents examples list
+
+List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.
+
+```bash
+everruns agents examples list [OPTIONS]
+```
+
+Example:
+
+```bash
+# Find a ready-made agent to start from instead of writing one by hand
+everruns agents examples list
 ```
 
 ## agents exposures resume
@@ -808,6 +854,29 @@ Example:
 ```bash
 # Stop an agent answering on its exposed surfaces without deleting it
 everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'
+```
+
+## agents failures list
+
+List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.
+
+```bash
+everruns agents failures list [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` |  |
+| `--after <AFTER>` | Exclusive lower bound on failure time; defaults to 24 hours before `before`. |
+| `--before <BEFORE>` | Inclusive upper bound, normally the Agents activity response's generated_at. |
+| `--limit <LIMIT>` |  |
+| `--offset <OFFSET>` |  |
+
+Example:
+
+```bash
+# Find an agent's failed turns, including sessions that later recovered
+everruns agents failures list agent_01h9 --limit 20
 ```
 
 ## agents github connect
@@ -870,6 +939,26 @@ Example:
 ```bash
 # Check whether an agent's GitHub App is installed and on which account
 everruns agents github get --agent-id agent_01h9
+```
+
+## agents github use-everruns-app
+
+Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.
+
+```bash
+everruns agents github use-everruns-app [OPTIONS] --agent-id <agent_id> --connection-id <connection_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Agent's prefixed public identifier. |
+| `--connection-id <CONNECTION_ID>` | Required. Connection id of one of the org's linked installations, from the agent's GitHub status (`ever... |
+
+Example:
+
+```bash
+# Let an agent act as the Everruns app through the org's acme installation
+everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'
 ```
 
 ## agents health-checks get
@@ -1081,6 +1170,8 @@ everruns agents triggers create [OPTIONS] --agent-id <agent_id> --message <messa
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` | What identity keys a session, for every exposure and every transport. One enum replaces the ... One of `per_thread`, `per_channel`, `per_user`, `shared_session`, `session_per_invocation`. |
 | `--subject-template <SUBJECT_TEMPLATE>` | Webhook and MCP event: template for the event subject. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi... |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio... |
 | `--timezone <TIMEZONE>` | IANA timezone identifier for cron evaluation (default `UTC`). |
 | `--token <TOKEN>` | Shared secret for webhook triggers. |
 | `--trigger-type <TRIGGER_TYPE>` | The kind of event that fires an agent trigger. One of `schedule`, `webhook`, `github`, `mcp_event`. |
@@ -1198,6 +1289,8 @@ everruns agents triggers update [OPTIONS] --agent-id <agent_id> --trigger-id <tr
 | `--script <SCRIPT>` |  |
 | `--session-mode <SESSION_MODE>` |  |
 | `--subject-template <SUBJECT_TEMPLATE>` | Replacement subject template. |
+| `--target-binding-key <TARGET_BINDING_KEY>` | Replacement target conversation; given with `target_channel_id`. |
+| `--target-channel-id <TARGET_CHANNEL_ID>` | Replacement target channel. |
 | `--timezone <TIMEZONE>` | Replacement IANA timezone identifier. |
 | `--token <TOKEN>` | Replacement webhook token. |
 | `--trigger-id <TRIGGER_ID>` | Required. Agent trigger's prefixed public identifier. |

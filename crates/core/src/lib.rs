@@ -214,6 +214,7 @@ pub mod guardrail_gallery;
 pub use everruns_contracts::runtime::llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
+pub(crate) mod attachment_labels;
 pub mod llm_conversions;
 pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
@@ -257,7 +258,6 @@ pub use everruns_contracts::runtime::truncation_info;
 mod test_fixtures;
 
 // Stable completion semantics; execution state and planning live in everruns_core::engine.
-pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
@@ -275,8 +275,7 @@ pub use config_layer::{
 pub use connection_services::UserConnectionResolver;
 pub use delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
 pub use durability::{
-    DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
-    StreamProgress, ToolCallClaimResult,
+    DurableToolResultStore, PartialStreamState, PartialStreamStore, ToolCallClaimResult,
 };
 #[cfg(test)]
 pub(crate) use error::Result;
@@ -322,8 +321,8 @@ pub use workspace_roots::{
 pub use channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
-    ThreadContext,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted
@@ -517,9 +516,9 @@ pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
 pub use mcp_deferred::{
-    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
-    deferred_mcp_server_prefix, partition_deferred_mcp_servers, reveal_deferred_mcp_server,
-    revealed_mcp_servers,
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
+    deferred_mcp_server_definition, deferred_mcp_server_prefix, partition_deferred_mcp_servers,
+    reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
@@ -581,12 +580,13 @@ pub use session_resource::{
 // the trait's signature vocabulary — and nothing in the kernel names either:
 // the capability resolves the store as a typed context extension.
 pub use session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION,
-    TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,
+    SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
+    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
+    TaskMessageDirection, TaskMessagePart, TaskOwnership, TaskProgress, TaskSink, TaskWakePolicy,
+    apply_task_update, find_task_executor, recover_orphaned_task,
 };
 pub use skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,
@@ -637,9 +637,16 @@ pub mod engine;
 // The inherited host module contains audited Unix ownership and containment calls.
 #[allow(unsafe_code)]
 pub mod host;
+/// Portable host orchestration for isolate execution.
+#[cfg(all(feature = "execution-host", not(feature = "host")))]
+#[path = "portable_host.rs"]
+pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// Transactional session command semantics shared by Framework and platform hosts.
+#[cfg(all(feature = "engine", feature = "builtins"))]
+pub mod session_commands;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;

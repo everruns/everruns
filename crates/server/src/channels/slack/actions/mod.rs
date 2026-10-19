@@ -39,6 +39,7 @@ use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_ca
 use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after};
 
 mod post_message;
+pub(crate) use post_message::slack_target as signed_slack_target;
 
 /// Routing-tag prefix archival Slack sessions carry, from before sessions
 /// had a channel FK.
@@ -683,6 +684,7 @@ mod tests {
                         max_iterations: None,
                         network_access: None,
                         parallel_tool_calls: None,
+                        max_output_tokens: None,
                         communication: Default::default(),
                         environments: None,
                         is_built_in: false,

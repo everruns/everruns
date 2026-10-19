@@ -1,0 +1,209 @@
+---
+import mike from "../assets/slack/mike.png";
+import kids from "../assets/slack/kids-duties.png";
+import "../styles/slack-landing.css";
+---
+
+<!-- Custom UI owns its spacing; exclude Starlight’s article typography. -->
+<slack-examples class="slack-demo not-content">
+  <div class="slack-tabs" role="tablist" aria-label="Real Slack examples">
+    <button
+      id="slack-thread-tab"
+      class="slack-tab"
+      role="tab"
+      aria-controls="slack-thread-panel"
+      aria-selected="true"
+      tabindex="0">A conversation</button
+    ><button
+      id="slack-briefing-tab"
+      class="slack-tab"
+      role="tab"
+      aria-controls="slack-briefing-panel"
+      aria-selected="false"
+      tabindex="-1">A daily briefing</button
+    ><span class="slack-demo-label">Based on real conversations</span>
+  </div>
+  <div
+    class="real-slack"
+    id="slack-thread-panel"
+    role="tabpanel"
+    aria-labelledby="slack-thread-tab"
+    tabindex="0"
+  >
+    <div class="real-message">
+      <img
+        class="real-avatar"
+        src={mike.src}
+        width="36"
+        height="36"
+        alt="mike’s Slack avatar"
+        loading="lazy"
+      /><div>
+        <div class="real-author">
+          <span class="real-name">mike</span><time>Sunday at 22:12</time>
+        </div><p>And whose turn is it on December 1?</p>
+      </div>
+    </div>
+    <div class="real-replies">4 replies</div>
+    <div class="real-message">
+      <img
+        class="real-avatar"
+        src={kids.src}
+        width="36"
+        height="36"
+        alt="Kids Duties bot avatar"
+        loading="lazy"
+      /><div>
+        <div class="real-author">
+          <span class="real-name">Kids Duties</span><span class="real-app"
+            >APP</span
+          ><time>Sunday at 22:12</time>
+        </div><p>
+          December 1 (Tuesday) — <strong>Darik 🐻</strong> is on dishes (#2)! 😊
+        </p><p class="real-warning">
+          ⚠️ A small hiccup: the briefing (07:00) and review (18:00) schedules
+          haven’t been created yet — the scheduling tool returned an error a few
+          times. I logged it and will try again later. The routine is unaffected
+          😊
+        </p>
+      </div>
+    </div>
+    <div class="real-message">
+      <img
+        class="real-avatar"
+        src={mike.src}
+        width="36"
+        height="36"
+        alt="mike’s Slack avatar"
+        loading="lazy"
+      /><div>
+        <div class="real-author">
+          <span class="real-name">mike</span><time>Today at 00:08</time>
+        </div><p>What can they do today?</p>
+      </div>
+    </div>
+    <div class="real-new"><span>New</span></div>
+    <div class="real-message">
+      <img
+        class="real-avatar"
+        src={kids.src}
+        width="36"
+        height="36"
+        alt="Kids Duties bot avatar"
+        loading="lazy"
+      /><div>
+        <div class="real-author">
+          <span class="real-name">Kids Duties</span><span class="real-app"
+            >APP</span
+          ><time>Today at 00:09</time>
+        </div><p>Today, <strong>Tuesday, October 13:</strong></p><ul>
+          <li>
+            🍽️ Dishes: <strong>Daniil 🦊</strong> (#1), tomorrow — Darik 🐻
+          </li><li>
+            🎮 Screen time: <strong>up to 2 hours</strong>, screens off by <strong
+              >20:30</strong
+            > 🌙
+          </li>
+        </ul><p class="real-greeting">Have a lovely day! 😊</p>
+      </div>
+    </div>
+  </div>
+  <div
+    class="real-slack real-briefing"
+    id="slack-briefing-panel"
+    role="tabpanel"
+    aria-labelledby="slack-briefing-tab"
+    tabindex="0"
+  >
+    <div class="real-message">
+      <img
+        class="real-avatar"
+        src={kids.src}
+        width="36"
+        height="36"
+        alt="Kids Duties bot avatar"
+        loading="lazy"
+      /><div>
+        <div class="real-author">
+          <span class="real-name">Kids Duties</span><span class="real-app"
+            >APP</span
+          ><time>07:00</time>
+        </div><p>
+          🦊 Dishes today: Daniil · 🎮 up to 2 hours<br />🍽️ Dishes: Daniil
+          (#1), tomorrow — Darik 🐻<br />🎮 Screen time: up to 2 hours<br />⏰
+          Deadline: screens off by 20:30<br />🚫 Reminder: screen-free week, Oct
+          26 – Nov 1, is just 2 weeks away!
+        </p><span class="real-link">🔗 stend.sh/s/…</span><div
+          class="real-unfurl"
+        >
+          <div class="real-source">stend</div><p class="real-unfurl-title">
+            Daily schedule 🏡
+          </p><p class="real-unfurl-description">
+            🏡 Daily schedule · Tuesday, October 13 · school day 📚 🚫
+            Screen-free week: October 26 – November 1. Get your board games and
+            bikes ready! 🦊 Dishes today: Daniil #1. Tomorrow: Darik 🐻 🎮…
+          </p><div class="real-domain">stend</div><div
+            class="stend-preview"
+            role="img"
+            aria-label="stend link preview: Daily schedule for Tuesday, October 13"
+          >
+            <div class="stend-brand">stend<span>.</span></div><h3>
+              Daily schedule
+            </h3><p>
+              Daily schedule · Tuesday, October 13 · school day. Screen-free
+              week: October 26 – November 1. Get your board games and bikes
+              ready…
+            </p><span class="stend-domain">stend.sh</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="slack-caption">
+    Kids Duties answers questions, tracks the family routine, and shares a daily
+    briefing with a linked schedule.<span class="real-caption-note"
+      >Recreated from real Slack screenshots. Messages translated into English.</span>
+  </p>
+</slack-examples>
+
+<script>
+  class SlackExamples extends HTMLElement {
+    connectedCallback() {
+      const tabs = Array.from(
+        this.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+      );
+      const panels = Array.from(
+        this.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
+      );
+      const select = (index: number, focus = false) => {
+        tabs.forEach((tab, i) => {
+          tab.setAttribute("aria-selected", String(i === index));
+          tab.tabIndex = i === index ? 0 : -1;
+          panels[i].hidden = i !== index;
+        });
+        if (focus) tabs[index].focus();
+      };
+      tabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => select(index));
+        tab.addEventListener("keydown", (event) => {
+          const next =
+            event.key === "ArrowRight"
+              ? (index + 1) % tabs.length
+              : event.key === "ArrowLeft"
+                ? (index + tabs.length - 1) % tabs.length
+                : event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? tabs.length - 1
+                    : undefined;
+          if (next === undefined) return;
+          event.preventDefault();
+          select(next, true);
+        });
+      });
+      select(0);
+    }
+  }
+  if (!customElements.get("slack-examples"))
+    customElements.define("slack-examples", SlackExamples);
+</script>

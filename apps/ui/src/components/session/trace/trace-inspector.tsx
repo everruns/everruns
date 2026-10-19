@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { JsonView, formatBytes } from "./json-view";
 import { CacheBar } from "./cache-bar";
 import { ROLE_COLOR, ROLE_HINT, RequestSheet } from "./request-sheet";
+import { ToolChanges } from "./tool-changes";
 import { formatClock, formatCount, formatDuration } from "./trace-model";
 import { WebSearchTraceSection } from "./web-search-trace";
 
@@ -322,6 +323,7 @@ function StepDetail({
           }
         >
           {request.usage && <CacheBar usage={request.usage} className="mb-3" />}
+          {request.tool_changes && <ToolChanges changes={request.tool_changes} />}
           <ul className="border text-xs">
             {/* When every message is new, the system prompt is already among them. */}
             {request.system_preview && request.new_from > 0 && (

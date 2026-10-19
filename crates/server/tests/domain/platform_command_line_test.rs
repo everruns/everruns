@@ -24,6 +24,7 @@ fn context(server: &TestServer) -> CatalogContext {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         server.db.clone(),
         server.encryption.clone(),

@@ -609,6 +609,9 @@ pub(crate) fn handle_streaming_event(
                 let usage = serde_json::json!({ "server_tool_use": used });
                 super::hosted_tools::add_server_tool_use(&mut hosted_tool_calls, Some(&usage));
             }
+            let web_citations = super::citations::web_citations(
+                serde_json::to_value(&response.output).ok().as_ref(),
+            );
             let incomplete = matches!(response.status, types::ResponseStatus::Incomplete);
             let provider_reason = incomplete
                 .then_some(response.incomplete_details.as_ref())
@@ -654,6 +657,7 @@ pub(crate) fn handle_streaming_event(
                 response_id: Some(response.id),
                 phase,
                 hosted_tool_calls,
+                web_citations,
                 ..Default::default()
             }))
         }

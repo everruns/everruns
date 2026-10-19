@@ -18,10 +18,8 @@ mod admin;
 mod circuit_breakers;
 mod dlq;
 mod event_log;
-mod hand_off;
 mod schedules;
 mod schema;
-mod signals;
 mod task_queue;
 mod workers;
 
@@ -29,16 +27,16 @@ use super::db_failure::store_failure;
 use super::store::{
     CapacitySnapshot, CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow,
     DeadLetters, DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,
-    Pagination, ReclaimResult, RunStart, RunSteering, ScheduleExecutionFilter,
-    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
-    ScheduleTargetType, SchedulerInstanceInfo, Schedules, SealedTaskInfo, SignalStore, StoreError,
-    SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus,
-    TraceContext, UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerHeartbeat,
-    WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowFilter, WorkflowInfo,
-    WorkflowInfoExtended, WorkflowStatus, no_progress_seal_threshold_from_env,
+    Pagination, ReclaimResult, ScheduleExecutionFilter, ScheduleExecutionRow,
+    ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
+    SchedulerInstanceInfo, Schedules, SealedTaskInfo, StoreError, SystemHealth, TaskDefinition,
+    TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule,
+    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerHeartbeat, WorkerInfo, WorkerRegistry,
+    WorkflowEventInfo, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    no_progress_seal_threshold_from_env,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
-use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
+use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent};
 
 #[cfg(feature = "failpoints")]
 use fail::fail_point;
@@ -439,7 +437,6 @@ fn event_type_name(event: &WorkflowEvent) -> &'static str {
         WorkflowEvent::TimerStarted { .. } => "timer_started",
         WorkflowEvent::TimerFired { .. } => "timer_fired",
         WorkflowEvent::TimerCancelled { .. } => "timer_cancelled",
-        WorkflowEvent::SignalReceived { .. } => "signal_received",
         WorkflowEvent::ChildWorkflowStarted { .. } => "child_workflow_started",
         WorkflowEvent::ChildWorkflowCompleted { .. } => "child_workflow_completed",
         WorkflowEvent::ChildWorkflowFailed { .. } => "child_workflow_failed",

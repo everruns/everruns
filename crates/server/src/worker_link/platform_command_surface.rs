@@ -436,6 +436,7 @@ mod tests {
 
     fn all_flags() -> crate::records::FeatureFlags {
         crate::records::FeatureFlags {
+            monitoring: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -462,6 +463,7 @@ mod tests {
         discover(
             arguments,
             &crate::records::FeatureFlags {
+                monitoring: false,
                 docker_capability: true,
                 container_sandbox: true,
                 lua: true,
@@ -590,6 +592,9 @@ mod tests {
             ("create_agent", "lowercase letters, digits, and hyphens"),
             ("create_session", "--agent_id or --agent_name"),
             ("create_message", "array of content parts"),
+            ("create_message", "--message '{"),
+            ("list_agent_examples", "adopt_agent_example"),
+            ("list_organization_connections", "never credentials"),
         ];
         for (query, hint) in cases {
             let output = discover_for_test(&serde_json::json!({ "query": query }))

@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Web Search"
-description: "Proposal: one web_search capability backed by search providers (free, model provider native, Brave, Parallel), chosen per agent with organization defaults and an Automatic order; shared by the server, the Framework, serve and yolop."
+description: "Proposal: one web_search capability backed by search providers (free, model provider native, Brave, Parallel, Cloudflare Web Search), chosen per agent with organization defaults and an Automatic order; shared by the server, the Framework, serve and yolop."
 tags:
   - everruns
   - integrations
@@ -14,8 +14,9 @@ tags:
 Status: approved (2026-10-11), being built in the delivery order below. Step 1 (the
 capability, free and Brave drivers, harnesses, Framework builder), step 2
 (organization search accounts, `web_search_defaults`, live plan resolution, the
-catalog and preview endpoints, flags removed), step 3 (UI) and the OpenAI and
-OpenRouter half of step 4 (native search) are in place.
+catalog and preview endpoints, flags removed), step 3 (UI) and step 4 (native
+search on OpenAI, OpenRouter, Anthropic and Gemini) are in place. Gemini native
+search next to other function tools is still open (see the driver table).
 
 ## Abstract
 
@@ -29,7 +30,7 @@ own. Three kinds of provider exist:
 |---|---|---|---|
 | Free search | DuckDuckGo, Mojeek fallback, developer sources | nothing | nobody |
 | Model provider search (native) | OpenAI, Anthropic, Gemini, OpenRouter | a model that supports it | on the model provider account |
-| Search account | Brave Search, Parallel (later Exa, Tavily) | an API key, stored as an organization connection | on that key |
+| Search account | Brave Search, Parallel, Cloudflare Web Search (Ceramic, Exa, Linkup; later Tavily) | an API key, stored as an organization connection | on that key, or Cloudflare AI Gateway credits |
 
 A fourth choice, **Automatic**, takes the first provider in an ordered list that
 can serve the model running the current turn: native search when the model has
@@ -92,9 +93,26 @@ the Trace still shows why a given search went where it did.
 provider, in the same spirit as LLM drivers: `SearchDriver` in
 `everruns-contracts` with `id()`, `capabilities()` (freshness, domain filters,
 excerpt length, pagination) and `search(SearchRequest) -> SearchResponse`. Free
-search, Brave and Parallel are drivers in `everruns-integrations`; Exa and
-Tavily later are one driver each. A `SearchDriverRegistry` maps provider ids to
-drivers the way the connector registry maps connectors. Native search is not a
+search, Brave, Parallel and Cloudflare are drivers in `everruns-integrations`;
+Tavily later is one more. A `SearchDriverRegistry` maps provider ids to
+drivers the way the connector registry maps connectors. The Parallel driver calls the Search API
+(`POST /v1/search`) in `fast` mode, Parallel's recommended mode for
+tool-calling agents (about 700 ms, $1 per 1,000 requests), with the query as
+both the objective and the one search query; domain filters go in its source
+policy (allowed sites win, since Parallel ignores exclusions when inclusions
+are set) and freshness becomes `after_date`. The `parallel` connector already
+held the MCP key; the same key works for the Search API, so the connector
+declares the `web_search` connector capability. The Cloudflare driver calls
+the Cloudflare Web Search API (`POST /client/v4/accounts/{id}/ai/websearch/`),
+which fronts three indexes (Ceramic, Exa, Linkup) and bills AI Gateway credits
+or a provider key stored on the gateway. It covers Exa, so no separate Exa
+driver is planned unless a feature Cloudflare hides is needed. Its connector,
+`cloudflare_web_search`, exists only for search accounts; the account id,
+gateway, index and key alias are not secret, so they live in the connection's
+`provider_metadata` and reach the worker as the search account's `options`
+(only the token is encrypted). One account is one index. The API has no site
+or date filters and caps results at 10, so site filters are applied to its
+results and freshness is reported as not applied. Native search is not a
 `SearchDriver`: it is a per-LLM-driver adapter (below) because the model
 provider runs it inside the model call.
 
@@ -174,8 +192,9 @@ one key, and falls back to the organization's first Brave account.
 Organization defaults (a `web_search_defaults` column on `organization_settings`):
 
 - default provider (same choices except "Organization default"; new orgs get Automatic)
-- Automatic order: native, then accounts in the order the admin sets, then free
-  search, which is always last and cannot be removed
+- Automatic order: native, then accounts in the order the admin sets, then
+  the deployment's own search when the host offers one, then free search,
+  which is always last and cannot be removed
 - allow model provider search (on by default)
 - on failure: fall back to the next provider in the plan, or stop. The
   default is to fall back, and **free search is the default last fallback of
@@ -196,12 +215,31 @@ that reaches tool time (the model's driver has no native search for it, or
 could not apply the agent's filters) records that the model did not search and
 the next provider answers. The preview lists native only for provider types
 whose driver runs it (`NATIVE_WEB_SEARCH_PROVIDER_TYPES`) and models that have
-it (`native_web_search_supported_model`).
+it (`native_web_search_supported_model`). A driver registered outside the
+built-in set (an external driver id, such as a hosted model service that calls
+OpenRouter itself) declares its support with an `inventory`-submitted
+`NativeWebSearchDriver`, and can reuse OpenRouter's swap through
+`OpenRouterNativeWebSearchExtension` without the rest of the OpenRouter
+request extension.
 
 Resolution happens live: each turn decides whether native applies to the model
 running it (that is what makes Automatic follow a mid-session model switch), and
 each function call resolves the rest of the plan from the current agent setting
 and organization defaults.
+
+### The deployment's own search
+
+A host can offer one search provider it pays for to every organization, with
+no key to connect (on app.everruns.com, "Everruns search"). The host hands
+over any `SearchDriver` configured with its own key; the platform runs it
+under the stable plan id `hosted`, which is also its Automatic order entry
+and what the host's billing counts in each search's recorded attempts, so the
+backend can change without touching saved orders or past bookings. The
+backend's raw exchanges are dropped because they belong to the host's account,
+not the tenant. Unless the order places it, it sits after the organization's
+own accounts and before free search: an organization that connected a key
+wants that key used. See
+[`hosted.rs`](../../crates/integrations/src/web_search/hosted.rs).
 
 ### Why native comes first in Automatic
 
@@ -220,11 +258,10 @@ cost of each native call.
 
 ### Cost accounting and the Everruns LLM provider
 
-Every native call already produces a hosted-call cost component on its
-`llm.generation` (the OpenAI path does this today); the Anthropic, Gemini and
-OpenRouter adapters add theirs from the provider's usage fields
-(`server_tool_use.web_search_requests`, grounding metadata, OpenRouter's
-reported cost). Budgets count it like tokens.
+Every native call produces a hosted-call cost component (`web_search_call`) on
+its `llm.generation`: OpenAI from `web_search_call` items, OpenRouter and
+Anthropic from `usage.server_tool_use.web_search_requests`, Gemini from its
+grounding metadata. Budgets count it like tokens.
 
 When the model runs through the Everruns LLM provider (the hosted, prepaid
 service in SaaS), the provider's bill for those searches lands on Everruns'
@@ -251,7 +288,8 @@ policy like `web_fetch`. Search must never be blocked by it, in any policy mode
 | Free search, answer enrichment | `api.duckduckgo.com`, `*.wikipedia.org` | yes |
 | Brave | `api.search.brave.com` | yes (`*.brave.com`) |
 | Parallel | `api.parallel.ai` | yes (`*.parallel.ai`) |
-| Exa, Tavily (later) | `api.exa.ai`, `api.tavily.com` | yes |
+| Cloudflare Web Search | `api.cloudflare.com` | yes (`*.cloudflare.com`) |
+| Tavily (later) | `api.tavily.com` | yes |
 
 Each driver declares its hosts in code (`SearchDriver::egress_hosts()`), and a
 unit test checks every declared host against the compiled system allowlist,
@@ -272,7 +310,7 @@ user location. Like the native browser toolset, it is a request, not a
 requirement: a driver that cannot honor it for this model leaves the function
 tool in place and the next provider in the plan answers.
 
-As built (OpenAI, OpenRouter): capability config alone cannot say whether native
+As built: capability config alone cannot say whether native
 is first, because that depends on the organization's current defaults. So the
 capability writes the option for every setting that can start with native
 (`org_default`, `auto`, `native`) and carries the agent's setting in it; the
@@ -290,8 +328,8 @@ vendor in [`native_web_search`](../../crates/contracts/src/native_web_search.rs)
 |---|---|---|
 | OpenAI, Azure OpenAI, ChatGPT plan | Responses `web_search` | Reuses `openai_hosted_tools` wiring (`web_search_call` parsing, cost). |
 | OpenRouter | `openrouter:web_search` with engine `native` | Reuses `OpenRouterServerToolKind::WebSearch`. OpenRouter falls back to its own engine (Exa) for models without native search even with engine `native`, and no request field turns that off, so the driver sends the tool only for models on OpenRouter's native list; searches are counted from `usage.server_tool_use` and `web_search_call` items. |
-| Anthropic | server tool `web_search_*` | New: send the tool entry, parse `server_tool_use` and `web_search_tool_result` blocks, keep encrypted content for replay, map citations. Version pinned per model, like `browser_toolset_20260801`. |
-| Gemini | `google_search` | New, per-model table: only models that accept `google_search` next to function tools. |
+| Anthropic | server tool `web_search_20250305` | The basic version: later ones search from inside code execution (dynamic filtering), which is not ZDR eligible by default. Allowed or blocked domains, never both. `server_tool_use` / `web_search_tool_result` blocks are hosted calls, replayed raw (encrypted content and citation indexes) and stripped from history when a request has no server tool; searches are counted from `usage.server_tool_use`. A paused turn (`pause_turn`) is not continued, so the driver caps searches at 5 per call unless the agent sets a cap. See [`anthropic/web_search.rs`](../../crates/drivers/drivers/src/anthropic/web_search.rs). |
+| Gemini | `google_search` | No domain filters at all. Only when `web_search` is the call's only function tool: `generateContent` takes a built-in tool next to function declarations only on Gemini 3, with `includeServerSideToolInvocations` and raw `toolCall` / `toolResponse` parts replayed exactly, which the driver does not do yet (Gemini 2.x rejects the mix). Queries are counted from `groundingMetadata.webSearchQueries`: per query on Gemini 3, per grounded answer on 2.x. Citations from grounding metadata are not mapped yet. |
 | Others (Mistral, Fireworks, Bedrock, Meta, …) | none | Function tool, next provider in the plan. |
 
 `openai_server_tools` and `openrouter_server_tools` keep their `web_search`
@@ -342,12 +380,15 @@ the agent settings, citations, and the yolop and Framework setup.
 
 ## Built-in harnesses
 
-Web search is part of the built-in harness tree, so every new agent can search
-without adding anything. It joins the two branch layers in
+Web search is part of the worker branch of the built-in harness tree, so every
+new worker agent can search without adding anything. It sits on **Worker** in
 [the shared preset definition](../../crates/contracts/src/capability/presets.rs),
-**Conversation** and **Worker**, with config `{"provider": "org_default"}`;
-Bashkit Worker and Sandbox Worker inherit it from Worker. Base stays limited to
-what every agent needs to run reliably. With a fresh organization's defaults
+with config `{"provider": "org_default"}`; Bashkit Worker and Sandbox Worker
+inherit it. **Conversation** leaves it out (owner decision, 2026-10-12): plain
+chat stays plain, and an assistant that should search adds the capability on
+the agent. The deprecated Worker Base, which hangs off Conversation, keeps it as
+its own entry so nothing bound to it loses the tool. Base stays limited to what
+every agent needs to run reliably. With a fresh organization's defaults
 (Automatic, fallback on), an agent searches with its model's own search when
 the model has it and with free search otherwise, with no key and no setup.
 Organization reconciliation updates the managed harness rows in place, as it
@@ -490,22 +531,33 @@ Web search is the `citation_web` feed of [Citations](../runtime-resources/citati
 
 - function results: when the capability is on, the post-generation annotation
   hook maps the URLs (or `w` ids) the model cited back to the result entries
-  and attaches `TextAnnotation`s with origin `web_search`, title, url and
-  snippet;
+  and attaches `TextAnnotation`s with origin `citation_web` (the capability id,
+  as the citations spec requires of every feed), title, url, snippet, and the
+  result id as `external_id`. Matching is exact (URL equal after normalizing
+  scheme and host case, fragment and trailing slash; or an equal id); the span
+  is the sentence holding the citation, or the sentence before a citation that
+  stands alone;
 - native results: the Anthropic adapter reads text-block `citations` of type
-  `web_search_result_location`, OpenAI reads `url_citation` annotations, Gemini
-  reads grounding supports, and each becomes the same annotation.
+  `web_search_result_location`, OpenAI and OpenRouter read `url_citation`
+  annotations, Gemini reads grounding supports. Drivers report them on the
+  completion as provider-neutral web citations with char spans; the same hook
+  turns each into the same annotation, so they too appear only with the
+  capability on. The result id is derived from the URL for these as well.
 
-The chat then shows the numbered source chips that retrieval citations already
-use, with no web-specific UI. `citation_verification` works on these the same
-way.
+The capability is opt-in, like `citation_retrieval`: the harness presets that
+turn on web search do not turn on citations. The chat then shows the numbered
+source chips that retrieval citations already use, with no web-specific UI.
+`citation_verification` works on these the same way. Results of the
+Brave-specific `brave_web_search` share the `results[].url` shape and are
+matched by URL; DuckDuckGo instant answers are not search results and are not
+cited.
 
 ## UI
 
 Mockups: `/mnt/project-files/web-search/` in the project thread.
 
 - **Registries → Web search**, a new page beside Models, with **Providers** and
-  **Defaults** tabs mirroring Models. Providers shows a card per provider:
+  **Defaults** tabs mirroring Models (`/web-search`, `/web-search/defaults`). Providers shows a card per provider:
   native (which connected model providers support it), each search account
   (status, last check, searches this month, role in Automatic), free search,
   and a "Connect search provider" card that opens the existing connector form.
@@ -549,6 +601,12 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   defaults × model × flags); driver wire tests for each hosted tool, including
   replay after a model switch.
 - Live, key-gated: one real query per account backend and per native driver.
+- Quality: the [web search providers study](../../evals/web-search-providers/README.md)
+  grades every provider's result list for 59 agent-style queries with an LLM
+  judge. First run (2026-10-13): Brave, Parallel and Exa answer 98 to 100% of
+  cases, native 97% at about $14 per 1,000 and 6 s; Ceramic answers 49% and
+  none of the time-sensitive cases; free search is blocked on 45 of 59 from a
+  datacenter IP. Re-run it before choosing or changing a hosted default.
 - Example: a research agent under `examples/` on a real model, run once with
   Automatic on an Anthropic model and once on a model without native search.
 - Manual UI cases for the page, the editor and the chat row.
@@ -569,6 +627,10 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
 6. SaaS: book native searches on the org ledger for the Everruns LLM provider.
 7. Parallel Search API driver.
 8. yolop adoption after the next platform release.
+9. Cloudflare Web Search accounts (Ceramic, Exa, Linkup), then the search
+   providers eval. The eval ruled Ceramic out as the hosted backend (49%
+   answerable). Then the deployment's own search slot (`hosted`), and in SaaS
+   "Everruns search" on Brave, booked on the org ledger (chosen 2026-10-13).
 
 ## Options not taken
 
@@ -585,3 +647,23 @@ Mockups: `/mnt/project-files/web-search/` in the project thread.
   effect on running sessions; the per-attempt plan record keeps it debuggable.
 - **Keep Adoption flags on Brave and Parallel.** Rejected (user call,
   2026-10-11): connecting an account is already the opt-in.
+
+## Hosted search permits
+
+A host that pays per search can install a `HostedSearchPermitGate`. The SDK
+forwards the engine's org/session identity and stable call idempotency key,
+acquires only when the hosted step actually runs, then starts its fenced
+permit before dispatch. Missing identity and rejected ownership fail closed.
+Permission-only gates remain distinct from financial reservations.
+
+The per-call `HostedSearchInvocation` owns an opaque billing receipt; billing
+metadata does not belong to every search driver. Answered outcomes settle;
+proven pre-dispatch failures may release; uncertain delivery and cancellation
+need host reconciliation. The SDK bounds backend time, strips host exchanges
+before callbacks, and preserves an answer if settlement is temporarily
+unavailable. A settled host can replay an earlier answer without another
+supplier request. Event details carry the receipt, stable key and a sanitized
+response capped at 64 KiB for repair. Larger responses retain the completion
+fact without a replay body; the host must never re-run paid work to refill it.
+The host owns wallet serialization, callback idempotency, leases, recovery and
+finite retry budgets. A missing event is never proof that dispatch was free.

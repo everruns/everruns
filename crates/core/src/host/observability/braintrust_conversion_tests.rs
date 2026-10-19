@@ -138,6 +138,7 @@ fn test_convert_llm_generation_with_parent() {
             tool_calls_dropped: 0,
             tool_calls_truncated_executed: 0,
             truncation_gate: None,
+            tool_changes: None,
         },
     };
 
@@ -190,6 +191,8 @@ fn test_convert_turn_completed_with_usage() {
     let turn_id = TurnId::new();
 
     let data = TurnCompletedData {
+        termination_reason: None,
+        issue_count: None,
         turn_id,
         iterations: 3,
         duration_ms: Some(5000),
@@ -287,6 +290,8 @@ fn test_turn_events_are_self_referencing_root_spans() {
 
     // Test turn.completed uses same IDs (for merging)
     let completed_data = TurnCompletedData {
+        termination_reason: None,
+        issue_count: None,
         turn_id,
         iterations: 1,
         duration_ms: Some(1000),
@@ -490,6 +495,7 @@ fn test_tool_call_events_have_act_as_parent() {
     context.parent_span_id = Some(act_span_id.clone());
 
     let data = ToolCompletedData {
+        severity: None,
         details: None,
         tool_call_id: "call_123".to_string(),
         tool_name: "search".to_string(),

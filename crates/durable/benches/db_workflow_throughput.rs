@@ -266,11 +266,6 @@ impl DbWorkflowScenario {
 
         for workflow in &self.workflows {
             // Delete in reverse dependency order
-            sqlx::query("DELETE FROM durable_signals WHERE workflow_id = $1")
-                .bind(workflow.id)
-                .execute(pool)
-                .await
-                .ok();
             sqlx::query("DELETE FROM durable_dead_letter_queue WHERE workflow_id = $1")
                 .bind(workflow.id)
                 .execute(pool)

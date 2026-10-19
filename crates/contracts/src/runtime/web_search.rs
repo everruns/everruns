@@ -286,6 +286,18 @@ pub trait SearchDriver: Send + Sync {
     ) -> Result<SearchResponse, SearchFailure>;
 }
 
+/// The id a `web_search` result carries (`w` and 6 hex digits), derived from
+/// its url so the same page keeps the same id across every search in a
+/// session; the model can cite it and `citation_web` resolves it.
+pub fn web_result_id(url: &str) -> String {
+    let mut hash: u32 = 0x811c_9dc5;
+    for byte in url.trim_end_matches('/').bytes() {
+        hash ^= u32::from(byte);
+        hash = hash.wrapping_mul(0x0100_0193);
+    }
+    format!("w{:06x}", hash & 0x00ff_ffff)
+}
+
 /// `https://www.tokio.rs/x` → `tokio.rs`.
 pub fn site_of(url: &str) -> String {
     url_host(url)

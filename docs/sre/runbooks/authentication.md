@@ -146,8 +146,18 @@ curl -X POST http://localhost:9300/api/v1/auth/personal-access-tokens \
   -H "Content-Type: application/json" \
   -d '{"name":"my-token"}'
 
+# Read-only token: add "scopes": ["read"]
+curl -X POST http://localhost:9300/api/v1/auth/personal-access-tokens \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ci-reader","scopes":["read"]}'
+
 # Response includes the full token - save it, it's shown only once
 ```
+
+Omitting `scopes` creates a full-access token (`["*"]`). A read-only token
+gets `403 insufficient_scope` on anything outside read access. See
+[Token access](/features/ui/#token-access).
 
 ### Revoke Personal Access Token
 

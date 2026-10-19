@@ -108,19 +108,9 @@ CREATE TABLE IF NOT EXISTS durable_workflow_snapshots (
 CREATE INDEX IF NOT EXISTS idx_durable_workflow_snapshots_latest
     ON durable_workflow_snapshots (workflow_id, sequence_num DESC);
 
-CREATE TABLE IF NOT EXISTS durable_signals (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    workflow_id UUID NOT NULL REFERENCES durable_workflow_instances(id) ON DELETE CASCADE,
-    signal_type TEXT NOT NULL,
-    payload JSONB NOT NULL,
-    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    processed_at TIMESTAMPTZ,
-    sequence_num SERIAL
-);
-
-CREATE INDEX IF NOT EXISTS idx_durable_signals_pending
-    ON durable_signals (workflow_id, sequence_num)
-    WHERE processed_at IS NULL;
+-- Per-workflow signals served the removed per-step turn workflow; nothing
+-- reads them (server migration drop_turn_workflow_signals).
+DROP TABLE IF EXISTS durable_signals;
 
 -- ============================================
 -- Task queue and dead letters
@@ -177,13 +167,9 @@ CREATE INDEX IF NOT EXISTS idx_durable_task_queue_created_at
 CREATE INDEX IF NOT EXISTS idx_durable_task_queue_claimed_by
     ON durable_task_queue (claimed_by)
     WHERE claimed_by IS NOT NULL;
--- Backs `ActivityOptions::dedupe_by_activity_id` for the activity ids Everruns
--- enqueues idempotently (server migration 143). The engine's dedupe SQL names no
--- arbiter, so it uses whatever unique index covers a caller's ids; this one is
--- kept for parity with the server migrations (see schema_drift_test).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_durable_task_queue_waiting_turn_resolution
-    ON durable_task_queue (workflow_id, activity_id)
-    WHERE workflow_id IS NOT NULL AND activity_id LIKE 'waiting_turn_resolution_%';
+-- The removed per-step turn workflow's enqueue dedupe index (server migration
+-- drop_turn_workflow_signals).
+DROP INDEX IF EXISTS idx_durable_task_queue_waiting_turn_resolution;
 
 CREATE TABLE IF NOT EXISTS durable_dead_letter_queue (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

@@ -11,6 +11,29 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 #[tokio::test]
+async fn test_seeded_argon_is_selectable_in_favourites_with_profile() {
+    let server = TestServer::in_memory().await;
+    let models: Value = server
+        .get("/v1/models?favorites_only=true")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let argon = models["data"]
+        .as_array()
+        .expect("favourites list")
+        .iter()
+        .find(|model| model["model_id"] == "gemini-4-argon")
+        .expect("Argon must be in the seeded favourites list");
+    assert_eq!(argon["provider_type"], "gemini");
+    assert_eq!(argon["display_name"], "Gemini 4 Argon");
+    assert_eq!(argon["enabled"], true);
+    assert_eq!(argon["is_favorite"], true);
+    assert_eq!(argon["profile"]["name"], "Gemini 4 Argon");
+    assert_eq!(argon["profile"]["limits"]["context"], 1_048_576);
+    println!("Argon favourites API: {argon}");
+}
+
+#[tokio::test]
 async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
     let server = TestServer::in_memory().await;
     let models: Value = server

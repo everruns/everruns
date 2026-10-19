@@ -21,7 +21,12 @@ Three new models are available with full profiles (pricing, limits, modalities):
 - **Muse Spark 1.3** and its Contributor tier on the Meta Model API. Muse Spark 1.2
   stays selectable.
 
-New organizations get them on the Models page automatically.
+New organizations get them on the Models page automatically. List the
+favorites from the CLI:
+
+```bash
+everruns models list --favorites-only true
+```
 
 See [Providers](/providers/), [Meta](/providers/meta/) and
 [Anthropic](/providers/anthropic/). [#3363](https://github.com/everruns/everruns/pull/3363), [#3351](https://github.com/everruns/everruns/pull/3351), [#3352](https://github.com/everruns/everruns/pull/3352)

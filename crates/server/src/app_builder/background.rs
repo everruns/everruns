@@ -38,6 +38,8 @@ pub(super) struct WorkerLinkDeps {
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub virtual_registry: Arc<VirtualMountRegistry>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// The channel host targeted schedule triggers run on.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
 }
 
 /// Validate gRPC auth and TLS config, then supervise the worker gRPC server.
@@ -83,6 +85,7 @@ pub(super) fn spawn_grpc_server(
                     grpc_svc.set_task_broadcaster(broadcaster);
                 }
                 grpc_svc.set_slack_provisioner(deps.slack_provisioner);
+                grpc_svc.set_channels(deps.channels);
                 grpc_svc.set_connector_registry(deps.connector_registry);
                 grpc_svc.set_permission_resolver(deps.permission_resolver);
                 grpc_svc.set_provider_services(deps.provider_services);
@@ -175,6 +178,7 @@ pub(super) fn spawn_dev_task_worker(
         deps.sqldb_store,
     )
     .with_slack_provisioner(deps.slack_provisioner)
+    .with_channels(deps.channels)
     .with_connector_registry(deps.connector_registry)
     .with_budget_service(extras.budget_service)
     .with_encryption(encryption)
@@ -368,6 +372,7 @@ pub(super) async fn start_maintenance(
     // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
     // per interval, whatever the replica count.
     let cluster_jobs = vec![
+        crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
             deps.background_db.clone(),
             crate::background::blob_gc::BlobGcConfig::from_env(),

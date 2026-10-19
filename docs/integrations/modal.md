@@ -74,7 +74,7 @@ Pass `network` to `modal_create_sandbox` to control outbound traffic. Modal enfo
 - `{"mode": "allowlist", "domains": ["pypi.org", "*.pythonhosted.org"], "cidrs": ["10.0.0.0/8"]}`: only those destinations
 - `{"mode": "open"}`: anything (the default)
 
-Pass `"inject_connections": ["github"]` to let the sandbox use your GitHub connection without exposing the token. Modal adds it to requests for `api.github.com` and to git over `https://github.com`, so `curl https://api.github.com/user` and `git clone` of private repositories work, but the token never appears in the sandbox environment or files. Injection needs open network or a CIDR-only allowlist.
+Pass `"inject_connections": ["github"]` to let the sandbox use your GitHub connection without exposing the token (the agent's connection when no person is in the run or the person has not connected GitHub). Modal adds it to requests for `api.github.com` and to git over `https://github.com`, so `curl https://api.github.com/user` and `git clone` of private repositories work, but the token never appears in the sandbox environment or files. Injection needs open network or a CIDR-only allowlist.
 
 In Sandbox Templates, the template's network setting (Open, Only listed domains, Blocked) is enforced the same way, and the **Use my GitHub connection** switch turns on injection.
 

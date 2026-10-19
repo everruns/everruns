@@ -775,7 +775,7 @@ where
         );
         if error_count > 0 {
             let suffix =
-                crate::engine::localization::format_error_suffix(locale.as_deref(), error_count);
+                crate::engine::localization::format_issue_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
                 Some(text) => format!("{text}{suffix}"),
                 None => crate::engine::localization::format_completed_tool_batch(
@@ -1355,33 +1355,30 @@ where
             None
         };
 
-        // Emit tool.started event (child of act.started)
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                context.session_id,
-                event_context.clone(),
-                ToolStartedData {
-                    tool_call: tool_call.clone(),
-                    tool_call_fingerprint: Some(tool_call_fingerprint.clone()),
-                    display_name: display_name.clone(),
-                    narration: Some(self.render_tool_narration(
-                        context,
-                        tool_def,
-                        &tool_call,
-                        ToolNarrationPhase::Started,
-                        locale,
-                    )),
-                },
-            ))
-            .await
+        // tool.started (child of act.started); see `start_record`.
+        let started = ToolStartedData {
+            tool_call: tool_call.clone(),
+            tool_call_fingerprint: Some(tool_call_fingerprint.clone()),
+            display_name: display_name.clone(),
+            narration: Some(self.render_tool_narration(
+                context,
+                tool_def,
+                &tool_call,
+                ToolNarrationPhase::Started,
+                locale,
+            )),
+            side_effect_class: tool_def.map(ToolDefinition::side_effect_class),
+        };
+        if let Some(not_run) = start_record::record(
+            &self.event_emitter,
+            context,
+            &event_context,
+            started,
+            tool_start,
+        )
+        .await
         {
-            tracing::warn!(
-                session_id = %context.session_id,
-                tool_call_id = %tool_call.id,
-                error = %e,
-                "ActAtom: failed to emit tool.started event"
-            );
+            return not_run;
         }
 
         // If tool definition not found, return error result
@@ -1759,6 +1756,9 @@ mod client_policy;
 
 #[path = "act_narration.rs"]
 mod narration;
+
+#[path = "act_start_record.rs"]
+mod start_record;
 
 #[path = "act_abort_on_drop.rs"]
 mod abort_on_drop;

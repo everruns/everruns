@@ -31,6 +31,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     if let Some(store) = &state.sqldb_store {
         ctx = ctx.with_sqldb_store(store.clone());
     }
+    ctx.channels = state.channels.clone();
     with_provider_services(ctx, state).with_workflow_store(state.workflow_store.clone())
 }
 
@@ -58,8 +59,7 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
 /// Agent GitHub Apps with this server's public URLs, so a manifest started
 /// over MCP or `/v1/commands` names the same URLs as one started over REST.
 fn github_apps(state: &AppState) -> crate::github_apps::GitHubAppContext {
-    crate::github_apps::GitHubAppContext::from_env()
-        .with_public_urls(&state.auth.config.base_url, &state.auth.config.frontend_url)
+    crate::github_apps::GitHubAppContext::from_env().with_auth_config(&state.auth.config)
 }
 
 /// Attach the provider-domain services `/v1/providers` uses, so provider
@@ -112,6 +112,22 @@ impl AppState {
         >,
     ) -> Self {
         self.slack_provisioner = provisioner;
+        self
+    }
+
+    pub fn with_mcp_events(
+        mut self,
+        service: Arc<crate::domains::mcp_servers::events::McpEventsService>,
+    ) -> Self {
+        self.mcp_events = Some(service);
+        self
+    }
+
+    pub fn with_channels(
+        mut self,
+        channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    ) -> Self {
+        self.channels = channels;
         self
     }
 }
@@ -172,6 +188,7 @@ mod tests {
             role: OrgRole::Owner,
             is_platform_user: false,
             feature_flags: Default::default(),
+            read_only: false,
         };
 
         assert_provider_services(&domain_context(Caller::from(&org), &state));

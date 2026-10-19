@@ -44,6 +44,8 @@ Pick only what matches the scope:
 - `cd apps/ui && pnpm run lint && pnpm run build`
 - `cd apps/docs && pnpm run build`
 - `./scripts/export-openapi.sh`
+- `bash scripts/lib/check-docs-host.sh` — no links to the former docs host; also sweep the
+  sibling repos (landing, saas, yolop, sdk, mira, plugins) with `git grep -F docs.everruns` (the old docs subdomain)
 - `scripts/test-plugins.sh` — plugin metadata, registration, and version parity
 - `doppler run -- scripts/run-live-examples.sh` — Framework examples against a real model
 - Security alerts. **Do not call the alert APIs directly from a scheduled cloud-agent session** —

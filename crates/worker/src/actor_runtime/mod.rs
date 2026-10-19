@@ -21,14 +21,13 @@
 //!   its backoff by [`ACTOR_POLL_BACKOFF_MAX`]: a lease that expires (its
 //!   holder died) sends no wake-up, so the poll bounds how long past its TTL
 //!   the turn waits for another worker.
-//! - The worker's host stays the one queued phases used: `WorkerRuntimeHost`
-//!   with its phase setup reads, turn read cache and write-behind events,
-//!   built once per turn and re-armed at each phase boundary (`ActorHosts`).
-//!   Stream heartbeats are not needed: the lease renewer keeps the turn alive.
-
-mod inbox;
-mod lease;
-mod turn;
+//! - The worker's host is `WorkerRuntimeHost` with its phase setup reads,
+//!   turn read cache and write-behind events, built once per turn and
+//!   re-armed at each phase boundary (`ActorHosts`). The lease renewer keeps
+//!   the turn alive; nothing heartbeats the model stream. The renewer stops
+//!   for a lease stuck in setup or post-turn flush past `stall_timeout` (the
+//!   core driver's stall watchdog), so a stalled holder cannot keep a session
+//!   `active` forever.
 
 #[cfg(test)]
 mod tests;
@@ -40,20 +39,22 @@ use std::time::Duration;
 use async_trait::async_trait;
 use everruns_contracts::tool_approval_types::APPROVE_TOOL_CALL_TOOL;
 use everruns_contracts::tool_types::CONFIRM_URL_ELICITATION_TOOL;
-use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
 use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
 use crate::actor_lease_store::{ActorLeaseStore, LeasedActor};
 use crate::engine::model_wait::{self, ModelWaitSlots};
-use crate::host::{DEFAULT_SESSION_LEASE_TTL, RuntimeHostAdapter, TurnDrive, WaitsOnPerson};
+use crate::host::{DEFAULT_SESSION_LEASE_TTL, TurnDrive, WaitsOnPerson};
 use crate::phase_reads::PhaseIds;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::turn_reads::TurnReads;
 use crate::worker_adapters::WorkerAdapters;
 
-pub use turn::NO_PROGRESS_SEAL_REASON;
+pub use crate::host::session_actor::{
+    ActorHosts, HostTurn, NO_PROGRESS_SEAL_REASON, Phase, TurnSignals,
+};
+use crate::host::session_actor::{SessionActorConfig, SessionActorDriver};
 
 /// Wake-up payload for a newly leasable actor (the server's
 /// `SESSION_ACTOR_NOTIFICATION`).
@@ -95,60 +96,6 @@ impl ActorWakeups {
     }
 }
 
-/// The turn a host is built for.
-#[derive(Debug, Clone, Copy)]
-pub struct HostTurn {
-    pub org_id: i64,
-    pub session_id: SessionId,
-    pub agent_id: Option<AgentId>,
-    /// `None` while the lease is still reading which turn it runs.
-    pub input_message_id: Option<MessageId>,
-}
-
-/// How a running turn learns it must stop.
-#[derive(Clone)]
-pub struct TurnSignals {
-    /// The turn must stop: the lease was lost or a cancel was requested.
-    pub stop: watch::Receiver<bool>,
-    /// A person asked to cancel the turn.
-    pub cancel: watch::Receiver<bool>,
-    /// The lease every event of the turn is appended under.
-    pub fence: Option<crate::actor_lease_store::ActorFence>,
-}
-
-/// A phase of a turn, as the host's setup reads see it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
-    Reason,
-    Act,
-}
-
-/// The hosts a session actor's turns run on.
-#[async_trait]
-pub trait ActorHosts: Send + Sync + 'static {
-    type Host: RuntimeHostAdapter + Clone + Send + Sync + 'static;
-
-    /// A host for `turn`, stopping its tools on `signals`.
-    fn host(&self, turn: HostTurn, signals: &TurnSignals) -> Self::Host;
-
-    /// A phase of `drive`'s turn begins on `host`.
-    fn begin_phase(&self, _host: &Self::Host, _drive: &TurnDrive, _phase: Phase) {}
-
-    /// Wait until the events `host` queued are stored.
-    async fn flush(&self, _host: &Self::Host) {}
-
-    /// Drop the events `host` queued and has not stored (the lease is lost).
-    fn abandon(&self, _host: &Self::Host) {}
-
-    /// `drive`'s turn ended on this worker (its lease is not released yet).
-    async fn turn_ended(&self, _drive: &TurnDrive) {}
-
-    /// Calls that wait on a person before they run, so resume reruns them.
-    fn waits_on_person(&self) -> Option<WaitsOnPerson> {
-        None
-    }
-}
-
 /// Settings of one worker's actor loop.
 #[derive(Debug, Clone)]
 pub struct ActorRuntimeConfig {
@@ -162,6 +109,9 @@ pub struct ActorRuntimeConfig {
     /// Held leases past which an org's actors are leased after every other
     /// org's (`None` = the control plane's).
     pub max_leased_per_org: Option<u32>,
+    /// Bound on a lease's phases that write nothing (the stall watchdog,
+    /// `WORKER_ACTOR_STALL_TIMEOUT_SECS`).
+    pub stall_timeout: Duration,
 }
 
 impl ActorRuntimeConfig {
@@ -172,6 +122,10 @@ impl ActorRuntimeConfig {
             poison_attempts: crate::durable::persistence::no_progress_seal_threshold_from_env(),
             journal_page: 0,
             max_leased_per_org: None,
+            stall_timeout: crate::core::config::env_duration_secs(
+                "WORKER_ACTOR_STALL_TIMEOUT_SECS",
+                crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
+            ),
         }
     }
 }
@@ -239,6 +193,24 @@ impl<H: ActorHosts> ActorRuntime<H> {
     /// Notify (with `notify_waiters`) to make every running lease renew now.
     pub fn renew_poke(&self) -> Arc<Notify> {
         self.renew_poke.clone()
+    }
+
+    /// Run a known actor through the backend-neutral driver.
+    pub async fn run_actor(&self, actor: LeasedActor) {
+        SessionActorDriver::new(
+            self.hosts.clone(),
+            self.store.clone(),
+            SessionActorConfig {
+                holder: self.config.holder.clone(),
+                lease_ttl: self.config.lease_ttl,
+                poison_attempts: self.config.poison_attempts,
+                journal_page: self.config.journal_page,
+                stall_timeout: self.config.stall_timeout,
+            },
+        )
+        .with_renew_poke(self.renew_poke.clone())
+        .run_actor(actor)
+        .await;
     }
 
     /// Lease up to `limit` actors.
@@ -438,8 +410,8 @@ impl<A: WorkerAdapters> ActorHosts for WorkerActorHosts<A> {
         }));
     }
 
-    async fn flush(&self, host: &Self::Host) {
-        host.flush_events().await;
+    async fn flush(&self, host: &Self::Host) -> everruns_contracts::error::Result<()> {
+        host.stored_events().await
     }
 
     fn abandon(&self, host: &Self::Host) {

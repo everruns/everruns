@@ -22,7 +22,7 @@ pub struct UserConnectionRow {
     pub expires_at: Option<DateTime<Utc>>,
     /// GitHub App installation ID (tokens minted on demand)
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -43,7 +43,7 @@ pub struct CreateUserConnectionRow {
     pub expires_at: Option<DateTime<Utc>>,
     /// GitHub App installation ID (tokens minted on demand)
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<serde_json::Value>,
 }
 

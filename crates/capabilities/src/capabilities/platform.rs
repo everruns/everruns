@@ -10,7 +10,7 @@
 use async_trait::async_trait;
 use everruns_contracts::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::capabilities::{
-    Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel,
+    Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel, SkillContribution,
     SystemPromptContext,
 };
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
@@ -20,6 +20,14 @@ use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService}
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
+
+const SKILLS_PROMPT: &str = "Built-in skills: activate `everruns` for product concepts, \
+`everruns-cli` for command usage, and `everruns-agent-authoring` for agent design. \
+Use the current session's platform interface when following their examples. \
+MCP-client transport instructions in a skill apply only to external MCP clients: \
+this session is already organization-bound, so do not select an organization or \
+pass organization_id. In shell mode use the existing `everruns` command, not \
+discover/query/execute or MCP session tools.";
 
 pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns operation catalog to find commands, not resource instances. Resource-oriented phrases rank relevant list/get operations, but zero matches never prove that a plugin, capability, agent, or other resource is absent. Inspect current resource state by running authoritative read operations with query. Multi-match searches return a compact name list; call discover once more with the exact command name to get its schema and copyable bash_usage. Do not use all: true for a task-specific lookup.";
 pub const QUERY_DESCRIPTION: &str = "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.";
@@ -50,11 +58,23 @@ When the user asks about Everruns features, configuration, or how things work,
 consult these docs before answering.
 </platform-docs>"#;
 
-#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-fn system_prompt_with_docs() -> &'static str {
+fn skills_prompt_addition() -> &'static str {
+    if cfg!(everruns_has_workspace_skills) {
+        SKILLS_PROMPT
+    } else {
+        ""
+    }
+}
+
+fn system_prompt_with_context() -> &'static str {
     use std::sync::OnceLock;
     static PROMPT: OnceLock<String> = OnceLock::new();
-    PROMPT.get_or_init(|| format!("{SYSTEM_PROMPT}\n{DOCS_PROMPT}"))
+    PROMPT.get_or_init(|| {
+        let prompt = format!("{}\n{SYSTEM_PROMPT}", skills_prompt_addition());
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        let prompt = format!("{prompt}\n{DOCS_PROMPT}");
+        prompt
+    })
 }
 
 pub struct PlatformCapability;
@@ -98,14 +118,7 @@ impl Capability for PlatformCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-        {
-            Some(system_prompt_with_docs())
-        }
-        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
-        {
-            Some(SYSTEM_PROMPT)
-        }
+        Some(system_prompt_with_context())
     }
 
     /// The embedded product docs are mounted read-only at /docs when they were
@@ -132,12 +145,16 @@ impl Capability for PlatformCapability {
     fn dependencies(&self) -> Vec<&'static str> {
         #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
         {
-            vec!["session_file_system"]
+            vec!["skills", "session_file_system"]
         }
         #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
         {
-            Vec::new()
+            vec!["skills"]
         }
+    }
+
+    fn contribute_skills(&self) -> Vec<SkillContribution> {
+        super::platform_skills::contributions()
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -184,7 +201,11 @@ impl Capability for PlatformCapability {
         config: &Value,
     ) -> Option<String> {
         if shell_surface(config) {
-            return shell_prompt_addition();
+            return Some(format!(
+                "{}\n{}",
+                skills_prompt_addition(),
+                shell_prompt_addition().unwrap_or_default()
+            ));
         }
         self.system_prompt_contribution(ctx).await
     }

@@ -20,6 +20,7 @@ fn caller(role: OrgRole) -> Caller {
         role,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -34,6 +35,10 @@ fn ctx_with(role: OrgRole) -> Ctx {
 async fn run(name: &str, params: Value, ctx: &Ctx) -> Result<Value, CommandError> {
     let output = dispatch(name, params, ctx).await?;
     Ok(serde_json::from_str(&output).unwrap_or(Value::Null))
+}
+
+async fn workspace(ctx: &Ctx, name: &str) -> String {
+    crate::domains::workspaces::seed_workspace(ctx, name).await
 }
 
 async fn history(ctx: &Ctx, entity_ref: &str) -> Vec<Value> {
@@ -55,22 +60,22 @@ async fn a_change_is_recorded_with_its_reason_fields_actor_and_surface() {
         ChangeIntent::on(ChangeSurface::Commands)
             .with_reason(Some("  a home for the support team  ".into())),
     );
-    let created = run(
-        "create_workspace",
-        json!({ "name": "support", "description": "team space" }),
+    let id = workspace(&ctx, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "support", "description": "team space" }),
         &ctx,
     )
     .await
     .unwrap();
-    let id = created["id"].as_str().unwrap().to_string();
 
     let entries = history(&ctx, &id).await;
     assert_eq!(entries.len(), 1, "{entries:?}");
     let entry = &entries[0];
     assert_eq!(entry["entity_kind"], "workspace");
     assert_eq!(entry["entity_ref"], id.as_str());
-    assert_eq!(entry["action"], "created");
-    assert_eq!(entry["command"], "create_workspace");
+    assert_eq!(entry["action"], "updated");
+    assert_eq!(entry["command"], "update_workspace");
     assert_eq!(entry["reason"], "a home for the support team");
     assert_eq!(entry["changed_fields"], json!(["description", "name"]));
     assert_eq!(entry["actor_kind"], "user");
@@ -81,10 +86,14 @@ async fn a_change_is_recorded_with_its_reason_fields_actor_and_surface() {
 #[tokio::test]
 async fn updates_and_deletes_find_their_subject_in_the_params() {
     let ctx = ctx_with(OrgRole::Owner);
-    let created = run("create_workspace", json!({ "name": "a" }), &ctx)
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap().to_string();
+    let id = workspace(&ctx, "a").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "a2" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
 
     let ctx = ctx.with_change_intent(
         ChangeIntent::on(ChangeSurface::Mcp).with_reason(Some("rename for clarity".into())),
@@ -105,7 +114,7 @@ async fn updates_and_deletes_find_their_subject_in_the_params() {
         .iter()
         .map(|entry| entry["action"].as_str().unwrap())
         .collect();
-    assert_eq!(actions, ["deleted", "updated", "created"]);
+    assert_eq!(actions, ["deleted", "updated", "updated"]);
     assert_eq!(entries[1]["changed_fields"], json!(["name"]));
     assert_eq!(entries[1]["reason"], "rename for clarity");
     // A change without a reason is still recorded: people may omit one.
@@ -121,10 +130,11 @@ async fn rest_reaches_history_through_the_http_layer() {
         request_id: Some("req-42".into()),
         ..ChangeIntent::default()
     };
-    let created = scope_http_intent(intent, async {
-        crate::domains::workspaces::commands::CreateWorkspace {
-            name: "ui".into(),
-            description: None,
+    let id = workspace(&ctx, "seeded").await;
+    scope_http_intent(intent, async {
+        crate::domains::workspaces::commands::UpdateWorkspaceCmd {
+            workspace_id: id.clone(),
+            request: serde_json::from_value(json!({ "name": "ui" })).unwrap(),
         }
         .run(&ctx)
         .await
@@ -132,7 +142,7 @@ async fn rest_reaches_history_through_the_http_layer() {
     .await
     .unwrap();
 
-    let entries = history(&ctx, &created.id).await;
+    let entries = history(&ctx, &id).await;
     assert_eq!(entries[0]["reason"], "from the UI");
     assert_eq!(entries[0]["surface"], "api");
     assert_eq!(entries[0]["request_id"], "req-42");
@@ -145,13 +155,20 @@ async fn an_invalid_reason_fails_before_anything_changes() {
             "key is sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345".into(),
         )),
     );
-    let err = run("create_workspace", json!({ "name": "leaky" }), &ctx)
-        .await
-        .expect_err("a credential-shaped reason is rejected");
+    let id = workspace(&ctx, "kept").await;
+    let err = run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "leaky" }),
+        &ctx,
+    )
+    .await
+    .expect_err("a credential-shaped reason is rejected");
     assert_eq!(err.code.as_deref(), Some("invalid_change_reason"));
 
-    let listed = run("list_workspaces", json!({}), &ctx).await.unwrap();
-    assert_eq!(listed.as_array().map(Vec::len), Some(0), "{listed}");
+    let fetched = run("get_workspace", json!({ "workspace_id": id }), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(fetched["name"], "kept");
 }
 
 #[tokio::test]
@@ -159,12 +176,22 @@ async fn a_failed_command_and_a_read_record_nothing() {
     let ctx = ctx_with(OrgRole::Owner).with_change_intent(
         ChangeIntent::on(ChangeSurface::Commands).with_reason(Some("x".into())),
     );
-    run("create_workspace", json!({ "name": "dup" }), &ctx)
-        .await
-        .unwrap();
-    run("create_workspace", json!({ "name": "dup" }), &ctx)
-        .await
-        .expect_err("names are unique");
+    let id = workspace(&ctx, "one").await;
+    workspace(&ctx, "dup").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "two" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "dup" }),
+        &ctx,
+    )
+    .await
+    .expect_err("names are unique");
     run("list_workspaces", json!({}), &ctx).await.unwrap();
 
     let all = run("list_org_history", json!({}), &ctx).await.unwrap();
@@ -181,12 +208,15 @@ async fn an_agent_session_is_recorded_as_the_actor() {
         via_agent_id: Some("agent_01933b5a000070008000000000000001".into()),
         ..ChangeIntent::default()
     });
-    let created = run("create_workspace", json!({ "name": "kids" }), &ctx)
-        .await
-        .unwrap();
-    let entry = history(&ctx, created["id"].as_str().unwrap())
-        .await
-        .remove(0);
+    let id = workspace(&ctx, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "kids" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let entry = history(&ctx, &id).await.remove(0);
     assert_eq!(entry["actor_kind"], "agent_session");
     assert_eq!(entry["surface"], "platform");
     assert_eq!(
@@ -211,10 +241,15 @@ async fn an_agent_session_is_recorded_as_the_actor() {
 #[tokio::test]
 async fn history_is_read_with_the_kinds_view_policy() {
     let owner = ctx_with(OrgRole::Owner);
-    let created = run("create_workspace", json!({ "name": "w" }), &owner)
-        .await
-        .unwrap();
-    let id = created["id"].as_str().unwrap();
+    let id = workspace(&owner, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "w" }),
+        &owner,
+    )
+    .await
+    .unwrap();
+    let id = id.as_str();
 
     // Org-wide history is the audit view; a member does not hold it.
     let member = Ctx::minimal_for_test(caller(OrgRole::Member), owner.db.clone(), None);
@@ -350,48 +385,64 @@ fn reasons_required(ctx: Ctx, required: bool) -> Ctx {
 #[tokio::test]
 async fn an_agent_change_without_a_reason_goes_through_with_a_warning() {
     let ctx = reasons_required(agent_session_ctx(None), false);
-    let created = run("create_workspace", json!({ "name": "kids" }), &ctx)
-        .await
-        .unwrap();
+    let id = workspace(&ctx, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "kids" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
     let notices = ctx.change_intent.as_ref().unwrap().notices.take();
     assert!(
         notices.iter().any(|n| n.contains("need a reason")),
         "{notices:?}"
     );
-    let entry = history(&ctx, created["id"].as_str().unwrap())
-        .await
-        .remove(0);
+    let entry = history(&ctx, &id).await.remove(0);
     assert_eq!(entry["reason"], Value::Null);
 }
 
 #[tokio::test]
 async fn an_org_that_requires_reasons_refuses_an_agent_change_without_one() {
     let ctx = requiring_reasons(agent_session_ctx(None));
-    let err = run("create_workspace", json!({ "name": "kids" }), &ctx)
-        .await
-        .unwrap_err();
+    let id = workspace(&ctx, "seeded").await;
+    let err = run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "kids" }),
+        &ctx,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(err.code.as_deref(), Some(super::REASON_REQUIRED));
     assert!(
         !err.allowed_actions.is_empty(),
         "the error says how to retry"
     );
-    let all = run("list_workspaces", json!({}), &ctx).await.unwrap();
-    assert_eq!(
-        all.as_array().map(Vec::len),
-        Some(0),
-        "nothing changed: {all}"
-    );
-
-    let with_reason = requiring_reasons(agent_session_ctx(Some("the user asked")));
-    run("create_workspace", json!({ "name": "kids" }), &with_reason)
+    let fetched = run("get_workspace", json!({ "workspace_id": id }), &ctx)
         .await
         .unwrap();
+    assert_eq!(fetched["name"], "seeded", "nothing changed: {fetched}");
+
+    let with_reason = requiring_reasons(agent_session_ctx(Some("the user asked")));
+    let id = workspace(&with_reason, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "kids" }),
+        &with_reason,
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
 async fn people_may_change_things_without_a_reason_even_when_agents_may_not() {
     let ctx = requiring_reasons(ctx_with(OrgRole::Owner));
-    run("create_workspace", json!({ "name": "ops" }), &ctx)
-        .await
-        .unwrap();
+    let id = workspace(&ctx, "seeded").await;
+    run(
+        "update_workspace",
+        json!({ "workspace_id": id, "name": "ops" }),
+        &ctx,
+    )
+    .await
+    .unwrap();
 }

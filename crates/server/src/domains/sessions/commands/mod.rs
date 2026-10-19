@@ -205,15 +205,15 @@ impl Command for CreateSession {
             &req.capabilities,
         )?;
 
-        // Attaching a session to an existing workspace grants the session (and
-        // its agent) read/write access to that workspace's files, so require
-        // WORKSPACE_MANAGE on the caller — SESSION_MANAGE alone must not be a
-        // path to a workspace the caller cannot otherwise manage. The service
-        // additionally validates the target exists, is active, and is in-org.
+        // Attaching a session to an existing workspace is retired: every session
+        // gets its own. The only gate was the org-wide workspace permission, so
+        // an admin could point a new session on any agent at another session's
+        // files. Refuse loudly rather than ignore, so a caller relying on shared
+        // files learns it no longer works.
         if req.workspace_id.is_some() {
-            crate::domains::workspaces::WORKSPACE_MANAGE
-                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-                .map_err(|e| CommandError::forbidden(e.to_string()))?;
+            return Err(CommandError::bad_request(
+                crate::domains::sessions::types::WORKSPACE_ATTACH_RETIRED,
+            ));
         }
 
         // A chat thread is an ordinary session created here (EVE-852), so the
@@ -780,11 +780,11 @@ pub struct UpdateSessionCmd {
 #[command(
     name = "update_session",
     category = "sessions",
-    description = "Update session title, tags, or locale.",
+    description = "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     method = "PATCH",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",)]),
+    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'",), CliExample::new("Switch a running session to another model", "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'",)]),
 )]
 impl Command for UpdateSessionCmd {
     type Output = Session;
@@ -1033,7 +1033,11 @@ impl Command for CancelSession {
             Ok(recorded_by_worker) => recorded_by_worker,
             Err(error) => {
                 tracing::error!(session_id = %session_id, error = %error, "Failed to cancel the session's turn");
-                false
+                // An unacknowledged request does not transfer terminal-event
+                // ownership: the worker may still complete the turn.
+                return Err(CommandError::internal(anyhow::anyhow!(
+                    "Failed to cancel the session's turn"
+                )));
             }
         };
         if recorded_by_worker {

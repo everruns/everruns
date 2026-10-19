@@ -389,7 +389,10 @@ async fn auto_caches_negotiation_so_call_after_list_reuses_session() {
     let connection = McpConnection::http("docs", URL);
     let c = client(egress);
     c.discover(&connection).await.unwrap();
-    let result = c.call(&connection, "search", json!({})).await.unwrap();
+    let result = c
+        .call(&connection, "search", json!({}), None)
+        .await
+        .unwrap();
     assert!(!result.is_error);
 
     let log = log.lock().unwrap();
@@ -572,7 +575,7 @@ async fn input_required_without_requests_is_retried_with_request_state() {
         with_input_requests: false,
     });
     let result = client(egress)
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect("MRTR retry should complete the call");
     assert!(!result.is_error);
@@ -595,7 +598,7 @@ async fn input_required_naming_unsupported_inputs_fails_loudly() {
         with_input_requests: true,
     });
     let error = client(egress)
-        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .call(&McpConnection::http("docs", URL), "search", json!({}), None)
         .await
         .expect_err("unsupported input requests must surface as an error");
     let error = error.to_string();

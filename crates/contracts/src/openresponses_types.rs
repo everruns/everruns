@@ -656,13 +656,21 @@ pub enum Input {
 // ============================================================================
 
 /// URL citation annotation.
+///
+/// Fields other than `type` default when absent, so a response carrying a
+/// gateway's sparser `url_citation` (no title) or another annotation type
+/// still parses; readers check `type_` and a non-empty `url`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UrlCitation {
     #[serde(rename = "type")]
     pub type_: String,
+    #[serde(default)]
     pub url: String,
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub start_index: u32,
+    #[serde(default)]
     pub end_index: u32,
 }
 

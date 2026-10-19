@@ -21,7 +21,7 @@ pub struct VirtualUserConnectionRow {
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -40,17 +40,24 @@ pub struct CreateVirtualUserConnectionRow {
     pub scopes: Option<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
-    /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
+    /// Provider-specific metadata (e.g. provider org slug for personal tokens)
     pub provider_metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CreateOrganizationConnectionRow {
     pub org_id: i64,
     pub name: String,
     pub provider: String,
-    pub access_token_encrypted: Vec<u8>,
+    /// `None` stores `api_key`, the sandbox and search accounts' type. The
+    /// shared GitHub App's link is `everruns_app`.
+    pub connection_type: Option<String>,
+    /// Absent for an installation-backed row: its tokens are minted on demand.
+    pub access_token_encrypted: Option<Vec<u8>>,
+    pub provider_user_id: Option<String>,
     pub provider_username: Option<String>,
+    pub scopes: Option<String>,
+    pub installation_id: Option<i64>,
     pub provider_metadata: Option<serde_json::Value>,
 }
 

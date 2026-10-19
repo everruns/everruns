@@ -19,6 +19,9 @@ pub struct OrganizationResponse {
     /// Default LLM model for the organization.
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// Optional small chat model, independent of the main chat and decision defaults.
+    #[schema(value_type = Option<String>)]
+    pub small_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default harness to preselect in the UI.
     #[schema(value_type = Option<String>)]
     pub default_harness_id: Option<everruns_contracts::typed_id::HarnessId>,

@@ -32,3 +32,7 @@ Message content is not exported by default.
 
 See [Observability](/framework/observability/). PRs [#3804](https://github.com/everruns/everruns/pull/3804),
 [#3806](https://github.com/everruns/everruns/pull/3806).
+
+## Update 2026-10-14
+
+[OpenTelemetry export and accounting fixes](/changelog/2026-10-14-opentelemetry-export-and-accounting/) correct cached-token totals, exporter batching, tool identity, error privacy and shutdown reporting.

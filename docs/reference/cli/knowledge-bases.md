@@ -1,6 +1,6 @@
 ---
 title: everruns knowledge-bases
-description: "Curated collections of knowledge entries. CLI reference for everruns knowledge-bases."
+description: "Curated collections of knowledge entries. CLI reference for everruns knowledge-bases: usage, flags and examples."
 sidebar:
   label: knowledge-bases
 appliesTo: [platform, cloud]

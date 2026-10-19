@@ -37,19 +37,22 @@ blocks until it answers) is unchanged and lives with the capability.
 - [`crates/server/src/api/tool_approvals.rs`](../../crates/server/src/api/tool_approvals.rs)
   owns the answer endpoint and the shared resolution; the deadline pass lives in
   [`crates/server/src/background/tool_result_timeout.rs`](../../crates/server/src/background/tool_result_timeout.rs).
+- [`crates/core/src/session_commands/approval.rs`](../../crates/core/src/session_commands/approval.rs)
+  owns Engine approval commands over the same durable gate; native serve and
+  AgentCore use them as well as external hosting profiles.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the wire contract.
 - [`crates/server/tests/contracts/tool_approvals_test.rs`](../../crates/server/tests/contracts/tool_approvals_test.rs)
   covers the acceptance paths end to end.
 
 ## Why a hosted gate cannot block
 
-An in-process host (the ACP server in `serve`) answers by blocking the turn on
-a channel until its client replies. A hosted turn runs as durable activities on
-whichever worker claims them; the process that asked may be gone by the time a
-person answers, and a worker slot held open for minutes is capacity nobody gets
-back. So the hosted approver never waits. It answers from what has already been
-decided, and otherwise reports `Deferred`, and the turn parks the same way a
-client-side tool or an MCP elicitation parks it.
+A callback-based in-process host can block the turn on a channel until its
+client replies. Engine session hosting, including native serve and AgentCore,
+uses the durable gate: the process that asked may be gone by the time a person
+answers. Platform workers have the same requirement, and a worker slot held
+open for minutes is capacity nobody gets back. The durable approver answers
+from what has already been decided, otherwise reports `Deferred`, and the turn
+parks the same way a client-side tool or an MCP elicitation parks it.
 
 ## Lifecycle
 
@@ -82,6 +85,9 @@ The retry is deliberate. The gated call already has a result in the transcript,
 and resuming a turn into a tool execution the model did not just request is not
 something the durable turn loop does; the same retry shape already carries URL
 and form elicitation answers. The binding below is what keeps the retry safe.
+Engine approval commands use this same retry contract. Restart fixtures must
+have the model request the approved call again rather than report success
+without executing it.
 
 The OpenAI Agents API backend is the exception: its provider is still waiting on
 the original call, so the backend holds that call open, and on an approval runs
@@ -103,6 +109,8 @@ canonicalized — so approving one call never approves a different one. It is
 taken with a destructive read, so concurrent retries cannot spend one approval
 twice, and it lapses unused after an hour so a stale yes cannot surface much
 later in the session.
+Engine one-off approvals also bind the logical turn, so the same arguments in
+a later turn cannot consume an earlier turn's unused grant.
 
 The turn resumes once per batch, so every request in it is settled by one
 submission. A request left out of the submission is *not approved*, and
@@ -146,6 +154,15 @@ both: the approver remembers, briefly and in process, the one-off answer it
 just consumed for that call id, so the second gate does not ask again. A
 different call, or the model's next identical call (a new id), still needs its
 own answer.
+
+## User MCP management
+
+The [User MCP Servers](../integrations/user-mcp-servers.md) capability exposes
+management tools only with `manage` enabled. Add and enable declare approval
+required and pass through this shared gate in normal and protective modes.
+They do not install a capability-owned gate: hard approval absent or off
+allows them to run. This choice does not authorize a different person, bypass
+catalog/URL restrictions, or replace OAuth consent.
 
 ## MCP tool labels
 

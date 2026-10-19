@@ -1,6 +1,6 @@
 ---
 title: everruns payments
-description: "Machine payments: wallets, spend policies and attempts. CLI reference for everruns payments."
+description: "Machine payments: wallets, spend policies and attempts. CLI reference for everruns payments: usage, flags and examples."
 sidebar:
   label: payments
 appliesTo: [platform, cloud]

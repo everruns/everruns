@@ -1,16 +1,17 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import ModelsPage from "@/app/(main)/models/page";
+import { ModelsShell as ModelsPage } from "@/app/(main)/models/(tabs)/models-shell";
 import { updateModel } from "@/lib/api/providers";
 import { ApiError } from "@/lib/api/client";
 import type { ModelWithProvider } from "@/lib/api/types";
 
 const mockUseSearchParams = jest.fn();
 const mockRouterReplace = jest.fn();
+let mockPathname = "/models";
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/models",
+  usePathname: () => mockPathname,
   useSearchParams: () => mockUseSearchParams(),
   useRouter: () => ({ push: jest.fn(), replace: mockRouterReplace }),
 }));
@@ -25,10 +26,6 @@ jest.mock("next/link", () => ({
 let mockCanManage = true;
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => mockCanManage }),
-}));
-
-jest.mock("@/hooks/use-chatgpt-connection", () => ({
-  useChatGptConnection: () => ({ data: null }),
 }));
 
 const mockProviders = [
@@ -138,6 +135,7 @@ describe("ModelsPage", () => {
     mockUseProviders.mockReturnValue({ data: mockProviders, isLoading: false, error: null });
     setModels([model({})]);
     mockUseSearchParams.mockReturnValue(new URLSearchParams());
+    mockPathname = "/models";
     mockSetModelsEnabled.mockResolvedValue({ failed: [] });
     mockReview.mockResolvedValue(undefined);
   });
@@ -146,16 +144,36 @@ describe("ModelsPage", () => {
     render(<ModelsPage />, { wrapper });
     expect(screen.getByRole("heading", { level: 1, name: "Models" })).toBeInTheDocument();
     for (const name of [/^Models/, /^Providers/, /^Defaults/]) {
-      expect(screen.getByRole("tab", { name })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name })).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "Connect provider" })).toBeInTheDocument();
   });
 
-  it("switches tabs through the URL, keeping other parameters", () => {
+  it("links each tab to its own path", () => {
+    render(<ModelsPage />, { wrapper });
+    expect(screen.getByRole("link", { name: /^Models/ })).toHaveAttribute("href", "/models");
+    expect(screen.getByRole("link", { name: /^Providers/ })).toHaveAttribute(
+      "href",
+      "/models/providers",
+    );
+    expect(screen.getByRole("link", { name: /^Defaults/ })).toHaveAttribute(
+      "href",
+      "/models/defaults",
+    );
+  });
+
+  it("opens the tab its path names", () => {
+    mockPathname = "/models/providers";
+    render(<ModelsPage />, { wrapper });
+    // The Providers tab, not the model list with its status filter.
+    expect(screen.queryByRole("button", { name: /^Enabled/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps filters as query params on the tab's path", () => {
     mockUseSearchParams.mockReturnValue(new URLSearchParams("provider=provider-1"));
     render(<ModelsPage />, { wrapper });
-    fireEvent.click(screen.getByRole("tab", { name: /^Providers/ }));
-    expect(mockRouterReplace).toHaveBeenCalledWith("/models?provider=provider-1&tab=providers", {
+    fireEvent.click(screen.getByRole("button", { name: /^Available/ }));
+    expect(mockRouterReplace).toHaveBeenCalledWith("/models?provider=provider-1&status=available", {
       scroll: false,
     });
   });
@@ -272,8 +290,24 @@ describe("ModelsPage", () => {
     expect(screen.getByRole("button", { name: /Add model/ })).toBeDisabled();
   });
 
+  it("groups defaults into Chat, Decisions and Other services", () => {
+    mockPathname = "/models/defaults";
+    render(<ModelsPage />, { wrapper });
+    const chat = screen.getByRole("region", { name: "Chat" });
+    const decisions = screen.getByRole("region", { name: "Decisions" });
+    const other = screen.getByRole("region", { name: "Other services" });
+    expect(within(chat).getByLabelText("Default model")).toBeInTheDocument();
+    expect(within(decisions).getByLabelText("Default decision model")).toBeInTheDocument();
+    expect(
+      within(decisions).getByRole("combobox", { name: "System decisions" }),
+    ).toBeInTheDocument();
+    for (const label of ["Realtime (voice)", "Embeddings", "Images", "Rerank"]) {
+      expect(within(other).getByLabelText(label)).toBeInTheDocument();
+    }
+  });
+
   it("lets the organization answer system decisions with its own model", async () => {
-    mockUseSearchParams.mockReturnValue(new URLSearchParams("tab=defaults"));
+    mockPathname = "/models/defaults";
     render(<ModelsPage />, { wrapper });
     const trigger = screen.getByRole("combobox", { name: "System decisions" });
     expect(trigger).toHaveTextContent("Deployment default");

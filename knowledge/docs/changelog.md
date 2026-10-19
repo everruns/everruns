@@ -52,6 +52,12 @@ picture when one helps.
 
 ## What gets an entry
 
+An entry must describe a meaningful change to what users can do, how the product
+behaves, or what users must change. Being visible is not enough. Cosmetic polish
+(such as docs badge colors), typo fixes, and routine documentation upkeep get no
+entry unless they meet one of the impact criteria below. A substantial usability
+or accessibility fix can qualify; a styling change alone does not.
+
 | Kind | When | Example |
 |---|---|---|
 | `feature` | A user can now do something new, and the work is complete | Call one agent from code with an agent key |
@@ -91,6 +97,8 @@ one paragraph that serves neither.
 **Significance: how much I should care.** `major` (changes how people use the
 product; at most a few a month), `notable` (the default), `minor` (small, but
 someone asked for it). Breaking changes are always at least `notable`.
+Significance is assigned only after a change qualifies for an entry; `minor`
+does not make an otherwise ineligible change eligible.
 
 The index page filters on all three plus kind. Filters are query parameters
 (`/changelog/?product=yolop&significance=major`), so a filtered view is a link
@@ -146,7 +154,20 @@ See [Call your agent from code](/how-to/call-your-agent-from-code/).
 Rules for the body:
 
 - 40 to 150 words. First sentence: what changed, in the reader's terms. Then
-  how to use it (a UI path, a request, or a short code block). Then links.
+  how to use it, shown with an example. Then where to read more.
+- Every `feature`, `improvement`, `breaking` and `deprecation` entry shows an
+  example: the request, command, config or code a reader would write, or a
+  screenshot of the changed UI. Prefer the smallest real example over prose
+  describing it; a breaking change shows the before and after. The changelog
+  check fails an entry without one, unless a UI-only entry names the screenshot
+  still to capture in `visual:` (a build warning until it is captured).
+- Docs links sit in the text, with the page title or the feature name as
+  the link text in the sentence that needs it, never as a list beside the
+  entry. `links.docs` stays as the machine-readable index, and the check fails
+  when a page listed there is not linked from the body. Pull requests from
+  `links.prs` render at the end of the entry.
+- JSON examples are valid JSON with a two-space indent, never squeezed onto
+  one line; the check reformats nothing and fails a block that differs.
 - Code blocks are real: Rust snippets go through the same doc-snippet check as
   the rest of `docs/`, and Python through `check-python-snippets.py`.
 - At least one internal docs link for `feature`, `improvement`, `breaking` and
@@ -156,7 +177,8 @@ Rules for the body:
   screenshot for a `ui` change, a short video when the change is an
   interaction, a navy-and-grey diagram per [diagrams.md](diagrams.md) when a
   flow changed, a release card for a release, an integration card (host mark
-  plus partner logo) for a new integration. No decorative images.
+  plus partner logo) for a new integration. No decorative images. Visual
+  headlines follow [Feature announcement copy](../ui/brand.md#feature-announcement-copy).
 - Visuals must be sharp. Screenshots are PNG captured at device scale factor
   2 (`name@2x.png`), cropped to the part of the screen that changed rather
   than shrunk from a full page, in the light theme, with realistic data and no
@@ -212,10 +234,12 @@ Writing the entry belongs to the PR that completes the feature, in whichever
 repository that PR lives:
 
 1. **The PR template** in every repository gets one line under "What changed":
-   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing`.
+   `Changelog: <entry link> | part of <program or Linear issue> | not user-facing | no entry: <reason>`.
+   Use `no entry: <reason>` for visible changes below the impact threshold,
+   such as cosmetic polish or routine docs upkeep.
    An empty line is a review finding.
 2. **The ship skills** treat the entry as a synced artifact (shipping outcome 4).
-   When the PR completes a user-facing feature or closes a significant incident,
+   When the PR completes a change that meets the impact criteria above,
    the entry is part of the change; when the PR is a step in a program, the line
    names the program so the last PR knows it owes the entry.
 3. **Entries always land in `everruns/everruns`**, because the docs site lives
@@ -256,7 +280,15 @@ versioned `CHANGELOG.md` links to the public entries it carries.
   `release-card.yml` with the existing `pnpm --dir apps/docs run release-card`
   (2400x1350, already a 2x image) into the entry folder as `card@2x.png`, so
   every past release keeps its card on the site; `release.yml` keeps
-  attaching the same render to the GitHub Release.
+  attaching the same render to the GitHub Release and opens the Release body
+  with the committed `card@2x.png`, pinned to the release commit, so the card
+  shows in the release and not only among its assets.
+- The card is plain like the entries: the headline names the main features,
+  never a slogan, and it holds up to four highlights. Its renderer measures
+  each line's rendered width, because character limits let wide lines run into
+  the next column.
+- The release entry's link list grows with the release, so it is left out of
+  the release body's word budget; the budget covers the prose.
 - Every `Highlights` bullet in `CHANGELOG.md` links its changelog entry, and the
   version section gains a `Changelog` line linking the release entry. The GitHub
   Release body is extracted from that section, so it carries the links too.

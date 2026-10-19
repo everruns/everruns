@@ -6,6 +6,7 @@ kind: feature
 significance: major
 products: [platform, cloud]
 surfaces: [agent, ui]
+release: "0.48.0"
 links:
   docs: [/capabilities/tools-in-shell/]
   prs: [everruns/everruns#4385, everruns/everruns#4386, everruns/everruns#4388, everruns/everruns#4435, everruns/everruns#4439, everruns/everruns#4443, everruns/everruns#4454, everruns/everruns#4501]

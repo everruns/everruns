@@ -126,10 +126,13 @@ impl RuntimeAgent {
     }
 }
 
+/// System prompt used when no harness, agent or session layer supplies one.
+pub const FALLBACK_SYSTEM_PROMPT: &str = "You are a helpful assistant.";
+
 impl Default for RuntimeAgent {
     fn default() -> Self {
         Self {
-            system_prompt: "You are a helpful assistant.".to_string(),
+            system_prompt: FALLBACK_SYSTEM_PROMPT.to_string(),
             model: "gpt-5.2".to_string(),
             tools: Vec::new(),
             max_iterations: default_max_iterations(),
@@ -190,9 +193,15 @@ impl RuntimeAgentBuilder {
     ) -> Self {
         let mut builder = Self::new();
 
-        // Always set system prompt (even to empty) so an intentionally empty
-        // merged prompt clears the builder default instead of leaving it.
-        builder = builder.system_prompt(layer.system_prompt.unwrap_or_default());
+        // The merged prompt replaces the builder default. Only when no layer
+        // (harness, agent, session) supplies one does the generic fallback
+        // apply: it must never be prepended to a prompt someone wrote.
+        builder = builder.system_prompt(
+            layer
+                .system_prompt
+                .filter(|prompt| !prompt.trim().is_empty())
+                .unwrap_or_else(|| FALLBACK_SYSTEM_PROMPT.to_string()),
+        );
 
         // Resolve merged capabilities (once, on the effective set)
         builder = builder
@@ -218,6 +227,10 @@ impl RuntimeAgentBuilder {
         // when unset, the capability-derived preference (if any) stands.
         if let Some(explicit) = layer.parallel_tool_calls {
             builder = builder.parallel_tool_calls(Some(explicit));
+        }
+
+        if let Some(tokens) = layer.max_output_tokens {
+            builder = builder.max_tokens(tokens);
         }
 
         if let Some(communication) = layer.communication {
@@ -1042,6 +1055,7 @@ mod tests {
                 max_iterations: Some(0),
                 network_access: Some(policy.clone()),
                 parallel_tool_calls: explicit_parallel,
+                max_output_tokens: Some(3000),
                 ..Default::default()
             };
             let agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &test_ctx())
@@ -1056,6 +1070,7 @@ mod tests {
             assert_eq!(agent.max_iterations, 0);
             assert_eq!(agent.network_access, Some(policy));
             assert_eq!(agent.parallel_tool_calls, Some(expected_parallel));
+            assert_eq!(agent.max_tokens, Some(3000));
             assert_eq!(
                 serde_json::to_value(agent.tool_search.unwrap()).unwrap(),
                 serde_json::json!({"enabled":true,"threshold":37})
@@ -1123,8 +1138,28 @@ mod tests {
         );
     }
     #[tokio::test]
-    async fn empty_overlay_clears_default_prompt_without_enabling_preferences() {
-        for prompt in [None, Some(String::new())] {
+    async fn agent_prompt_is_not_prefixed_by_the_fallback() {
+        // A harness without its own prompt (every built-in level) must not
+        // put the generic persona line ahead of the agent's prompt.
+        let harness = HarnessDefinition::default();
+        let agent = AgentDefinition::new(AgentId::new(), "reviewer", "You review pull requests.");
+        let runtime = RuntimeAgentBuilder::from_overlay(
+            AgentConfigOverlay::fold([
+                AgentConfigOverlay::from(&harness),
+                AgentConfigOverlay::from(&agent),
+            ]),
+            &fixture_registry(),
+            &test_ctx(),
+        )
+        .await
+        .build();
+        assert_eq!(runtime.system_prompt, "You review pull requests.");
+        assert!(!runtime.system_prompt.contains(FALLBACK_SYSTEM_PROMPT));
+    }
+
+    #[tokio::test]
+    async fn empty_overlay_uses_fallback_prompt_without_enabling_preferences() {
+        for prompt in [None, Some(String::new()), Some("  \n".into())] {
             let agent = RuntimeAgentBuilder::from_overlay(
                 AgentConfigOverlay {
                     system_prompt: prompt,
@@ -1135,7 +1170,7 @@ mod tests {
             )
             .await
             .build();
-            assert_eq!(agent.system_prompt, "");
+            assert_eq!(agent.system_prompt, FALLBACK_SYSTEM_PROMPT);
             assert!(agent.tools.is_empty());
             assert_eq!(agent.max_iterations, 500);
             assert!(agent.tool_search.is_none());

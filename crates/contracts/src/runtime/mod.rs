@@ -9,6 +9,7 @@ use crate::*;
 
 pub mod agent_definition;
 pub mod annotation_hook;
+pub mod attachments;
 pub mod background;
 pub mod browser_use;
 pub mod budget;
@@ -38,6 +39,7 @@ pub mod execution_features;
 pub mod execution_loading;
 pub mod feature_flag_grade;
 pub mod finalized_tool_calls;
+mod github_credential;
 pub mod harness_definition;
 pub mod hook_executor;
 pub mod image_services;
@@ -63,6 +65,7 @@ pub mod resource_names;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod sandbox_context;
+pub mod sandbox_workspace;
 pub mod saved_scripts;
 pub mod session;
 pub mod session_file;
@@ -117,8 +120,8 @@ pub use self::capability_mcp_server::{
 pub use self::channel::{
     ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
-    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, SessionBinding,
-    ThreadContext,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 pub use self::command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
@@ -180,6 +183,7 @@ pub use self::feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 pub use self::finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
 };
+pub use self::github_credential::GitHubInstallationScope;
 pub use self::harness_definition::HarnessDefinition;
 pub use self::image_services::{ImageResolver, ResolvedImage};
 pub use self::leased_resource::{
@@ -189,8 +193,8 @@ pub use self::llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
 pub use self::mcp_deferred::{
-    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
-    deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
+    deferred_mcp_server_definition, deferred_mcp_server_prefix, deferred_mcp_server_tool_name,
     normalize_deferred_mcp_server_definition, partition_deferred_mcp_servers,
     reveal_deferred_mcp_server, revealed_mcp_servers,
 };
@@ -259,15 +263,17 @@ pub use self::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
 pub use self::session_services::{
-    KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
+    BoundSecret, BoundSecretInfo, KeyInfo, LeasedResourceStore, SecretAuth, SecretBinding,
+    SecretInfo, SecretScope, SessionResourceRegistry, SessionStorageStore,
 };
 pub use self::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION,
-    TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,
+    SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
+    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
+    TaskMessageDirection, TaskMessagePart, TaskOwnership, TaskProgress, TaskSink, TaskWakePolicy,
+    apply_task_update, find_task_executor, recover_orphaned_task,
 };
 pub use self::skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,

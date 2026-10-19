@@ -6,12 +6,17 @@ kind: improvement
 significance: notable
 products: [platform, cloud]
 surfaces: [ui]
+release: "0.48.0"
 links:
   docs: [/features/chatgpt/]
   prs: [everruns/everruns#4329, everruns/everruns#4547]
 ---
 
 ![Connect provider sheet with the ChatGPT plan option and its Sign in action](./chatgpt-option@2x.png)
+
+## Update 2026-10-17
+
+ChatGPT Plan was [removed from Platform setup](/changelog/2026-10-17-chatgpt-plan-ui-removal/). The framework driver remains available.
 
 Connecting a personal ChatGPT plan used to depend on an organization feature
 flag that hosted deployments kept off. The flag is gone: connecting the

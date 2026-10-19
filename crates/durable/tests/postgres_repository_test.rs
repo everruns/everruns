@@ -48,11 +48,6 @@ async fn create_test_store() -> PostgresWorkflowEventStore {
 
 /// Clean up test data for a specific workflow
 async fn cleanup_workflow(store: &PostgresWorkflowEventStore, workflow_id: Uuid) {
-    sqlx::query("DELETE FROM durable_signals WHERE workflow_id = $1")
-        .bind(workflow_id)
-        .execute(store.pool())
-        .await
-        .ok();
     sqlx::query("DELETE FROM durable_dead_letter_queue WHERE workflow_id = $1")
         .bind(workflow_id)
         .execute(store.pool())

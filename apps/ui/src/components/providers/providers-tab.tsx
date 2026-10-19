@@ -7,6 +7,7 @@ import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { SetApiKeyDialog } from "./provider-dialogs";
 import { useSyncProviderModels } from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
+import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 import type { ModelWithProvider, Provider } from "@/lib/api/types";
 
 export function ProvidersTab({
@@ -33,6 +34,9 @@ export function ProvidersTab({
   const syncModels = useSyncProviderModels();
   const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const visibleProviders = providers.filter((provider) =>
+    isPlatformProviderVisible(provider.provider_type),
+  );
 
   const modelsByProvider = useMemo(() => {
     const grouped = new Map<string, ModelWithProvider[]>();
@@ -85,14 +89,14 @@ export function ProvidersTab({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {providersLoading
           ? [...Array(3)].map((_, index) => <ProviderCardSkeleton key={index} />)
-          : providers.map((provider) => (
+          : visibleProviders.map((provider) => (
               <ProviderCard
                 key={provider.id}
                 provider={provider}
                 models={modelsByProvider.get(provider.id) ?? []}
                 modelsLoading={modelsLoading}
                 siblings={
-                  providers.filter((p) => p.provider_type === provider.provider_type).length
+                  visibleProviders.filter((p) => p.provider_type === provider.provider_type).length
                 }
                 canManage={canManage}
                 isSyncing={syncingId === provider.id}
@@ -112,7 +116,7 @@ export function ProvidersTab({
           </button>
         )}
       </div>
-      {!providersLoading && providers.length === 0 && !canManage && (
+      {!providersLoading && visibleProviders.length === 0 && !canManage && (
         <p className="text-sm text-muted-foreground">
           No providers are connected yet. Ask an organization admin to connect one.
         </p>

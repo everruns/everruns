@@ -839,6 +839,26 @@ fn test_gemini_unknown_model() {
     assert!(profile.is_none());
 }
 
+#[test]
+fn argon_profile_allows_long_decode_and_exposes_only_supported_thinking_levels() {
+    let profile = get_model_profile("gemini", "gemini-4-argon").unwrap();
+    assert_eq!(profile.name, "Gemini 4 Argon");
+    assert!(!profile.temperature);
+    assert!(profile.reasoning && profile.tool_call && profile.attachment);
+    let limits = profile.limits.unwrap();
+    assert_eq!((limits.context, limits.output), (1_048_576, 1_048_576));
+    let effort = profile.reasoning_effort.unwrap();
+    assert_eq!(effort.default, ReasoningEffort::Medium);
+    assert_eq!(
+        effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
+        vec![
+            ReasoningEffort::Low,
+            ReasoningEffort::Medium,
+            ReasoningEffort::High
+        ]
+    );
+}
+
 // Newly added flagship model profiles
 
 // Claude `[1m]` twin tests live in `profiles_claude_tests.rs`.
@@ -1228,6 +1248,49 @@ fn test_muse_spark_1_3_profiles_and_tiers() {
 }
 
 #[test]
+fn test_muse_wonder_profile() {
+    let wonder = get_model_profile("meta", "muse-wonder-1.0").unwrap();
+    assert_eq!(wonder.name, "Muse Wonder");
+    assert_eq!(wonder.family, "muse-wonder");
+    assert_eq!(wonder.limits.as_ref().unwrap().context, 1_048_576);
+    assert!(wonder.tool_call);
+    assert!(wonder.tool_search);
+    assert!(wonder.supports_phases);
+    let cost = wonder.cost.unwrap();
+    assert_eq!(cost.input, 4.00);
+    assert_eq!(cost.cache_read, Some(0.20));
+    assert_eq!(cost.output, 20.00);
+    // No Contributor tier on pay-as-you-go.
+    assert!(get_model_profile("meta", "muse-wonder-1.0-contributor").is_none());
+}
+
+#[test]
+fn test_muse_reasoning_effort_matches_what_meta_accepts() {
+    let levels = |model: &str| -> Vec<ReasoningEffort> {
+        get_model_profile("meta", model)
+            .unwrap()
+            .reasoning_effort
+            .expect("Muse models expose effort levels")
+            .values
+            .into_iter()
+            .map(|value| value.value)
+            .collect()
+    };
+    use ReasoningEffort::*;
+    let with_max = vec![Minimal, Low, Medium, High, Xhigh, Max];
+    for model in [
+        "muse-wonder-1.0",
+        "muse-spark-1.3",
+        "muse-spark-1.3-contributor",
+    ] {
+        assert_eq!(levels(model), with_max, "{model}");
+    }
+    for model in ["muse-spark-1.2", "muse-spark-1.2-contributor"] {
+        assert_eq!(levels(model), with_max[..5], "{model}");
+    }
+}
+
+#[test]
 fn test_muse_spark_1_2_profiles_stay_resolvable() {
     // 1.2 remains served by Meta and referenced by existing model records,
     // so it keeps its own family and profile next to 1.3.
@@ -1384,5 +1447,35 @@ fn test_estimate_cost_usd_anthropic_cache_is_additive() {
     assert!(
         (with_cache - 0.0015).abs() < 1e-9,
         "with_cache={with_cache}"
+    );
+}
+
+#[test]
+fn test_model_card_links_reach_every_route() {
+    let card = "https://www.anthropic.com/claude-opus-5-5-system-card";
+    for (provider, model) in [
+        ("anthropic", "claude-opus-5-5"),
+        ("anthropic", "claude-opus-5-5[1m]"),
+    ] {
+        let profile = get_model_profile(provider, model).unwrap();
+        assert_eq!(
+            profile.model_card_url.as_deref(),
+            Some(card),
+            "{provider}/{model}"
+        );
+    }
+    assert_eq!(
+        get_model_profile_by_key("meta/muse-wonder-1.0")
+            .unwrap()
+            .model_card_url
+            .as_deref(),
+        Some("https://research.meta.ai/static/muse-wonder-model-card")
+    );
+    // Models without a published card carry no link rather than a guess.
+    assert!(
+        get_model_profile("meta", "muse-spark-1.3")
+            .unwrap()
+            .model_card_url
+            .is_none()
     );
 }

@@ -10,16 +10,27 @@ tags:
 ---
 # Personal Access Token Scopes
 
-> Status: **Approved; rollout steps 1 (classification), 2 (enforcement on
-> REST and `/v1/commands`) and 3 (enforcement on `/mcp` and the execution API)
-> landed.** A narrow token is refused with `403 insufficient_scope` on every
+> Status: **Implemented; all rollout steps landed: 1 (classification), 2
+> (enforcement on REST and `/v1/commands`), 3 (enforcement on `/mcp` and the
+> execution API), 4 (creation), 5 (CLI) and 6 (`Caller.read_only` in
+> `Command::run`).** A user can mint a `read` token
+> (`normalize_pat_scopes` in
+> [`personal_access_token_routes.rs`](../../crates/server/src/auth/personal_access_token_routes.rs)
+> accepts `[]`, `["*"]` or `["read"]`), and the token UI offers Full access or
+> Read-only. A narrow token is refused with `403 insufficient_scope` on every
 > `/v1` route outside its scope
 > ([`auth/pat_scope`](../../crates/server/src/auth/pat_scope/mod.rs)), sees and
 > calls only the read-only tools on `/mcp`
 > ([`mcp_endpoint/scope.rs`](../../crates/server/src/api/mcp_endpoint/scope.rs)),
-> and is not an org member on an API channel. Remaining: step 4 opens creation,
-> which still accepts only `*` (EVE-701); step 2 deleted the legacy narrow rows
-> (see [Legacy narrow tokens](#legacy-narrow-tokens)).
+> and is not an org member on an API channel. `GET /v1/auth/me` reports
+> `token_scope`, and the creation audit event records `scopes`. The CLI shows
+> the scope in `everruns whoami` and explains a refusal in one line
+> ([`commands/api.rs`](../../crates/cli/src/commands/api.rs)). Behind all of
+> that, `Command::run` refuses any write command for a caller resolved from a
+> read-only token (`enforce_caller` in
+> [`enforce.rs`](../../crates/server/src/auth/pat_scope/enforce.rs)). Step 2
+> deleted the legacy narrow rows (see
+> [Legacy narrow tokens](#legacy-narrow-tokens)).
 
 ## Abstract
 
@@ -336,7 +347,8 @@ token while any surface still ignores it.
 5. **CLI.** `whoami` scope display, the `insufficient_scope` message, and
    optionally `login --read-only`. Test 7.
 6. **Optional defense in depth.** `Caller.read_only` checked in
-   `Command::run`.
+   `Command::run`. `ResolvedOrg` carries it from the token's scope, and a
+   `NoAccess` token counts as read-only there too.
 
 ## Implementation notes
 
@@ -382,7 +394,9 @@ Settled while building step 2:
   characters of the token as stored in `personal_access_tokens.token_prefix`
   (and shown in the token list), never the secret. The counter is
   `everruns_pat_scope_denied_total{class}`, with `unclassified` and
-  `per_command` beside the three route classes.
+  `per_command` beside the three route classes, and `caller` for a refusal in
+  `Command::run`. That last one means a route or surface let a write through
+  its own check, so it is a classification gap to fix, not client noise.
 - **The runtime sweep is its own test binary.** It starts the production
   router through `ServerAppBuilder` in `AUTH_MODE=full`
   ([`pat_scope_sweep_test.rs`](../../crates/server/tests/pat_scope_sweep_test.rs)),
@@ -422,6 +436,39 @@ Settled while building step 3:
   read token is `403 insufficient_scope` on an `org_members` channel, rendered
   like the extractor's denial. A channel without `org_members` still answers
   `401` for any PAT, so the scope is never the first thing revealed there.
+
+Settled while building step 4:
+
+- **Creation is exact, not normalized.** `[]` and `["*"]` store `["*"]`,
+  `["read"]` stores `["read"]`, and everything else is
+  `400 unsupported_pat_scopes`, including `["*", "*"]`, which earlier builds
+  collapsed to `["*"]`. What is stored is always what was asked for.
+- **`token_scope` names the credential, not the user.** It is `*` or `read`
+  for a PAT and `null` for a cookie or JWT. A token whose stored scopes parse
+  to no scope never reaches `/v1/auth/me`, so it has no wire value.
+- **The UI picker defaults to Full access** and describes Read-only as "read
+  access to all your organizations", listing what it cannot do; the token
+  list shows each token's scope. The page's warning now covers both scopes.
+
+Settled while building step 5:
+
+- **`whoami` is a new command, not `status`.** `status` stays the offline view
+  of the stored profile; `whoami` asks the server, so it also covers
+  `--api-key` and `EVERRUNS_API_KEY` and reports what the server enforces. A
+  cookie or JWT has no `token_scope`, so it prints no access line.
+- **The refusal is explained once, in `main`.** Request paths fail with a
+  typed `ApiError` (status and body) somewhere in the error chain, and `main`
+  passes every failure through `explain`, which replaces a `403` whose problem
+  `code` is `insufficient_scope` with one fixed line. A 403 with another code
+  is reported unchanged.
+- **Test 7 runs against a stub server.** The CLI end-to-end job runs the
+  server with `AUTH_MODE=none`, where no PAT exists, so
+  [`pat_scope_integration_test.rs`](../../crates/cli/tests/pat_scope_integration_test.rs)
+  drives the built binary against a stub that answers with the server's
+  problem document.
+- **No `login --read-only`.** It would need `/v1/auth/cli/exchange` to accept
+  `scopes`; a read token is created in the UI or API and pasted with
+  `login --token`.
 
 ## Rejected options
 

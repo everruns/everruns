@@ -124,6 +124,7 @@ mod tests {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         }
     }
 
@@ -159,6 +160,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -212,6 +214,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
                 communication: Default::default(),
                 environments: None,
                 is_built_in: false,
@@ -285,6 +288,7 @@ mod tests {
                 role: OrgRole::Owner,
                 is_platform_user: false,
                 is_internal: false,
+                read_only: false,
             },
             db,
             None,

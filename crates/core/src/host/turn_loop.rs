@@ -7,7 +7,7 @@
 //! the engine returns. What differs between hosts is where a turn's input
 //! comes from and where a park is kept, so that is the one port the loop
 //! takes: a [`TurnInbox`]. The in-process runtime implements it over its
-//! [`TurnSteering`](crate::host::TurnSteering) queue, its session wake queue
+//! in-memory steering queue, its session wake queue
 //! and its in-memory parked turns; a worker running whole turns on a session
 //! lease implements it over its own queue.
 //!
@@ -33,7 +33,7 @@ use crate::host::runtime_host::{
     execute_reason_activity_with_prompt_messages,
 };
 use crate::host::turn_strategy::{self, resolve_pause_hints};
-use crate::turn::TurnStopReason;
+use everruns_contracts::turn::TurnStopReason;
 
 /// Summary of one driven turn, as [`drive_turn`] returns it.
 #[derive(Debug, Clone)]
@@ -213,6 +213,7 @@ pub async fn turn_entry_plan<A: RuntimeHostAdapter>(
         cumulative_usage: None,
         tool_call_count: 0,
         llm_call_count: 0,
+        issue_count: 0,
         time_to_first_token_ms: None,
         final_message_id: None,
         final_answer_preview: None,

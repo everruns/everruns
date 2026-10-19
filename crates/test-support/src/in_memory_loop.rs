@@ -18,6 +18,7 @@ use everruns_contracts::driver_registry::{DriverId, DriverRegistry};
 use everruns_contracts::error::Result;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolCall;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
@@ -37,7 +38,6 @@ use everruns_core::message::RuntimeMessage;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use everruns_core::turn::TurnStopReason;
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 // ============================================================================
@@ -616,6 +616,7 @@ impl InMemoryAgenticLoop {
             cumulative_usage: None,
             tool_call_count: 0,
             llm_call_count: 0,
+            issue_count: 0,
             time_to_first_token_ms: None,
             final_message_id: None,
             final_answer_preview: None,
@@ -675,6 +676,7 @@ impl InMemoryAgenticLoop {
                         .advance(
                             ActivityOutcome::Act(ActOutcome {
                                 blocked: act_result.blocked,
+                                issue_count: act_result.error_count,
                                 waiting_for_tool_results: act_result.waiting_for_tool_results,
                                 waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
                                 waiting_for_ask_user: act_result.client_tool_calls.iter().any(

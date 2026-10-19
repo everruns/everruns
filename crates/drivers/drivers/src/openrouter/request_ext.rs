@@ -14,7 +14,7 @@
 //   - `HTTP-Referer` / `X-Title` — app attribution headers
 
 use std::borrow::Cow;
-use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::openrouter::options::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_ROUTING_OPTION_KEY,
@@ -24,9 +24,9 @@ use crate::openrouter::options::{
 use everruns_contracts::OpenResponsesRequestExtension;
 use everruns_contracts::driver_registry::{LlmCallConfig, PromptCacheStrategy};
 use everruns_contracts::error::{AgentLoopError, BillingPressureReason, LlmErrorKind, Result};
+use everruns_contracts::http_transport::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use everruns_contracts::llm_retry::{RateLimitInfo, RateLimitType};
 use everruns_contracts::native_web_search::{NativeWebSearch, WEB_SEARCH_FUNCTION_TOOL};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use serde_json::{Value, json};
 
 const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");
@@ -160,6 +160,21 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
     }
 }
 
+/// Only the native web search swap of [`OpenRouterRequestExtension`], for a
+/// driver that sends its own Responses body to OpenRouter and wants the model
+/// vendor's search without the rest (routing, attribution, cache control).
+#[derive(Debug, Default, Clone)]
+pub struct OpenRouterNativeWebSearchExtension;
+
+impl OpenResponsesRequestExtension for OpenRouterNativeWebSearchExtension {
+    fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()> {
+        if let Some(obj) = body.as_object_mut() {
+            apply_native_web_search(obj, config, None);
+        }
+        Ok(())
+    }
+}
+
 /// Native web search (`everruns/web_search`): swap the `web_search` function
 /// tool for `openrouter:web_search` on its native engine when OpenRouter runs
 /// the model vendor's own search for this model and can apply the agent's
@@ -214,17 +229,24 @@ fn classify_billing_pressure(
     if status != 402 {
         return None;
     }
-    let body = serde_json::from_str::<Value>(error_body).ok()?;
-    let metadata = body.get("error")?.get("metadata")?;
-    let reason = match metadata.get("reason")?.as_str()? {
-        "in_flight_budget_exhausted" => BillingPressureReason::InFlightBudgetExhausted,
-        "insufficient_credits" => BillingPressureReason::InsufficientCredits,
-        _ => return None,
+    // Every OpenRouter 402 is a billing refusal. Only the in-flight cap is
+    // temporary; a missing or unknown reason (the "requires more credits ...
+    // can only afford Y" body carries none) is a credit shortfall.
+    let body = serde_json::from_str::<Value>(error_body).ok();
+    let metadata = body
+        .as_ref()
+        .and_then(|body| body.get("error")?.get("metadata"));
+    let reason = match metadata
+        .and_then(|metadata| metadata.get("reason"))
+        .and_then(Value::as_str)
+    {
+        Some("in_flight_budget_exhausted") => BillingPressureReason::InFlightBudgetExhausted,
+        _ => BillingPressureReason::InsufficientCredits,
     };
     let retry_after_secs = header_str(headers, &RETRY_AFTER)
         .and_then(parse_retry_after_secs)
         .or_else(|| {
-            metadata
+            metadata?
                 .get("headers")
                 .and_then(Value::as_object)
                 .and_then(|headers| json_header_value(headers, "retry-after"))
@@ -505,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn billing_classifier_requires_402_and_a_supported_machine_reason() {
+    fn billing_classifier_treats_every_402_as_billing_pressure() {
         let body = |reason: &str, retry_after: &str| {
             json!({
                 "error": {
@@ -536,26 +558,39 @@ mod tests {
             })
         );
 
-        for (status, reason, retry_after) in [
-            (403, "in_flight_budget_exhausted", "120"),
-            (402, "unknown", "120"),
-            (402, "in_flight_budget_exhausted", "not-seconds"),
+        assert_eq!(
+            classify_billing_pressure(403, &headers, &body("in_flight_budget_exhausted", "120")),
+            None
+        );
+        assert_eq!(
+            classify_billing_pressure(402, &headers, &body("in_flight_budget_exhausted", "x")),
+            Some(LlmErrorKind::BillingPressure {
+                reason: BillingPressureReason::InFlightBudgetExhausted,
+                retry_after_secs: None,
+            })
+        );
+        // A 402 with an unknown, missing, or unparseable reason is still a
+        // credit shortfall, never an unclassified error.
+        let affordability = json!({"error": {
+            "message": "This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but can only afford 1234.",
+            "code": 402,
+        }})
+        .to_string();
+        for error_body in [
+            body("unknown", "120"),
+            affordability,
+            "not json".to_string(),
         ] {
-            let classified =
-                classify_billing_pressure(status, &headers, &body(reason, retry_after));
-            if status == 402 && reason == "in_flight_budget_exhausted" {
-                assert_eq!(
-                    classified,
-                    Some(LlmErrorKind::BillingPressure {
-                        reason: BillingPressureReason::InFlightBudgetExhausted,
-                        retry_after_secs: None,
-                    })
-                );
-            } else {
-                assert_eq!(classified, None);
-            }
+            let expected_retry = error_body.contains("unknown").then_some(120);
+            assert_eq!(
+                classify_billing_pressure(402, &headers, &error_body),
+                Some(LlmErrorKind::BillingPressure {
+                    reason: BillingPressureReason::InsufficientCredits,
+                    retry_after_secs: expected_retry,
+                }),
+                "{error_body}"
+            );
         }
-        assert_eq!(classify_billing_pressure(402, &headers, "not json"), None);
     }
     fn base_config(model: &str) -> LlmCallConfig {
         LlmCallConfig::new(model)
@@ -739,5 +774,52 @@ mod tests {
             assert_eq!(info.tokens_remaining, None);
             assert_eq!(info.tokens_reset, None);
         }
+    }
+
+    #[test]
+    fn native_search_extension_swaps_only_the_search_tool() {
+        use everruns_contracts::native_web_search::NativeWebSearch;
+        let search_tool = everruns_contracts::ToolDefinition::function(
+            "web_search",
+            "Search the web",
+            json!({"type": "object"}),
+        );
+        let mut config = base_config("anthropic/claude-opus-5-5");
+        config.tools = vec![search_tool.clone()];
+        config.metadata.insert("session_id".into(), "s_1".into());
+        let (key, value) = NativeWebSearch {
+            provider: "auto".into(),
+            ..Default::default()
+        }
+        .to_driver_option();
+        config.driver_options.insert(key, value);
+        let mut body = json!({
+            "model": "anthropic/claude-opus-5-5",
+            "tools": [
+                {"type": "function", "name": "web_search", "parameters": {}},
+                {"type": "function", "name": "lookup", "parameters": {}}
+            ]
+        });
+        OpenRouterNativeWebSearchExtension
+            .decorate(&mut body, &config)
+            .unwrap();
+        assert_eq!(body["tools"][0]["name"], "lookup");
+        assert_eq!(body["tools"][1]["type"], "openrouter:web_search");
+        assert_eq!(body["tools"][1]["parameters"]["engine"], "native");
+        // Nothing else of the full extension: no session id, no routing.
+        assert!(body.get("session_id").is_none());
+        assert_eq!(body.as_object().unwrap().len(), 2);
+
+        // A model OpenRouter has no vendor search for keeps the function tool.
+        let mut config = base_config("mistralai/mistral-large-4");
+        config.tools = vec![search_tool];
+        config
+            .driver_options
+            .extend([NativeWebSearch::default().to_driver_option()]);
+        let mut body = json!({"tools": [{"type": "function", "name": "web_search"}]});
+        OpenRouterNativeWebSearchExtension
+            .decorate(&mut body, &config)
+            .unwrap();
+        assert_eq!(body["tools"][0]["type"], "function");
     }
 }

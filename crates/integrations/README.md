@@ -46,7 +46,7 @@ let _ = std::any::type_name::<FileSystemCapability>();
 
 Each module exports capability and connector types for direct registration, plus plugin descriptors for the hosted catalog. Fake/demo capabilities remain in `everruns-test-support`; they are not registered by this crate.
 
-Use `everruns-integrations` for the maintained integrations. Deno and Sprites, with their separate support promise, live in [`everruns-integrations-experimental`](https://docs.rs/everruns-integrations-experimental).
+Use `everruns-integrations` for the maintained integrations. Sprites, with its separate support promise, lives in [`everruns-integrations-experimental`](https://docs.rs/everruns-integrations-experimental).
 
 ## Documentation
 

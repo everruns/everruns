@@ -1,4 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 //! Live smoke tests for gateway model discovery.
 //!
 //! These exercise the real `list_models` path — HTTP fetch, deserialization,
@@ -146,4 +147,39 @@ mod cloudflare_discovery {
             "discovery must not probe a non-Cloudflare host"
         );
     }
+}
+
+#[cfg(feature = "gemini")]
+#[tokio::test]
+#[ignore = "live network + GEMINI_API_KEY; validates Argon accepts a long-decode budget"]
+async fn gemini_argon_accepts_long_decode_configuration() {
+    use everruns_contracts::{LlmCallConfig, Message, MessageRole, ReasoningEffort};
+    let key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY required");
+    let provider = everruns_drivers::gemini::provider("live-gemini", key);
+    let mut config = LlmCallConfig::new("gemini-4-argon");
+    config.max_tokens = Some(100_000);
+    config.reasoning_effort = Some(ReasoningEffort::High);
+    config.limits = everruns_contracts::turn_collector::TurnLimits::default()
+        .with_total(std::time::Duration::from_secs(180))
+        .with_max_response_bytes(64 * 1024);
+    let response = provider
+        .chat_completion(
+            vec![Message::text(
+                MessageRole::User,
+                "Reply with exactly ARGON_SMOKE_OK and no other text.",
+            )],
+            &config,
+        )
+        .await
+        .expect("Argon completion succeeds");
+    assert_eq!(response.text.trim(), "ARGON_SMOKE_OK");
+    assert_eq!(response.metadata.finish_reason.as_deref(), Some("stop"));
+    assert!(response.metadata.total_tokens.unwrap_or(0) > 0);
+    println!(
+        "Argon live smoke: finish={:?}, prompt={:?}, output={:?}, reasoning={:?}",
+        response.metadata.finish_reason,
+        response.metadata.prompt_tokens,
+        response.metadata.completion_tokens,
+        response.metadata.reasoning_tokens
+    );
 }

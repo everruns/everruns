@@ -21,7 +21,6 @@ impl EventLog for InMemoryWorkflowEventStore {
                 result: None,
                 error: None,
                 events: vec![],
-                signals: vec![],
                 created_at: Utc::now(),
                 started_at: None,
                 completed_at: None,
@@ -235,9 +234,6 @@ impl EventLog for InMemoryWorkflowEventStore {
                 }
             }
         }
-        if status.is_terminal() {
-            self.notify_workflow_ended(workflow_id);
-        }
         Ok(())
     }
 
@@ -259,7 +255,6 @@ impl EventLog for InMemoryWorkflowEventStore {
             workflow.error = Some(error);
             workflow.completed_at = Some(Utc::now());
         }
-        self.notify_workflow_ended(workflow_id);
         Ok(true)
     }
 
@@ -303,7 +298,6 @@ impl EventLog for InMemoryWorkflowEventStore {
                 result: None,
                 error: None,
                 events: vec![WorkflowEvent::started(input.clone())],
-                signals: vec![],
                 created_at: now,
                 started_at: Some(now),
                 completed_at: None,
@@ -313,7 +307,6 @@ impl EventLog for InMemoryWorkflowEventStore {
 
         // Save snapshot on the new workflow at sequence 0 (before the start event)
         drop(workflows);
-        self.notify_workflow_ended(old_workflow_id);
         let mut snapshots = self.snapshots.write();
         // Delete old workflow snapshots
         snapshots.remove(&old_workflow_id);
@@ -366,103 +359,6 @@ impl EventLog for InMemoryWorkflowEventStore {
         Ok(true)
     }
 
-    async fn start_run_with_task(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        mut task: TaskDefinition,
-        steering: Option<RunSteering>,
-    ) -> Result<RunStart, StoreError> {
-        task.workflow_id = Some(workflow_id);
-        // Lock order: workflows, then tasks. Nothing else nests these locks,
-        // and holding both is what makes the start atomic.
-        let mut workflows = self.workflows.write();
-        let mut tasks = self.tasks.write();
-        let now = Utc::now();
-
-        let created = match workflows.get_mut(&workflow_id) {
-            None => {
-                let scheduled = WorkflowEvent::ActivityScheduled {
-                    activity_id: task.activity_id.clone(),
-                    activity_type: task.activity_type.clone(),
-                    input: task.input.clone(),
-                    options: task.options.clone(),
-                };
-                workflows.insert(
-                    workflow_id,
-                    WorkflowState {
-                        workflow_type: workflow_type.to_string(),
-                        status: WorkflowStatus::Running,
-                        events: vec![WorkflowEvent::started(input.clone()), scheduled],
-                        input,
-                        result: None,
-                        error: None,
-                        signals: vec![],
-                        created_at: now,
-                        started_at: Some(now),
-                        completed_at: None,
-                        continued_as_new_id: None,
-                    },
-                );
-                true
-            }
-            Some(workflow) => {
-                let ids = tasks.ids_for_workflow(workflow_id);
-                let has_claimed_task = ids.iter().any(|id| {
-                    tasks
-                        .get(id)
-                        .is_some_and(|t| t.status == TaskStatus::Claimed)
-                });
-                if workflow.status == WorkflowStatus::Running || has_claimed_task {
-                    // A run stranded between two steps resumes, so the
-                    // signal the caller sends next has a run to act on it.
-                    if workflow.status == WorkflowStatus::Running {
-                        tasks.requeue_stranded(workflow_id, now);
-                    }
-                    if let Some(RunSteering {
-                        signal_type,
-                        payload: Some(payload),
-                    }) = steering
-                    {
-                        workflow.signals.push(WorkflowSignal {
-                            signal_type,
-                            payload,
-                            sent_at: now,
-                        });
-                    }
-                    return Ok(RunStart::Active);
-                }
-                workflow.status = WorkflowStatus::Running;
-                workflow.result = None;
-                workflow.error = None;
-                workflow.started_at = Some(now);
-                workflow.completed_at = None;
-                // The new run acts on what signals sent to the previous one
-                // announced.
-                if let Some(steering) = &steering {
-                    workflow
-                        .signals
-                        .retain(|signal| signal.signal_type != steering.signal_type);
-                }
-                for id in ids {
-                    tasks.update(id, |t| {
-                        if t.status == TaskStatus::Pending {
-                            t.status = TaskStatus::Cancelled;
-                        }
-                    });
-                }
-                false
-            }
-        };
-
-        // Stale pending tasks were just cancelled (or the workflow is new),
-        // so the per-workflow pending cap cannot be hit here.
-        let task_id = Uuid::now_v7();
-        tasks.insert(task_id, TaskState::scheduled(task));
-        Ok(RunStart::Started { task_id, created })
-    }
-
     async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError> {
         {
             let mut workflows = self.workflows.write();
@@ -473,7 +369,6 @@ impl EventLog for InMemoryWorkflowEventStore {
             workflow.status = WorkflowStatus::Cancelled;
             workflow.completed_at = Some(Utc::now());
         }
-        self.notify_workflow_ended(workflow_id);
         self.cancel_pending_tasks_for_workflow(workflow_id).await?;
         Ok(())
     }

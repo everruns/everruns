@@ -10,8 +10,8 @@ use everruns::{Agent, Engine, Session, Turn, TurnStopReason};
 pub enum BackendKind {
     /// `InProcessBackend`: the reference, no lease.
     InProcess,
-    /// `ActorRunner`: the same turns under the session's lease, what an
-    /// engine runs its sessions on.
+    /// `ActorRunner`: the internal turn delegation used by explicit legacy
+    /// facade profiles, with the same turns under a session lease.
     Actor,
 }
 

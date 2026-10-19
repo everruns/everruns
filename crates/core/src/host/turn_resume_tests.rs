@@ -99,6 +99,28 @@ fn only_the_last_turn_counts() {
     assert_eq!(fold(events), Some((last, vec![])));
 }
 
+#[test]
+fn failed_calls_count_as_issues_the_resumed_turn_carries() {
+    let (turn_id, mut events) = turn_log(&["a", "b", "c"], &["a"], false);
+    let context = events[0].context.clone();
+    let session_id = events[0].session_id;
+    events.push(Event::new(
+        session_id,
+        context,
+        ToolCompletedData::failure(
+            "b".into(),
+            "share".into(),
+            "error".into(),
+            "boom".into(),
+            None,
+        ),
+    ));
+    let turn = TurnLogFold::from_events(events).expect("open turn");
+    assert_eq!(turn.turn_id(), turn_id);
+    assert_eq!(turn.issue_count, 1);
+    assert_eq!(turn.unfinished_calls(), vec![call("c")]);
+}
+
 fn tool(policy: ToolPolicy, class: Option<SideEffectClass>) -> ToolDefinition {
     let mut hints = everruns_contracts::tool_types::ToolHints::default();
     if let Some(class) = class {
@@ -144,6 +166,40 @@ fn only_calls_safe_to_run_twice_rerun() {
     let gated = |call: &ToolCall| call.arguments["to"] == "a";
     assert!(reruns(&share, Some(&auto), Some(&gated)));
     assert!(!reruns(&call("b"), Some(&auto), Some(&gated)));
+}
+
+#[test]
+fn only_calls_with_a_tool_started_may_have_run() {
+    let (turn_id, mut events) = turn_log(&["a", "b"], &[], false);
+    let session_id = events[0].session_id;
+    let context = events[0].context.clone();
+    let started = |id: &str| {
+        Event::new(
+            session_id,
+            context.clone(),
+            crate::events::ToolStartedData {
+                tool_call: call(id),
+                tool_call_fingerprint: None,
+                display_name: None,
+                narration: None,
+                side_effect_class: Some(SideEffectClass::AtMostOnce),
+            },
+        )
+    };
+    events.push(started("a"));
+    let turn = TurnLogFold::from_events(events.clone()).expect("open turn");
+    assert_eq!(turn.turn_id(), turn_id);
+    assert!(turn.may_have_run("a"));
+    assert!(!turn.may_have_run("b"), "no tool.started: it never ran");
+
+    // A later agent message starts a new act: earlier starts no longer count.
+    events.push(Event::new(
+        session_id,
+        context.clone(),
+        OutputMessageCompletedData::new(RuntimeMessage::assistant_with_tools("", vec![call("a")])),
+    ));
+    let turn = TurnLogFold::from_events(events).expect("open turn");
+    assert!(!turn.may_have_run("a"));
 }
 
 #[test]

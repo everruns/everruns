@@ -912,6 +912,7 @@ fn test_tool_result_with_images_conversion() {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     };
 
     let assistant = Message {
@@ -927,6 +928,7 @@ fn test_tool_result_with_images_conversion() {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     };
     let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 

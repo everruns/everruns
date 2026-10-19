@@ -68,15 +68,7 @@ delegate! {
     get_default_model => handle_get_default_model(GetDefaultModelRequest)
         -> GetDefaultModelResponse;
 
-    // Durable workflows, tasks, and workers.
-    create_durable_workflow => handle_create_durable_workflow(CreateDurableWorkflowRequest)
-        -> CreateDurableWorkflowResponse;
-    get_durable_workflow_status => handle_get_durable_workflow_status(GetDurableWorkflowStatusRequest)
-        -> GetDurableWorkflowStatusResponse;
-    update_durable_workflow_status => handle_update_durable_workflow_status(UpdateDurableWorkflowStatusRequest)
-        -> UpdateDurableWorkflowStatusResponse;
-    enqueue_durable_task => handle_enqueue_durable_task(EnqueueDurableTaskRequest)
-        -> EnqueueDurableTaskResponse;
+    // Durable tasks and workers.
     claim_durable_tasks => handle_claim_durable_tasks(ClaimDurableTasksRequest)
         -> ClaimDurableTasksResponse;
     complete_durable_task => handle_complete_durable_task(CompleteDurableTaskRequest)
@@ -85,12 +77,6 @@ delegate! {
         -> FailDurableTaskResponse;
     heartbeat_durable_task => handle_heartbeat_durable_task(HeartbeatDurableTaskRequest)
         -> HeartbeatDurableTaskResponse;
-    count_active_durable_workflows => handle_count_active_durable_workflows(CountActiveDurableWorkflowsRequest)
-        -> CountActiveDurableWorkflowsResponse;
-    send_durable_workflow_signal => handle_send_durable_workflow_signal(SendDurableWorkflowSignalRequest)
-        -> SendDurableWorkflowSignalResponse;
-    get_and_consume_durable_workflow_signals => handle_get_and_consume_durable_workflow_signals(GetAndConsumeDurableWorkflowSignalsRequest)
-        -> GetAndConsumeDurableWorkflowSignalsResponse;
     register_durable_worker => handle_register_durable_worker(RegisterDurableWorkerRequest)
         -> RegisterDurableWorkerResponse;
     heartbeat_durable_worker => handle_heartbeat_durable_worker(HeartbeatDurableWorkerRequest)

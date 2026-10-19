@@ -20,6 +20,21 @@ Two costs left the startup path: provider HTTP clients are now resolved per
 request instead of in each driver constructor, and a session's event broadcast
 channel is allocated when the first subscriber arrives rather than with the
 session. A subscriber still never receives events sent before it subscribed.
-No code changes are needed.
+No code changes are needed: the same engine and session calls start faster.
+
+```rust
+# use everruns::{Agent, Engine, Harness, Model};
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("Tell dad jokes.").model(Model::simulated("An impasta.")).build()?;
+let engine = Engine::new();
+let session = engine
+    .create(agent)
+    .harness(Harness::conversation())
+    .start()
+    .await?;
+let response = session.send_and_wait("Tell me a joke.").await?;
+# Ok(())
+# }
+```
 
 See [Agents](/framework/agents/). [#3486](https://github.com/everruns/everruns/pull/3486)

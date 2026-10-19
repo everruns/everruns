@@ -24,13 +24,15 @@ knowledge replaced by links to source. Follow the maintenance rules in
 
 ## Public changelog
 
-The changelog at `docs/changelog/` covers every finished user-facing change and says nothing the
-product no longer does ([design](../../../../knowledge/docs/changelog.md)):
+The changelog at `docs/changelog/` covers finished changes meeting its impact criteria and says
+nothing the product no longer does ([design](../../../../knowledge/docs/changelog.md)):
 
 - **Missed entries.** List merged `feat` and user-visible `fix` PRs since the last sweep across
   `everruns`, `saas`, `yolop`, `sdk`, `mira` and `bashkit` whose `Changelog:` line is missing or
-  names a program that has since finished without an entry. Write the entries, with screenshots
-  for UI changes (`.agents/skills/ship/references/changelog-entry.md`).
+  names a program that has since finished without an entry. Apply the design's eligibility gate
+  before writing an entry; cosmetic polish and routine docs upkeep do not qualify. Write
+  qualifying entries, with screenshots for UI changes
+  (`.agents/skills/ship/references/changelog-entry.md`).
 - **Stale entries.** For entries whose linked docs pages, capability slugs, endpoints or flags
   changed or disappeared after the entry date, append `## Update YYYY-MM-DD`, set
   `supersededBy`, or fix the link in place. Never rewrite an entry to describe newer behavior.

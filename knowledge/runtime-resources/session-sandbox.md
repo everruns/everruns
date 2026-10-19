@@ -244,8 +244,10 @@ to a disposable incarnation and may change after recovery.
 
 The Sandboxes page (`/sandboxes`, `GET /v1/sandboxes[/stats|/timeline|/{id}]`,
 [`domains/sandboxes`](../../crates/server/src/domains/sandboxes/commands.rs))
-lists every logical Sandbox in an organization across providers. It reads
-three things the hosted store keeps:
+lists every logical Sandbox in an organization across providers, on the
+first of its tabs; Templates (`/sandboxes/templates`) and provider accounts
+(`/sandboxes/accounts`, admins) are the others. It reads three things the
+hosted store keeps:
 
 - `sandboxes` rows outlive their Session. Deleting a Session marks its
   Sandboxes deleted and keeps the Session title and Agent, so deleted compute

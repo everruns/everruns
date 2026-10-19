@@ -2,6 +2,18 @@ use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::tool_context::ReasoningEffortHandle;
 use everruns_contracts::DriverId;
 
+impl super::ReasonAtom {
+    pub(super) fn stream_stall_timeout(
+        &self,
+        driver: &dyn everruns_contracts::ChatDriver,
+        config: &everruns_contracts::LlmCallConfig,
+    ) -> std::time::Duration {
+        self.provider_stall_timeout
+            .or_else(|| driver.stream_stall_timeout(config))
+            .unwrap_or(std::time::Duration::from_secs(120))
+    }
+}
+
 pub(super) struct RequestControls {
     pub(super) reasoning_effort: Option<everruns_contracts::ReasoningEffort>,
     pub(super) speed: Option<String>,

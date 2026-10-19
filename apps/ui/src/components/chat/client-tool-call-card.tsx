@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, MonitorSmartphone } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
+import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
 
 interface ClientToolCallCardProps {
@@ -22,12 +23,14 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
 
   const isComplete = !!toolResult;
   const hasError = toolResult?.error !== undefined && toolResult?.error !== null;
+  // A failed call went back to the model: an issue, not a turn error.
+  const failureClass = failureTextClass(toolFailureSeverity(toolResult) ?? "issue");
 
   const argsPreview = formatArguments(toolCall.arguments);
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className="text-destructive text-xs">&#x2717;</span>
+      <span className={`${failureClass} text-xs`}>&#x2717;</span>
     ) : (
       <Check className="h-3 w-3 text-success/80" />
     )
@@ -55,7 +58,7 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
 
       {/* Error message */}
       {hasError && (
-        <div className="text-destructive ml-4 mt-0.5">
+        <div className={`${failureClass} ml-4 mt-0.5`}>
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}

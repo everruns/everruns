@@ -14,7 +14,7 @@ import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } fr
 import { cancelTurn } from "@/lib/api/sessions";
 import { sendChatMessage } from "@/lib/api/messages";
 import { useChatSends, type ChatSends } from "@/hooks/use-chat-sends";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
@@ -41,6 +41,7 @@ import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
+import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 /** Accumulated streamed output for a single tool call */
@@ -134,6 +135,8 @@ interface SessionProviderProps {
   sessionId: string;
   /** Adopted work threads must be reopened before browser-agent mutations too. */
   readOnlyWhenArchived?: boolean;
+  /** Opt out of continuous external updates only for client-driven sessions. */
+  followIdle?: boolean;
   draftAgent?: Agent;
   draftModel?: ModelWithProvider;
   children: ReactNode;
@@ -146,12 +149,14 @@ export function SessionProvider({
   draftAgent,
   draftModel,
   readOnlyWhenArchived = false,
+  followIdle = true,
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
+  const queryClient = useQueryClient();
 
   // Fetch session first to get agent_id
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
@@ -208,7 +213,7 @@ export function SessionProvider({
     loadingOlder: loadingOlderEvents,
     loadOlderEvents,
     totalNonDeltaCount,
-  } = useEvents(sessionId);
+  } = useEvents(sessionId, { followIdle });
 
   const cancelTurnRequest = useCallback(() => cancelTurn(sessionId), [sessionId]);
   const sendChat = useCallback(
@@ -631,6 +636,16 @@ export function SessionProvider({
     },
     [],
   );
+
+  const latestTerminalId = events?.findLast((event) =>
+    ["turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
+  )?.id;
+  // Refresh the authoritative outcome on terminal events; worker clocks need
+  // not agree with database timestamps, so do not infer freshness from time.
+  useEffect(() => {
+    if (latestTerminalId)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(org, sessionId) });
+  }, [latestTerminalId, org, sessionId, queryClient]);
 
   const value: SessionContextValue = {
     agentId,

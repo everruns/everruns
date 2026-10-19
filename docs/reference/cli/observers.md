@@ -1,6 +1,6 @@
 ---
 title: everruns observers
-description: "Online scoring of live traces. CLI reference for everruns observers."
+description: "Online scoring of live traces. CLI reference for everruns observers: usage, flags and examples."
 sidebar:
   label: observers
 appliesTo: [platform, cloud]

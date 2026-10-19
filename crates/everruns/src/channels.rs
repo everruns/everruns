@@ -59,12 +59,16 @@ pub use everruns_core::channel::{
     DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
     InboundDecision, InboundMessage, InboundRoute, OutboundChannelMessage, SessionBinding,
 };
+/// File intake, for hosts that take files outside a channel (serve's
+/// message endpoint).
+pub use everruns_core::channel_runtime::{AttachmentIntake, AttachmentPolicy, AttachmentStore};
 /// The shared runtime, for hosts that run their own [`ChannelHost`] over
 /// their own sessions (serve does) instead of [`Channels`].
 pub use everruns_core::channel_runtime::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DeliveryEvent,
-    NewChannelSession, ResolvedChannel, SendOutcome, StreamTurn,
+    NewChannelSession, ReceivedAttachment, ResolvedChannel, SendOutcome, SendResolution,
+    StreamTurn,
 };
 pub use everruns_core::channel_runtime::{
     ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
@@ -144,6 +148,7 @@ pub struct ChannelsBuilder {
     engine: Engine,
     channels: Vec<(String, Channel, Agent)>,
     store: Option<Arc<dyn ChannelStore>>,
+    egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl ChannelsBuilder {
@@ -167,6 +172,15 @@ impl ChannelsBuilder {
         self
     }
 
+    /// Download files messages link to (a Slack file) through this egress
+    /// service. Defaults to the Framework's runtime egress
+    /// ([`batteries::runtime_egress_service`](crate::batteries::runtime_egress_service)),
+    /// which stays offline unless a network feature is enabled.
+    pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
     /// Build the channels. Nothing runs until a request is handled.
     pub fn build(self) -> Channels {
         let mut agents = HashMap::new();
@@ -179,7 +193,10 @@ impl ChannelsBuilder {
             engine: self.engine,
             agents,
         });
-        let mut builder = ChannelHost::builder(port);
+        let mut builder = ChannelHost::builder(port).egress(
+            self.egress
+                .unwrap_or_else(crate::batteries::runtime_egress_service),
+        );
         if let Some(store) = self.store {
             builder = builder.store(store);
         }
@@ -205,6 +222,7 @@ impl Channels {
             engine: engine.clone(),
             channels: Vec::new(),
             store: None,
+            egress: None,
         }
     }
 
@@ -296,6 +314,32 @@ impl ChannelSessionPort for EnginePort {
         Ok(session.id())
     }
 
+    /// A file goes into the session's own files (see [`Session::attach`]).
+    async fn store_attachment(
+        &self,
+        channel: &ChannelConfig,
+        session_id: Option<&str>,
+        attachment: ReceivedAttachment,
+    ) -> Result<everruns_core::ContentPart, ChannelError> {
+        let Some(session_id) = session_id else {
+            return Err(ChannelError::BadRequest(
+                "files need a conversation to be kept in".into(),
+            ));
+        };
+        let session = self.session(&channel.name, session_id).await?;
+        session
+            .attach(
+                attachment.name,
+                Some(&attachment.media_type),
+                attachment.data,
+            )
+            .await
+            .map_err(|error| match error {
+                crate::AttachError::Refused(reason) => ChannelError::BadRequest(reason),
+                other => session_error(other),
+            })
+    }
+
     async fn send(
         &self,
         channel: &ChannelConfig,
@@ -305,11 +349,23 @@ impl ChannelSessionPort for EnginePort {
         let session = self.session(&channel.name, session_id).await?;
         let sent = session.send(message).await.map_err(session_error)?;
         Ok(match sent.disposition {
+            SendDisposition::Pending => SendOutcome::Pending {
+                input_message_id: sent.message_id,
+            },
             SendDisposition::Steered => SendOutcome::Steered,
             _ => SendOutcome::Started {
                 input_message_id: sent.message_id,
             },
         })
+    }
+
+    async fn resolve_send(
+        &self,
+        channel: &ChannelConfig,
+        session_id: &str,
+        input: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        resolve_send(&self.session(&channel.name, session_id).await?, input).await
     }
 
     async fn events(
@@ -323,6 +379,52 @@ impl ChannelSessionPort for EnginePort {
     }
 }
 
+/// Resolve an Engine admission for the shared channel runtime. Preparation
+/// rejection has no terminal turn event, and steering has no delivery of its own.
+pub async fn resolve_send(session: &Session, input: &str) -> Result<SendResolution, ChannelError> {
+    use crate::hosting::AdmissionState;
+    if !session.has_hosted_execution() {
+        return Ok(SendResolution::Assigned {
+            turn_id: None,
+            steered: false,
+        });
+    }
+    let admission = session
+        .admission(input.parse().map_err(session_error)?)
+        .await
+        .map_err(session_error)?
+        .ok_or_else(|| ChannelError::Session("admission is unavailable".into()))?;
+    let preparing = match admission.state().await.map_err(session_error)? {
+        AdmissionState::Pending => return Ok(SendResolution::Pending),
+        AdmissionState::Rejected { .. } => return Ok(SendResolution::Rejected),
+        AdmissionState::Suspended => return Ok(SendResolution::Suspended),
+        AdmissionState::Assigned { .. } => true,
+        _ => false,
+    };
+    let Some(assignment) = admission.assignment().await.map_err(session_error)? else {
+        return Ok(SendResolution::Pending);
+    };
+    let turn = assignment.turn_id.to_string();
+    if preparing
+        && !assignment.steered
+        && !session
+            .events_after(admission.sequence())
+            .await
+            .map_err(session_error)?
+            .iter()
+            .any(|event| {
+                event.event_type() == "turn.started"
+                    && event.turn_id.as_deref() == Some(turn.as_str())
+            })
+    {
+        return Ok(SendResolution::Pending);
+    }
+    Ok(SendResolution::Assigned {
+        turn_id: Some(turn),
+        steered: assignment.steered,
+    })
+}
+
 /// A session's events as channel delivery reads them: live from now when
 /// `after` is `None`, else the durable events after that sequence followed by
 /// live ones. For hosts implementing [`ChannelSessionPort`] over a
@@ -333,6 +435,9 @@ pub async fn session_events(
 ) -> Result<ChannelEventStream, ChannelError> {
     let session = session.clone();
     let events = match after {
+        None if session.has_hosted_execution() => {
+            session.protocol_events().await.map_err(session_error)?
+        }
         None => session.events(),
         Some(after) => session
             .events_from(i32::try_from(after).unwrap_or(i32::MAX))

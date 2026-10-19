@@ -9,6 +9,7 @@ use crate::kernel_imports::{
     session_services::SessionStorageStore,
 };
 use async_trait::async_trait;
+use everruns_contracts::runtime::{BoundSecret, BoundSecretInfo, SecretScope};
 
 use crate::storage::encryption::EncryptionService;
 use crate::storage::repositories::Database;
@@ -121,6 +122,17 @@ impl SessionStorageStore for DbSessionStorageStore {
 
     async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
         let encryption = self.encryption()?;
+        // THREAT[TM-BASH-030]: the runtime may not swap a bound key.
+        if self
+            .db
+            .list_bound_secrets(session_id.uuid())
+            .await
+            .store_err()?
+            .iter()
+            .any(|row| row.name == name)
+        {
+            return Err(bound_error(name));
+        }
 
         // Encrypt the value
         let encrypted = encryption
@@ -131,6 +143,7 @@ impl SessionStorageStore for DbSessionStorageStore {
             session_id,
             name: name.to_string(),
             value_encrypted: encrypted,
+            binding: None,
         };
 
         self.db.upsert_session_secret(input).await.store_err()?;
@@ -148,6 +161,8 @@ impl SessionStorageStore for DbSessionStorageStore {
             .store_err()?;
 
         match row {
+            // THREAT[TM-BASH-030]: bound values are write-only.
+            Some(r) if r.binding.is_some() => Err(bound_error(name)),
             Some(r) => {
                 // Decrypt the value
                 let decrypted = encryption
@@ -181,6 +196,56 @@ impl SessionStorageStore for DbSessionStorageStore {
                 updated_at: r.updated_at,
             })
             .collect())
+    }
+
+    async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
+        let rows = self
+            .db
+            .list_bound_secrets(session_id.uuid())
+            .await
+            .store_err()?;
+        Ok(rows.iter().map(bound_info).collect())
+    }
+
+    async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
+        let rows = self
+            .db
+            .list_bound_secrets(session_id.uuid())
+            .await
+            .store_err()?;
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        let encryption = self.encryption()?;
+        rows.iter()
+            .map(|row| {
+                let value = encryption
+                    .decrypt_to_string(&row.value_encrypted)
+                    .map_err(|e| AgentLoopError::store(format!("Decryption failed: {}", e)))?;
+                Ok(BoundSecret {
+                    info: bound_info(row),
+                    value,
+                })
+            })
+            .collect()
+    }
+}
+
+fn bound_error(name: &str) -> AgentLoopError {
+    AgentLoopError::store(format!(
+        "'{name}' is a bound secret: its value is write-only. Use ${name} in shell HTTP requests to the bound URL."
+    ))
+}
+
+fn bound_info(row: &crate::storage::BoundSecretRow) -> BoundSecretInfo {
+    BoundSecretInfo {
+        name: row.name.clone(),
+        binding: row.binding.0.clone(),
+        scope: if row.scope == "agent" {
+            SecretScope::Agent
+        } else {
+            SecretScope::Session
+        },
     }
 }
 

@@ -6,6 +6,7 @@ kind: improvement
 significance: minor
 products: [platform, cloud]
 surfaces: [ui]
+release: "0.48.0"
 links:
   docs: [/features/agent-triggers/]
   prs: [everruns/everruns#4607]
@@ -14,6 +15,28 @@ links:
 When a GitHub trigger listens to CI events, its form now has **Branches** and
 **Workflows** fields. List `main` and `CI` to wake the agent only for the CI
 workflow on main; leave a field empty to accept every branch or workflow.
+The trigger stores them as filter conditions on the normalized CI event:
+
+```json
+{
+  "filter": {
+    "conditions": [
+      {
+        "path": "github.ci.branch",
+        "any_of": [
+          "main"
+        ]
+      },
+      {
+        "path": "github.ci.workflow",
+        "any_of": [
+          "CI"
+        ]
+      }
+    ]
+  }
+}
+```
 
 The session mode list adds **One session for everything**, so a watcher that
 reacts to every CI result keeps one ongoing conversation.

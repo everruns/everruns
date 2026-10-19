@@ -7,6 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import starlightLinksValidator from "starlight-links-validator";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
 import remarkStripRustHiddenLines from "./plugins/remark-strip-rust-hidden-lines.ts";
+import remarkMermaidDiagrams from "./plugins/remark-mermaid-diagrams.mjs";
 import rehypeBaseLinks from "./plugins/rehype-base-links.ts";
 import { BASE, SITE, withBase } from "./site.config.mjs";
 import perPageMarkdown from "./integrations/per-page-markdown.mjs";
@@ -15,6 +16,7 @@ import changelogMedia from "./integrations/changelog-media.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
+import { ExpressiveCodeTheme } from "@astrojs/starlight/expressive-code";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +54,7 @@ export default defineConfig({
       // Hide rustdoc `# ` boilerplate lines in Rust blocks. rustdoc hides
       // them; Starlight would otherwise render the `#` prefixes literally.
       remarkStripRustHiddenLines,
+      remarkMermaidDiagrams,
     ],
     rehypePlugins: [[rehypeBaseLinks, { base: BASE }]],
   },
@@ -86,7 +89,6 @@ export default defineConfig({
     "/integrations/e2b/": "/capabilities/e2b/",
     "/integrations/container-sandbox/": "/capabilities/container-sandbox/",
     "/integrations/browserless/": "/capabilities/browserless/",
-    "/integrations/slack/": "/capabilities/slack/",
     "/framework/supported-providers/": "/framework/models-and-providers/",
     "/framework/custom-providers/": "/framework/models-and-providers/",
     "/framework/model-catalogs/": "/framework/models-and-providers/",
@@ -106,6 +108,7 @@ export default defineConfig({
     // The memory model design note moved to knowledge/; the shipped
     // behavior it describes is on the memory scopes page.
     "/advanced/memory-model/": "/features/memory-scopes/",
+    "/advanced/command-path/": "/explanation/command-path/",
   }).map(([from, to]) => [from, withBase(to)])),
   // Screenshots are mostly text. Astro's default WebP quality (80) smears
   // small type and colored UI text, so encode at 92 with smart chroma
@@ -139,7 +142,42 @@ export default defineConfig({
   integrations: [
     starlight({
       expressiveCode: {
-        themes: ["github-light", "github-dark"],
+        // Code blocks are dark in both themes (design handoff: #0A0A0A with
+        // Slate syntax colors), so one theme and no light/dark switch.
+        themes: [ExpressiveCodeTheme.fromJSONString(readFileSync(path.join(__dirname, "src/code-theme.json"), "utf8"))],
+        useStarlightDarkModeSwitch: false,
+        useStarlightUiThemeColors: false,
+        styleOverrides: {
+          borderRadius: "0px",
+          borderColor: "hsl(0 0% 100% / 0.1)",
+          codeBackground: "#0a0a0a",
+          codeFontFamily: "var(--font-mono)",
+          codeFontSize: "13px",
+          codeLineHeight: "20px",
+          codePaddingBlock: "16px",
+          codePaddingInline: "16px",
+          uiFontFamily: "var(--font-mono)",
+          frames: {
+            shadowColor: "transparent",
+            frameBoxShadowCssValue: "none",
+            editorBackground: "#0a0a0a",
+            editorTabBarBackground: "#0a0a0a",
+            editorActiveTabBackground: "#0a0a0a",
+            editorActiveTabForeground: "hsl(0 0% 62%)",
+            editorActiveTabBorderColor: "transparent",
+            editorActiveTabIndicatorTopColor: "transparent",
+            editorActiveTabIndicatorBottomColor: "transparent",
+            editorTabBarBorderBottomColor: "hsl(0 0% 100% / 0.1)",
+            terminalBackground: "#0a0a0a",
+            terminalTitlebarBackground: "#0a0a0a",
+            terminalTitlebarForeground: "hsl(0 0% 62%)",
+            terminalTitlebarDotsOpacity: "0",
+            terminalTitlebarBorderBottomColor: "hsl(0 0% 100% / 0.1)",
+            inlineButtonForeground: "hsl(0 0% 62%)",
+            inlineButtonBorder: "transparent",
+            tooltipSuccessBackground: "hsl(158 64% 32%)",
+          },
+        },
         // Wrap long lines instead of scrolling sideways; wrapped lines keep
         // their indentation. Plain-text blocks hold ASCII trees and tables,
         // which wrapping would break, so they keep horizontal scroll.
@@ -159,6 +197,11 @@ export default defineConfig({
       },
       favicon: "/favicon.svg",
       head: [
+        {
+          tag: "script",
+          attrs: { async: true, src: "https://www.googletagmanager.com/gtag/js?id=AW-18025687982" },
+        },
+        { tag: "script", content: readFileSync(new URL("./src/google-tag.js", import.meta.url), "utf8") },
         {
           tag: "meta",
           attrs: {
@@ -221,10 +264,14 @@ export default defineConfig({
         Search: "./src/components/Search.astro",
         Footer: "./src/components/Footer.astro",
         TableOfContents: "./src/components/TableOfContents.astro",
+        PageFrame: "./src/components/PageFrame.astro",
+        TwoColumnContent: "./src/components/TwoColumnContent.astro",
+        Pagination: "./src/components/Pagination.astro",
+        PageSidebar: "./src/components/PageSidebar.astro",
         MobileTableOfContents: "./src/components/MobileTableOfContents.astro",
         PageTitle: "./src/components/PageTitle.astro",
       },
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/slate.css", "./src/styles/docs-layout.css", "./src/styles/custom.css"],
       plugins: [
         starlightOpenAPI([
           {
@@ -320,7 +367,9 @@ export default defineConfig({
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
-                    { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
+                    { label: "Serve on celld Reference", slug: "framework/serve-celld" },
+                    { label: "Pluggable Session Hosting", slug: "framework/hosting" },
+                    { label: "Durable Object Reference", slug: "framework/durable-objects" },
                   ],
                 },
                 {
@@ -354,7 +403,6 @@ export default defineConfig({
                   items: [
                     { label: "Architecture", slug: "explanation/architecture" },
                     { label: "Physical Architecture", slug: "advanced/physical-architecture" },
-                    { label: "Command Path", slug: "advanced/command-path" },
                   ],
                 },
                 {
@@ -379,6 +427,7 @@ export default defineConfig({
                     { slug: "explanation/agentic-loop" },
                     { slug: "explanation/durable-execution" },
                     { slug: "explanation/events" },
+                    { slug: "explanation/command-path" },
                     { slug: "advanced/compaction" },
                     { slug: "advanced/tool-output-pipeline" },
                   ],
@@ -439,6 +488,7 @@ export default defineConfig({
                         { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
+                        { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Web Search", slug: "capabilities/web-search" },
@@ -478,6 +528,7 @@ export default defineConfig({
                         { label: "SQL Database", slug: "capabilities/sql-database" },
                         { label: "Retrieval Citations", slug: "capabilities/citation-retrieval" },
                         { label: "Citation Verification", slug: "capabilities/citation-verification" },
+                        { label: "Web Citations", slug: "capabilities/citation-web" },
                         { label: "Memory", slug: "capabilities/memory" },
                         { label: "Knowledge Base", slug: "capabilities/knowledge-base" },
                         { label: "Knowledge Index", slug: "capabilities/knowledge-index" },
@@ -505,7 +556,7 @@ export default defineConfig({
                       items: [
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
-                        { label: "Slack", slug: "capabilities/slack" },
+                        { label: "Slack actions", slug: "capabilities/slack" },
                         { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                         { label: "Poppy Personal Agent", slug: "capabilities/poppy-personal-agent" },
                       ],
@@ -556,16 +607,23 @@ export default defineConfig({
                   // Grouped to mirror the category taxonomy in
                   // docs/integrations/index.md. Keep the two in sync when adding
                   // or recategorizing an integration. Vendors with a capability
-                  // page (Daytona, E2B, Browserless, Slack) are listed under
+                  // page (Daytona, E2B, Browserless) are listed under
                   // Capabilities only; the overview links to them. Sidebar
                   // glyphs for each entry live in src/styles/custom.css, keyed
                   // by href.
                   items: [
                     { label: "Overview", slug: "integrations" },
+                    { label: "Messaging", items: [{ label: "Slack", slug: "integrations/slack" }] },
                     {
                       label: "Sandboxes & execution",
                       items: [
                         { label: "Cursor", slug: "integrations/cursor" },
+                      ],
+                    },
+                    {
+                      label: "Browser & web",
+                      items: [
+                        { label: "Cloudflare Web Search", slug: "integrations/cloudflare-web-search" },
                       ],
                     },
                     {
@@ -776,8 +834,10 @@ export default defineConfig({
           // Starlight renders a sibling anchor link after every heading, whose
           // screen-reader text converts to `[Section titled "..."](#...)` — was
           // 1,325 lines and 8% of llms-full.txt before this filter. Removing
-          // the <a> leaves the heading itself untouched.
-          customSelectors: { all: ["a.sl-anchor-link"] },
+          // the <a> leaves the heading itself untouched. Controls that only
+          // work in a browser (the docs home's search field and copy
+          // buttons) carry data-llms-ignore.
+          customSelectors: { all: ["a.sl-anchor-link", "[data-llms-ignore]"] },
           // Pages are otherwise separated by a blank line, which is
           // indistinguishable from a paragraph break; `# ` headings are no help
           // because shell comments inside code fences start the same way.
@@ -790,7 +850,8 @@ export default defineConfig({
           //   via <NotebookDoc> (whose route lookup also can't resolve under
           //   the /llms-*.txt routes); the .ipynb source is linked in its
           //   `github` frontmatter for anyone who wants the runnable version.
-          exclude: ["api/**", "tutorials/run-an-agent"],
+          // The 404 page is site chrome, not documentation.
+          exclude: ["api/**", "tutorials/run-an-agent", "404"],
           // The abridged set drops vendor- and operator-specific long tails
           // that a reader asking how to build or run an agent does not need.
           // They stay in llms-full.txt and in the sets above, so nothing is

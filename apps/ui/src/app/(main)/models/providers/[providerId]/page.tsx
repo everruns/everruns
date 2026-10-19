@@ -23,7 +23,7 @@ import { formatCountLabel } from "@/lib/formatting";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
 import type { Provider } from "@/lib/api/types";
-import { ChatGptConnectionCard } from "@/components/providers/chatgpt-connection";
+import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 import { ApiError } from "@/lib/api/client";
 
 export default function ProviderDetailPage({
@@ -90,12 +90,12 @@ export default function ProviderDetailPage({
     );
   }
 
-  if (!provider) {
+  if (!provider || !isPlatformProviderVisible(provider.provider_type)) {
     return (
       <ResourceNotFound
         title="Provider not found"
         description="This provider may have been deleted, moved to another organization, or the URL may be wrong."
-        backHref="/models?tab=providers"
+        backHref="/models/providers"
         backLabel="Back to providers"
         resourceId={providerId}
       />
@@ -105,7 +105,7 @@ export default function ProviderDetailPage({
   return (
     <PageShell>
       <Link
-        href="/models?tab=providers"
+        href="/models/providers"
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -173,12 +173,10 @@ export default function ProviderDetailPage({
                   <p className="break-all text-sm text-muted-foreground">{provider.base_url}</p>
                 </div>
               )}
-              {provider.provider_type !== "chatgpt" && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Key className="h-4 w-4" />
-                  API Key: {provider.api_key_set ? "Configured" : "Not set"}
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Key className="h-4 w-4" />
+                API Key: {provider.api_key_set ? "Configured" : "Not set"}
+              </div>
               {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
               {!provider.managed && canManage && (
                 <Button
@@ -193,15 +191,11 @@ export default function ProviderDetailPage({
           </CardContent>
         </Card>
 
-        {provider.provider_type === "chatgpt" && <ChatGptConnectionCard providerId={providerId} />}
-
         {/* Trace links are part of the host-managed config for managed providers. */}
         {!provider.managed && <ProviderTraceCard provider={provider} providerId={providerId} />}
 
         {/* Same rule as trace: a managed connection's request options belong to the host. */}
-        {!provider.managed && provider.provider_type !== "chatgpt" && (
-          <ProviderAdvancedCard provider={provider} providerId={providerId} />
-        )}
+        {!provider.managed && <ProviderAdvancedCard provider={provider} providerId={providerId} />}
 
         <Card>
           <CardHeader>

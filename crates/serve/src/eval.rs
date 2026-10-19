@@ -4,6 +4,11 @@
 //! with the simulator) and, with `--against <url>`, against a deployed build
 //! over the wire API. That makes an eval run a promotion gate for a preview
 //! deploy without a second test harness.
+//!
+//! Decision: a protected deployment (see [`crate::auth`]) takes the caller's
+//! bearer credential from `--credential` or `SERVE_CREDENTIAL`. It rides on
+//! every request as a sensitive default header and is never printed; a `401`
+//! names the flag instead of echoing anything back.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,6 +22,26 @@ use crate::host::{Host, NewSession, Notice, wire_json};
 
 const TURN_TIMEOUT: Duration = Duration::from_secs(180);
 const POLL: Duration = Duration::from_millis(100);
+
+/// The environment variable `eval --against` reads its bearer credential from.
+pub(crate) const CREDENTIAL_ENV: &str = "SERVE_CREDENTIAL";
+
+/// The client a remote eval talks through: with `credential`, every request
+/// carries `Authorization: Bearer <credential>`, marked sensitive so it stays
+/// out of debug output.
+fn remote_client(credential: Option<&str>) -> crate::Result<reqwest::Client> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(credential) = credential.map(str::trim).filter(|value| !value.is_empty()) {
+        // The error names no part of the value.
+        let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
+            .map_err(|_| anyhow!("the eval credential is not a valid header value"))?;
+        value.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+    }
+    Ok(reqwest::Client::builder()
+        .default_headers(headers)
+        .build()?)
+}
 
 enum Target {
     Local(Arc<Host>),
@@ -79,9 +104,14 @@ impl EvalCx {
 
     #[cfg(test)]
     pub(crate) fn remote_for_test(base: String) -> Self {
+        Self::remote_with_credential_for_test(base, None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn remote_with_credential_for_test(base: String, credential: Option<&str>) -> Self {
         Self::new(Target::Remote {
             base,
-            client: reqwest::Client::new(),
+            client: remote_client(credential).unwrap(),
         })
     }
 
@@ -155,14 +185,18 @@ impl EvalCx {
                 .await
             }
             Target::Remote { base, client } => {
-                let body: Value = client
+                let response = client
                     .post(format!("{base}/v1/sessions"))
                     .json(&json!({ "agent_name": self.agent, "metadata": { "eval": true } }))
                     .send()
-                    .await?
-                    .error_for_status()?
-                    .json()
                     .await?;
+                if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+                    bail!(
+                        "{base} requires a credential it accepts: pass --credential or set \
+                         {CREDENTIAL_ENV}"
+                    );
+                }
+                let body: Value = response.error_for_status()?.json().await?;
                 body.get("id")
                     .and_then(Value::as_str)
                     .map(str::to_string)
@@ -182,13 +216,19 @@ impl EvalCx {
         let mut notices = host.notices.subscribe();
         let pending = host.send(session, text).await?;
         let mut record = TurnRecord::default();
-        let wait = pending.wait();
-        tokio::pin!(wait);
+        // Approval handling queries the same authority as outcome observation.
+        // Keep the observer independently polled while answering a notice, and
+        // abort it on timeout or early return when the JoinSet is dropped.
+        let mut completion = tokio::task::JoinSet::new();
+        completion.spawn(async move { pending.wait().await });
         let deadline = tokio::time::sleep(TURN_TIMEOUT);
         tokio::pin!(deadline);
         let outcome = loop {
             tokio::select! {
-                outcome = &mut wait => break outcome?,
+                outcome = completion.join_next() => {
+                    let outcome = outcome.ok_or_else(|| anyhow!("outcome observer ended"))?;
+                    break outcome??;
+                },
                 () = &mut deadline => bail!("turn did not finish within {TURN_TIMEOUT:?}"),
                 notice = notices.recv() => match notice {
                     Ok(Notice::ApprovalRequested(view)) if view.session_id == session => {
@@ -198,7 +238,7 @@ impl EvalCx {
                             session,
                             &view.tool_call_id,
                             self.on_approval == OnApproval::Approve,
-                        );
+                        ).await;
                     }
                     Ok(Notice::QuestionAsked { session_id, tool_call_id, questions })
                         if session_id == session =>
@@ -210,7 +250,7 @@ impl EvalCx {
                             Some(&tool_call_id),
                             Status::Answered,
                             outcome.answers,
-                        );
+                        ).await;
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                         bail!("host shut down mid-turn")
@@ -326,12 +366,24 @@ fn is_terminal(event: &Value) -> bool {
 
 /// Tool names from canonical `tool.started` events, in order.
 fn tools_called(events: &[Value]) -> Vec<String> {
-    events
-        .iter()
-        .filter(|event| event["type"] == "tool.started")
-        .filter_map(|event| event["data"]["tool_call"]["name"].as_str())
-        .map(str::to_string)
-        .collect()
+    let mut tools = Vec::new();
+    for event in events {
+        if event["type"] == "tool.started" {
+            if let Some(name) = event["data"]["tool_call"]["name"].as_str() {
+                tools.push(name.to_string());
+            }
+        } else if event["type"] == "tool.call_requested" {
+            for call in event["data"]["tool_calls"].as_array().into_iter().flatten() {
+                if let Some(name) = call["name"]
+                    .as_str()
+                    .filter(|name| *name != "approve_tool_call")
+                {
+                    tools.push(name.to_string());
+                }
+            }
+        }
+    }
+    tools
 }
 
 /// What the agent last said in the turn (commentary is not an answer).
@@ -424,15 +476,18 @@ impl EvalReport {
 }
 
 /// Run the app's evals, optionally only those whose name contains `filter`.
+/// `credential` is sent to a remote target only; an in-process run ignores it.
 pub(crate) async fn run(
     app: &App,
     against: Option<&str>,
+    credential: Option<&str>,
     filter: Option<&str>,
 ) -> crate::Result<EvalReport> {
     let local = match against {
         Some(_) => None,
         None => Some(Host::new(app.clone(), Mode::Eval, None)?),
     };
+    let client = remote_client(credential)?;
     let mut report = EvalReport::default();
     for eval in &app.inner.evals {
         if filter.is_some_and(|filter| !eval.name.contains(filter)) {
@@ -442,7 +497,7 @@ pub(crate) async fn run(
             (Some(host), _) => Target::Local(host.clone()),
             (None, Some(base)) => Target::Remote {
                 base: base.trim_end_matches('/').to_string(),
-                client: reqwest::Client::new(),
+                client: client.clone(),
             },
             (None, None) => bail!("no eval target"),
         };
