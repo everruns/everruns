@@ -24,6 +24,8 @@ agents delete	--context-revision --id --reason <id>
 agents destroy	--context-revision --id --reason <id>
 agents diff	--against --target <file>!
 agents draft	--context-revision --draft --messages! --reason
+agents examples adopt	--context-revision --name --reason <name>
+agents examples list	--context-revision --reason
 agents export	--format --out <agent>!
 agents exposures resume	--agent --context-revision --reason <agent_id>
 agents exposures suspend	--agent --context-revision --reason <agent_id>
@@ -199,6 +201,7 @@ orgs egress-allowlist grant set	--context-revision --granted --open --org! --rea
 orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
 orgs get	--context-revision --org --reason <org>
 orgs list	--context-revision --reason
+orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason

@@ -43,6 +43,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Secrets an agent needs from whoever runs it.",
     ),
     (
+        "agents examples",
+        "Ready-made agents (blueprints) to adopt and adapt.",
+    ),
+    (
         "agents exposures",
         "Pause or resume all of an agent's live channels at once.",
     ),
@@ -208,6 +212,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "orgs egress-allowlist grant",
         "Whether an organization may extend the allowlist.",
+    ),
+    (
+        "orgs provider-accounts",
+        "Sandbox provider and web search accounts the organization holds.",
     ),
     (
         "payments",

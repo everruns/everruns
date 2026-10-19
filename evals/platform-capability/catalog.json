@@ -82,6 +82,30 @@
   },
   {
     "category": "agents",
+    "cli": "agents examples adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "input_schema": {
+      "description": "Create an agent from an agent example.",
+      "properties": {
+        "name": {
+          "description": "Example name from list_agent_examples, such as `pr-reviewer`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "adopt_agent_example",
+    "output_shape": "unknown",
+    "path": "/v1/agents/import",
+    "positional_arg": "name",
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents analyze",
     "description": "Run advisory checks (built-in rules plus LLM analysis) against an agent configuration.",
     "input_schema": {
@@ -5231,7 +5255,7 @@
   {
     "category": "messages",
     "cli": "sessions messages create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "input_schema": {
       "$defs": {
         "AnnotationSource": {
@@ -5749,7 +5773,7 @@
         },
         "message": {
           "$ref": "#/$defs/InputMessage",
-          "description": "The user message: `{\"content\": [{\"type\": \"text\", \"text\": ...}]}`."
+          "description": "The user message as one JSON object whose `content` is an array of\ncontent parts, e.g. `{\"content\": [{\"type\": \"text\", \"text\": \"Hi\"}]}`."
         },
         "metadata": {
           "additionalProperties": {},
@@ -12639,6 +12663,21 @@
   },
   {
     "category": "agents",
+    "cli": "agents examples list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "input_schema": {
+      "description": "List the agent examples (blueprints) this deployment offers.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_examples",
+    "output_shape": "array",
+    "path": "/v1/agent-examples",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
     "cli": "agents failures list",
     "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
     "input_schema": {
@@ -14086,6 +14125,29 @@
     "name": "list_org_tasks",
     "output_shape": "unknown",
     "path": "/v1/tasks",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "organizations",
+    "cli": "orgs provider-accounts list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_organization_connections",
+    "output_shape": "array",
+    "path": "/v1/orgs/{org}/organization-connections",
     "positional_arg": null,
     "read_only": true
   },
