@@ -12,13 +12,13 @@ links:
     - /integrations/mcp-credentials/
 ---
 
-Credentials can now belong to a virtual user, agent, session or organization. Open **Credentials** on an agent or session, or manage personal and organization credentials in Settings. Organization credentials require an explicit access grant. Values stay write-only; revoke a binding or grant to stop its next participating request.
+Credentials can belong to virtual users, agents, sessions or organizations. Open **Credentials** on an agent or session, or manage personal and organization credentials in Settings. Organization access requires explicit grants. Values stay write-only; revocation blocks future participating requests.
 
 ![Organization credentials with explicit agent access](./credentials@2x.png)
 
 [Web Fetch](/capabilities/web-fetch/) can capture several JSON response fields directly into encrypted storage. Persistent capture asks for approval of the exact request, destination and acting identity. Subsequent Web Fetch and Bashkit HTTP calls use references such as `$MAIL_TOKEN`; injected values and recognized response echoes are removed before tool results reach the agent.
 
-The same ownership and access rules apply to [MCP parameter credentials](/integrations/mcp-credentials/). Existing GitHub connections retain their installation selection and repository limits.
+The same ownership and access rules apply to [MCP parameter credentials](/integrations/mcp-credentials/). Unattended user OAuth keeps its sign-in guidance. Existing GitHub connections retain their installation selection and repository limits.
 
 The [CLI credential commands](/reference/cli/credential-bindings/) manage metadata and revocation; values are entered through the secure Credentials form.
 

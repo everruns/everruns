@@ -424,6 +424,60 @@ async fn resolve_attached_server_url(
     )))
 }
 
+/// Preserve the worker's connection-required result for an unattended user OAuth attachment.
+///
+/// A descriptor is not credential authority. Only a proved invocation with no
+/// user may defer to OAuth here; unknown invocations, private-context denials,
+/// non-OAuth attachments, and storage failures still use strict resolution.
+pub async fn resolve_runtime_server_secret_bindings(
+    db: &crate::storage::StorageBackend,
+    encryption: Option<&crate::storage::EncryptionService>,
+    org_id: i64,
+    invocation: Option<everruns_contracts::runtime::credential_services::CredentialInvocation>,
+    server: &crate::domains::mcp_servers::McpServerResolved,
+) -> anyhow::Result<HashMap<String, Vec<everruns_core::mcp::McpSecretBinding>>> {
+    if let Some(invocation) = invocation
+        && server.acts_as == everruns_core::McpServerActsAs::User
+        && server.auth_mode == everruns_core::McpServerAuthMode::OAuth
+        && server.oauth_provider_id.is_some()
+        && server.api_key.is_none()
+        && !server
+            .headers
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("authorization"))
+    {
+        let unattended: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (
+                SELECT 1 FROM runtime_invocations i
+                JOIN sessions s ON s.id=i.session_id AND s.org_id=i.org_id
+                WHERE i.org_id=$1 AND i.session_id=$2 AND i.input_message_id=$3
+                  AND i.virtual_user_id IS NULL
+            )"#,
+        )
+        .bind(org_id)
+        .bind(invocation.session_id.uuid())
+        .bind(invocation.input_message_id)
+        .fetch_one(db.pool())
+        .await?;
+        if unattended {
+            // The worker must resolve this OAuth grant before sending. With no
+            // invoking user it returns connection_required, never an owner's
+            // token. Do not fetch or decrypt any parameter bindings first.
+            return Ok(HashMap::new());
+        }
+    }
+    resolve_runtime_secret_bindings(
+        db,
+        encryption,
+        org_id,
+        invocation,
+        server.acts_as,
+        &server.name,
+        &server.url,
+    )
+    .await
+}
+
 /// Scope and current invocation are checked again immediately before MCP send.
 pub async fn resolve_runtime_secret_bindings(
     db: &crate::storage::StorageBackend,

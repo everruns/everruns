@@ -149,6 +149,7 @@ class Policy(unittest.TestCase):
                      'crates/server/src/storage/embedded_postgres/mod.rs',
                      'crates/server/tests/test_harness/database.rs']:
             self.assertEqual(focused.real_server_targets([path]),targets)
+
         server=dict(id='server',name='everruns-server',manifest_path='/repo/crates/server/Cargo.toml',dependencies=[],targets=[{'kind':['lib']}])
         selection=focused.select({'packages':[server],'workspace_members':['server']},
                                  ['crates/server/src/storage/test_database.rs'],Path('/repo'))['include'][0]
@@ -157,6 +158,19 @@ class Policy(unittest.TestCase):
         for target in targets:self.assertIn(target,command)
         self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
         self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+
+    def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
+        for path in [
+            'crates/server/src/domains/agents/credentials.rs',
+            'crates/server/src/domains/credentials/service.rs',
+            'crates/server/src/domains/resource_access/mod.rs',
+            'crates/server/src/domains/mcp_servers/worker_lookup.rs',
+            'crates/server/src/worker_link/grpc_service/worker/credentials.rs',
+            'crates/server/src/worker_link/direct_worker_adapters/mod.rs',
+            'crates/server/tests/domain/mcp_acts_as_grpc_test.rs',
+        ]:
+            with self.subTest(path=path):
+                self.assertIn('mcp_acts_as_grpc_test::', focused.risk_filters([path]))
 
     def test_selected_server_artifacts_run_with_filters_and_cargo_context(self):
         selection = dict(packages=['everruns-server'], risk_targets=['router'], risk_filters=['picked::'])

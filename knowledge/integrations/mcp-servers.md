@@ -665,27 +665,32 @@ In the capability selector UI, MCP capabilities are displayed with:
 
 The catalog, the connections list, and a person's own MCP servers use the title and icon the remote server publishes as the heading and mark. The operator name stays the slug, and a plugin connection display name still wins over the discovered title. Discovery and the icon rules live in `crates/server/src/domains/mcp_servers/presentation.rs`.
 
-### Agent-bound tool-parameter credentials
+### Tool-parameter credentials
 
 Some MCP servers require a credential as a tool argument rather than an HTTP
-authorization header. Those values are Agent-scoped runtime bindings, not
-session secrets and not part of the Agent blueprint. A binding identifies one
-attached server endpoint, tool, and top-level parameter. Its value is accepted
-only by the write-only Agent Credentials API/UI, encrypted with the control
-plane encryption service, and never returned by an API.
+authorization header. Those values use the [common resource ownership and
+grant contract](../security/resource-access.md), independently of the Agent
+blueprint. The binding limits the attached endpoint and parameter receiving it.
+Values enter through secure write-only provisioning, remain encrypted at rest,
+and are never returned by a management API.
 
 Before reason, the bound parameter is removed from the model-visible tool
 schema. After the original model tool call is persisted, the MCP executor
 rejects an attempted override and injects the decrypted value into a cloned
 outbound argument object. The model, events, narration, and worker logs retain
 only the original credential-free call. A missing value returns the structured
-`credential_required` result with the Agent setup URL.
+`credential_required` result with the owner's secure credential setup URL.
 
-Bindings are scoped by organization and Agent and are resolved from the
-session's Agent identity. They therefore work for shared sessions and
-session-per-invocation triggers without granting the same credential to other
-Agents. Rotation applies to future calls immediately; deletion revokes the
-binding. An endpoint mismatch fails closed as unconfigured.
+Runtime authority comes from the verified invocation and actual responder;
+ownership alone does not share a credential. Rotation and revocation apply to
+future calls, and an endpoint mismatch fails closed as unconfigured.
+
+An unattended user OAuth attachment retains its normal connection-required
+result before any parameter bindings are fetched or decrypted. Only proved
+unattended invocations can defer to that OAuth path; unknown invocations,
+private-context denials, and storage failures remain strict errors. The shared
+[descriptor adapter](../../crates/server/src/domains/agents/credentials.rs)
+applies this rule to direct and gRPC workers.
 
 ## Seed Data
 

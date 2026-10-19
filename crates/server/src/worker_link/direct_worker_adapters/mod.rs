@@ -940,14 +940,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
             {
                 let secret_bindings =
-                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         org_id,
                         credential_invocation,
-                        resolved.acts_as,
-                        &resolved.name,
-                        &resolved.url,
+                        &resolved,
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
@@ -968,17 +966,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?
             .ok_or_else(|| store_error(format!("MCP server not found: {}", server_prefix)))?;
 
-        let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
-            self.db.as_ref(),
-            self.encryption.as_deref(),
-            org_id,
-            credential_invocation,
-            resolved.acts_as,
-            &resolved.name,
-            &resolved.url,
-        )
-        .await
-        .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
+        let secret_bindings =
+            crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
+                self.db.as_ref(),
+                self.encryption.as_deref(),
+                org_id,
+                credential_invocation,
+                &resolved,
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
 
         Ok(mcp::resolved_mcp_server_to_worker_info(
             resolved,
