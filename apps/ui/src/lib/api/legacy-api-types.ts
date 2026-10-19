@@ -745,7 +745,6 @@ export type {
 } from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// NOTE: CapabilityId is defined in common-types for proper ordering
 export type CapabilityStatus =
   | "available"
   | "coming_soon"
@@ -782,15 +781,11 @@ export interface Capability {
   harness_count?: number;
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
-  /**
-   * Rollout flag that gates this capability, when one is required.
-   * Present whether or not the flag is on.
-   */
+  /** Rollout flag that gates this capability, when one is required. */
   feature_flag?: string;
   /**
    * Localized display strings keyed by lowercase language tag (e.g. "uk").
-   * The "en" entry carries only config_description, since the base
-   * name/description/config_schema strings are already English.
+   * The "en" entry carries only config_description; base strings are English.
    */
   localizations?: Record<string, CapabilityLocalization>;
 }
