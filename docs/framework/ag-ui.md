@@ -161,6 +161,17 @@ After a restart the next run of a thread reopens its session, history
 included. Implement `ThreadStore` to keep the map in your own database
 instead.
 
+With durable session hosting (`SqliteHosting`), use `AgUiThreads::hosted` and a
+registered build instead of an Agent value. Each new thread is created through
+the authority, at an identity derived from the thread, so a retried first run
+reuses the same session. Threads whose sessions were moved from the `local`
+backend with `Engine::cut_over_legacy_session` keep answering from those same
+sessions:
+
+```rust ignore
+let threads = AgUiThreads::hosted(engine, build, SqliteThreadStore::local(&config)?);
+```
+
 A thread id is chosen by the client, and anyone who knows one continues that
 conversation. When one server serves several users, scope threads to the
 authenticated caller: `AgUiCaller::scoped` does it in `AgUiHandler`, and

@@ -482,4 +482,110 @@ mod local {
         let store = SqliteThreadStore::open(&path).unwrap();
         assert_eq!(store.get("t").await.unwrap(), Some(second));
     }
+
+    fn hosted_agent(workspace: &std::path::Path) -> Agent {
+        Agent::builder()
+            .instructions("Be brief.")
+            .model(Model::simulated("Hello."))
+            .workspace(workspace)
+            .build()
+            .expect("valid agent")
+    }
+
+    fn hosted_engine(
+        profile: &everruns::hosting::SqliteHosting,
+        workspace: &std::path::Path,
+    ) -> Engine {
+        let engine = Engine::builder().hosting(profile.clone()).build();
+        let agent = hosted_agent(workspace);
+        engine
+            .register_agent_with_environment(
+                everruns::hosting::AgentBuild::new("assistant", "threads-v1"),
+                agent.clone(),
+                None,
+                "imported-workspace",
+                everruns::hosting::ImportedWorkspaceFactory::new(agent, profile.clone()),
+            )
+            .unwrap();
+        engine
+    }
+
+    /// EVE-1298: a thread served on the legacy local lane keeps answering
+    /// from the same session after that session is cut over to the SQLite
+    /// authority, and new threads are hosted sessions that survive restarts.
+    #[tokio::test]
+    async fn threads_continue_on_the_authority_after_cutover_and_restart() {
+        let data = tempfile::tempdir().unwrap();
+        let config = LocalConfig::new(data.path().join("state"));
+        let workspace = config.workspace_root().to_path_buf();
+        let build = everruns::hosting::AgentBuild::new("assistant", "threads-v1");
+
+        let legacy = AgUiThreads::with_store(
+            Engine::new(),
+            local_agent(&config),
+            SqliteThreadStore::local(&config).unwrap(),
+        );
+        let stream = legacy
+            .run(
+                input("t", vec![Message::user("u1", "First")]),
+                AgUiOptions::new(),
+            )
+            .await
+            .unwrap();
+        let sent = stream.sent().cloned().expect("a turn started");
+        let _: Vec<Event> = stream.collect().await;
+        sent.wait().await.unwrap();
+        let session_id = legacy.session("t").await.unwrap().session().session_id();
+        drop(legacy);
+
+        let path = data.path().join("authority.db");
+        let profile = everruns::hosting::SqliteHosting::open(&path).unwrap();
+        let engine = hosted_engine(&profile, &workspace);
+        engine
+            .cut_over_legacy_session(session_id, &local_agent(&config), &build)
+            .await
+            .unwrap();
+        let threads = AgUiThreads::hosted(
+            engine.clone(),
+            build.clone(),
+            SqliteThreadStore::local(&config).unwrap(),
+        );
+        let thread = threads.session("t").await.unwrap();
+        assert!(!thread.created());
+        assert_eq!(thread.session().session_id(), session_id);
+        let messages = vec![
+            Message::user("u1", "First"),
+            Message::assistant("a1", "Hello."),
+            Message::user("u2", "Second"),
+        ];
+        run(&threads, input("t", messages)).await;
+        let texts: Vec<String> = transcript(thread.session())
+            .await
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect();
+        assert_eq!(texts, ["First", "Hello.", "Second", "Hello."]);
+
+        // A new thread is a hosted session; a restarted host reopens it.
+        run(&threads, input("fresh", vec![Message::user("u1", "Hi")])).await;
+        let fresh = threads
+            .session("fresh")
+            .await
+            .unwrap()
+            .session()
+            .session_id();
+        assert!(engine.session_status(fresh).await.is_ok());
+        drop(threads);
+        drop(engine);
+        let profile = everruns::hosting::SqliteHosting::open(&path).unwrap();
+        let restarted = AgUiThreads::hosted(
+            hosted_engine(&profile, &workspace),
+            build,
+            SqliteThreadStore::local(&config).unwrap(),
+        );
+        let reopened = restarted.session("fresh").await.unwrap();
+        assert!(!reopened.created());
+        assert_eq!(reopened.session().session_id(), fresh);
+        assert_eq!(transcript(reopened.session()).await.len(), 2);
+    }
 }

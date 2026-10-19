@@ -108,6 +108,7 @@ noted.
 | Probe: wake recovery | | Approval deadlines become authority wakeups; imported schedules fire from the supervisor as admissions | **passes** |
 | Probe: interrupted import | | Nothing committed, legacy stays frozen, explicit abandon only | **passes** |
 | Uncertain external effects not replayed | | Interrupted at-most-once call never runs again | **passes** |
+| Host surfaces on Engine | `LocalConfig`/custom-backend facade | serve on the native authority; [AG-UI hosted threads](../../crates/everruns/src/ag_ui/threads.rs); coordination through authority child sessions | **passes**, except serve's migration of pre-hosting data |
 | Retire the facade actor only after all host surfaces pass | | | **blocked** by the missing rows |
 
 ## Retirement gate
@@ -118,8 +119,13 @@ only when each item holds on the revision being released:
 1. **Rewind/redo under the authority.** Blocked on the owner's decision on
    branch-selection semantics (proposal below). Neither lane in this
    repository has a rewind contract today; the downstream consumer owns it.
-2. **Every host surface on Engine.** serve, AG-UI threads and the coordination
-   hub reach sessions only through hosting.
+2. **Migrate pre-hosting serve data.** serve already runs on the native
+   authority ([host](../../crates/serve/src/host.rs)), AG-UI threads have a
+   hosted mode, and coordination threads run through the authority's child
+   sessions. serve does not yet cut over session data written under
+   `data_dir/everruns` by releases that predate its native authority; until a
+   startup migration exists, such sessions are moved with
+   `Engine::cut_over_legacy_session` one by one.
 
 ### Proposal for rewind and redo (needs an owner decision)
 
