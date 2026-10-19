@@ -2,6 +2,30 @@
 
 use super::*;
 
+impl GrpcOrgAdapter {
+    /// Run a runtime-view mutation a built-in tool makes, carrying the tool's
+    /// own reason into the change history.
+    async fn execute_runtime_command<T>(
+        &self,
+        name: &str,
+        params: serde_json::Value,
+        reason: &str,
+    ) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self
+            .execute_platform_command_raw(name, params, true, Some(reason))
+            .await?
+        {
+            Ok(value) => serde_json::from_value(value).map_err(|error| {
+                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
+            }),
+            Err(error) => Err(grpc_command_error_to_error(error)),
+        }
+    }
+}
+
 #[async_trait]
 impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_capabilities::PlatformStore>> {
@@ -63,6 +87,38 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
             .await
     }
 
+    async fn get_agent_harness_id(
+        &self,
+        id: AgentId,
+    ) -> Result<Option<everruns_contracts::typed_id::HarnessId>> {
+        self.execute_runtime_lookup(
+            "get_agent_harness",
+            serde_json::json!({ "id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn set_session_archived(
+        &self,
+        session_id: SessionId,
+        archived: bool,
+        reason: &str,
+    ) -> Result<()> {
+        let command = if archived {
+            "archive_session"
+        } else {
+            "unarchive_session"
+        };
+        let _: bool = self
+            .execute_runtime_command(
+                command,
+                serde_json::json!({ "session_id": session_id.to_string() }),
+                reason,
+            )
+            .await?;
+        Ok(())
+    }
+
     // =========================================================================
     // App Operations
     // =========================================================================
@@ -95,6 +151,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
                 "seed": request.seed,
             }),
+            &request.reason,
         )
         .await
     }
@@ -114,6 +171,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         &self,
         session_id: SessionId,
         agent_id: AgentId,
+        reason: &str,
     ) -> Result<everruns_contracts::typed_id::SessionParticipantId> {
         self.execute_runtime_command(
             "add_session_participant",
@@ -122,6 +180,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 "kind": "agent",
                 "agent_id": agent_id.to_string(),
             }),
+            reason,
         )
         .await
     }
@@ -150,7 +209,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> Result<Vec<everruns_capabilities::PlatformMessage>> {
-        let mut messages: Vec<RuntimeMessage> = self
+        let messages: Vec<RuntimeMessage> = self
             .execute_platform_command(
                 "list_messages",
                 serde_json::json!({
@@ -159,34 +218,23 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 }),
             )
             .await?;
-        messages.retain(|message| {
-            matches!(
-                message.role,
-                crate::core::RuntimeMessageRole::User | crate::core::RuntimeMessageRole::Agent
-            )
-        });
 
+        // What people and the agent said, never the agent's commentary. An
+        // agent in explicit communication speaks through `send_message`, so the
+        // transcript reader needs the tool results to see what was delivered.
+        let lines = crate::core::conversation::transcript_lines(&messages);
         Ok(messages
             .into_iter()
-            .filter_map(|message| {
-                let content = message
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        crate::core::ContentPart::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if content.is_empty() {
-                    return None;
-                }
+            .zip(lines)
+            .filter_map(|(message, content)| {
+                let role = match message.role {
+                    crate::core::RuntimeMessageRole::User => "user",
+                    crate::core::RuntimeMessageRole::Agent => "agent",
+                    _ => return None,
+                };
                 Some(everruns_capabilities::PlatformMessage {
-                    role: match message.role {
-                        crate::core::RuntimeMessageRole::User => "user".to_string(),
-                        _ => "agent".to_string(),
-                    },
-                    content,
+                    role: role.to_string(),
+                    content: content?,
                     created_at: message.created_at,
                 })
             })

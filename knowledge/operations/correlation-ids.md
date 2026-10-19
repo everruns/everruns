@@ -32,9 +32,9 @@ The persistent conversation identifier that spans multiple turns.
 - **Source**: URL path parameter in session-scoped endpoints.
 - **Scope**: All HTTP handlers and background tasks operating on a session record this on their tracing span.
 
-### Durable Workflow Correlation
+### Worker Correlation
 
-The session ID doubles as the durable workflow ID (see `knowledge/operations/durable-execution-engine.md`). This means a single `session_id` or `request_id` search in logs covers both the HTTP layer and the async worker execution.
+Platform turns run on session actors keyed by the session ID (see `knowledge/operations/durable-execution-engine.md`), so a `session_id` search in logs covers both the HTTP layer and the worker that ran the turn.
 
 ---
 
@@ -53,9 +53,9 @@ The `RequestIdLayer` Tower middleware (see `crates/server/src/middleware/request
 
 In addition, the `http_access_log_layer` middleware (see `crates/server/src/middleware/access_log.rs`) emits one tracing event per HTTP request with `method`, `route` (matched-path template, low-cardinality), `status`, `latency_ms`, and `request_id`. The level is `INFO` for normal responses, `DEBUG` for noise endpoints (`/health`, `/metrics`), and `WARN` for 5xx. This guarantees a single grep on `request_id=<x>` returns the wire-side line plus every child span emitted under the request span. The middleware is applied as a `route_layer` so axum's `MatchedPath` extractor is populated; unmatched (404) requests are not logged via this middleware (the surrounding `TraceLayer` span still emits its own record for them).
 
-### Durable Execution
+### Worker Execution
 
-The `request_id` is stored in `DurableTurnInput` and propagated across all durable tasks (reason, act, tool execution) so worker logs carry the originating request ID even when executed asynchronously in a separate worker process.
+A worker leases a session and runs its whole turn from the stored log, so the originating `request_id` does not reach worker logs; correlate worker lines by `session_id` (and the turn's `turn_id`). The per-step durable path that carried `request_id` in its turn input was removed with session actors.
 
 ### OpenTelemetry
 
@@ -106,10 +106,9 @@ one layer. `the_logged_request_id_is_the_one_the_response_echoes` in
 |---|---|
 | `RequestIdLayer` Tower middleware | `crates/server/src/middleware/request_id.rs` |
 | `http_access_log_layer` middleware | `crates/server/src/middleware/access_log.rs` |
-| Middleware wiring + custom `TraceLayer` span | `crates/server/src/app_builder.rs` |
+| Middleware wiring + custom `TraceLayer` span | `crates/server/src/app_builder/http_layers.rs` |
 | `request_id` in `CreateMessageContext` | `crates/server/src/domains/messages/service.rs` |
-| `request_id` on the server's `TurnRequest` | `crates/server/src/turns.rs` |
-| `request_id` in `DurableTurnInput` | `crates/durable-engine/src/durable_runner.rs` |
+| `request_id` on the server's `TurnRequest` | `crates/server/src/turns/mod.rs` |
 | `session_id` span recording | `crates/server/src/api/messages.rs` |
 
 ---

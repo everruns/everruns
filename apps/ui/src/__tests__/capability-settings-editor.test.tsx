@@ -1,9 +1,42 @@
-import { render, screen } from "@testing-library/react";
+import { serialize, deserialize } from "node:v8";
+import { render, screen, fireEvent } from "@testing-library/react";
 import {
   CapabilitySettingsEditor,
   hasCapabilitySettings,
 } from "@/components/agents/capability-settings-editor";
 import type { Capability } from "@/lib/api/types";
+
+jest.mock("@/components/models/model-picker", () => ({
+  DecisionModelPicker: () => null,
+  ModelPicker: ({
+    value,
+    onChange,
+    placeholder,
+    additionalOptions,
+  }: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+    additionalOptions: { value: string; label: string }[];
+  }) => (
+    <select
+      aria-label="Title model"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {additionalOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+      <option value="model-small">Small (Shared provider)</option>
+    </select>
+  ),
+}));
+beforeAll(() => {
+  if (!global.structuredClone) global.structuredClone = (value) => deserialize(serialize(value));
+});
 
 function capability(overrides: Partial<Capability>): Capability {
   return {
@@ -123,4 +156,66 @@ describe("CapabilitySettingsEditor", () => {
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://example.com");
     expect(screen.getByText("Base URL used by the capability.")).toBeInTheDocument();
   });
+
+  it("shows a boolean setting that defaults to on as checked", () => {
+    render(
+      <CapabilitySettingsEditor
+        capability={capability({
+          id: "tools_in_shell",
+          config_schema: {
+            type: "object",
+            properties: {
+              rate_unlabeled_tools: {
+                type: "boolean",
+                title: "Rate unlabeled tools",
+                default: true,
+                description: "Ask the decision service whether a tool changes things.",
+              },
+            },
+          },
+        })}
+        config={{}}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(screen.getByText("Rate unlabeled tools")).toBeInTheDocument();
+    expect(screen.getByText(/Ask the decision service/)).toBeInTheDocument();
+  });
+});
+
+it("persists default, session and pinned title model choices without losing retitle", () => {
+  const cap = capability({
+    id: "automatic_session_titles",
+    config_schema: {
+      type: "object",
+      properties: { model_id: { type: "string" }, retitle: { type: "boolean", default: true } },
+    },
+    config_ui_schema: { model_id: { "ui:widget": "SessionTitleModel" } },
+  });
+  const onChange = jest.fn();
+  const { rerender } = render(
+    <CapabilitySettingsEditor capability={cap} config={{ retitle: false }} onChange={onChange} />,
+  );
+  fireEvent.change(screen.getByLabelText("Title model"), { target: { value: "session" } });
+  expect(onChange).toHaveBeenLastCalledWith({ model_id: "session", retitle: false });
+  rerender(
+    <CapabilitySettingsEditor
+      capability={cap}
+      config={{ model_id: "session", retitle: false }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Title model"), { target: { value: "model-small" } });
+  expect(onChange).toHaveBeenLastCalledWith({ model_id: "model-small", retitle: false });
+  rerender(
+    <CapabilitySettingsEditor
+      capability={cap}
+      config={{ model_id: "model-small", retitle: false }}
+      onChange={onChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Title model"), { target: { value: "" } });
+  expect(onChange).toHaveBeenLastCalledWith({ retitle: false });
 });

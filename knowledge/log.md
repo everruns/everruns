@@ -1,6 +1,679 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-18
+
+* **Tenant egress proxy in OSS.** The proxy moves from SaaS into the server
+  crate as `everruns-egress-proxy`; core owns the token on both sides; caps are
+  off unless configured; hosts plug in limits and usage over two traits or an
+  HTTP control endpoint. See [System allowlist](operations/system-allowlist.md#tenant-egress-proxy).
+
+- Framework hosts execute shared Rust session commands at the authority transaction;
+  object hosting invokes the same reducer as Wasm and the platform reuses its
+  client-result validation. Default embedding remains in-memory. See
+  [Engine-owned durable sessions](framework/engine-durable-sessions.md).
+
+* **MCP OAuth consent redirects.** Let the browser complete client-controlled
+  callback chains after approval and require a browser check with a second
+  callback hop. See [MCP](integrations/mcp.md).
+
+## 2026-10-17
+
+* **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
+
+* **PostgreSQL archive compatibility patch.** Select patched ZIP9 through a
+  checksum-attributed upstream copy while the published PostgreSQL dependency
+  still selects ZIP8. Preserve extraction policy and ordinary advisory/license
+  gates without ZIP exceptions; consumers with separate workspace roots select
+  the patch explicitly.
+  See [Security Testing](security/security-testing.md).
+
+* **ChatGPT Plan UI removal.** Remove the provider and its models from Platform
+  setup and selection until a suitable web OAuth client and callback exist;
+  retain the framework driver and server connection APIs. See
+  [Providers](foundations/providers.md) and [Models and providers](ui/models-and-providers.md).
+
+* **Engine session hosting implementation.** Default memory, native SQLite and
+  Durable Object profiles now share Framework admission, lifecycle receipts,
+  exact-turn approvals/client results, authority queries and actor execution.
+  serve and celld use ordinary registered Agents and the same Engine. Recover
+  native containers and replicated authority owners without client requests;
+  distinguish journal durability from explicit workspace/compute services.
+  Scope declared secret names to app discovery so retained build hashes cannot
+  change when unrelated code declares a secret. Interruption queries and resume
+  handles now use authority ownership and the original admission; transport
+  qualification includes mixed wait resolution and opaque cursor routes. Preserve
+  memory session workspace bindings and the AgentCore adapter’s mounted workspace
+  independently of SQLite journal placement. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md) and
+  [Durable Object qualification](framework/durable-object-native.md).
+  The announcement publication hold remains in force.
+
+## 2026-10-16
+
+* **Platform operating skills.** Share product, CLI, and agent-authoring skills
+  through the Platform capability; publish the general and CLI guides alongside
+  MCP workflows. Move Rust development guidance to `everruns-framework`. Distribute the five
+  shared skills through the coding-agent plugin and keep the general guide
+  independent of its host, with an index of companion workflows. See
+  [Capabilities](execution/capabilities.md), [Platform Chat](harnesses/platform-chat.md),
+  and [MCP](integrations/mcp.md).
+
+* **Durable Object announcement withdrawn.** Remove the premature public entry.
+  Engine-owned Framework/serve/celld implementation and qualification must finish
+  before explicit user approval of a replacement announcement. The publication
+  hold is recorded in root `AGENTS.md` and honored by the ship workflow.
+
+* **Documentation diagrams.** Mermaid fences render in the Everruns diagram
+  palette with readable source fallback. The Durable Object authority flow uses
+  responsive hand-authored SVGs and one colocated Mermaid source to keep its
+  return paths clear at desktop and mobile sizes.
+  See [Diagram Specification](docs/diagrams.md).
+
+* **Engine-owned durable sessions proposed.** Require the Framework Engine path
+  for DO, with coherent session hosting, durable admission/outcome handles, shared
+  lifecycle execution and serve integration. Include the celld examples, hosting
+  crate and recovery CI migration. Distinguish this target from the
+  implemented core-host proof. See
+  [Engine-Owned Durable Sessions](framework/engine-durable-sessions.md).
+
+* **Chaos actor log boundaries.** Include the shared core driver in the harness debug
+  filter so lease releases and completed activations remain visible to overlap checks.
+  See [Load Testing](operations/load-testing.md#chaos-harness).
+
+* **Coding-agent dialog finalized.** Focus setup on one copyable prompt and
+  supported agent marks; keep approval management in Settings. The public
+  changelog describes only the approved final design. See
+  [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **Public changelog eligibility.** Require meaningful user impact; exclude cosmetic
+  polish, typo fixes, and routine docs upkeep. Apply significance only after eligibility
+  and record a reason when skipping a visible change. See [Public Changelog](docs/changelog.md).
+
+* **Agent failure investigation.** Added failure-time filtering, recovered-session history,
+  outcome badges and terminal-event links into Trace. See [Agents Home](ui/agents-home.md).
+
+* **Provider drivers through host fetch.** Shared OpenAI-compatible and
+  OpenRouter chat protocols run in WASM with host HTTP, portable deadlines and
+  workerd Worker/Durable Object tool-round-trip coverage. See
+  [The Execution Kernel in a JavaScript Isolate](framework/wasm-kernel.md).
+
+* **Coding-agent onboarding.** One setup prompt from the user menu, Agents empty
+  state and onboarding Done, with deployment-aware MCP instructions and explicit
+  provider prerequisites. See [Coding Agent Onboarding](ui/coding-agent-onboarding.md).
+
+* **User MCP approval policy.** Add and enable follow shared Tool Approval modes;
+  management adds no hard gate when approval is absent or off. See
+  [User MCP servers](integrations/user-mcp-servers.md) and
+  [Tool Approval](execution/tool-approval.md).
+
+* **Shipping completes follow-ups.** Require implementation of work needed for
+  the requested outcome before shipping; defer only for concrete blockers or
+  explicit user exclusions. See [Shipping](project/shipping.md).
+
+* **Portable Durable Object execution.** Share the session actor driver across native
+  workers, HTTP executors and Wasm isolates, expose Framework/serve host seams,
+  and qualify alarm-driven recovery on workerd and the Cloudflare service. See
+  [Shared Execution with Durable Object Authority](framework/durable-object-native.md).
+
+* **Portable durable execution investigation.** Add proposals for a shared Rust
+  execution host across native actors and Durable Objects, with deployment
+  alternatives, failure semantics and qualification gates. See
+  [Portable Durable Agent Execution](framework/durable-execution-portability.md)
+  and [Durable Execution Guarantees](framework/durable-execution-guarantees.md).
+
+* Agent Sessions includes archived history to match its count; session cards show channel,
+  creation time and the last conversational-message timestamp.
+
+## 2026-10-15
+
+* **Optional idle session following.** Client-driven UI embeddings can suspend
+  settled event streams and replay on activity while continuous following remains
+  the default. See [Events](execution/events.md).
+
+## 2026-10-14
+
+* **PACT account walkthrough.** Published the scoped-consent demo and added it to
+  the PACT/Poppy pages and changelog. MCP discovery uses a matching session grant's
+  user identity. See [Product Video Knowledge](docs/product-videos.md).
+
+* **Slack landing page**: Added the integration overview with English conversation
+  examples, the public demo, Agent-building steps and links to the detailed reference.
+
+* **Server-owned PostgreSQL and tiered CI.** Remove the private PostgreSQL utility
+  crate; server storage owns native dev/test support. CI uses focused PR tests,
+  coalesced main batches, nightly feature/provider coverage, and exact-revision
+  release validation. See [CI Build Time](project/ci-build-time.md) and
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
+* **Product videos**: Linked the canonical landing-repo recording and publication
+  guide and the dedicated Everruns channel; added the public Slack walkthrough
+  to the existing DM and scheduled-briefing changelog entries.
+
+* **Hosted search permits.** Add lazy per-call financial admission with stable
+  engine identity, fenced start, sanitized outcome callbacks, replay and a
+  bounded journal receipt. Keep billing metadata on the hosted invocation;
+  ordinary provider drivers retain their existing contract. See
+  [Web Search](integrations/web-search.md).
+
+## 2026-10-13
+
+* **Embedded PostgreSQL uses the lifecycle library.** Dev mode and tests use
+  `postgresql_embedded`; the local adapter retains process-wide sharing, owner-exit
+  cleanup, and template copies. Embedded callers run as non-root users. See
+  [Embedded PostgreSQL](project/embedded-postgresql.md).
+
+* **Feature announcement copy.** Recorded the headline rule in
+  [Brand Specification](ui/brand.md#feature-announcement-copy) and linked it
+  from the public changelog's visual guidance.
+
+* **Web search: the deployment's own search.** A host can offer one search
+  provider it pays for to every organization (`HostedWebSearch`), under the
+  plan id `hosted`: in Automatic after the organization's accounts and before
+  free search, movable in the Automatic order, refusable per search through a
+  gate. See [Web Search](integrations/web-search.md).
+* **Actor-based design: the old turn model is a dismissed option.** Dismissed
+  Options records turns as queued, checkpointed steps (`everruns-durable-engine`,
+  the facade `durable` feature) with why session actors replaced it, and Load
+  Testing's AG-UI latency notes name the actor pickup instead of the deleted turn
+  workflow logs. See [Dismissed Options](project/dismissed-options.md) and
+  [Load Testing](operations/load-testing.md).
+* **Web search providers eval.** `evals/web-search-providers` grades every
+  provider's results for 59 agent-style queries through the shipped drivers.
+  Ceramic answers 49% (none time-sensitive) and is ruled out as the hosted
+  default; Brave, Parallel and Exa answer 98 to 100%. The run also found a
+  panic in the HTML entity decoder Brave and free search share, on text with
+  an `&` a few characters before a multibyte character; fixed. See
+  [Web Search](integrations/web-search.md).
+
+## 2026-10-12
+
+* **Actor-based design step 7: the per-step turn path is gone.** Platform
+  turns run only as session actors. `everruns-durable-engine` (DurableRunner,
+  the turn task driver, the turn workflow) is deleted, along with the turn-only
+  worker RPCs, the legacy turn sweep, the reaper's stranded-workflow requeue,
+  durable signals (store, API route, UI button) and activity-id dedupe; a
+  migration drops `durable_signals` and the dedupe index. The durable queue
+  carries only cleanup, the session task reaper, schedules and triggers. The
+  crash cases the old recovery tests pinned that actors lacked were ported to
+  the worker's actor tests. See
+  [Execution Backends](framework/execution-backends.md),
+  [Durable Execution Engine](operations/durable-execution-engine.md) and
+  [Agent Reliability Tests](runtime-resources/agent-reliability-tests.md).
+* **Web search: Cloudflare Web Search accounts.** A `cloudflare_web_search`
+  connection (account id, token, index, gateway, optional key alias) is a
+  search account on Ceramic, Exa or Linkup; non-secret settings travel as the
+  search account's `options`. See [Web Search](integrations/web-search.md).
+* **PAT scopes step 6: read-only callers.** `Caller` and `ResolvedOrg` carry
+  `read_only`, set from the token's scope, and `Command::run` refuses a
+  non-read command for such a caller with `insufficient_scope`, behind the
+  route, `/v1/commands` and `/mcp` checks. A refusal there counts as
+  `class="caller"` and marks a misclassified route. The rollout is complete.
+  See [Personal Access Token Scopes](security/pat-scopes.md).
+* **Native web search for external drivers.** `NativeWebSearchDriver`
+  (inventory) lets a driver outside the built-in provider types declare which
+  models search natively, so the search provider catalog and plan preview list
+  it; `OpenRouterNativeWebSearchExtension` exposes only OpenRouter's native
+  search swap. See [Web Search](integrations/web-search.md).
+* **Web search step 7: Parallel Search API driver.** Parallel is a search
+  account provider and a `parallel` provider setting (session, user or
+  application key, else the organization's first Parallel account); the
+  driver uses `fast` mode. See [Web Search](integrations/web-search.md).
+* **PAT scopes step 5: CLI.** `everruns whoami` asks `GET /v1/auth/me` and
+  shows a token's access (`full` or `read-only`) from `token_scope`;
+  `login --token` accepts a read token. Every failed CLI request keeps its
+  status and body as a typed error, and `main` turns a `403
+  insufficient_scope` into one line saying the token is read-only.
+  `login --read-only` is not built. Only optional step 6 remains. See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **Session attachments.** Stored history keeps attachments, but compaction
+  drops them from the request with no trace, most surfaces (Slack files, AG-UI
+  inline parts, A2A file parts, the execution API) never deliver them, and
+  file resolution fails all PDFs past 8 files or 11 MiB. Accepted design: one
+  intake path storing bytes in session file storage under `/attachments`, a
+  label with that path on every attachment, a deterministic attachment list
+  after compaction, one-at-a-time resolution. See
+  [Session Attachments](runtime-resources/session-attachments.md).
+* **Local profile task recovery.** Atomic task updates and guarded ownership
+  checks settle orphaned local attempts without replaying commands. Terminal wakes
+  survive interrupted delivery; owner-process loss remains an unverified execution
+  outcome rather than proof of cancellation. See
+  [Session Tasks](runtime-resources/session-tasks.md) and
+  [Background Execution](execution/background-execution.md).
+* **Local session reliability.** MCP authentication rejections pause discovery;
+  failed calls recover schemas from the transcript; strict provider omissions
+  round-trip before approval; daily usage limits preserve their reset time.
+  See [Runtime MCP](integrations/runtime-mcp.md),
+  [Tool Search](execution/tool-search.md), [LLM Drivers](foundations/llm-drivers.md)
+  and [Error Disclosure](execution/error-disclosure.md).
+
+* **PAT scopes step 4: read-only tokens can be created.** Creation accepts
+  `[]`, `["*"]` or `["read"]` and nothing else; the token page has a Full
+  access / Read-only picker and shows each token's scope; `GET /v1/auth/me`
+  reports `token_scope`; the creation audit event records `scopes`. Threat
+  model gains TM-AUTH-037 (mitigated) and TM-AUTH-038 (accepted). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **PAT scopes step 3: enforced on `/mcp` and the execution API.** A
+  read-only token lists and calls only the read-only MCP tools (an explicit
+  list kept equal to the `readOnlyHint` annotations by a test) and is refused
+  the rest with an `insufficient_scope` tool error; state-changing JSON-RPC
+  methods are refused too. `GET /v1/commands` lists only the commands a token
+  can run, and only a `*` token counts as an org member on an API channel.
+  See [Personal Access Token Scopes](security/pat-scopes.md).
+* **GitHub connection model design (awaiting approval).** One `github`
+  connection per virtual user with a kind (agent App, shared Everruns app,
+  person); every use declares how it acts, its repositories and permissions,
+  and gets a token cut down to that; the shared app becomes an org-level
+  opt-in; mentions become a GitHub channel beside triggers. See
+  [GitHub Connection Model](integrations/github-model.md).
+* **Cache-stable tool changes design.** The tool list
+  sent to the provider is fixed per session; reveals, MCP attaches and
+  refreshes, capability switches and client tools become recorded tool
+  changes in the conversation, sent as Anthropic `tool_addition` blocks or
+  OpenAI `additional_tools` items, with today's behavior as the fallback. See
+  [Cache-Stable Tool Changes](execution/cache-stable-tool-changes.md).
+  Accepted; step 1 (sticky deferral, sorted MCP tools, order-stable AG-UI
+  frontend tools) and step 2 (changes recorded on assistant messages and
+  replayed before each request; requests unchanged) implemented. Step 3:
+  Opus 5.5 and Sonnet 5.5 on the Claude API send the baseline as `tools` and
+  each change inline (`inline_tool_changes` profile parameter);
+  Session Trace lists each call's tool change.
+* **PAT scopes step 2: enforced on REST and `/v1/commands`.** The auth
+  extractor refuses a narrow token on any route outside its scope, including
+  unclassified ones, with `403 insufficient_scope`; `POST /v1/commands/{name}`
+  checks the named command. Embedders classify their own routes through
+  `ServerAppBuilder::classify_pat_routes`. A migration deletes legacy tokens
+  whose stored scopes are not exactly `["*"]` (owner decision). See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **Docs moved to everruns.com/docs.** The docs Worker serves the Starlight
+  build on the `everruns.com/docs*` route beside the landing site, with
+  Markdown negotiation like landing; docs.everruns.com 301s every path there
+  and a daily check guards pages, agent files and redirects. The docs wear the
+  everruns.com header and footer (synced from landing) and their search merges
+  the landing index. See [Documentation Site Specification](ui/documentation.md).
+
+## 2026-10-11
+
+* **PAT scopes step 1: classification, no enforcement.** Stored scopes parse
+  fail-closed onto `AuthUser`, and a layer tags every `/v1` route `Read`,
+  `Write`, `Never` or `PerCommand` from the command inventory or one table.
+  The MCP `query` toolset and PAT classification share one read-only
+  predicate. Nothing is refused yet. See
+  [Personal Access Token Scopes](security/pat-scopes.md).
+* **Personal access token scopes design (awaiting approval).** Two scopes,
+  `*` and `read`; routes classified `Read`, `Write` or `Never` (command-backed
+  routes from `Command::read_only()`, hand-written ones in one table); checked
+  once in the auth extractor, fail-closed for unclassified routes; creation of
+  `read` opens last. See [Personal Access Token Scopes](security/pat-scopes.md).
+* **Public changelog.** One compact entry per completed
+  user-facing feature or significant incident across every product, on
+  docs.everruns.com with product, surface and significance filters, HTML,
+  Markdown, RSS and search; releases link their entries and maintenance keeps
+  them current. See [Public Changelog](docs/changelog.md).
+* **The builder wires up triggers, catalog servers and the model.** Drafts can
+  carry a GitHub trigger (finished on a prefilled form after Connect), org
+  catalog MCP servers, and a pinned model when the org default has no working
+  key; a described agent lands on a dry Test run. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **CI enforces migration ordering.** Sequential migration validation now runs
+  on PRs and main and gates the required Build Check. See
+  [Migrations](operations/migrations.md).
+* **Cascaded voice mode.** Framework and serve voice channels can use separate
+  speech-to-text and text-to-speech models, with audio passing through the
+  host (in-process PCM, or serve's WebSocket). Core presents the two services
+  to the voice loop as one connection; the platform server still runs
+  delegated channels only. See [Voice Agents](framework/voice-agents.md).
+* **Load tests use llmsim scenarios.** A `[[llmsim:<name>]]` marker per user
+  message picks the turn shape, and `scripts/load-test.py` sends a weighted
+  mix. See [Load Testing](operations/load-testing.md).
+* **Dry run and Test run.** A `dry_run` session capability runs read-only
+  tools and simulates every other call; the agent page's Test run opens a
+  Playground chat with it on, and the trace marks simulated calls. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **Session SQL databases persist to PostgreSQL.** Each process keeps an
+  in-memory SQLite cache and commits only the pages a write changed, guarded by
+  a generation compare-and-set; forks copy the pages. See
+  [Session SQL Database](runtime-resources/session-sqldb.md).
+* **Notify me descoped; catalog hosts reachable.** Agents keep notifying
+  through a catalog MCP service (Visti) instead of a built-in in-app
+  capability. The seeded GitHub and Linear presets' hosts are on the system
+  allowlist, and a blocked host offers the org allowlist fix. See
+  [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **Proactive agents design (proposed).** Building the Main CI Watcher exposed
+  five gaps: polling instead of CI events, no way to notify the owner, blocked
+  catalog MCP hosts, unsafe test runs, and a builder that stops short of
+  triggers. See [Proactive Agents in Minutes](runtime-resources/proactive-agents.md).
+* **Load testing has baselines.** The local bench, local stack and hosted
+  deployment layers, with October 2026 numbers to compare against, and the
+  method's known gaps. See
+  [Load Testing](operations/load-testing.md#load-testing-a-hosted-deployment-and-baselines).
+* **Platform turns run as session actors.** The server's turn backend is now
+  `ActorTurnBackend` (production and DEV_MODE): intake marks the session's
+  actor runnable in the transaction that stored the input, and a worker leases
+  it and runs the whole turn with core's `drive_turn`, renewing every third of
+  the lease life and releasing with the input it consumed. A crashed worker's
+  turn is resumed from the log by the next lease; a lost lease stops all
+  writes; cancel has a single writer (the live holder, otherwise the server);
+  a turn that keeps killing its worker is sealed after
+  `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` leases. Resolutions now write under the
+  open turn's id. Migration 20261012014120 adds the inbox cursor, the fresh-turn input
+  pointer and the lease count; migration 20261012014121 moves in-flight sessions onto
+  actors and cancels old-path turn tasks and runs, so the cutover wants a
+  recreate deploy. The worker no longer claims `process_input`, `reason` or
+  `act`, and the reaper no longer sweeps stranded `turn_workflow` runs; the
+  per-step code is removed in step 7. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution)
+  and [Execution Backends](framework/execution-backends.md#the-platform-sessions-as-actors-on-workers).
+* **Session actor writes are fenced; rolling deploys are bridged.** Every
+  event a leased turn appends carries its holder and fence, and the control
+  plane refuses a stale one in the insert's transaction, so a write in flight
+  when the lease was lost no longer lands (TM-DOS-047). A cancel answers only
+  after the holder recorded it, also inside a command transaction. A temporary
+  sweep hands old-path turn tasks that a previous release creates during a
+  rolling deploy to session actors (removed in step 7). See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
+
+## 2026-10-10
+
+* **MCP servers show the title and icon they publish.** The catalog, connections
+  list, and a person's own servers keep the operator slug and description, and
+  fill a separate presentation from the server card, protected-resource
+  `resource_name`, and a later handshake `serverInfo`. Icons stay on the
+  server's origin. See [MCP Servers](integrations/mcp-servers.md#ui-integration)
+  and TM-TOOL-062.
+
+* **Web search design proposed.** One `web_search` capability and tool; search
+  providers (free, model provider native, Brave, Parallel) chosen per agent with
+  organization defaults and an Automatic order that follows the turn's model.
+  See [Web Search](integrations/web-search.md).
+* **`api_endpoint` channels are now `api` channels.** The server converts each
+  one in place at startup: its `evr_app_` key becomes an imported agent key
+  with the same hash, its sessions follow the key, and old-shaped requests get
+  a `400` that points to the Agent API. The frozen handler, the
+  `api_endpoint` type and the Legacy App API Keys concept are gone; TM-APIKEY
+  is retired into TM-AGENTKEY. See
+  [Agent Execution API](integrations/agent-execution-api.md) phase 6.
+* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
+  at create, again after install, and on every avatar change. A public API
+  origin is fetched by Slack; a local one is uploaded. See
+  [Agent Avatars](ui/agent-avatars.md).
+* **The turn loop is host-generic; resume is a log fold.** `drive_turn` runs a
+  whole turn over any `RuntimeHostAdapter` through a `TurnInbox` port, and
+  `resume_plan_from_log` resumes an open (cut-off or parked-then-answered)
+  turn from the log tail, so platform workers can run turns on a session lease.
+  See [Execution Backends](framework/execution-backends.md#one-turn-loop-resumed-by-folding-the-log).
+
+* **The control plane has a runnable index for session actors.** Migration
+  215 adds `session_actors` (runnable marker, inbox sequence, fenced lease,
+  pending cancel) and the worker link gains `LeaseActors`, `RenewActorLease`,
+  `ReleaseActor` and `ReadActorJournal`, over gRPC and in-process. Nothing
+  calls them yet; the worker cuts over next. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#session-actors-turn-execution).
+* **A serve daemon can keep its data in a bucket.** `start --store
+  s3://bucket/prefix` takes the bucket's lease, rebuilds the data directory
+  from it, and copies every change back (databases by changed pages, other
+  files whole); a daemon started elsewhere waits out a dead one's lease and
+  takes over, and a daemon that was taken over is fenced out by the manifest.
+  See [Serve](framework/serve.md).
+* **The replayed workflow engine is gone from `everruns-durable`.** The
+  `workflows` feature (`Workflow`/`Activity` traits, `WorkflowExecutor`,
+  timers, child workflows, `TimeoutManager`) and its example and suites are
+  removed. Nothing ran it in production, and the actor-based design retires
+  it. The crate is now the task queue, signals, event log, schedules, worker
+  pool and reliability toolkit that the turn driver and cluster jobs use. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#no-replayed-workflow-engine).
+* **serve apps can require a credential; the channel verifier lives in core.**
+  OIDC/JWKS, OAuth 2.0 introspection and claim requirements moved from the
+  server into `everruns_core::channel_auth` (feature `channel-auth`), which the
+  server's channels and serve both use. serve enforces static keys and token
+  methods on its agent routes once any is configured, and stays open
+  otherwise. See [Agent Execution API](integrations/agent-execution-api.md)
+  and [Serve](framework/serve.md).
+
+* **Framework sessions run as leased actors; the facade's `durable` feature is
+  gone.** Every facade session's turns run on core's `ActorRunner`: in
+  process, holding the session's lease while a turn runs. Leases live in
+  `HostBackends::session_leases` (in memory by default, in the local SQLite
+  database with `LocalConfig`), so processes sharing a data directory never
+  run one session at once. `durable::Backend` and `EngineBuilder::backend`
+  are removed; durability comes from the session log. See
+  [Execution Backends](framework/execution-backends.md).
+
+* **Timers are session log entries.** Local schedules record `timer.set`,
+  `timer.fired` and `timer.cancelled` in their session's log, and the schedule
+  runner rebuilds its index from the logs at start, so a lost or stale index
+  neither drops nor repeats an occurrence. serve's app schedules record each
+  occurrence and run one missed while the host was down. The never-emitted
+  `schedule.triggered` type is gone. See [Runtime](foundations/runtime.md) and
+  [Serve](framework/serve.md).
+
+* **A personal connect puts the catalog server on My MCP servers.** Signing in
+  to a catalog MCP server as yourself adds a user-owned row for it, once, so an
+  agent with the User MCP servers capability gets every server you connected;
+  migration 206 backfills existing sign-ins. Removing a server signs you out of
+  it, and Settings shows one list instead of a separate sign-ins table. See
+  [User MCP servers](integrations/user-mcp-servers.md#d8-a-personal-connect-to-a-catalog-server-puts-it-on-the-persons-list).
+
+* **Budgets stop the native loop.** Each reason atom now reads the session's
+  budgets first; an exhausted or paused budget ends the turn before the
+  provider call with `budget_exhausted` / `budget_paused`, and the gate emits
+  `budget.exhausted` / `budget.paused` (and `budget.warning` once per turn).
+  Checker errors fail open. See [Budgeting](security/budgeting.md).
+
+* **Resume follows what each tool declares.** After a process exit, a cut-off
+  turn re-runs only calls that are safe to run twice (`Pure`/`Idempotent`
+  tools, calls that waited on a person); every other unfinished call is
+  settled as `interrupted` and the turn carries on. A turn cut off between
+  steps reasons again, and serve resumes recently active sessions at boot. See
+  [Serve](framework/serve.md).
+
+* **Calls to finish as an eval number.** The platform-capability study now
+  classifies every shell call as a help read, a rejected guess or a real
+  command, and writes a friction report a help-tuning loop reads. A new Tools
+  in Shell study measures finding hidden tools through `tools --help` and
+  `tools search`, counted the same way. See
+  [Command tree](execution/command-tree.md) and
+  [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+
+* **Connection, MCP grant and session secret worker operations are internal
+  commands.** The eight connection-token RPCs and the four session secret
+  RPCs are gone; the worker reads tokens and secrets through org-scoped
+  `worker_*` commands in `user_connections`, `mcp_servers` and
+  `session_storage`, shared with the in-process worker. A foreign session or
+  virtual user is `NotFound`, values are never logged or kept in history, and
+  `connection_resolver` now takes the org. `GetDefaultProviderCredentials`
+  (per reason step, deployment-level keys) and `GetMcpServerByPrefix` (per MCP
+  call) stay RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **No feature flag on an existing opt-in.** A platform feature someone already has to
+  turn on by adding a capability or a channel gets no feature flag. Removed
+  `agent_coordination` (custom agents' `coordination`; Platform Chat still rides on
+  `chat_threads`), `agent_api`, `channel_budgets`, `notifications` (the bell is always on),
+  and the integration flags `ard`, `tools_in_shell` and `agentid`. Third-party
+  integrations and `agent_delegation` keep their Adoption flags on purpose. Stored org
+  overrides for removed names are ignored. See [Feature Flags](security/feature-flags.md).
+
+* **Managed vs own-key spend on every generation.** `llm_generations` records the
+  provider account that served each call and whether it was host-managed, so usage,
+  budgets and reports can tell host-billed spend from BYOK. See
+  [Usage tracking](security/usage-tracking.md#llm_generations-table-llm-analytics-projection).
+
+* **Poppy channel.** A `poppy` channel serves the Personal Agent Protocol
+  (draft 0.1) for an agent: discovery, Sessions started with the personal
+  agent's own keys and DPoP-bound Session Tokens, and conversations over the
+  agent. PACT's routes move to `/v1/channels/{channel_id}/a2a/pact`. See
+  [Poppy Channel](integrations/poppy-channel.md).
+
+* **Agents home graduates.** The `agents_home` flag is gone: the Agents page, New agent
+  page and Channels view are the only versions, and the old registry, single-form New agent
+  page and Exposures page are deleted (`/exposures` redirects). See [Agents Home](ui/agents-home.md).
+
+* **Unused image artifact info worker operation removed.** Nothing in the
+  runtime read image metadata alone, so `ImageArtifactStore::get_image_info`
+  and the `GetImageArtifactInfo` RPC are gone rather than converted to an
+  internal command. The image and file byte RPCs (`CreateImageArtifact`,
+  `GetImageArtifact`, `ResolveImage(s)`, `ResolveFiles`) stay gRPC by design:
+  they carry bytes up to 100 MiB, past an internal command's 1 MiB JSON. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+## 2026-10-09
+
+* **Agents home: New agent page and channel audience.** Behind `agents_home`, the
+  New agent page opens on an agent builder that edits a draft (Describe it,
+  From an example, Blank, Import), the channel strip shows people reached and
+  fastest first reply, and an adopted guided example without a trigger shows
+  as unfinished setup. See [Agents Home](ui/agents-home.md).
+
+* **Microsoft-Decision-1.** Microsoft Foundry's decision model joins the
+  decisions service on the existing MAI provider, over System One at
+  Foundry's resource-root route. Tenants pick it as a decision model (model id
+  = deployment name); a live smoke runs on main and in the weekly sweep. See
+  [Decision Service](operations/decisions-service.md).
+
+* **Facet iconography.** Original Intent becomes the shared Agent fallback; custom domain outlines connect navigation, search, Settings, and entity identities. Vector masters, SVG export, a development gallery, and an extension workflow preserve the design grammar. See [Facet Iconography](ui/iconography.md).
+
+* **Org egress allowlist extensions.** A platform user can grant an org the
+  right to extend the curated system allowlist; the org's admins then keep up
+  to 50 validated public host patterns that widen the allowlist for that org's
+  runtime egress only. The deny list still wins, lookups happen only for
+  requests the policy would otherwise refuse, and answers are cached for 60
+  seconds. See [System-wide Outbound Allowlist](operations/system-allowlist.md#org-extensions)
+  and TM-AGENT-036.
+
+* **Plugins: coding-agent plugin moved to everruns/plugins.** The `everruns`
+  plugin for Claude Code, Codex, Cursor and Gemini CLI now lives in
+  [everruns/plugins](https://github.com/everruns/plugins), which is also the
+  default marketplace for every organization (migration 196 repoints existing
+  rows). See [Plugins](integrations/plugins.md).
+
+* **Explicit Communication built (phases 1 and 2, partly).** Agents have a
+  `communication: direct | explicit` setting (API, agent package, Framework
+  builder, web UI). Explicit agents keep assistant text as notes and talk
+  through `send_message` and `no_reply`; each sent message is a
+  `conversation.message` event, and every surface reads replies through one
+  shared reader. Slack's per-endpoint `reply_mode`, `channel_post_message` and
+  the automatic `On it.` are gone; tool-only endpoints migrated onto their
+  agents. The mode is read from the agent's execution snapshot, not stored on
+  the session, and ships without an Adoption flag. Reminder, `final`, inbound
+  envelope and phase 3 tools are not built. See
+  [Explicit Communication](integrations/explicit-communication.md).
+
+* **Proposal: Explicit Communication.** An agent setting
+  (`communication: direct | explicit`) where assistant text stays private and
+  the agent talks only through `send_message` and related tools, with every
+  inbound message framed by sender, surface and origin. Generalizes Slack's
+  agent-controlled replies; one shared "what was said" reader ships first.
+  See [Explicit Communication](integrations/explicit-communication.md).
+
+* **Proposal: Agent Execution API.** Expose one agent to code through a new
+  `api` channel at `/v1/channels/{channel_id}`: org-owned agent keys, the
+  customer's own OAuth tokens (validated only), session routes only (a durable
+  task API is left for its own design), and the same contract served by `serve`. The SDK becomes the agent client and
+  its management clients are deprecated. Several agents per key is deferred.
+  See [Agent Execution API](integrations/agent-execution-api.md).
+
+* **Internal worker commands.** Worker operations that are neither hot nor
+  streaming become internal domain commands (`/internal/` path, off every
+  public surface, internal caller only), served to gRPC and in-process workers
+  through one store in `everruns_worker::internal_commands`. Session schedules
+  moved first and their five RPCs are gone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session resource registry as internal worker commands.** The four
+  registry RPCs became internal `worker_*_session_resource(s)` commands and
+  are gone. The worker's registry is now built per org, and every call checks
+  that the session belongs to that org; the RPCs took the session alone. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Leased resources as internal worker commands.** The tool-side upsert,
+  release, and list RPCs became internal `worker_*_leased_resource(s)`
+  commands and are gone; the store is built per org and checks the session
+  belongs to it (the RPCs took the session alone). The cross-org cleanup
+  sweeper keeps its claim and mark RPCs. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session storage values as internal worker commands.** The five key/value
+  RPCs (set, get, take, delete, list keys) became internal
+  `worker_*_session_storage_value` / `worker_list_session_storage_keys`
+  commands and are gone; each checks the session belongs to the worker's org
+  (the RPCs took the session alone). Secrets keep their RPCs for now. The
+  cross-org storage store went with them: the cleanup sweeper's claims and the
+  reaper's orphan scan now carry each item's org, and they use that org's
+  store. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Session tasks as internal worker commands.** The seven task registry
+  RPCs (create, update, get, list, request cancel, record and list messages)
+  became internal `worker_*_session_task(s)` /
+  `worker_*_session_task_message(s)` commands and are gone, with the EVE-642
+  native-proto task payloads and their conversions. The registry is built per
+  org (`session_task_registry(org_id)`) and checks the session belongs to it;
+  the RPCs took the session alone. The reaper reconciles each orphan through
+  the registry of the org its scan reports; its scan and prune RPCs stay. See
+  [Internal worker commands](foundations/domains.md#internal-worker-commands).
+
+* **Voice in the Framework and serve (phase 2).** `everruns::voice` (feature
+  `voice`) puts a voice channel in front of any session, on the same core
+  voice loop as the platform; serve's `voice` feature gives every top-level
+  agent browser calls, a test page and a `[voice]` section in `serve.toml`.
+  See [Voice Agents](framework/voice-agents.md).
+
+* **Voice channels (phase 1).** The platform server has a `voice` channel type
+  and runs calls on the shared core voice loop: streamed speech, fillers and
+  barge-in, with the agent writing every answer. The `voice` flag moves to
+  Adoption. Session-only client-secret and attach routes are gone. See
+  [Voice Channels on the Platform Server](operations/voice.md).
+
+* **Agents home.** Behind the `agents_home` flag, the Agents page shows each
+  agent's current load, 24-hour runs, channels and setup problems, and a
+  Channels view replaces the Exposures page. See [Agents Home](ui/agents-home.md).
+
+* **Integration-catalog retired.** The complete 0.45.0 crate release was verified
+  before source removal, including the deprecated forwarding package's archive
+  and provenance. The 0.46 publish set drops to 21 crates. Hosted integration
+  composition stays in capabilities with the same registration API and gates;
+  see [Hosted Integration Composition](foundations/architecture.md#hosted-integration-composition).
+
+* **Proposed: Voice Agents.** Voice is a channel type, so one agent can be
+  exposed over text and voice at once. One voice loop in core (delegated
+  default, plus cascaded and native modes) serves the Framework, serve and the
+  platform server; realtime, speech-to-text and text-to-speech become provider
+  services, OpenAI first. Phone is a follow-up transport on the same channel. See
+  [Voice Agents](framework/voice-agents.md).
+
+* **Server specs moved into the knowledge bundle.** `crates/server/specs/` is gone:
+  [Slack Bot Integration](integrations/slack-integration.md),
+  [User Connections](integrations/user-connections.md),
+  [Virtual Users API](runtime-resources/virtual-users-api.md) and
+  [Caching and Distributed Rate Limiting](operations/cache.md) are now concepts
+  here, so design intent has one home.
+
+## 2026-10-08
+
+* **Accepted: Tools in Shell.** A `tools_in_shell` capability will expose
+  every tool an agent has as a `tools` command in the Bashkit shell (JSON in,
+  JSON out, `tools search` and `--help` for discovery), including MCP servers
+  loaded on demand. Risky calls stop the script and report what happened, so
+  the agent writes a new one; it replaces tool search (an agent check flags
+  both together). Saved scripts are agent-owned tools, and triggers run them
+  without a model.
+  See [Tools in Shell](execution/tools-in-shell.md).
+
 ## 2026-10-07
+
+* **The org MCP catalog moved to Settings > Organization > MCP catalog.** The
+  main-navigation MCP entry is gone; the Settings entry shows only to people
+  who manage MCP servers, old `/mcp-servers` URLs redirect, and the personal
+  MCP sign-ins list moved to My agent experience. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 8.
+
+* **One session record for MCP servers added mid-conversation.** ARD
+  attachments and servers a person adds "for this chat only" (`user_mcp` add
+  with `scope: "chat"`) write the same `session_mcp:<name>` record, folded into
+  session `mcpServers` from the next turn; removing it drops the tools. Every
+  turn-context and MCP prefix path now folds it, which also makes ARD MCP
+  attachments work on the in-process worker. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 7b.
 
 * **MCP servers can load their tools on demand.** A server marked `deferred`
   is not listed at turn start (no `tools/list`); the model sees one

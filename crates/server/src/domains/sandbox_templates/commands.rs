@@ -5,8 +5,8 @@ use utoipa::ToSchema;
 
 use super::queries::effective_session_capabilities;
 use super::resolve::{sandbox_from_capabilities, sandbox_from_record, sandbox_targets};
-use crate::api::sandbox_templates::{SandboxTargetsResponse, SessionSandboxResponse};
 use crate::domains::common::*;
+use crate::domains::sandbox_templates::types::{SandboxTargetsResponse, SessionSandboxResponse};
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionSandbox {
@@ -22,6 +22,7 @@ pub struct GetSessionSandbox {
     path = "/v1/sessions/{session_id}/sandbox",
     policy = crate::domains::sessions::SESSION_VIEW,
     positional = "session_id",
+    cli = CliRoute::new(&["sessions", "sandbox"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what a session's sandbox can reach", "everruns sessions sandbox get session_01h9",)]),
 )]
 impl Command for GetSessionSandbox {
     type Output = SessionSandboxResponse;
@@ -51,7 +52,8 @@ pub struct ListSandboxTargets;
     category = "sandbox-templates",
     description = "List the Sandbox targets this deployment can offer.",
     method = "GET",
-    path = "/v1/sandbox-targets"
+    path = "/v1/sandbox-targets",
+    cli = CliRoute::new(&["sandbox-targets"], "list").with_examples(&[CliExample::new("See which sandbox targets this deployment offers", "everruns sandbox-targets list",)]),
 )]
 impl Command for ListSandboxTargets {
     type Output = SandboxTargetsResponse;

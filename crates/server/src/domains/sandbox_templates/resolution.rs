@@ -1,6 +1,6 @@
 //! Sandbox Template validation, resolution, and runtime capability mapping.
 
-use crate::records::{
+use crate::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxContainmentLevel, SandboxContainmentSpec, SandboxDurability,
     SandboxEscalation, SandboxIdleAction, SandboxNetworkPolicy, SandboxPolicy, SandboxPolicyMode,
     SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
@@ -65,7 +65,7 @@ pub fn validate_sandbox_policy(set: &SandboxPolicy) -> Result<(), String> {
     }
 
     for (name, spec) in &set.templates {
-        crate::records::validate_addressable_name(name)
+        crate::domains::agents::record::validate_addressable_name(name)
             .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
         resolve_spec(spec)
             .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
@@ -132,7 +132,7 @@ pub fn resolve_sandbox_selection(
 pub fn managed_bashkit_sandbox_spec() -> SandboxTemplateSpec {
     SandboxTemplateSpec {
         template_revision_id: None,
-        target: crate::records::SandboxTargetSpec::vfs("bashkit"),
+        target: crate::domains::sandbox_templates::record::SandboxTargetSpec::vfs("bashkit"),
         containment: Some(SandboxContainmentSpec::isolated()),
         durability: Some(SandboxDurability::Checkpointed),
         lifecycle: Default::default(),
@@ -149,7 +149,7 @@ pub fn managed_bashkit_sandbox_selection() -> ResolvedSandboxSelection {
 }
 
 pub fn selection_from_sandbox_template(
-    template: &crate::records::SandboxTemplate,
+    template: &crate::domains::sandbox_templates::record::SandboxTemplate,
 ) -> Result<ResolvedSandboxSelection, String> {
     let mut authored = template.current_revision.spec.clone();
     authored.template_revision_id = Some(template.current_revision.public_id);
@@ -221,7 +221,45 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     })
 }
 
-fn validate_credential_binding(target: &crate::records::SandboxTargetSpec) -> Result<(), String> {
+/// The organization account a `session_user` template uses when the Session
+/// has no user to hold a provider account.
+///
+/// A trigger, schedule or channel ingress starts its Session without a person,
+/// so "the Session user's account" names nobody. The organization's account for
+/// the provider is the only owner left, and it is used only when it is the one
+/// account for that provider: with several, picking one would silently bill an
+/// arbitrary account, so the template has to name it instead.
+pub(crate) fn sole_organization_account<T>(
+    provider: &str,
+    accounts: impl IntoIterator<Item = T>,
+    provider_of: impl Fn(&T) -> &str,
+) -> Result<T, String> {
+    let mut matching = accounts
+        .into_iter()
+        .filter(|account| provider_of(account) == provider);
+    let first = matching.next();
+    let others = matching.count();
+    match (first, others) {
+        (Some(account), 0) => Ok(account),
+        (None, _) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has no {provider} account. Add an organization {provider} \
+             account, or set the template's account to one."
+        )),
+        (Some(_), others) => Err(format!(
+            "This Sandbox Template uses the Session user's {provider} account, but this \
+             session has no user (it was started by a trigger or channel) and the \
+             organization has {} {provider} accounts. Set the template's account to the \
+             one it should use.",
+            others + 1
+        )),
+    }
+}
+
+fn validate_credential_binding(
+    target: &crate::domains::sandbox_templates::record::SandboxTargetSpec,
+) -> Result<(), String> {
     let credential = &target.credential;
     if credential.virtual_user_id.is_some() {
         return Err(
@@ -526,8 +564,15 @@ fn validate_containment(containment: &SandboxContainmentSpec) -> Result<(), Stri
 
 /// Replace every legacy compute capability with the one selected by the pinned
 /// profile. Non-compute capabilities keep their original layering and order.
+///
+/// `inherited` holds the broader layers (harness and agent) when
+/// `capabilities` is only the session layer. A Bashkit profile keeps the
+/// shell's `enable_http` opt-in from either list: the pinned profile picks
+/// where commands run, not whether the agent may use curl, and the session
+/// layer overrides the agent layer by capability id.
 pub fn apply_sandbox_to_capabilities(
     capabilities: &[CapabilityRef],
+    inherited: &[CapabilityRef],
     environment: Option<&ResolvedSandboxSpec>,
 ) -> Vec<CapabilityRef> {
     let Some(environment) = environment else {
@@ -543,8 +588,25 @@ pub fn apply_sandbox_to_capabilities(
         })
         .cloned()
         .collect::<Vec<_>>();
-    result.push(capability_for_sandbox(environment));
+    let mut selected = capability_for_sandbox(environment);
+    if environment.target.kind == SandboxTargetKind::Vfs
+        && bashkit_http_opt_in(capabilities).or_else(|| bashkit_http_opt_in(inherited))
+            == Some(true)
+    {
+        selected = CapabilityRef::with_config("bashkit_shell", json!({"enable_http": true}));
+    }
+    result.push(selected);
     result
+}
+
+/// The `enable_http` value of the last Bashkit shell entry, if any sets it.
+fn bashkit_http_opt_in(capabilities: &[CapabilityRef]) -> Option<bool> {
+    capabilities
+        .iter()
+        .rev()
+        .find(|capability| matches!(capability.id(), "bashkit_shell" | "virtual_bash"))
+        .and_then(|capability| capability.config_value().get("enable_http"))
+        .and_then(serde_json::Value::as_bool)
 }
 
 pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
@@ -860,10 +922,14 @@ fn validate_bootstrap(profile: &SandboxTemplateSpec) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::{SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec};
+    use crate::domains::sandbox_templates::record::{
+        SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec,
+    };
     use std::collections::BTreeMap;
 
-    fn profile(target: crate::records::SandboxTargetSpec) -> SandboxTemplateSpec {
+    fn profile(
+        target: crate::domains::sandbox_templates::record::SandboxTargetSpec,
+    ) -> SandboxTemplateSpec {
         SandboxTemplateSpec {
             template_revision_id: None,
             target,
@@ -894,7 +960,7 @@ mod tests {
             CapabilityRef::new("current_time"),
             CapabilityRef::new("daytona"),
         ];
-        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&selected.spec));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, &[], Some(&selected.spec));
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "bashkit_shell"]
@@ -957,6 +1023,26 @@ mod tests {
     }
 
     #[test]
+    fn userless_session_uses_the_sole_organization_account() {
+        let accounts = vec![("brave_search", 1), ("daytona", 2), ("e2b", 3)];
+        assert_eq!(
+            sole_organization_account("daytona", accounts, |a| a.0).unwrap(),
+            ("daytona", 2)
+        );
+    }
+
+    #[test]
+    fn userless_session_fails_without_exactly_one_organization_account() {
+        let none = sole_organization_account("daytona", vec![("e2b", 1)], |a| a.0).unwrap_err();
+        assert!(none.contains("no daytona account"), "{none}");
+
+        let many =
+            sole_organization_account("daytona", vec![("daytona", 1), ("daytona", 2)], |a| a.0)
+                .unwrap_err();
+        assert!(many.contains("has 2 daytona accounts"), "{many}");
+    }
+
+    #[test]
     fn managed_profile_replaces_the_session_filesystem_tool_surface() {
         let resolved = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
         assert_eq!(
@@ -969,11 +1055,127 @@ mod tests {
             CapabilityRef::new("current_time"),
         ];
 
-        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&resolved));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, &[], Some(&resolved));
 
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "session_sandbox"]
+        );
+    }
+
+    /// Sandbox Worker inherits Worker's session file system. Under a managed
+    /// template the sandbox must own every file tool the model can call, or a
+    /// file the sandbox just cloned reads as "File not found".
+    #[tokio::test]
+    async fn sandbox_worker_under_a_managed_template_exposes_no_vfs_file_tool() {
+        use everruns_contracts::capability::BuiltInHarnessPreset;
+        use everruns_core::capabilities::{
+            SESSION_FILE_TOOL_NAMES, SystemPromptContext, collect_capabilities_with_configs,
+            resolve_capability_configs,
+        };
+
+        let managed = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        // Sandbox Worker adds no capability of its own; Worker is its whole set.
+        let harness = BuiltInHarnessPreset::Worker.effective_capabilities();
+        let session = apply_sandbox_to_capabilities(&[], &harness, Some(&managed));
+        let effective = everruns_core::merge_capabilities(&harness, &session);
+        let registry = crate::platform::oss_capability_registry_for_grade(DeploymentGrade::Dev);
+        let resolved = resolve_capability_configs(&effective, &registry).unwrap();
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
+        let collected = collect_capabilities_with_configs(&resolved, &registry, &ctx).await;
+
+        // Skills and output persistence still need the VFS capability.
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == "session_file_system")
+        );
+        let mut definitions = collected.tool_definitions;
+        for hook in &collected.tool_definition_hooks {
+            definitions = hook.transform(definitions);
+        }
+        for name in SESSION_FILE_TOOL_NAMES {
+            let matching: Vec<_> = definitions.iter().filter(|d| d.name() == *name).collect();
+            assert!(matching.len() <= 1, "{name} offered twice");
+            if let Some(definition) = matching.first() {
+                assert_eq!(
+                    definition.hints().capability_id.as_deref(),
+                    Some("session_sandbox"),
+                    "{name} must run in the sandbox"
+                );
+            }
+            let tool = collected.tools.iter().rfind(|t| t.name() == *name);
+            assert_eq!(
+                tool.is_some(),
+                !matching.is_empty(),
+                "{name}: definition and implementation disagree"
+            );
+            if let Some(tool) = tool {
+                assert_eq!(
+                    tool.to_definition().concurrency_class(),
+                    Some("session_sandbox"),
+                    "{name} must execute in the sandbox"
+                );
+            }
+        }
+        for name in [
+            "read_file",
+            "read_many_files",
+            "list_directory",
+            "glob",
+            "grep",
+        ] {
+            assert!(
+                definitions.iter().any(|d| d.name() == name),
+                "{name} missing"
+            );
+        }
+    }
+
+    #[test]
+    fn bashkit_profile_keeps_the_agents_http_opt_in() {
+        let resolved = resolve_spec(&profile(SandboxTargetSpec::vfs("bashkit"))).unwrap();
+        let shell = |enable_http: bool| {
+            CapabilityRef::with_config("bashkit_shell", json!({ "enable_http": enable_http }))
+        };
+        let http_of = |mapped: Vec<CapabilityRef>| {
+            mapped
+                .iter()
+                .find(|capability| capability.id() == "bashkit_shell")
+                .map(|capability| capability.config_value()["enable_http"].clone())
+        };
+
+        // The agent layer opted in: the pinned Bashkit profile keeps it.
+        let agent = vec![CapabilityRef::new("current_time"), shell(true)];
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(&[], &agent, Some(&resolved))),
+            Some(json!(true))
+        );
+        // A session layer that says no wins over the agent.
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(
+                &[shell(false)],
+                &agent,
+                Some(&resolved)
+            )),
+            Some(json!(false))
+        );
+        // Nobody opted in: HTTP stays off.
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(
+                &[],
+                &[CapabilityRef::new("bashkit_shell")],
+                Some(&resolved)
+            )),
+            Some(json!(false))
+        );
+        // A managed profile never inherits the Bashkit opt-in.
+        let managed = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
+        assert_eq!(
+            http_of(apply_sandbox_to_capabilities(&[], &agent, Some(&managed))),
+            None
         );
     }
 

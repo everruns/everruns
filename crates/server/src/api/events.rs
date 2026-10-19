@@ -4,6 +4,8 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+pub use crate::domains::events::types::EventsQuery;
+use crate::domains::events::types::validate_event_type_list;
 use crate::domains::events::{EventsSummaryCmd, EventsSummaryResult, ListEvents};
 use crate::storage::StorageBackend;
 use axum::{
@@ -21,12 +23,12 @@ use axum::{
 // support deserializing repeated query keys (?exclude=a&exclude=b) into Vec<String>.
 use axum_extra::extract::Query;
 use everruns_contracts::typed_id::{EventId, SessionId};
-use everruns_core::{Caller, Event, EventListener, VALID_EVENT_TYPES};
+use everruns_core::{Caller, Event, EventListener};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
-use crate::event_notifications::EventNotificationBroadcaster;
+use crate::live_updates::event_notifications::EventNotificationBroadcaster;
 use crate::services::EventService;
 
 use futures::{
@@ -41,55 +43,6 @@ use uuid::Uuid;
 
 use crate::domains::sessions::SessionService;
 use utoipa::{IntoParams, ToSchema};
-
-/// Query parameters accepted by the SSE `/sse` endpoint.
-///
-/// SSE supports filtering only — pagination/limit semantics are not meaningful
-/// for a continuous stream. Debug-only filters live on `ListEventsQuery` and
-/// are intentionally absent here so they do not appear on the SSE OpenAPI spec.
-#[derive(Debug, Default, Deserialize, ToSchema, IntoParams)]
-pub struct EventsQuery {
-    /// Filter events with ID greater than this event ID (prefixed format: event_{32-hex})
-    pub since_id: Option<EventId>,
-    /// Forward cursor: replay durable events with `sequence` greater than this
-    /// value before switching to live streaming. `after_sequence=0` replays the
-    /// session from its first event — that is what a client with an empty
-    /// snapshot must send, otherwise events written between its snapshot and
-    /// this subscription are never delivered. Mutually exclusive with `since_id`.
-    pub after_sequence: Option<i32>,
-    /// Positive type filter: only return events matching these types (can be specified multiple times).
-    /// When empty, all types are returned. Example: ?types=turn.started&types=turn.completed
-    #[serde(default)]
-    #[param(style = Form, explode = true)]
-    pub types: Vec<String>,
-    /// Event types to exclude from the response (can be specified multiple times).
-    /// Applied after `types` filter. Common delta events to exclude: output.message.delta, reason.thinking.delta
-    #[serde(default)]
-    #[param(style = Form, explode = true)]
-    pub exclude: Vec<String>,
-}
-
-impl EventsQuery {
-    /// Validate types and exclude parameters.
-    /// Rejects unknown event types and limits array size to prevent abuse.
-    fn validate(&self) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-        validate_event_type_list(&self.types, "types")?;
-        validate_event_type_list(&self.exclude, "exclude")?;
-        if self.since_id.is_some() && self.after_sequence.is_some() {
-            return Err(ErrorResponse::new(
-                "since_id and after_sequence are mutually exclusive".to_string(),
-            )
-            .into_response(StatusCode::BAD_REQUEST));
-        }
-        if self.after_sequence.is_some_and(|seq| seq < 0) {
-            return Err(
-                ErrorResponse::new("after_sequence must be >= 0".to_string())
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
-        }
-        Ok(())
-    }
-}
 
 /// Query parameters accepted by the JSON `/events` endpoint.
 ///
@@ -153,10 +106,6 @@ impl ListEventsQuery {
     }
 }
 
-/// Max event types per filter parameter. Kept above the known event set so
-/// clients can explicitly request every supported event type.
-const MAX_EVENT_TYPE_FILTER_SIZE: usize = 64;
-
 /// Whether a live event delivered to this SSE stream should actually be sent
 /// to the client.
 ///
@@ -184,29 +133,6 @@ fn event_passes_stream_filter(
     true
 }
 
-/// Validate a list of event type strings: checks size limit and known types.
-fn validate_event_type_list(
-    types: &[String],
-    param_name: &str,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
-        return Err(ErrorResponse::new(format!(
-            "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
-            types.len()
-        ))
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-    for t in types {
-        if !VALID_EVENT_TYPES.contains(&t.as_str()) {
-            return Err(
-                ErrorResponse::new(format!("{param_name}: unknown event type '{t}'"))
-                    .into_response(StatusCode::BAD_REQUEST),
-            );
-        }
-    }
-    Ok(())
-}
-
 // ============================================
 // App State and Routes
 // ============================================
@@ -230,7 +156,7 @@ impl AppState {
         listeners: Vec<Arc<dyn EventListener>>,
         auth: AuthState,
         sse_tracker: Arc<SseConnectionTracker>,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             db: db.clone(),
@@ -382,15 +308,94 @@ pub async fn stream_sse(
 
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, types = ?query.types, exclude = ?query.exclude, "Starting event stream");
 
-    let event_service = state.event_service.clone();
-    let initial_since_id = query.since_id.map(|id| id.uuid());
+    Ok(session_event_sse(SessionEventStream {
+        event_service: state.event_service.clone(),
+        event_broadcaster: state.event_broadcaster.clone(),
+        session_id,
+        since_id: query.since_id.map(|id| id.uuid()),
+        after_sequence: query.after_sequence,
+        filter_types: query.types,
+        exclude_types: query.exclude,
+        guard: sse_guard,
+        render: Arc::new(canonical_sse),
+    })
+    .await)
+}
+
+/// Convert an event to SSE as `/v1` publishes it.
+///
+/// Only set SSE `id:` for durable events (those with a PG sequence), so that
+/// reconnect cursors (`since_id`) always refer to an event that exists in PostgreSQL.
+/// Ephemeral events (no sequence) get no `id:` field — the client's last-event-id
+/// stays pointing to the most recent durable event.
+fn canonical_sse(event: &Event, retry: Duration) -> Option<SseEvent> {
+    // Same projection the list path applies (EVE-933): reasoning replay
+    // state is stored but never published. Cloning only for the variants
+    // that carry a message keeps the delta stream allocation-free.
+    let json = if event.data.needs_public_projection() {
+        serde_json::to_string(&event.clone().into_public())
+    } else {
+        serde_json::to_string(event)
+    }
+    .unwrap_or_else(|_| "{}".to_string());
+    Some(sse_frame(event, json, retry))
+}
+
+/// One SSE frame for `event` carrying `json`, with `id:` on durable events.
+pub(crate) fn sse_frame(event: &Event, json: String, retry: Duration) -> SseEvent {
+    let mut sse = SseEvent::default()
+        .event(&event.event_type)
+        .data(json)
+        .retry(retry);
+    if event.sequence.is_some() {
+        sse = sse.id(event.id.to_string());
+    }
+    sse
+}
+
+/// Renders one event for the wire, or `None` to leave it out. The cursor still
+/// advances past a left-out event.
+pub(crate) type SseRender = Arc<dyn Fn(&Event, Duration) -> Option<SseEvent> + Send + Sync>;
+
+/// One session's live event stream: what to follow and how to render it.
+pub(crate) struct SessionEventStream {
+    pub event_service: Arc<EventService>,
+    /// Push-based event notifications via pg_notify (None in DEV_MODE/in-memory)
+    pub event_broadcaster: Option<Arc<EventNotificationBroadcaster>>,
+    pub session_id: Uuid,
+    /// Reconnect cursor: replay durable events after this one first.
+    pub since_id: Option<Uuid>,
+    /// Cursor for a client that holds no events yet.
+    pub after_sequence: Option<i32>,
+    pub filter_types: Vec<String>,
+    pub exclude_types: Vec<String>,
+    /// Connection slot, held until the client goes away.
+    pub guard: super::sse::SseConnectionGuard,
+    pub render: SseRender,
+}
+
+/// The session SSE stream every surface shares: `connected`, a one-time
+/// replay from the cursor, live delivery (or PG polling when no subscription
+/// is available), connection cycling with `disconnecting`, and a heartbeat.
+pub(crate) async fn session_event_sse(
+    params: SessionEventStream,
+) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
+    let SessionEventStream {
+        event_service,
+        event_broadcaster,
+        session_id,
+        since_id: initial_since_id,
+        after_sequence: initial_after_sequence,
+        filter_types,
+        exclude_types,
+        guard: sse_guard,
+        render,
+    } = params;
+
     // A client that holds no events sends `after_sequence=0` instead of a
     // `since_id`; without it the stream would start live and silently drop
     // everything written before the subscription (EVE: first message of a fresh
     // chat landed nowhere in the transcript).
-    let initial_after_sequence = query.after_sequence;
-    let filter_types = query.types;
-    let exclude_types = query.exclude;
 
     // Use realtime config for session events (fast updates for interactive UX)
     let config = SseStreamConfig::realtime();
@@ -412,7 +417,7 @@ pub async fn stream_sse(
     // Legacy PG polling waker (used only when EventDelivery subscription unavailable)
     let event_waker = Arc::new(tokio::sync::Notify::new());
     let mut pg_notify_listener_task: Option<JoinHandle<()>> = None;
-    if let (false, Some(broadcaster)) = (use_push, &state.event_broadcaster) {
+    if let (false, Some(broadcaster)) = (use_push, &event_broadcaster) {
         let mut rx = broadcaster.subscribe();
         let waker = event_waker.clone();
         let target_session = session_id;
@@ -436,32 +441,6 @@ pub async fn stream_sse(
 
     // Shared subscription wrapped in Arc<Mutex> for use inside the stream
     let subscription = Arc::new(tokio::sync::Mutex::new(subscription));
-
-    // Helper: convert Event to SSE format
-    // Only set SSE `id:` for durable events (those with a PG sequence), so that
-    // reconnect cursors (`since_id`) always refer to an event that exists in PostgreSQL.
-    // Ephemeral events (no sequence) get no `id:` field — the client's last-event-id
-    // stays pointing to the most recent durable event.
-    fn event_to_sse(event: &Event, retry: Duration) -> Result<SseEvent, Infallible> {
-        let event_type = event.event_type.clone();
-        // Same projection the list path applies (EVE-933): reasoning replay
-        // state is stored but never published. Cloning only for the variants
-        // that carry a message keeps the delta stream allocation-free.
-        let json = if event.data.needs_public_projection() {
-            serde_json::to_string(&event.clone().into_public())
-        } else {
-            serde_json::to_string(event)
-        }
-        .unwrap_or_else(|_| "{}".to_string());
-        let mut sse = SseEvent::default()
-            .event(&event_type)
-            .data(json)
-            .retry(retry);
-        if event.sequence.is_some() {
-            sse = sse.id(event.id.to_string());
-        }
-        Ok(sse)
-    }
 
     // Stream state machine
     #[derive(Clone)]
@@ -521,6 +500,7 @@ pub async fn stream_sse(
     let stream = stream::unfold(initial_state, move |state| {
         let event_service = event_service.clone();
         let subscription = subscription.clone();
+        let render = render.clone();
         async move {
             match state.phase {
                 StreamPhase::Closed => None,
@@ -584,7 +564,8 @@ pub async fn stream_sse(
                             let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
                             let sse_events: Vec<Result<SseEvent, Infallible>> = events
                                 .iter()
-                                .map(|event| event_to_sse(event, retry_duration))
+                                .filter_map(|event| render(event, retry_duration))
+                                .map(Ok)
                                 .collect();
 
                             if !sse_events.is_empty() {
@@ -652,8 +633,9 @@ pub async fn stream_sse(
                             match event {
                                 Some(event) if event_passes_stream_filter(&event, session_id, &state.filter_types, &state.exclude_types) => {
                                     let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
-                                    let sse_event = event_to_sse(&event, retry_duration);
-                                    Some((stream::iter(vec![sse_event]), state))
+                                    let sse_events: Vec<Result<SseEvent, Infallible>> =
+                                        render(&event, retry_duration).map(Ok).into_iter().collect();
+                                    Some((stream::iter(sse_events), state))
                                 }
                                 Some(_) => {
                                     // Wrong session (partition collision) or filtered out — skip
@@ -691,7 +673,8 @@ pub async fn stream_sse(
                             let retry_duration = state.config.retry_hint(state.config.min_backoff_ms);
                             let sse_events: Vec<Result<SseEvent, Infallible>> = events
                                 .iter()
-                                .map(|event| event_to_sse(event, retry_duration))
+                                .filter_map(|event| render(event, retry_duration))
+                                .map(Ok)
                                 .collect();
 
                             Some((stream::iter(sse_events), StreamState {
@@ -735,7 +718,7 @@ pub async fn stream_sse(
     let keep_alive = KeepAlive::new()
         .interval(config.heartbeat_interval())
         .text("heartbeat");
-    Ok(Sse::new(guarded_stream).keep_alive(keep_alive))
+    Sse::new(guarded_stream).keep_alive(keep_alive)
 }
 
 /// Stream wrapper that holds an SSE connection guard until the stream is dropped.
@@ -881,7 +864,9 @@ pub async fn events_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::events::types::MAX_EVENT_TYPE_FILTER_SIZE;
     use everruns_contracts::typed_id::{MessageId, TurnId};
+    use everruns_core::VALID_EVENT_TYPES;
     use everruns_core::events::{EventData, OutputMessageDeltaData};
 
     fn test_event(session_id: Uuid, event_type: &str) -> Event {

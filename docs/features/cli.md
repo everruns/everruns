@@ -49,6 +49,16 @@ The CLI defaults to [Everruns Cloud](https://app.everruns.com) at `https://app.e
 everruns login          # opens the browser for OAuth
 everruns login --token  # paste a personal access token instead (SSH, headless)
 everruns status         # show the current user and organization
+everruns whoami         # ask the server who you are, and your token's access
+```
+
+`login --token` accepts a [read-only token](/features/ui/#token-access) too,
+for scripts and CI that only read. `everruns whoami` then shows
+`Access:  read-only (personal access token)`, and a command that would change
+something fails with one line:
+
+```text
+Error: This personal access token is read-only; this command needs a full-access token.
 ```
 
 For a self-hosted deployment, point the CLI at your API first:
@@ -66,7 +76,7 @@ export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 
 | Group | Subcommands |
 |---|---|
-| `login`, `logout`, `status` | Sign in, sign out, show the current user and organization |
+| `login`, `logout`, `status`, `whoami` | Sign in, sign out, show the current user and organization, show your token's access |
 | `orgs` | `list` organizations, `select` the active one |
 | `agents` | `create`, `update`, `import`, `export`, `validate`, `diff`, plus the platform commands |
 | `sessions` | `create`, `watch`, `export`, plus the platform commands |
@@ -108,7 +118,7 @@ everruns sessions create --agent agent_... --title "Debug session" --reason "Rep
 # With session-level overrides
 everruns sessions create \
   --agent agent_... \
-  --harness worker-base \
+  --harness bashkit-worker \
   --capability 'web_fetch={"timeout":10}' \
   --hint setup_connection=true \
   --network-allow api.example.com \
@@ -143,7 +153,7 @@ everruns agents list -o yaml
 
 ## Platform commands
 
-Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them.
+Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them, or read the [CLI command reference](/reference/cli/), which is generated from the same help.
 
 ```bash
 everruns agents triggers list --agent-id agent_...
@@ -174,6 +184,8 @@ Every command that changes something takes `--reason "..."`, which is stored on 
 
 ## See also
 
+- [CLI command reference](/reference/cli/): every command with its flags and a worked example.
+- [Use in AI tools](/getting-started/use-in-ai-tools/): the Everruns plugin teaches coding agents these same commands.
 - [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.
 - [Define agents as files](/how-to/define-agents-as-files/): file formats for `-f`.
 - [SDK](/features/sdk/): the programmatic equivalent.

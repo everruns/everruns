@@ -91,6 +91,11 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     .get("blocked")
                     .and_then(|value| value.as_bool())
                     .unwrap_or(false),
+                // `ActResult::error_count`: failed calls returned to the model.
+                issue_count: output
+                    .get("error_count")
+                    .and_then(|value| value.as_u64())
+                    .map_or(0, |count| u32::try_from(count).unwrap_or(u32::MAX)),
                 waiting_for_tool_results: output
                     .get("waiting_for_tool_results")
                     .and_then(|value| value.as_bool())
@@ -321,11 +326,30 @@ pub(crate) fn has_pending_ask_user(act_result: &crate::engine::ActResult) -> boo
         .any(|call| call.name == everruns_contracts::ASK_USER_TOOL_NAME)
 }
 
+/// Texts of the messages this act delivered with `send_message`, in call order.
+pub(crate) fn sent_texts(act_result: &crate::engine::ActResult) -> Vec<String> {
+    act_result
+        .results
+        .iter()
+        .filter(|call| call.success)
+        .filter_map(|call| {
+            crate::conversation::sent_message(
+                &call.tool_call.name,
+                &call.tool_call.id,
+                &call.tool_call.arguments,
+                call.result.result.as_ref(),
+            )
+        })
+        .map(|sent| sent.text)
+        .collect()
+}
+
 /// Build the planner's [`ActOutcome`] from a completed act, deriving the
 /// `ask_user` pause from the client tool calls it left pending (EVE-1057).
 pub(crate) fn act_outcome(act_result: &crate::engine::ActResult) -> ActOutcome {
     ActOutcome {
         blocked: act_result.blocked,
+        issue_count: act_result.error_count,
         waiting_for_tool_results: act_result.waiting_for_tool_results,
         waiting_for_url_elicitation: act_result.waiting_for_url_elicitation,
         waiting_for_ask_user: has_pending_ask_user(act_result),

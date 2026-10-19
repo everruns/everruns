@@ -6,12 +6,40 @@
 //   `2025-06-18` gets `title`, `outputSchema`, and structured output support;
 //   `2025-03-26` omits those newer fields.
 // - Keep execution-only data such as timeout internal to the registry.
+// - A read-only personal access token lists and calls only the tools in
+//   `READ_ONLY_TOOLS` (knowledge/security/pat-scopes.md, Decision 5). The list
+//   is explicit rather than read from `readOnlyHint`, and a test keeps the two
+//   equal, so an annotation is never the only control. A tool missing from it,
+//   a new one included, is refused to a read token.
 
 use everruns_core::McpToolAnnotations;
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::supports_rich_tool_shape;
+use crate::auth::pat_scope::RouteAccess;
+
+/// Tools that change nothing, the only ones a read-only personal access
+/// token may list or call. Everything else is `Write`.
+pub(super) const READ_ONLY_TOOLS: &[&str] = &[
+    "me",
+    "list_organizations",
+    "session_get_status",
+    "discover",
+    "query",
+    "agent_get_card",
+    "everruns_home",
+    "session_view",
+];
+
+/// Access class of an MCP tool for personal access token scopes.
+pub(super) fn tool_access(name: &str) -> RouteAccess {
+    if READ_ONLY_TOOLS.contains(&name) {
+        RouteAccess::Read
+    } else {
+        RouteAccess::Write
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,7 +141,9 @@ fn session_set_secret_tool(
          accepts the value: pass only the secret's name, and Everruns responds with a URL for \
          the user to open, where a form served by Everruns collects the value directly. The \
          value therefore never passes through this MCP client or the model. Call it again \
-         after the user reports finishing to confirm the secret is stored.",
+         after the user reports finishing to confirm the secret is stored. Pass `url` to make \
+         it a bound secret: an API key the agent's shell uses as $NAME in HTTP requests to that \
+         URL but can never read; with `scope: agent` it serves every session of the agent.",
         with_organization_id(
             object_schema(
                 vec![
@@ -125,6 +155,37 @@ fn session_set_secret_tool(
                             "description": "Secret name, e.g. OPENAI_API_KEY. Names are case-sensitive.",
                             "minLength": 1,
                             "maxLength": 255
+                        }),
+                    ),
+                    (
+                        "url",
+                        json!({
+                            "type": "string",
+                            "description": "Bind the secret to this https URL prefix, e.g. https://api.example.com. The value is then write-only and sent only to this URL.",
+                            "format": "uri"
+                        }),
+                    ),
+                    (
+                        "auth",
+                        json!({
+                            "type": "string",
+                            "enum": ["bearer", "header"],
+                            "description": "How a bound value is sent: `Authorization: Bearer <value>` (default) or a custom header."
+                        }),
+                    ),
+                    (
+                        "header",
+                        json!({
+                            "type": "string",
+                            "description": "Header name when auth is `header`, e.g. X-Api-Key."
+                        }),
+                    ),
+                    (
+                        "scope",
+                        json!({
+                            "type": "string",
+                            "enum": ["session", "agent"],
+                            "description": "`session` (default) or `agent`: a bound secret for every session of the session's agent."
                         }),
                     ),
                 ],
@@ -268,6 +329,7 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
                         "minLength": 1
                     }),
                 ),
+                ("files", super::files::files_schema()),
                 (
                     "title",
                     json!({
@@ -319,7 +381,9 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
                 "message_id": { "type": "string" },
                 "status": { "type": "string" },
                 "hint": { "type": "string" },
-                "budget_id": { "type": "string" }
+                "budget_id": { "type": "string" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" }
             },
             "required": ["session_id", "message_id", "status", "hint"],
             "additionalProperties": false
@@ -354,6 +418,7 @@ fn session_send_message_tool(
                         "minLength": 1
                     }),
                 ),
+                ("files", super::files::files_schema()),
                 (
                     "organization_id",
                     json!({
@@ -371,9 +436,12 @@ fn session_send_message_tool(
             "properties": {
                 "message_id": { "type": "string" },
                 "session_status": { "type": "string" },
-                "hint": { "type": "string" }
+                "session_id": { "type": "string" },
+                "hint": { "type": "string" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" }
             },
-            "required": ["message_id", "session_status", "hint"]
+            "required": ["message_id", "session_status", "session_id", "hint"]
         })),
         Some(McpToolAnnotations {
             read_only_hint: Some(false),
@@ -434,6 +502,8 @@ fn session_get_status_tool(
                 "latest_output": { "type": ["string", "null"] },
                 "last_event_id": { "type": ["string", "null"] },
                 "event_count": { "type": "integer" },
+                "view_url": { "type": "string" },
+                "ui_link": { "type": "string" },
                 "events": {
                     "type": "array",
                     "items": {
@@ -816,7 +886,7 @@ fn discover_output_schema() -> Value {
             "output_schema": { "type": "object", "additionalProperties": true },
             "output_shape": {
                 "type": "string",
-                "enum": ["array", "paginated", "unknown"]
+                "enum": crate::domains::common::OUTPUT_SHAPES
             }
         },
         "required": ["name", "category", "description", "read_only", "output_shape"]
@@ -900,6 +970,94 @@ mod tests {
         for (mcp, description, platform_schema) in cases {
             assert_eq!(mcp.description, description);
             assert_eq!(without_organization_id(mcp.input_schema), platform_schema);
+        }
+    }
+
+    // Conversation tool results are link-decorated (`view_url`, `ui_link`)
+    // after they are built. Their output schemas forbid unknown fields, so a
+    // field the decoration adds and the schema omits makes every strict
+    // client reject an otherwise successful call.
+    #[test]
+    fn conversation_tool_results_match_their_output_schemas() {
+        let session = "session_01a127e382e973a38f6bb02d11a94c98";
+        let cases = [
+            (
+                agent_run_tool("2026-07-28", "org"),
+                json!({
+                    "session_id": session,
+                    "message_id": "message_01a127e383ef727d9384ee1a424976d4",
+                    "status": "started",
+                    "hint": "poll",
+                    "budget_id": "bdgt_01a127e383ef727d9384ee1a424976d4"
+                }),
+            ),
+            (
+                session_send_message_tool("2026-07-28", "org"),
+                json!({
+                    "message_id": "message_01a127e383ef727d9384ee1a424976d4",
+                    "session_status": "active",
+                    "session_id": session,
+                    "hint": "poll"
+                }),
+            ),
+            (
+                session_get_status_tool("2026-07-28", "org"),
+                json!({
+                    "session_id": session,
+                    "status": "idle",
+                    "agent_id": "agent_01a127e366fe73c498cd6b508cb8afd0",
+                    "title": null,
+                    "latest_output": "done",
+                    "last_event_id": "event_01a127e3843e741f9ca122eca91bfb5c",
+                    "event_count": 1,
+                    "events": [{
+                        "id": "event_01a127e3843e741f9ca122eca91bfb5c",
+                        "type": "turn.completed",
+                        "ts": "2026-10-10T22:16:46Z"
+                    }]
+                }),
+            ),
+        ];
+        let links = crate::api::common::UrlBuilder::new(
+            "https://app.example.com/api",
+            "https://app.example.com",
+        );
+        for (tool, mut result) in cases {
+            assert!(links.decorate_value_links(&mut result), "{}", tool.name);
+            let schema = tool.output_schema.expect("output schema");
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            let errors: Vec<_> = validator
+                .iter_errors(&result)
+                .map(|e| e.to_string())
+                .collect();
+            assert!(errors.is_empty(), "{}: {errors:?}\n{result:#}", tool.name);
+        }
+    }
+
+    // The explicit read-only list is the control; the annotation is what a
+    // client sees. They must agree on every tool of every protocol version.
+    #[test]
+    fn read_only_tools_match_their_annotations() {
+        for version in super::super::SUPPORTED_PROTOCOL_VERSIONS {
+            for tool in tool_definitions(version, "org") {
+                let annotated = tool
+                    .annotations
+                    .as_ref()
+                    .is_some_and(|annotations| annotations.read_only_hint == Some(true));
+                assert_eq!(
+                    tool_access(&tool.name) == RouteAccess::Read,
+                    annotated,
+                    "{} ({version}): READ_ONLY_TOOLS disagrees with readOnlyHint",
+                    tool.name
+                );
+            }
+        }
+        let latest = tool_definitions(super::super::MCP_PROTOCOL_VERSION_LATEST, "org");
+        for name in READ_ONLY_TOOLS {
+            assert!(
+                latest.iter().any(|tool| tool.name == *name),
+                "READ_ONLY_TOOLS names {name}, which is not a tool"
+            );
         }
     }
 

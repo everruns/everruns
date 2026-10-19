@@ -1,7 +1,7 @@
 use crate::test_harness::get_database_url;
 use everruns_server::storage::UpdateField;
 use everruns_server::{
-    org_init,
+    setup::org_init,
     storage::{
         CreateAgentRow, CreateHarnessRow, CreateOrganizationRow, Database, StorageBackend,
         UpdateAgent, UpdateOrganizationSettings,
@@ -113,6 +113,8 @@ async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

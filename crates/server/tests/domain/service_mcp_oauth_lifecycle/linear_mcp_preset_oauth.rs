@@ -14,7 +14,7 @@ use everruns_server::api::user_connections::{
 };
 use everruns_server::auth::{AuthConfig, AuthState, ResolvedOrg};
 use everruns_server::domains::mcp_servers::McpServerService;
-use everruns_server::storage::models::{CreateAgentRow, CreateMcpServerRow};
+use everruns_server::storage::{CreateAgentRow, CreateMcpServerRow};
 use everruns_server::storage::{EncryptionService, StorageBackend};
 use everruns_test_support::MockMcpOAuthServer;
 use serde::Deserialize;
@@ -36,6 +36,7 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
         role: OrgRole::Owner,
         is_platform_user: false,
         feature_flags: everruns_server::records::FeatureFlags::current(),
+        read_only: false,
     }
 }
 
@@ -109,6 +110,8 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -116,7 +119,7 @@ async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) 
         .await
         .unwrap();
     let user = db
-        .create_user(everruns_server::storage::models::CreateUserRow {
+        .create_user(everruns_server::storage::CreateUserRow {
             email: format!("{}@example.com", Uuid::now_v7()),
             name: "Owner".into(),
             avatar_url: None,
@@ -327,8 +330,23 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
         }),
     )
     .await
-    .unwrap_err();
-    assert_eq!(refusal.0, axum::http::StatusCode::BAD_REQUEST);
-    assert!(refusal.1.contains("invalid_scope"));
-    assert!(refusal.1.contains("scope rejected"));
+    .expect("a refusal returns the browser to its page");
+    // The browser gets the refusal code; the provider's own text stays in the log.
+    let refusal_target = refusal
+        .1
+        .into_response()
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        refusal_target.contains("connect_error=provider_refused"),
+        "{refusal_target}"
+    );
+    assert!(
+        !refusal_target.contains("scope rejected"),
+        "{refusal_target}"
+    );
 }

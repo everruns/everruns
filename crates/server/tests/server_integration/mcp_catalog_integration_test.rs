@@ -6,7 +6,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreateOrganizationRow, CreateUserRow,
     CreateVirtualUserConnectionRow, Database, StorageBackend, UpdateMcpServer,
@@ -113,6 +113,8 @@ async fn create_catalog_usage_agent(
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

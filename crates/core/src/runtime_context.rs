@@ -173,7 +173,13 @@ pub async fn assemble_resolved_turn_context(
     let resolved_locale = extract_locale_override(&messages).or_else(|| snapshot.locale.clone());
     let file_store =
         file_store.map(|fs| crate::mount_fs::scoped_prompt_file_store(fs, snapshot.workspace_id));
+    // Only the generic `tool_search` (a builtin) defers schemas.
+    #[cfg(feature = "builtins")]
+    let tool_disclosure = crate::builtins::tool_search::tool_disclosure(&messages);
+    #[cfg(not(feature = "builtins"))]
+    let tool_disclosure = Default::default();
     let prompt_ctx = SystemPromptContext {
+        tool_disclosure,
         session_id: snapshot.session_id,
         locale: resolved_locale.clone(),
         file_store,
@@ -194,6 +200,15 @@ pub async fn assemble_resolved_turn_context(
         &model.model,
     )
     .await?;
+    // Every path (blueprints included) honors the agent's ceiling, never above
+    // what the model can emit.
+    if let Some(requested) = snapshot.max_output_tokens {
+        runtime_agent.max_tokens = Some(clamp_max_output_tokens(
+            requested,
+            &model.provider_type,
+            &runtime_agent.model,
+        ));
+    }
     if let Some((key, value)) = &model.provider_managed_reduction_option {
         runtime_agent
             .driver_options
@@ -238,6 +253,8 @@ pub fn resolve_snapshot_capabilities(
         tools: snapshot.tools.clone(),
         max_iterations: snapshot.max_iterations,
         parallel_tool_calls: snapshot.parallel_tool_calls,
+        max_output_tokens: snapshot.max_output_tokens,
+        communication: Some(snapshot.communication),
         mcp_servers: Default::default(),
     };
     let resolved_capability_configs =
@@ -384,10 +401,22 @@ async fn build_runtime_agent(
             .model(model)
             .build()
     };
-    if crate::channel_messaging::session_uses_channel_tools(&snapshot.tags) {
-        runtime_agent = crate::channel_messaging::apply_channel_message_mode(runtime_agent);
+    // Blueprint agents are built without the overlay, so the agent's setting
+    // is applied here for every path.
+    if snapshot.communication.is_explicit() {
+        runtime_agent = crate::conversation::apply_explicit_communication(runtime_agent);
     }
     Ok(runtime_agent)
+}
+
+/// Clamp an agent's output ceiling to the model's published output limit.
+/// Unknown models keep the requested value; the provider stays the authority.
+fn clamp_max_output_tokens(requested: u32, provider_type: &DriverId, model: &str) -> u32 {
+    crate::model_profiles::get_model_profile(provider_type, model)
+        .and_then(|profile| profile.limits)
+        .and_then(|limits| u32::try_from(limits.output).ok())
+        .filter(|limit| *limit > 0)
+        .map_or(requested, |limit| requested.min(limit))
 }
 
 fn extract_locale_override(messages: &[RuntimeMessage]) -> Option<String> {
@@ -439,6 +468,65 @@ mod tests {
         assert!(debug.contains("provider-account"));
         assert!(debug.contains("<opaque>"));
         assert!(!debug.contains(secret));
+    }
+
+    #[test]
+    fn max_output_tokens_clamps_to_known_model_limit() {
+        let (provider, model) = (DriverId::Anthropic, "claude-sonnet-4-6");
+        let limit = crate::model_profiles::get_model_profile(&provider, model)
+            .and_then(|profile| profile.limits)
+            .map(|limits| limits.output as u32)
+            .expect("fixture model publishes an output limit");
+        assert_eq!(
+            clamp_max_output_tokens(limit + 1000, &provider, model),
+            limit
+        );
+        assert_eq!(clamp_max_output_tokens(100, &provider, model), 100);
+        assert_eq!(
+            clamp_max_output_tokens(9_999_999, &DriverId::OpenAI, "unknown-model-xyz"),
+            9_999_999
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_max_output_tokens_reaches_runtime_agent() {
+        let harness = HarnessDefinition::new("base", "Harness prompt.");
+        let agent_id = crate::AgentId::new();
+        let mut agent = AgentDefinition::new(agent_id, "agent", "Agent prompt.");
+        let mut session =
+            ExecutionSession::with_own_workspace(SessionId::new(), crate::HarnessId::new());
+        session.agent_id = Some(agent_id);
+        let registry = crate::capabilities::CapabilityRegistryBuilder::new().build();
+        let assemble = |agent: AgentDefinition| {
+            let snapshot =
+                ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
+            assemble_resolved_turn_context(
+                ResolvedTurnContextInput {
+                    snapshot,
+                    messages: vec![],
+                    message_source_sequence: None,
+                    model: ResolvedModelExecution {
+                        model: "unknown-model-xyz".into(),
+                        provider: crate::ProviderKey::new("provider-account"),
+                        provider_type: DriverId::OpenAI,
+                        driver: Arc::new(CredentialCapturingDriver {
+                            _secret: String::new(),
+                        }),
+                        provider_managed_reduction_option: None,
+                    },
+                    resolved_model_id: None,
+                    mcp_tool_definitions: vec![],
+                },
+                &registry,
+                None,
+                None,
+            )
+        };
+        let unset = assemble(agent.clone()).await.unwrap();
+        assert_eq!(unset.runtime_agent.max_tokens, None);
+        agent.max_output_tokens = Some(1234);
+        let set = assemble(agent).await.unwrap();
+        assert_eq!(set.runtime_agent.max_tokens, Some(1234));
     }
 
     struct UserMcpStub;

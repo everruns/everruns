@@ -58,7 +58,7 @@ See `knowledge/operations/localization.md` for how schedule timezone interacts w
 
 ### Schedule
 
-See `crates/server/migrations/002_durable_execution.sql` for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
+See `crates/server/migrations/legacy/002_durable_execution.sql` for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
 
 ### App-Owned Schedule Bindings
 
@@ -68,7 +68,7 @@ See [app-invocation-channels.md](../integrations/app-invocation-channels.md) for
 
 ### ScheduleExecution
 
-See `crates/server/migrations/002_durable_execution.sql` for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
+See `crates/server/migrations/legacy/002_durable_execution.sql` for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
 
 ### Cron Expression Format
 
@@ -133,13 +133,13 @@ missing, reset when drifted, leave alone when matching so `next_trigger_at`
 survives restarts; a replica that loses the unique-name race reports
 `AlreadyExists`). `disable_schedule` turns one off when configuration disables
 its job. The worker-run specs (leased-resource cleanup, session-task reaper)
-live in `crates/server/src/system_schedules.rs`.
+live in `crates/server/src/background/system_schedules.rs`.
 
 ### Cluster-Once Maintenance Jobs
 
 Blob GC, event retention, Sandbox history retention, Memory source sync and
 Knowledge index sync used to be a `tokio::interval` on every replica, so N replicas ran each N times per
-interval. Each is now a `ClusterJob` (`crates/server/src/cluster_jobs.rs`) on an
+interval. Each is now a `ClusterJob` (`crates/server/src/background/cluster_jobs.rs`) on an
 `@every` schedule at its configured interval (`STORAGE_BLOB_GC_INTERVAL_SECONDS`,
 hourly for both retentions, `VOLUME_SOURCE_SYNC_INTERVAL_SECS`,
 `KNOWLEDGE_INDEX_SYNC_INTERVAL_SECS`). The scheduler fires it once per cluster;
@@ -168,7 +168,7 @@ The `Schedules` store trait (part of the `WorkflowEventStore` umbrella) covers s
 
 ## Database Schema
 
-See `crates/server/migrations/002_durable_execution.sql` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id`, multi-tenancy will be added to the entire durable engine in a future PR.
+See `crates/server/migrations/legacy/002_durable_execution.sql` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id`, multi-tenancy will be added to the entire durable engine in a future PR.
 
 ## UI Design
 

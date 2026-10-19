@@ -15,7 +15,7 @@ interface UseFileAttachmentsOptions {
 }
 
 /**
- * Hook to manage file (PDF) attachments for chat input.
+ * Hook to manage file (PDF and zip) attachments for chat input.
  *
  * Mirrors useImageAttachments:
  * - Adding files (from picker, drop, or paste)
@@ -23,6 +23,18 @@ interface UseFileAttachmentsOptions {
  * - Tracking upload status
  * - Removing files
  */
+/** PDFs and zips go through file upload; everything else is ignored here. */
+export function isAttachmentFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    file.type === "application/pdf" ||
+    file.type === "application/zip" ||
+    file.type === "application/x-zip-compressed" ||
+    name.endsWith(".pdf") ||
+    name.endsWith(".zip")
+  );
+}
+
 export function useFileAttachments(options: UseFileAttachmentsOptions = {}) {
   const { sessionId, maxFiles = 5 } = options;
 
@@ -123,7 +135,7 @@ export function useFileAttachments(options: UseFileAttachmentsOptions = {}) {
 
       const pdfFiles: File[] = [];
       for (const item of Array.from(items)) {
-        if (item.type === "application/pdf") {
+        if (item.type === "application/pdf" || item.type === "application/zip") {
           const file = item.getAsFile();
           if (file) {
             pdfFiles.push(file);
@@ -154,7 +166,7 @@ export function useFileAttachments(options: UseFileAttachmentsOptions = {}) {
 
       const pdfFiles: File[] = [];
       for (const file of Array.from(files)) {
-        if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        if (isAttachmentFile(file)) {
           pdfFiles.push(file);
         }
       }

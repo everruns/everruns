@@ -36,6 +36,7 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
@@ -47,7 +48,6 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
 #[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[case::openrouter_mistral_large_4(OPENROUTER_MISTRAL_LARGE_4)]
 #[case::vercel_glm_46(VERCEL_GLM_46)]
 #[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
@@ -94,6 +94,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
@@ -105,7 +106,6 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::openrouter_gpt6_luna(OPENROUTER_GPT6_LUNA)]
 #[case::fireworks_kimi_k3(FIREWORKS_KIMI_K3)]
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[case::openrouter_mistral_large_4(OPENROUTER_MISTRAL_LARGE_4)]
 #[case::vercel_glm_46(VERCEL_GLM_46)]
 #[case::cloudflare_llama_33_70b(CLOUDFLARE_LLAMA_33_70B)]
@@ -129,7 +129,9 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
             let model = config.model().expect("model set (checked above)");
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Time Agent")
-                .system_prompt("When asked about time, use get_current_time tool first.")
+                // See TIME_TOOL_QUESTION: the `<facts>` block already answers
+                // a bare "What time is it?".
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -137,7 +139,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
                 .build()
                 .await
                 .unwrap();
-            runner.run_turn("What time is it?").await.unwrap()
+            runner.run_turn(TIME_TOOL_QUESTION).await.unwrap()
         }
     ) else {
         return;
@@ -160,6 +162,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::anthropic_fable_5_1(ANTHROPIC_FABLE_5_1)]
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]

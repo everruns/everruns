@@ -4,7 +4,7 @@ description: Let an agent sign in to apps that support AgentID as itself, using 
 appliesTo: [platform]
 ---
 
-> **Status:** Experimental, behind the `agentid` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_AGENTID` can override the grade.
+> **Status:** Experimental. No feature flag: adding the capability and an AgentMail connection is the opt-in.
 
 [AgentID](https://www.agentid.com) is a sign-in for AI agents, run by AgentMail. An agent's AgentID is an AgentMail inbox. When an app that supports AgentID asks an agent to sign in, it shows a waiting page with a short-lived auth token; the agent's inbox approves it, and the app sees the agent signed in.
 

@@ -14,7 +14,7 @@ pub(crate) use status_error::grpc_status_to_error;
 
 use crate::core::connection_services::ProviderCredentials;
 use crate::core::events::{Event, EventRequest};
-use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus};
 use crate::core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, MessageFilter, RuntimeMessage,
@@ -23,7 +23,7 @@ use crate::core::{
     execution_loading::SessionStore, file_services::ResolvedFile,
     image_services::CreateStoredImage, image_services::ImageArtifactStore,
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
-    provider_resolution::ProviderStore, session_services::LeasedResourceStore,
+    provider_resolution::ProviderStore,
 };
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -34,20 +34,21 @@ use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId
 // stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
-    WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
-    proto_struct_to_json,
+    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
 };
 use std::sync::Arc;
-use tonic::transport::Channel;
 use uuid::Uuid;
 
-use crate::grpc_durable_store::GrpcClientAuth;
-mod connection_resolver;
+mod checkpoint_availability;
+mod compaction_checkpoints;
+mod connect;
 mod event_batch;
 mod shared_client;
+use checkpoint_availability::CheckpointAvailability;
+pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
 pub use shared_client::SharedClient;
 mod definition_reads;
-mod session_storage;
+use definition_reads::proto_agent_to_definition;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
@@ -101,48 +102,10 @@ async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedIma
 #[derive(Clone)]
 pub struct GrpcClient {
     pub(crate) inner: SharedClient,
+    checkpoints: Arc<CheckpointAvailability>,
 }
 
-/// Max gRPC message size (16MB)
-///
-/// Image data no longer flows through gRPC — workers fetch images via presigned
-/// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-/// to accommodate metadata, proto messages, and session file content.
-const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
-
 impl GrpcClient {
-    /// Connect to the control plane gRPC server
-    pub async fn connect(addr: &str) -> Result<Self> {
-        let endpoint = format!("http://{}", addr);
-        let channel = tonic::transport::Endpoint::from_shared(endpoint)
-            .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
-            .connect()
-            .await
-            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
-
-        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-        // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-        Ok(Self {
-            inner: SharedClient::new(client),
-        })
-    }
-
-    /// Create from an existing channel
-    pub fn from_channel(channel: Channel) -> Self {
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-        Self {
-            inner: SharedClient::new(client),
-        }
-    }
-
     /// Set session status (started, active, idle).
     ///
     /// Acknowledgement only (EVE-882): the wire response still carries the
@@ -243,29 +206,6 @@ impl GrpcClient {
             .into_inner()
             .image
             .map(proto_stored_image_to_schema)
-            .transpose()
-    }
-
-    pub async fn get_image_artifact_info(
-        &self,
-        org_id: i64,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        let request = proto::GetImageArtifactInfoRequest {
-            org_id,
-            image_id: Some(uuid_to_proto(image_id.uuid())),
-        };
-
-        let mut client = self.inner.client();
-        let response = client
-            .get_image_artifact_info(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .image
-            .map(proto_stored_image_info_to_schema)
             .transpose()
     }
 
@@ -407,7 +347,7 @@ impl GrpcClient {
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>> {
+    ) -> Result<Vec<(i64, LeasedResource)>> {
         let mut client = self.inner.client();
         let response = client
             .claim_due_leased_resources(proto::ClaimDueLeasedResourcesRequest {
@@ -421,7 +361,8 @@ impl GrpcClient {
             .into_inner()
             .resources
             .into_iter()
-            .map(proto_leased_resource_to_schema)
+            .map(|s| (s.org_id, s))
+            .map(|(org_id, s)| Ok((org_id, proto_leased_resource_to_schema(s)?)))
             .collect()
     }
 
@@ -479,7 +420,7 @@ impl GrpcClient {
         &self,
         stale_after_seconds: i64,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>> {
         let mut client = self.inner.client();
         let response = client
             .list_orphaned_session_tasks(proto::ListOrphanedSessionTasksRequest {
@@ -496,10 +437,8 @@ impl GrpcClient {
                 let uuid = uuid::Uuid::parse_str(&e.session_id).map_err(|err| {
                     AgentLoopError::store(format!("Invalid session_id in orphan entry: {err}"))
                 })?;
-                Ok((
-                    everruns_contracts::typed_id::SessionId::from_uuid(uuid),
-                    e.task_id,
-                ))
+                let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid);
+                Ok((e.org_id, session_id, e.task_id))
             })
             .collect()
     }
@@ -578,12 +517,9 @@ impl GrpcClient {
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
 /// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
-/// SessionStorageStore, UserConnectionResolver, LeasedResourceStore,
-/// SessionSqlDbStore.
+/// SessionSqlDbStore, and (org-scoped) the internal command transport.
 #[derive(Clone)]
 pub struct GrpcAdapter {
-    input_message_id: Option<Uuid>,
-    mcp_server_prefix: Option<String>,
     pub(crate) client: GrpcClient,
     /// The org this adapter speaks for, when it has one.
     ///
@@ -600,8 +536,6 @@ impl GrpcAdapter {
         Self {
             client,
             org_id: None,
-            input_message_id: None,
-            mcp_server_prefix: None,
             proactive_compaction_attempts: Arc::new(
                 crate::core::ProactiveCompactionAttemptTracker::default(),
             ),
@@ -619,7 +553,7 @@ impl GrpcAdapter {
 /// Org-scoped gRPC adapter (carries org_id for authorization).
 ///
 /// Implements: AgentStore, HarnessStore, SessionStore, ProviderStore,
-/// ImageResolver, SessionMutator, SessionScheduleStore, PlatformStore.
+/// ImageResolver, SessionMutator, PlatformStore.
 #[derive(Clone)]
 pub struct GrpcOrgAdapter {
     input_message_id: Option<Uuid>,
@@ -656,6 +590,7 @@ impl GrpcOrgAdapter {
         name: &str,
         params: serde_json::Value,
         runtime_view: bool,
+        reason: Option<&str>,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         if self.input_message_id.is_none() {
             return Err(AgentLoopError::config(
@@ -678,6 +613,7 @@ impl GrpcOrgAdapter {
                 // runtime claiming its own mount.
                 acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
+                reason: reason.map(str::to_string),
                 ..Default::default()
             })
             .await
@@ -737,26 +673,11 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, false)
+            .execute_platform_command_raw(name, params, false, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map_err(|e| {
                 AgentLoopError::store(format!("Failed to parse command response: {}", e))
-            }),
-            Err(error) => Err(grpc_command_error_to_error(error)),
-        }
-    }
-
-    async fn execute_runtime_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        match self
-            .execute_platform_command_raw(name, params, true)
-            .await?
-        {
-            Ok(value) => serde_json::from_value(value).map_err(|error| {
-                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
             }),
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
@@ -771,7 +692,7 @@ impl GrpcOrgAdapter {
         T: serde::de::DeserializeOwned,
     {
         match self
-            .execute_platform_command_raw(name, params, true)
+            .execute_platform_command_raw(name, params, true, None)
             .await?
         {
             Ok(value) => serde_json::from_value(value).map(Some).map_err(|error| {
@@ -1176,90 +1097,6 @@ impl GrpcAdapter {
     }
 }
 
-#[async_trait]
-impl crate::core::CompactionCheckpointStore for GrpcAdapter {
-    async fn get_latest(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<crate::core::CompactionCheckpoint>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                provider_type: provider_type.to_string(),
-                model: model.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
-        response
-            .checkpoint
-            .map(|checkpoint| {
-                Ok(crate::core::CompactionCheckpoint {
-                    id: proto_uuid_to_uuid(checkpoint.id.as_ref())?,
-                    session_id: proto_uuid_to_uuid(checkpoint.session_id.as_ref())?.into(),
-                    source_sequence: checkpoint.source_sequence,
-                    provider_type: checkpoint.provider_type,
-                    model: checkpoint.model,
-                    format_version: checkpoint.format_version,
-                    payload: serde_json::from_slice(&checkpoint.payload_json).map_err(|error| {
-                        AgentLoopError::store(format!("invalid checkpoint payload: {error}"))
-                    })?,
-                })
-            })
-            .transpose()
-    }
-
-    async fn install(&self, checkpoint: crate::core::CompactionCheckpoint) -> Result<bool> {
-        let mut client = self.client.inner.client();
-        let payload_json = serde_json::to_vec(&checkpoint.payload)
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        Ok(client
-            .install_compaction_checkpoint(proto::InstallCompactionCheckpointRequest {
-                checkpoint: Some(proto::CompactionCheckpoint {
-                    id: Some(uuid_to_proto(checkpoint.id)),
-                    session_id: Some(uuid_to_proto(checkpoint.session_id.uuid())),
-                    source_sequence: checkpoint.source_sequence,
-                    provider_type: checkpoint.provider_type,
-                    model: checkpoint.model,
-                    format_version: checkpoint.format_version,
-                    payload_json,
-                }),
-            })
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner()
-            .installed)
-    }
-
-    async fn get_proactive_attempt(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-    ) -> Result<Option<crate::core::ProactiveCompactionAttempt>> {
-        Ok(self
-            .proactive_compaction_attempts
-            .get(session_id, provider_type, model)
-            .await)
-    }
-
-    async fn record_proactive_attempt(
-        &self,
-        session_id: SessionId,
-        provider_type: &str,
-        model: &str,
-        attempt: crate::core::ProactiveCompactionAttempt,
-    ) -> Result<()> {
-        self.proactive_compaction_attempts
-            .record(session_id, provider_type, model, attempt)
-            .await;
-        Ok(())
-    }
-}
-
 fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage> {
     let id = proto_uuid_to_uuid(proto_msg.id.as_ref())?;
 
@@ -1379,61 +1216,6 @@ impl GrpcOrgAdapter {
             None => Ok(None),
         }
     }
-}
-
-fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<AgentDefinition> {
-    let id = proto_uuid_to_uuid(proto_agent.id.as_ref())?;
-    let default_model_id = proto_agent
-        .default_model_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?;
-    if matches!(
-        proto_agent.status.to_lowercase().as_str(),
-        "archived" | "deleted"
-    ) {
-        return Err(AgentLoopError::config(format!(
-            "agent {} is {} and cannot execute turns",
-            AgentId::from_uuid(id),
-            proto_agent.status
-        )));
-    }
-
-    let capabilities = if proto_agent.capabilities.is_empty() {
-        proto_agent
-            .capability_ids
-            .into_iter()
-            .map(everruns_contracts::CapabilityRef::new)
-            .collect()
-    } else {
-        proto_agent
-            .capabilities
-            .into_iter()
-            .map(|config| {
-                serde_json::from_str(&config).map_err(|error| {
-                    AgentLoopError::store(format!(
-                        "Invalid agent capability config in gRPC response: {error}"
-                    ))
-                })
-            })
-            .collect::<std::result::Result<Vec<_>, _>>()?
-    };
-
-    Ok(AgentDefinition {
-        id: AgentId::from_uuid(id),
-        name: proto_agent.name,
-        display_name: proto_agent.display_name,
-        description: non_empty_string(proto_agent.description),
-        system_prompt: proto_agent.system_prompt,
-        default_model_id: default_model_id.map(Into::into),
-        capabilities,
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: proto_agent.parallel_tool_calls,
-        tools: vec![],
-        mcp_servers: Default::default(),
-    })
 }
 
 // ============================================================================
@@ -1737,15 +1519,6 @@ impl ImageArtifactStore for GrpcOrgAdapter {
     ) -> Result<Option<StoredImage>> {
         self.client.get_image_artifact(self.org_id, image_id).await
     }
-
-    async fn get_image_info(
-        &self,
-        image_id: everruns_contracts::typed_id::ImageId,
-    ) -> Result<Option<StoredImageInfo>> {
-        self.client
-            .get_image_artifact_info(self.org_id, image_id)
-            .await
-    }
 }
 
 fn proto_model_to_model_spec(proto: proto::ResolvedModel) -> Result<ModelSpec> {
@@ -1771,7 +1544,7 @@ fn proto_model_to_model_spec(proto: proto::ResolvedModel) -> Result<ModelSpec> {
 /// Whether the control plane has NATS-backed event delivery, meaning ephemeral
 /// events skip PG. When true, the worker can fire-and-forget for deltas.
 /// When false, all events go to PG — must use blocking gRPC for correct id/sequence.
-fn server_supports_ephemeral_skip() -> bool {
+pub(crate) fn server_supports_ephemeral_skip() -> bool {
     // Matches the server-side check: EventDelivery::Nats is active only when NATS_URL is set.
     // Worker and server share the same environment in typical deployments.
     std::env::var("NATS_URL").is_ok()
@@ -1790,11 +1563,7 @@ impl EventEmitter for GrpcAdapter {
         // Blocking gRPC round-trip (needs server-assigned id + sequence)
         let mut client = self.client.inner.client();
 
-        let proto_event_request = core_event_request_to_proto(&request)?;
-
-        let grpc_request = proto::EmitEventRequest {
-            event: Some(proto_event_request),
-        };
+        let grpc_request = event_batch::unfenced_request(&request)?;
 
         let response = client
             .emit_event(grpc_request)
@@ -1818,10 +1587,7 @@ impl GrpcAdapter {
         use everruns_contracts::typed_id::EventId;
 
         // Convert to proto while we still have &request
-        let proto_event_request = core_event_request_to_proto(&request)?;
-        let grpc_request = proto::EmitEventRequest {
-            event: Some(proto_event_request),
-        };
+        let grpc_request = event_batch::unfenced_request(&request)?;
 
         // Destructure to avoid clones
         let session_id = request.session_id;
@@ -1877,7 +1643,7 @@ pub(crate) fn core_event_request_to_proto(request: &EventRequest) -> Result<prot
 }
 
 /// Convert proto::Event to crate::core::Event
-fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
+pub(super) fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
     everruns_internal_protocol::proto_event_to_schema(proto_event)
         .map_err(|e| AgentLoopError::store(format!("Failed to convert proto event: {}", e)))
 }
@@ -1959,36 +1725,34 @@ pub async fn load_turn_context_for_execution(
     })
 }
 
-/// Convert proto McpToolDef to core ToolDefinition
+/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations and
+/// any saved risk label; an older server sends none, so default to open_world.
 fn proto_mcp_tool_def_to_tool_definition(
-    proto_tool: proto::McpToolDef,
+    t: proto::McpToolDef,
 ) -> everruns_contracts::tool_types::ToolDefinition {
-    use everruns_contracts::tool_types::{
-        BuiltinTool, DeferrablePolicy, ToolDefinition, ToolPolicy,
+    use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
+    let parameters = t.parameters.map(|s| proto_struct_to_json(&s));
+    let mut hints = ToolHints {
+        readonly: t.readonly,
+        destructive: t.destructive,
+        idempotent: t.idempotent,
+        open_world: Some(t.open_world.unwrap_or(true)),
+        ..Default::default()
     };
-
-    // Convert proto Struct to serde_json::Value
-    let parameters = proto_tool
-        .parameters
-        .map(|s| proto_struct_to_json(&s))
-        .unwrap_or_else(|| serde_json::json!({"type": "object"}));
-
-    let mut hints = everruns_contracts::tool_types::ToolHints::default().with_open_world(true);
-    if !proto_tool.capability_id.is_empty() {
+    if !t.capability_id.is_empty() {
         hints = hints.with_capability_attribution(
-            proto_tool.capability_id.clone(),
-            (!proto_tool.capability_name.is_empty()).then_some(proto_tool.capability_name.clone()),
+            t.capability_id.clone(),
+            (!t.capability_name.is_empty()).then_some(t.capability_name.clone()),
         );
     }
-
     ToolDefinition::Builtin(BuiltinTool {
-        name: proto_tool.name,
-        display_name: None,
-        description: proto_tool.description,
-        parameters,
-        policy: ToolPolicy::Auto, // MCP tools are auto-executed
+        name: t.name,
+        display_name: t.display_name,
+        description: t.description,
+        parameters: parameters.unwrap_or_else(|| serde_json::json!({"type": "object"})),
+        policy: everruns_contracts::tool_types::ToolPolicy::Auto, // MCP tools are auto-executed
         category: None,
-        deferrable: DeferrablePolicy::default(),
+        deferrable: Default::default(),
         hints,
         full_parameters: None,
     })
@@ -2148,203 +1912,6 @@ impl everruns_capabilities::SessionMutator for GrpcOrgAdapter {
     }
 }
 
-// ============================================================================
-// GrpcAdapter - LeasedResourceStore over gRPC
-// ============================================================================
-
-#[async_trait]
-impl LeasedResourceStore for GrpcAdapter {
-    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .upsert_leased_resource(proto::UpsertLeasedResourceRequest {
-                session_id: Some(uuid_to_proto(input.session_id.uuid())),
-                provider: input.provider,
-                resource_type: input.resource_type,
-                external_id: input.external_id,
-                display_name: input.display_name,
-                owner_user_id: input.owner_user_id.map(uuid_to_proto),
-                connection_id: input.connection_id.map(uuid_to_proto),
-                lease_duration_seconds: input.lease_duration_seconds,
-                metadata: Some(json_to_proto_struct(&input.metadata)),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let resource = response
-            .into_inner()
-            .resource
-            .ok_or_else(|| grpc_missing_field("No leased resource in upsert response"))?;
-        proto_leased_resource_to_schema(resource)
-    }
-
-    async fn release_resource(
-        &self,
-        session_id: SessionId,
-        provider: &str,
-        resource_type: &str,
-        external_id: &str,
-    ) -> Result<Option<LeasedResource>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .release_leased_resource(proto::ReleaseLeasedResourceRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                provider: provider.to_string(),
-                resource_type: resource_type.to_string(),
-                external_id: external_id.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .resource
-            .map(proto_leased_resource_to_schema)
-            .transpose()
-    }
-
-    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .list_session_leased_resources(proto::ListSessionLeasedResourcesRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .resources
-            .into_iter()
-            .map(proto_leased_resource_to_schema)
-            .collect()
-    }
-}
-
-// ============================================================================
-// GrpcAdapter - SessionResourceRegistry over gRPC
-// ============================================================================
-
-fn proto_session_resource_to_schema(
-    e: proto::SessionResourceEntryProto,
-) -> Result<crate::core::SessionResourceEntry> {
-    let session_id = proto_uuid_to_uuid(e.session_id.as_ref())?;
-    Ok(crate::core::SessionResourceEntry {
-        resource_id: e.resource_id,
-        session_id: SessionId::from_uuid(session_id),
-        kind: e.kind,
-        display_name: e.display_name,
-        status: crate::core::SessionResourceStatus::from(e.status.as_str()),
-        metadata: e
-            .metadata
-            .as_ref()
-            .map(proto_struct_to_json)
-            .unwrap_or_else(|| serde_json::json!({})),
-        created_at: proto_timestamp_or_now(e.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(e.updated_at.as_ref()),
-    })
-}
-
-#[async_trait]
-impl crate::core::session_services::SessionResourceRegistry for GrpcAdapter {
-    async fn register(
-        &self,
-        entry: crate::core::RegisterSessionResource,
-    ) -> Result<crate::core::SessionResourceEntry> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .register_session_resource(proto::RegisterSessionResourceRequest {
-                session_id: Some(uuid_to_proto(entry.session_id.uuid())),
-                resource_id: entry.resource_id,
-                kind: entry.kind,
-                display_name: entry.display_name,
-                status: entry.status.to_string(),
-                metadata: Some(json_to_proto_struct(&entry.metadata)),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let entry = response
-            .into_inner()
-            .entry
-            .ok_or_else(|| grpc_missing_field("No entry in register response"))?;
-        proto_session_resource_to_schema(entry)
-    }
-
-    async fn update_status(
-        &self,
-        session_id: SessionId,
-        resource_id: &str,
-        status: crate::core::SessionResourceStatus,
-    ) -> Result<Option<crate::core::SessionResourceEntry>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .update_session_resource_status(proto::UpdateSessionResourceStatusRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                resource_id: resource_id.to_string(),
-                status: status.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .entry
-            .map(proto_session_resource_to_schema)
-            .transpose()
-    }
-
-    async fn get(
-        &self,
-        session_id: SessionId,
-        resource_id: &str,
-    ) -> Result<Option<crate::core::SessionResourceEntry>> {
-        // Emulate via list — no dedicated GetSessionResource RPC yet.
-        let entries = self.list(session_id, None).await?;
-        Ok(entries.into_iter().find(|e| e.resource_id == resource_id))
-    }
-
-    async fn list(
-        &self,
-        session_id: SessionId,
-        filter: Option<&crate::core::SessionResourceFilter>,
-    ) -> Result<Vec<crate::core::SessionResourceEntry>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .list_session_resources(proto::ListSessionResourcesRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                kind: filter.and_then(|f| f.kind.clone()),
-                status: filter.and_then(|f| f.status.map(|s| s.to_string())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .entries
-            .into_iter()
-            .map(proto_session_resource_to_schema)
-            .collect()
-    }
-
-    async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .deregister_session_resource(proto::DeregisterSessionResourceRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                resource_id: resource_id.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        Ok(response.into_inner().removed)
-    }
-}
-
-// ============================================================================
-// GrpcOrgAdapter - SessionScheduleStore over gRPC
-// ============================================================================
-
 fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<LeasedResource> {
     let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
     let status = match s.status.as_str() {
@@ -2390,200 +1957,6 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
         created_at: proto_timestamp_or_now(s.created_at.as_ref()),
         updated_at: proto_timestamp_or_now(s.updated_at.as_ref()),
     })
-}
-
-fn proto_schedule_to_schema(
-    s: proto::SessionScheduleProto,
-) -> Result<crate::core::session_schedule::SessionSchedule> {
-    use crate::core::session_schedule::{ScheduleType, SessionSchedule};
-    use everruns_contracts::typed_id::{ScheduleId, SessionId};
-
-    let id_uuid = proto_uuid_to_uuid(s.id.as_ref())?;
-    let session_uuid = proto_uuid_to_uuid(s.session_id.as_ref())?;
-    let owner_principal_uuid = proto_uuid_to_uuid(s.owner_principal_id.as_ref())?;
-    let resolved_owner_user_id = s
-        .resolved_owner_user_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?;
-
-    let schedule_type = match s.schedule_type.as_str() {
-        "recurring" => ScheduleType::Recurring,
-        _ => ScheduleType::OneShot,
-    };
-
-    Ok(SessionSchedule {
-        id: ScheduleId::from_uuid(id_uuid),
-        session_id: SessionId::from_uuid(session_uuid),
-        owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_uuid(
-            owner_principal_uuid,
-        ),
-        resolved_owner_user_id,
-        owner: None,
-        effective_owner: None,
-        description: s.description,
-        cron_expression: s.cron_expression,
-        scheduled_at: s.scheduled_at.as_ref().map(proto_timestamp_to_datetime),
-        timezone: s.timezone,
-        enabled: s.enabled,
-        schedule_type,
-        next_trigger_at: s.next_trigger_at.as_ref().map(proto_timestamp_to_datetime),
-        last_triggered_at: s
-            .last_triggered_at
-            .as_ref()
-            .map(proto_timestamp_to_datetime),
-        trigger_count: s.trigger_count as u32,
-        created_at: proto_timestamp_or_now(s.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(s.updated_at.as_ref()),
-    })
-}
-
-#[async_trait]
-impl crate::core::session_services::SessionScheduleStore for GrpcOrgAdapter {
-    async fn create_schedule(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-        description: String,
-        cron_expression: Option<String>,
-        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
-        timezone: String,
-    ) -> Result<crate::core::session_schedule::SessionSchedule> {
-        let mut client = self.client.inner.client();
-        let request = proto::CreateSessionScheduleRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            description,
-            cron_expression,
-            scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
-            timezone,
-            org_id: self.org_id,
-        };
-        let response = client
-            .create_session_schedule(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        let proto_schedule = response
-            .into_inner()
-            .schedule
-            .ok_or_else(|| grpc_missing_field("No schedule in response"))?;
-        proto_schedule_to_schema(proto_schedule)
-    }
-
-    async fn create_schedule_enforcing_limits(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-        description: String,
-        cron_expression: Option<String>,
-        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
-        timezone: String,
-    ) -> std::result::Result<
-        crate::core::session_schedule::SessionSchedule,
-        crate::core::session_schedule::ScheduleLimitError,
-    > {
-        let mut client = self.client.inner.client();
-        let request = proto::CreateSessionScheduleRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            description,
-            cron_expression,
-            scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
-            timezone,
-            org_id: self.org_id,
-        };
-        let response = client
-            .create_session_schedule(request)
-            .await
-            .map_err(|status| {
-                if matches!(
-                    status.code(),
-                    tonic::Code::ResourceExhausted | tonic::Code::InvalidArgument
-                ) {
-                    crate::core::session_schedule::ScheduleLimitError::Rejected(
-                        status.message().to_string(),
-                    )
-                } else {
-                    crate::core::session_schedule::ScheduleLimitError::Store(grpc_status_to_error(
-                        status,
-                    ))
-                }
-            })?;
-        let proto_schedule = response.into_inner().schedule.ok_or_else(|| {
-            crate::core::session_schedule::ScheduleLimitError::Store(grpc_missing_field(
-                "No schedule in response",
-            ))
-        })?;
-        proto_schedule_to_schema(proto_schedule)
-            .map_err(crate::core::session_schedule::ScheduleLimitError::Store)
-    }
-
-    async fn cancel_schedule(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-        schedule_id: everruns_contracts::typed_id::ScheduleId,
-    ) -> Result<crate::core::session_schedule::SessionSchedule> {
-        let mut client = self.client.inner.client();
-        let request = proto::CancelSessionScheduleRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            schedule_id: Some(uuid_to_proto(schedule_id.uuid())),
-            org_id: self.org_id,
-        };
-        let response = client
-            .cancel_session_schedule(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        let proto_schedule = response
-            .into_inner()
-            .schedule
-            .ok_or_else(|| grpc_missing_field("No schedule in response"))?;
-        proto_schedule_to_schema(proto_schedule)
-    }
-
-    async fn list_schedules(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Result<Vec<crate::core::session_schedule::SessionSchedule>> {
-        let mut client = self.client.inner.client();
-        let request = proto::ListSessionSchedulesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            org_id: self.org_id,
-        };
-        let response = client
-            .list_session_schedules(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .schedules
-            .into_iter()
-            .map(proto_schedule_to_schema)
-            .collect()
-    }
-
-    async fn count_active_schedules(
-        &self,
-        session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Result<u32> {
-        let mut client = self.client.inner.client();
-        let request = proto::CountActiveSessionSchedulesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            org_id: self.org_id,
-        };
-        let response = client
-            .count_active_session_schedules(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().count)
-    }
-
-    async fn count_active_org_schedules(&self) -> Result<u32> {
-        let mut client = self.client.inner.client();
-        let request = proto::CountActiveOrgSchedulesRequest {
-            org_id: self.org_id,
-        };
-        let response = client
-            .count_active_org_schedules(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().count)
-    }
 }
 
 // ============================================================================
@@ -2656,9 +2029,7 @@ impl crate::core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRa
     }
 }
 
-// ============================================================================
-// BudgetChecker — check budget status from check_budget tool
-// ============================================================================
+// BudgetChecker: budget status for the check_budget tool and the reason gate.
 
 #[async_trait]
 impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
@@ -2683,6 +2054,7 @@ impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
                 .budgets
                 .into_iter()
                 .map(|b| crate::core::budget::BudgetSummary {
+                    budget_id: b.budget_id,
                     currency: b.currency,
                     limit: b.limit,
                     balance: b.balance,
@@ -2732,168 +2104,6 @@ impl crate::core::delegation_services::SessionCreationAuthority for GrpcSessionC
         SessionId::parse(&response.budget_root_session_id).map_err(|error| {
             AgentLoopError::store(format!("Invalid budget root session id: {error}"))
         })
-    }
-}
-
-// ============================================================================
-// GrpcAdapter - SessionTaskRegistry over gRPC
-// ============================================================================
-//
-// Task and message payloads travel as native protobuf messages (EVE-642), so
-// there is no intermediate JSON encode/decode into byte fields. Lifecycle
-// invariants stay server-side in DbSessionTaskRegistry and the record shape is
-// defined once in everruns-core; the proto↔core conversions live in
-// everruns-internal-protocol.
-
-fn decode_task(proto: proto::SessionTaskProto) -> Result<crate::core::SessionTask> {
-    everruns_internal_protocol::proto_to_session_task(proto)
-        .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
-}
-
-fn decode_task_message(proto: proto::TaskMessageProto) -> Result<crate::core::TaskMessage> {
-    everruns_internal_protocol::proto_to_task_message(proto)
-        .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
-}
-
-#[async_trait]
-impl crate::core::session_task::SessionTaskRegistry for GrpcAdapter {
-    async fn create(
-        &self,
-        input: crate::core::CreateSessionTask,
-    ) -> Result<crate::core::SessionTask> {
-        let create = everruns_internal_protocol::create_session_task_to_proto(&input);
-        let mut client = self.client.inner.client();
-        let response = client
-            .create_session_task(proto::CreateSessionTaskRequest {
-                create: Some(create),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        let task = response
-            .into_inner()
-            .task
-            .ok_or_else(|| AgentLoopError::store("Missing task in create response"))?;
-        decode_task(task)
-    }
-
-    async fn update(
-        &self,
-        session_id: SessionId,
-        task_id: &str,
-        update: crate::core::SessionTaskUpdate,
-    ) -> Result<Option<crate::core::SessionTask>> {
-        let update = everruns_internal_protocol::session_task_update_to_proto(&update);
-        let mut client = self.client.inner.client();
-        let response = client
-            .update_session_task(proto::UpdateSessionTaskRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                task_id: task_id.to_string(),
-                update: Some(update),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        response.into_inner().task.map(decode_task).transpose()
-    }
-
-    async fn get(
-        &self,
-        session_id: SessionId,
-        task_id: &str,
-    ) -> Result<Option<crate::core::SessionTask>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .get_session_task(proto::GetSessionTaskRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                task_id: task_id.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        response.into_inner().task.map(decode_task).transpose()
-    }
-
-    async fn list(
-        &self,
-        session_id: SessionId,
-        filter: Option<&crate::core::SessionTaskFilter>,
-    ) -> Result<Vec<crate::core::SessionTask>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .list_session_tasks(proto::ListSessionTasksRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                kind: filter.and_then(|f| f.kind.clone()),
-                state: filter.and_then(|f| f.state.map(|s| s.to_string())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .tasks
-            .into_iter()
-            .map(decode_task)
-            .collect()
-    }
-
-    async fn request_cancel(
-        &self,
-        session_id: SessionId,
-        task_id: &str,
-    ) -> Result<Option<crate::core::SessionTask>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .request_cancel_session_task(proto::RequestCancelSessionTaskRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                task_id: task_id.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        response.into_inner().task.map(decode_task).transpose()
-    }
-
-    async fn record_message(
-        &self,
-        session_id: SessionId,
-        task_id: &str,
-        message: crate::core::NewTaskMessage,
-    ) -> Result<crate::core::TaskMessage> {
-        let message = everruns_internal_protocol::new_task_message_to_proto(&message);
-        let mut client = self.client.inner.client();
-        let response = client
-            .record_session_task_message(proto::RecordSessionTaskMessageRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                task_id: task_id.to_string(),
-                message: Some(message),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        let message = response
-            .into_inner()
-            .message
-            .ok_or_else(|| AgentLoopError::store("Missing message in record response"))?;
-        decode_task_message(message)
-    }
-
-    async fn list_messages(
-        &self,
-        session_id: SessionId,
-        task_id: &str,
-        limit: Option<u32>,
-        _after_id: Option<&str>,
-    ) -> Result<Vec<crate::core::TaskMessage>> {
-        let mut client = self.client.inner.client();
-        let response = client
-            .list_session_task_messages(proto::ListSessionTaskMessagesRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                task_id: task_id.to_string(),
-                limit,
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .messages
-            .into_iter()
-            .map(decode_task_message)
-            .collect()
     }
 }
 

@@ -18,8 +18,9 @@
 // `invalidate_skills_cache` which commands call after mutations.
 
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::tool_labels;
 use crate::domains::skills::queries as skill_q;
-use crate::records::Skill;
+use crate::domains::skills::record::Skill;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_contracts::capability::{
@@ -135,12 +136,19 @@ impl CapabilityService {
             .mcp_service
             .list_active_with_tools(&internal_caller)
             .await?;
+        let server_ids: Vec<_> = mcp_servers.iter().map(|s| s.server.id.uuid()).collect();
+        let mut labels = tool_labels::load_tool_labels(&self.db, org_id, &server_ids).await?;
         for server_with_tools in mcp_servers {
             let mcp_cap = McpCapability::new(
                 server_with_tools.server.id.uuid(),
                 server_with_tools.server.name.clone(),
                 server_with_tools.server.description.clone(),
                 server_with_tools.cached_tools.clone(),
+            )
+            .with_tool_labels(
+                labels
+                    .remove(&server_with_tools.server.id.uuid())
+                    .unwrap_or_default(),
             );
 
             // Create CapabilityInfo from MCP capability
@@ -178,7 +186,7 @@ impl CapabilityService {
         // Get skill capabilities from the registry (mount-only, no prompt/tools)
         let skills = self.cached_skills(org_id).await?;
         for skill in skills.iter() {
-            if skill.status != crate::records::SkillStatus::Active {
+            if skill.status != crate::domains::skills::record::SkillStatus::Active {
                 continue;
             }
 
@@ -332,12 +340,17 @@ impl CapabilityService {
             let server = self.mcp_service.get(&internal_caller, server_id).await?;
 
             if let Some(server) = server {
+                let labels = tool_labels::load_tool_labels(&self.db, org_id, &[server_id])
+                    .await?
+                    .remove(&server_id)
+                    .unwrap_or_default();
                 let mcp_cap = McpCapability::new(
                     server.id.uuid(),
                     server.name.clone(),
                     server.description.clone(),
                     tools.clone(),
-                );
+                )
+                .with_tool_labels(labels);
 
                 let tool_count = tools.len();
                 let description = server
@@ -580,7 +593,9 @@ impl CapabilityService {
         let skills = self.cached_skills(org_id).await?;
         let commands = skills
             .iter()
-            .filter(|s| s.status == crate::records::SkillStatus::Active && s.user_invocable)
+            .filter(|s| {
+                s.status == crate::domains::skills::record::SkillStatus::Active && s.user_invocable
+            })
             .cloned()
             .map(|s| everruns_core::command::CommandDescriptor {
                 name: s.name,
@@ -695,6 +710,7 @@ impl CapabilityService {
         // Collect from MCP capabilities using cached tools only (no refresh)
         // Note: MCP capabilities don't have dependencies
         let internal_caller = Caller::internal(org_id);
+        let mut labels = tool_labels::load_tool_labels(&self.db, org_id, &mcp_cap_ids).await?;
         for server_id in mcp_cap_ids {
             let tools = self
                 .mcp_service
@@ -708,7 +724,8 @@ impl CapabilityService {
                     server.name.clone(),
                     server.description.clone(),
                     tools,
-                );
+                )
+                .with_tool_labels(labels.remove(&server_id).unwrap_or_default());
                 tool_definitions.extend(mcp_cap.tool_definitions());
             }
         }
@@ -737,9 +754,8 @@ impl CapabilityService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{
-        CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
-    };
+    use crate::storage::CreatePluginInstallRow;
+    use crate::storage::{CreateMcpServerRow, UpdateMcpServerTools};
     use everruns_contracts::capability::CapabilityRef;
     use everruns_contracts::typed_id::{PluginInstallId, SkillId};
     use everruns_core::McpServerAuthMode;
@@ -750,7 +766,7 @@ mod tests {
     }
 
     async fn insert_skill(svc: &CapabilityService, org_id: i64, name: &str) {
-        let input = crate::storage::models::CreateSkillRow {
+        let input = crate::storage::CreateSkillRow {
             public_id: SkillId::new().to_string(),
             name: name.to_string(),
             description: format!("{name} description"),
@@ -979,8 +995,8 @@ mod tests {
 
     // Regression tests for fix(capabilities): restore high-risk levels for
     // bash/fetch (#1500). `high_risk_ids` is the admin-gating primitive used
-    // by `api::agents::require_admin_for_high_risk`, the agent domain command
-    // `check_high_risk_caps`, and the session service's high-risk guard. If a
+    // by the agent domain command `check_high_risk_caps` and the session
+    // service's high-risk guard. If a
     // refactor again downgrades `bashkit_shell` or `web_fetch` the admin gate
     // would silently stop firing (TM-AGENT-005).
     mod high_risk_ids_tests {
@@ -1049,7 +1065,7 @@ mod tests {
 
         #[tokio::test]
         async fn flags_declarative_dependencies_as_high_risk() {
-            use crate::storage::models::CreateDeclarativeCapabilityRow;
+            use crate::storage::CreateDeclarativeCapabilityRow;
             let svc = make_service();
             svc.db
                 .create_declarative_capability(

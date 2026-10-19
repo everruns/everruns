@@ -52,7 +52,7 @@ See `src/connection.rs` for the full form schema and validation logic.
 
 ## Persistence Model
 
-Unlike ephemeral sandbox providers (E2B, Deno), Sprites embraces persistence:
+Unlike ephemeral sandbox providers (like E2B), Sprites embraces persistence:
 
 1. **Filesystem persists**: Full ext4 filesystem survives idle/hibernation, backed to durable object storage.
 2. **No auto-delete**: Sprites hibernate when idle (no compute charges), but exist until explicitly deleted.

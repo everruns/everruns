@@ -69,16 +69,35 @@ session whose last turn errored is simply `idle`. The list and the masthead
 both need failure, so `SessionActivity` derives an outcome-oriented value from
 the execution status plus the outcome of the most recent terminal turn.
 
-`sessions.last_turn_status` carries that outcome, maintained by statement-level
-triggers on `events`, the same incremental-counter pattern
-`turn_count`/`tool_call_count` established, for the same reason: the list must
+`sessions.last_turn_status` carries that outcome, maintained by triggers on
+`events` (once per turn, when its terminal event lands, see
+[Session Counts](../operations/session-counts.md)), the same incremental-counter
+pattern `turn_count`/`tool_call_count` established, for the same reason: the list must
 not rescan event history per row.
 
 The derivation exists twice, in Rust
 ([`SessionActivity::derive`](../../crates/contracts/src/runtime/session.rs)) and in SQL
-([`ACTIVITY_SQL`](../../crates/server/src/storage/repositories/sessions.rs)),
+([`ACTIVITY_SQL`](../../crates/server/src/storage/repositories/sessions/mod.rs)),
 because the list filters in the database while other callers derive in
 Rust. They are pinned to one truth table by test; change them together.
+
+## Failure investigation
+
+Agent failure counts open a separate, bounded failure-history read, implemented by
+[`ListAgentFailures`](../../crates/server/src/domains/agents/failures/mod.rs). It filters the timestamp
+of `turn.failed`, not session creation time or latest activity. The activity snapshot's bounds
+are carried through navigation, and archived sessions remain included because the activity read
+includes them. Totals and pagination share a database snapshot and report failed turns and
+distinct affected sessions separately. The row includes the latest matching error per session;
+the event sequence is a durable link to the failure's Trace turn even after later turns run.
+The same read is available through the [shared command tree](../execution/command-tree.md),
+with the same agent and session permissions.
+
+The session card and recording header show execution in progress first, otherwise the latest
+terminal outcome. Cancellation is displayed as Stopped rather than failure. Recovery changes
+that current-outcome badge without erasing earlier failure history. The error excerpt belongs
+to the selected failed turn: neither a later run summary nor an earlier successful assistant
+message substitutes for it. Missing error detail is explicitly named.
 
 ## Run summary: the sentence the header shows
 
@@ -108,7 +127,7 @@ Unlike `last_turn_*`, no trigger maintains it: it cannot be derived from
 land after turn N+1 was summarised, so writes are fenced on
 `run_summary_turn_sequence` in the `WHERE` clause — the same
 never-move-backwards guard the `last_turn_sequence` trigger applies. See
-[`RunSummaryService`](../../crates/server/src/services/run_summary.rs).
+[`RunSummaryService`](../../crates/server/src/listeners/run_summary.rs).
 
 The transcript is untrusted input to the summariser. The model receives a
 bounded, delimited digest of turn structure and failures, labelled as data, so a
@@ -158,6 +177,12 @@ Three distinctions are the point:
 The chat surface is where this is spent: `/chats` hides archived threads and
 offers a "Show archived" filter to bring them back, and that filter is always
 present — it is the only way back to an archived thread short of its URL.
+
+The agent detail Sessions tab deliberately requests archived sessions as well:
+it is the agent's complete history, matching its all-time session-count badge.
+Cards label archived rows and show source, creation time, and the latest input
+or completed assistant message. That message timestamp comes from the event
+sequence, so session edits, tool events and archive operations cannot advance it.
 
 ## Index shape
 

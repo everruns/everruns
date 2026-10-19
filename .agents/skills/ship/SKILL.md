@@ -25,35 +25,28 @@ change is ready; do not walk this file as a fixed checklist.
 4. **Security review.** Mandatory for any change touching code, config, or infrastructure. Follow
    [`references/security-review.md`](references/security-review.md).
 5. **Sync artifacts** the change actually affects: `knowledge/`, `knowledge/security/threat-model.md`, `AGENTS.md`,
-   `knowledge/test-cases/`, `apps/docs/`, OpenAPI exports.
+   `knowledge/test-cases/`, `apps/docs/`, OpenAPI exports. When the PR completes a user-facing
+   change that meets the public changelog's impact criteria, its entry with screenshots is part
+   of the change; when it changes an older entry's behavior, that entry is updated. See
+   [`references/changelog-entry.md`](references/changelog-entry.md).
+   Honor explicit user publication holds before creating or reinstating an entry or its assets.
 6. **Smoke test the affected flows** end to end. For a coding-agent stack, follow the canonical
    startup contract in the root `AGENTS.md`; it includes the DB-backed infrastructure required for
    database, migration, infra, or API integration risk.
    Stop anything you started. Docs- or config-only changes may skip this with a stated reason.
-7. **Decide follow-ups explicitly.** Prefer implementing in-scope work now. List anything deferred
-   under **Follow-ups** in the PR body with a one-line rationale, or state "No follow-ups." — a
-   reader must be able to tell "nothing left" from "agent forgot". File Linear issues (OSS/EVE) for
-   non-trivial deferrals.
+7. **Build the follow-ups.** Complete implementation, tests, integration and documentation needed
+   for the requested outcome before shipping. Follow-ups discovered during the work belong in
+   the implementation; creating issues or listing future work does not complete them. Defer only
+   for a concrete blocker you cannot resolve safely, or when the user explicitly excludes the work.
+   Under **Follow-ups** in the PR body, record any such blocker and its impact, or state
+   "No follow-ups." Do not replace authorized implementation with Linear issue creation.
 8. **Open the PR and merge** — see [`references/pr-and-merge.md`](references/pr-and-merge.md).
 
 ## Migrations
 
-Rebase silently keeps two branches' identical migration numbers. Run
-`bash scripts/lib/check-migration-ordering.sh` after every rebase, and again immediately before
-`gh pr merge` — another PR may have merged a colliding number during review. Renumber to the next
-free number when it fails.
-
-Merging without a final rebase is fine when it saves a CI cycle and no migration risk exists:
-
-```bash
-git fetch origin main
-base="$(git merge-base HEAD origin/main)"
-git diff --name-only "$base"..HEAD -- crates/server/migrations/
-git diff --name-only "$base"..origin/main -- crates/server/migrations/
-```
-
-If either side touched migrations, rebase and re-run the ordering check. After merging without a
-rebase, watch main CI for the merge commit.
+Migrations are named by UTC timestamp (`just new-migration <name>`), so parallel branches do not
+collide and nothing needs renumbering after a rebase. `bash scripts/lib/check-migration-ordering.sh`
+rejects a retired `NNN_` name or a shared version; CI runs it on the PR and on main after merge.
 
 ## Evidence commands
 
@@ -67,7 +60,7 @@ Pick only what matches the changed surface:
 - `./scripts/export-openapi.sh`, then `cd apps/ui && pnpm run api-types:generate` —
   the UI's generated types are derived from the exported spec and CI fails on
   drift, so exporting without regenerating them is a guaranteed red build
-- `bash scripts/lib/check-migration-ordering.sh`
+- `bash scripts/lib/check-migration-ordering.sh` (migration names and unique versions)
 
 If `just fmt` can auto-fix a failing format check, use it once and retry.
 

@@ -1,5 +1,5 @@
-use crate::api::channel_ingress::row_to_ingress;
-use crate::records::SlackChannelConfig;
+use crate::domains::agent_channels::ingress::row_to_ingress;
+use crate::domains::agent_channels::record::slack_channel::SlackChannelConfig;
 use crate::storage::{EncryptionService, HealthIssueRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
 use std::{sync::Arc, time::Duration};
@@ -150,11 +150,13 @@ impl SlackHealthService {
             return Err(());
         }
         let scopes = scopes.ok_or(())?;
-        let missing = crate::api::slack_events::slack_bot_scopes(config.agent_surface_enabled)
-            .into_iter()
-            .filter(|required| !scopes.iter().any(|scope| scope == required))
-            .map(str::to_string)
-            .collect::<Vec<_>>();
+        let missing = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(
+            config.agent_surface_enabled,
+        )
+        .into_iter()
+        .filter(|required| !scopes.iter().any(|scope| scope == required))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
         let error = (!missing.is_empty()).then(|| "missing_scope".into());
         Ok((missing, error))
     }
@@ -198,6 +200,9 @@ impl SlackHealthService {
 }
 
 pub fn issue_copy(row: &HealthIssueRow) -> (String, String) {
+    if row.code == super::active_turns::ACTIVE_TURN_LIMIT {
+        return super::active_turns::copy(&row.status);
+    }
     if row.status == "needs_check" {
         return ("Slack permissions need a check".into(),"Everruns could not verify this installation. Check again before assuming it is healthy.".into());
     }

@@ -1,8 +1,8 @@
 use super::queries as q;
-use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
+use crate::domains::messages::types::{Message, MessageRole};
 use crate::domains::messages::{CreateMessageContext, CreateMessagePrefetch};
-use crate::records::{SessionParticipantKind, SessionParticipantRole};
+use crate::domains::sessions::record::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
 
 use serde::{Deserialize, Serialize};
@@ -12,9 +12,13 @@ use utoipa::ToSchema;
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
-    pub message: crate::api::messages::InputMessage,
+    /// The user message as one JSON object whose `content` is an array of
+    /// content parts, e.g. `{"content": [{"type": "text", "text": "Hi"}]}`.
+    pub message: crate::domains::messages::types::InputMessage,
+    /// Active agent participant that should answer this turn instead of the session host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addressed_participant_id: Option<SessionParticipantId>,
+    /// Runtime controls for this turn, such as the model and reasoning settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<everruns_core::Controls>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -23,19 +27,25 @@ pub struct CreateMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
+    /// Identity of the external sender, for messages relayed from channels like Slack.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// Caller-chosen request id, carried through to the run and logs for correlation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// Client-minted id that makes a retried send idempotent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_message_id: Option<uuid::Uuid>,
 }
 
 #[command(
     name = "create_message",
     category = "messages",
-    description = "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    description = "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     method = "POST",
     path = "/v1/sessions/{session_id}/messages",
     policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "messages"], "create").with_examples(&[CliExample::new("Send a user message to a session and start the next run", "everruns sessions messages create --session-id session_01h9 --message '{\"content\":[{\"type\":\"text\",\"text\":\"Why is the build failing on main?\"}]}' --reason 'Ask about the failing build'",)]),
 )]
 impl Command for CreateMessage {
     type Output = Message;
@@ -47,15 +57,16 @@ impl Command for CreateMessage {
             ));
         }
 
-        let mut req = crate::api::messages::CreateMessageRequest {
+        let mut req = crate::domains::messages::types::CreateMessageRequest {
             message: self.message,
             addressed_participant_id: self.addressed_participant_id,
             controls: self.controls,
             metadata: self.metadata,
             tags: self.tags,
             external_actor: self.external_actor,
+            client_message_id: self.client_message_id,
         };
-        req.controls = crate::api::validation::normalize_controls_locale(req.controls)
+        req.controls = crate::domains::validation::normalize_controls_locale(req.controls)
             .map_err(|_| CommandError::bad_request("Invalid message controls"))?;
 
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -206,7 +217,8 @@ pub struct ListMessages {
     description = "List materialized messages in a session, optionally limited to the most recent N.",
     method = "GET",
     path = "/v1/sessions/{session_id}/messages",
-    positional = "session_id"
+    positional = "session_id",
+    cli = CliRoute::new(&["sessions", "messages"], "list").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Read the latest messages of a session", "everruns sessions messages list session_01h9 --limit 20",)]),
 )]
 impl Command for ListMessages {
     type Output = Vec<Message>;
@@ -265,6 +277,7 @@ pub struct ExportSessionMessages {
     path = "/v1/sessions/{session_id}/export",
     policy = crate::domains::sessions::SESSION_VIEW,
     positional = "session_id",
+    cli = CliRoute::new(&["sessions"], "export").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Save a session's transcript for review or audit", "everruns sessions export session_01h9 --format jsonl",)]),
 )]
 impl Command for ExportSessionMessages {
     type Output = ExportSessionJsonl;
@@ -281,7 +294,7 @@ impl Command for ExportSessionMessages {
             // Secret scrubbing is always applied by the ATIF builder.
             let event_service = crate::services::EventService::new(
                 ctx.db.clone(),
-                crate::event_delivery::EventDelivery::in_memory(),
+                crate::live_updates::event_delivery::EventDelivery::in_memory(),
             );
             let events = event_service
                 .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -363,7 +376,7 @@ pub async fn export_session_segment(
 
     let event_service = crate::services::EventService::new(
         ctx.db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
     );
     let events = event_service
         .list(session_id.uuid(), None, None, &[], &[], None, None)
@@ -392,17 +405,18 @@ pub async fn export_session_segment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::messages::{InputContentPart, InputMessage};
+    use crate::domains::messages::types::InputMessage;
     use crate::domains::sessions::SessionService;
-    use crate::event_delivery::EventDelivery;
+    use crate::live_updates::event_delivery::EventDelivery;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
+    use crate::storage::{
         AgentRow, CreateAgentRow, CreateHarnessRow, CreateSessionParticipantRow, CreateSessionRow,
         SessionParticipantRow, SessionRow,
     };
     use async_trait::async_trait;
     use everruns_contracts::typed_id::HarnessId;
     use everruns_contracts::typed_id::PrincipalId;
+    use everruns_core::InputContentPart;
     use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::{Arc, Mutex};
@@ -495,7 +509,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: crate::records::SessionSource::Api,
+                source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,
@@ -553,7 +567,6 @@ mod tests {
         let message_service = Arc::new(crate::domains::messages::MessageService::new(
             db.clone(),
             runner_trait,
-            false,
             EventDelivery::in_memory(),
         ));
         let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
@@ -592,6 +605,8 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -620,6 +635,7 @@ mod tests {
             tags: None,
             external_actor: None,
             request_id: None,
+            client_message_id: None,
         }
     }
 
@@ -658,7 +674,7 @@ mod tests {
         let row = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: crate::records::SessionSource::Api,
+                source: crate::domains::sessions::record::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,
@@ -690,7 +706,7 @@ mod tests {
             })
             .await
             .expect("create Platform Chat session");
-        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        crate::setup::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
             .await
             .expect("initialize managed Agent");
         let caller = Caller {
@@ -700,6 +716,7 @@ mod tests {
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         let service = SessionService::new(db.clone());
         let session = service
@@ -768,7 +785,7 @@ mod tests {
         let fixture = setup_routing_fixture().await;
         let db = fixture.ctx.db.clone();
         let user = db
-            .create_user(crate::storage::models::CreateUserRow {
+            .create_user(crate::storage::CreateUserRow {
                 email: "send-participant@example.com".to_string(),
                 name: "Send Participant".to_string(),
                 avatar_url: None,
@@ -791,6 +808,7 @@ mod tests {
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         };
         let runner: Arc<dyn TurnBackend> = Arc::new(RecordingRunner::default());
         let ctx = Ctx::minimal_for_test(caller, db.clone(), None)
@@ -798,7 +816,6 @@ mod tests {
             .with_message_service(Arc::new(crate::domains::messages::MessageService::new(
                 db.clone(),
                 runner,
-                false,
                 EventDelivery::in_memory(),
             )));
 

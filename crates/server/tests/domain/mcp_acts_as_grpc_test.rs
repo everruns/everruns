@@ -10,13 +10,14 @@ use everruns_contracts::{
 };
 use everruns_core::host::{HostComposition, RuntimeHostAdapter};
 use everruns_core::{DEFAULT_ORG_ID, McpServerActsAs};
-use everruns_server::grpc_service::WorkerServiceImpl;
-use everruns_server::storage::models::{
+use everruns_server::storage::CreateVirtualUserRow;
+use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
-    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow,
 };
 use everruns_server::storage::{EncryptionService, StorageBackend, UpsertMcpServiceToolCache};
-use everruns_server::{EventDelivery, seed};
+use everruns_server::worker_link::grpc_service::WorkerServiceImpl;
+use everruns_server::{EventDelivery, setup::seed};
 use everruns_test_support::{MockMcpOAuthServer, MockMcpProtocolEra};
 use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 use serde_json::json;
@@ -174,6 +175,8 @@ impl ActsAsArrangement {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    max_output_tokens: None,
+                    communication: Default::default(),
                     environments: None,
                     is_built_in: false,
                 },
@@ -290,7 +293,7 @@ impl ActsAsArrangement {
             .db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_server::records::SessionSource::Api,
+                source: everruns_server::domains::sessions::record::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,

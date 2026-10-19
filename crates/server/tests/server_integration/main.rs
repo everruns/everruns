@@ -12,6 +12,7 @@
 #[path = "../test_harness.rs"]
 mod test_harness;
 
+mod agent_activity_test;
 mod agent_avatar_storage_test;
 mod agents_api_lifecycle_test;
 mod api_integration_test;
@@ -24,5 +25,7 @@ mod platform_chat_upgrade_test;
 mod repository_conformance_test;
 mod repository_integration_test;
 mod sandbox_fleet_test;
+mod sandbox_orphan_scan_test;
 mod sandbox_state_test;
 mod session_row_fixture;
+mod session_task_recovery_test;

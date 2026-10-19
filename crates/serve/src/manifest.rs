@@ -187,13 +187,14 @@ impl Manifest {
 
         let mut secrets: BTreeSet<String> = inner.config.secrets.required.iter().cloned().collect();
         for entry in &inner.channels {
-            secrets.extend(entry.channel.secrets().iter().map(|s| s.name().to_string()));
+            secrets.extend(entry.channel.driver().secrets());
         }
         // Connections and channels name their secrets while being built.
         secrets.extend(
-            crate::connection::declared_secrets()
-                .into_iter()
-                .map(str::to_string),
+            inner
+                .declared_secrets
+                .iter()
+                .map(|name| (*name).to_string()),
         );
 
         let mut routes = vec![
@@ -229,6 +230,15 @@ impl Manifest {
             routes.push(format!("GET {route}/.well-known/agent-card.json"));
         }
 
+        #[cfg(feature = "voice")]
+        for agent in inner.agents.iter().filter(|agent| !agent.sub) {
+            let route = crate::voice::route(&agent.name);
+            routes.push(format!("GET {route}"));
+            routes.push(format!("POST {route}/calls"));
+            routes.push(format!("POST {route}/calls/{{call_id}}/end"));
+            routes.push(format!("GET {route}/ws"));
+        }
+
         let models: BTreeSet<String> = inner.agents.iter().map(|a| a.spec.model.clone()).collect();
         Manifest {
             schema: SCHEMA.into(),
@@ -255,7 +265,7 @@ impl Manifest {
                 .iter()
                 .map(|entry| ChannelInfo {
                     name: entry.name.into(),
-                    kind: entry.channel.kind().into(),
+                    kind: entry.channel.driver().platform().into(),
                     route: format!("/v1/channels/{}", entry.name),
                     source: entry.source.into(),
                 })
@@ -310,6 +320,45 @@ impl Manifest {
 /// a new build even when no code changed.
 pub(crate) fn build_id(app: &App) -> String {
     Manifest::of(app).build_id
+}
+
+// A manifest identifies declarations/assets, but cannot distinguish two tool
+// implementations with the same signature. Durable bindings also pin the
+// executable. Operators may supply an immutable artifact id via SERVE_BUILD_ID.
+pub(crate) fn execution_build_id(
+    app: &App,
+    assets: &std::collections::HashMap<String, String>,
+    instructions: &std::collections::HashMap<String, String>,
+) -> crate::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    static EXECUTABLE: std::sync::OnceLock<Result<[u8; 32], String>> = std::sync::OnceLock::new();
+    let executable = EXECUTABLE
+        .get_or_init(|| {
+            let mut file =
+                std::fs::File::open(std::env::current_exe().map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+            let mut digest = Sha256::new();
+            let mut buffer = [0u8; 65536];
+            loop {
+                let count = file.read(&mut buffer).map_err(|error| error.to_string())?;
+                if count == 0 {
+                    break;
+                }
+                digest.update(&buffer[..count]);
+            }
+            Ok(digest.finalize().into())
+        })
+        .as_ref()
+        .map_err(|error| anyhow::anyhow!("cannot pin execution artifact: {error}"))?;
+    let mut digest = Sha256::new();
+    digest.update(executable);
+    digest.update(build_id(app).as_bytes());
+    let assets: std::collections::BTreeMap<_, _> = assets.iter().collect();
+    digest.update(serde_json::to_vec(&assets)?);
+    let instructions: std::collections::BTreeMap<_, _> = instructions.iter().collect();
+    digest.update(serde_json::to_vec(&instructions)?);
+    Ok(format!("e{}", hex::encode(digest.finalize())))
 }
 
 fn hash(manifest: &Manifest, app: &App) -> String {

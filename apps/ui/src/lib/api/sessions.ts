@@ -1,6 +1,7 @@
 // Session API functions
 // Org travels in the X-Org-Id header (see ./active-org), with the everruns_org cookie as fallback
 
+import { withSessionActivity } from "../session-activity";
 import { api, throwApiError } from "./client";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -14,7 +15,15 @@ import type {
   SessionFacetsResponse,
   PaginatedResponse,
   PaginationParams,
+  AgentCapabilityConfig,
 } from "./types";
+
+declare module "./legacy-api-types" {
+  interface CreateSessionRequest {
+    /** Session-level capabilities, added to the agent's (e.g. `dry_run` for a test run). */
+    capabilities?: AgentCapabilityConfig[];
+  }
+}
 
 // Re-export message and event functions for convenience
 export { createMessage, listMessages, sendUserMessage } from "./messages";
@@ -425,11 +434,13 @@ export async function submitToolResults(
   sessionId: string,
   toolResults: Array<{ tool_call_id: string; result?: unknown; error?: string }>,
 ): Promise<{ status: string; tool_results_count: number }> {
-  const response = await api.post<{ status: string; tool_results_count: number }>(
-    `/v1/sessions/${sessionId}/tool-results`,
-    { tool_results: toolResults },
-  );
-  return response.data;
+  return withSessionActivity(sessionId, async () => {
+    const response = await api.post<{ status: string; tool_results_count: number }>(
+      `/v1/sessions/${sessionId}/tool-results`,
+      { tool_results: toolResults },
+    );
+    return response.data;
+  });
 }
 
 // ============================================
@@ -468,11 +479,13 @@ export async function submitQuestionAnswers(
   sessionId: string,
   request: QuestionAnswersRequest,
 ): Promise<QuestionAnswersResponse> {
-  const response = await api.post<QuestionAnswersResponse>(
-    `/v1/sessions/${sessionId}/question-answers`,
-    request,
-  );
-  return response.data;
+  return withSessionActivity(sessionId, async () => {
+    const response = await api.post<QuestionAnswersResponse>(
+      `/v1/sessions/${sessionId}/question-answers`,
+      request,
+    );
+    return response.data;
+  });
 }
 
 // ============================================
@@ -491,11 +504,13 @@ export async function submitElicitationConsent(
   toolCallId: string,
   action: "accept" | "decline",
 ): Promise<{ host: string; status: string }> {
-  const response = await api.post<{ host: string; status: string }>(
-    `/v1/sessions/${sessionId}/mcp-elicitation-consent`,
-    { tool_call_id: toolCallId, action },
-  );
-  return response.data;
+  return withSessionActivity(sessionId, async () => {
+    const response = await api.post<{ host: string; status: string }>(
+      `/v1/sessions/${sessionId}/mcp-elicitation-consent`,
+      { tool_call_id: toolCallId, action },
+    );
+    return response.data;
+  });
 }
 
 // ============================================
@@ -521,9 +536,11 @@ export async function submitToolApprovals(
   sessionId: string,
   decisions: ToolApprovalAnswer[],
 ): Promise<SubmitToolApprovalsResponse> {
-  const response = await api.post<SubmitToolApprovalsResponse>(
-    `/v1/sessions/${sessionId}/tool-approvals`,
-    { decisions },
-  );
-  return response.data;
+  return withSessionActivity(sessionId, async () => {
+    const response = await api.post<SubmitToolApprovalsResponse>(
+      `/v1/sessions/${sessionId}/tool-approvals`,
+      { decisions },
+    );
+    return response.data;
+  });
 }

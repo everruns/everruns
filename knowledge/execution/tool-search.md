@@ -20,6 +20,8 @@ Inspired by OpenAI's `tool_search` feature, but designed as a provider-agnostic 
 
 One step further, a **deferred MCP server** is not even listed until asked for ([user MCP servers](../integrations/user-mcp-servers.md) D6): the turn carries a placeholder tool `mcp_<name>`, and a `tool_search` match on it reveals the server for the session, so its tools are listed from the next step with their schemas already revealed. This reuses the search and reveal set above; only the session record (`mcp_reveal:<prefix>`) is new.
 
+Revealing a tool today rewrites its registered schema, which changes the tool list and costs a full prompt-cache miss. [Cache-Stable Tool Changes](cache-stable-tool-changes.md) proposes recording reveals in the conversation instead.
+
 ## Motivation
 
 Current flow: all capability tools -> `RuntimeAgent.tools` -> `LlmCallConfig.tools` -> full JSON schemas sent to every LLM call. With 30+ capabilities and MCP servers, tool definitions can consume 5K-15K tokens per request.
@@ -302,3 +304,10 @@ Track tool_search effectiveness via existing metadata:
 - [Using GPT-5.5](https://developers.openai.com/api/docs/guides/latest-model)
 - [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses)
 - Internal: `knowledge/execution/capabilities.md`, `knowledge/foundations/llm-drivers.md`
+
+## Recovery after a failed call
+
+Failed tool calls, including pre-execution rejections, reveal the failed tool's
+authoritative schema for the next model step. The durable transcript
+owns this state, including in the experimental result-only reveal mode; other sessions remain deferred, and validation still
+blocks malformed arguments before execution.

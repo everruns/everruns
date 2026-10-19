@@ -36,19 +36,6 @@ pub struct ActivityOptions {
     #[serde(default, with = "option_duration_serde")]
     pub start_delay: Option<Duration>,
 
-    /// Idempotent enqueue keyed by `(workflow_id, activity_id)`.
-    ///
-    /// When set on a workflow task, enqueueing returns the id of an existing
-    /// task with the same `activity_id` in the same workflow, in any status,
-    /// instead of creating a second one; such a replay is also exempt from the
-    /// per-workflow pending-task limit. Use it for tasks that several callers
-    /// may race to enqueue for one logical event. Standalone tasks (no
-    /// workflow) ignore it. Under concurrent enqueues the PostgreSQL store is
-    /// race-free only where a unique index covers those `activity_id`s; without
-    /// one the check is best-effort.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub dedupe_by_activity_id: bool,
-
     /// Named task queue the task goes to; `None` is the default queue.
     ///
     /// A claim takes tasks from one queue only
@@ -70,7 +57,6 @@ impl Default for ActivityOptions {
             circuit_breaker: None,
             priority: 0,
             start_delay: None,
-            dedupe_by_activity_id: false,
             queue: None,
         }
     }
@@ -118,13 +104,6 @@ impl ActivityOptions {
     /// ```
     pub fn with_start_delay(mut self, delay: Duration) -> Self {
         self.start_delay = Some(delay);
-        self
-    }
-
-    /// Make enqueueing idempotent per `(workflow_id, activity_id)`; see
-    /// [`ActivityOptions::dedupe_by_activity_id`].
-    pub fn with_dedupe_by_activity_id(mut self) -> Self {
-        self.dedupe_by_activity_id = true;
         self
     }
 

@@ -40,21 +40,10 @@ use serde_json::{Value, json};
 use connection::ParallelConnector;
 pub use payments::ParallelPaymentsCapability;
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
-    &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "parallel_search",
-        label: "Parallel search",
-        description: "Web search and research through Parallel, with a Parallel connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    }];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        feature_flag: Some("parallel_search"),
+        feature_flag: None,
         factory: || Box::new(ParallelCapability),
     },
     // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
@@ -69,7 +58,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("parallel_search"),
+    feature_flag: None,
     factory: || Box::new(ParallelConnector),
 }];
 pub const PARALLEL_CAPABILITY_ID: &str = "parallel_search";
@@ -114,11 +103,11 @@ impl Capability for ParallelCapability {
     }
 
     fn name(&self) -> &str {
-        "[Experimental] Parallel"
+        "Parallel Search and Fetch"
     }
 
     fn description(&self) -> &str {
-        "Search and fetch web content through Parallel MCP. Free by default, with optional Parallel API-key connection for authenticated usage."
+        "Search and fetch web content through Parallel MCP. Free by default, with optional Parallel API-key connection for authenticated usage. For provider-neutral web search, use Web search."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -127,6 +116,10 @@ impl Capability for ParallelCapability {
 
     fn icon(&self) -> Option<&str> {
         Some("search")
+    }
+
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        true
     }
 
     fn category(&self) -> Option<&str> {
@@ -269,11 +262,12 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
             },
             CapabilityLocalization {
                 locale: "uk",
-                name: Some("[Експериментально] Parallel"),
+                name: Some("Parallel: пошук і отримання"),
                 description: Some(
                     "Шукайте та отримуйте вебвміст через Parallel MCP. Безкоштовно за \
                      замовчуванням, з опціональним підключенням за API-ключем Parallel для \
-                     автентифікованого використання.",
+                     автентифікованого використання. Для пошуку без прив'язки до \
+                     провайдера використовуйте Вебпошук.",
                 ),
                 config_description: Some(
                     "Визначає, чи використовує Parallel безкоштовний доступ або підключення з \

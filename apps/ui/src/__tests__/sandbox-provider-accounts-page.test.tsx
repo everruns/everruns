@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import SandboxProviderAccountsPage from "@/app/(main)/sandbox-provider-accounts/page";
+import SandboxProviderAccountsPage from "@/app/(main)/sandboxes/(tabs)/accounts/page";
 
 const mutation = { mutateAsync: jest.fn(), isPending: false };
 
@@ -10,6 +10,13 @@ jest.mock("@/hooks/use-organization-connections", () => ({
         id: "connection-1",
         name: "Production Daytona",
         provider: "daytona",
+        connected_at: "2026-10-07T00:00:00Z",
+        updated_at: "2026-10-07T00:00:00Z",
+      },
+      {
+        id: "connection-2",
+        name: "Team Brave",
+        provider: "brave_search",
         connected_at: "2026-10-07T00:00:00Z",
         updated_at: "2026-10-07T00:00:00Z",
       },
@@ -44,6 +51,15 @@ jest.mock("@/hooks/use-user-connections", () => ({
         form_schema: { fields: [], instructions_markdown: "" },
       },
       {
+        provider_id: "brave_search",
+        display_name: "Brave Search",
+        description: "Web search",
+        icon: "search",
+        connection_type: "api_key",
+        capabilities: ["web_search"],
+        form_schema: { fields: [], instructions_markdown: "" },
+      },
+      {
         provider_id: "github",
         display_name: "GitHub",
         description: "Repositories",
@@ -63,5 +79,12 @@ describe("Sandbox Provider Accounts", () => {
     expect(screen.getAllByText("Daytona").length).toBeGreaterThan(0);
     expect(screen.getByText("E2B")).toBeInTheDocument();
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+  });
+
+  it("leaves web search accounts to the Web search page", () => {
+    render(<SandboxProviderAccountsPage />);
+
+    expect(screen.queryByText("Team Brave")).not.toBeInTheDocument();
+    expect(screen.queryByText("Brave Search")).not.toBeInTheDocument();
   });
 });

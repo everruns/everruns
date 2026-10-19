@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
@@ -153,6 +153,7 @@ const mockSession: Session = {
 };
 
 const mockUseAgent = jest.fn();
+const mockUseCapabilities = jest.fn();
 const mockUseAgentChannels = jest.fn();
 const mockUseAgentTriggers = jest.fn();
 
@@ -179,7 +180,7 @@ jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
   useCreateSession: () => mutation(mockCreateSession),
-  useCapabilities: () => ({ data: [] }),
+  useCapabilities: () => mockUseCapabilities(),
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
   useCopyAgent: () => mutation(),
@@ -187,6 +188,7 @@ jest.mock("@/hooks", () => ({
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
   useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
   useAgentCredentials: () => ({ data: [] }),
+  useAgentTriggers: () => ({ data: [] }),
   useLatestHealthCheckRun: () => ({ data: { config_changed: false } }),
   useUpdateAgent: () => mutation(mockUpdate),
   useDeleteAgent: () => mutation(mockArchive),
@@ -250,6 +252,7 @@ beforeEach(() => {
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
+  mockUseCapabilities.mockReturnValue({ data: [] });
   mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
   mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
@@ -313,8 +316,9 @@ describe("AgentPage layout", () => {
     expect(
       more.getByRole("button", { name: /Service account\s*On first use/ }),
     ).toBeInTheDocument();
+    expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
-    expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -326,6 +330,37 @@ describe("AgentPage layout", () => {
     expect(
       screen.getByText("Connections the agent uses for operations configured to act as a service."),
     ).toBeInTheDocument();
+  });
+
+  it("shows Files when the agent has a filesystem or starter files", async () => {
+    mockUseCapabilities.mockReturnValue({
+      data: [
+        { id: "session_file_system", features: ["file_system"] },
+        { id: "skills", dependencies: ["session_file_system"] },
+      ],
+    });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, capabilities: [{ ref: "skills", config: {} }] },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*None/ })).toBeInTheDocument();
+
+    cleanup();
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...mockAgent,
+        capabilities: [],
+        initial_files: [
+          { path: "/notes.txt", content: "hello", encoding: "text", is_readonly: false },
+        ],
+      },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*1 file/ })).toBeInTheDocument();
   });
 
   it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {
@@ -347,10 +382,10 @@ describe("AgentPage layout", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Primary sandbox\s*Bashkit Virtual Workspace/,
+        name: /Sandbox\s*Bashkit Virtual Workspace/,
       }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     expect(
       screen.getByText("Locked by the selected Harness.", { exact: false }),
     ).toBeInTheDocument();
@@ -363,6 +398,15 @@ describe("AgentPage layout", () => {
 
     expect(mockCreateSession).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
+  });
+
+  it("opens a dry-run Playground setup from Test run", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /Test run/ }));
+
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1&dry_run=1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {
@@ -398,7 +442,50 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
     expect(screen.getByText("Session with GPT-4o")).toBeInTheDocument();
-    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
+    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", {
+      offset: 0,
+      limit: 20,
+      includeArchived: true,
+    });
+  });
+
+  it("shows all seven counted sessions, including the six archived ones", async () => {
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, session_count: 7 }, isLoading: false });
+    mockUseSessions.mockReturnValue({
+      data: {
+        data: Array.from({ length: 7 }, (_, index) => ({
+          ...mockSession,
+          id: `session-${index}`,
+          title: `Conversation ${index + 1}`,
+          archived_at: index === 0 ? null : mockSession.updated_at,
+        })),
+        total: 7,
+      },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+
+    expect(screen.getAllByText(/^Conversation \d$/)).toHaveLength(7);
+    expect(screen.getAllByText("Archived")).toHaveLength(6);
+    expect(screen.getByText("7 sessions · Includes archived sessions")).toBeInTheDocument();
+  });
+
+  it("keeps archived history included when paging through sessions", async () => {
+    mockUseSessions.mockReturnValue({
+      data: { data: [mockSession], total: 21 },
+      isLoading: false,
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(mockUseSessions).toHaveBeenLastCalledWith("agent-1", {
+      offset: 20,
+      limit: 20,
+      includeArchived: true,
+    });
+    expect(screen.getByText("Showing 21-21 of 21 sessions")).toBeInTheDocument();
   });
 
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
@@ -513,7 +600,44 @@ describe("AgentPage edit mode", () => {
     expect(request).not.toHaveProperty("network_access");
     expect(request).not.toHaveProperty("harness_id");
     expect(request).not.toHaveProperty("initial_files");
+    expect(request).not.toHaveProperty("max_output_tokens");
     expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+  });
+
+  it("sends a max output tokens ceiling and clears it back to the provider default", async () => {
+    await renderPage();
+    expect(
+      screen.getByText("Lower this if the provider says it can only afford fewer tokens."),
+    ).toBeInTheDocument();
+
+    const field = screen.getByLabelText("Max output tokens");
+    expect(field).toHaveAttribute("placeholder", "Provider default");
+    fireEvent.change(field, { target: { value: "4096" } });
+    expect(screen.getByText("Editing")).toBeInTheDocument();
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBe(4096);
+
+    mockUpdate.mockClear();
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, max_output_tokens: 2048 },
+      isLoading: false,
+    });
+    cleanup();
+    await renderPage();
+    expect(screen.getByLabelText("Max output tokens")).toHaveValue(2048);
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "" } });
+    await save();
+    expect(mockUpdate.mock.calls[0][0].request.max_output_tokens).toBeNull();
+  });
+
+  it("rejects a zero max output tokens ceiling instead of saving", async () => {
+    await renderPage();
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "0" } });
+    await save();
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Max output tokens")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Enter a whole number of at least 1")).toBeInTheDocument();
   });
 
   it("feeds unsaved prompt text to the checks and applies their fixes", async () => {
@@ -600,7 +724,7 @@ describe("AgentPage edit mode", () => {
   it("includes sandbox policy edited in their sheet", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Add Daytona sandbox" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();

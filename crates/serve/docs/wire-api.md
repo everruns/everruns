@@ -33,12 +33,19 @@ client.messages().create(&session.id, "What was revenue last week?").await?;
 | `GET /v1/sessions/{id}/sse` | query below | SSE stream of events |
 | `GET /v1/sessions/{id}/events` | query below | `{data: Event[]}` |
 | `POST /v1/sessions/{id}/question-answers` | `{tool_call_id?, status?: "answered" \| "declined", answers: [{id, selected?, other_text?}]}` | `{status, answered_by, session_status}` |
+| `POST /v1/sessions/{id}/tool-approvals` | `{decisions: [{tool_call_id, decision: "allow" \| "allow_always" \| "reject" \| "reject_always"}]}` | `{resolved: [{tool_call_id, tool, outcome}], status}`. A pending approval left out is settled `not_approved`. |
 | `POST /v1/sessions/{id}/approvals/{tool_call_id}` (serve) | `{decision: "approve" \| "deny", note?}` | `{status, tool_call_id, session_status}`, `404` when nothing is pending |
 | `GET /v1/agent` (serve) | | agent card: agents, tools, skills, channels, schedules, version |
 | `POST /v1/channels/{name}` (serve) | the provider's webhook | whatever the channel answers |
+| `GET /v1/channels/{agent}` | | `AgentCard`, see [Agent Execution API](#agent-execution-api) |
+| `GET`, `POST /v1/channels/{agent}/sessions`, `…/sessions/{id}/…` | as the `/v1/sessions` routes, without `agent_name` | the same answers, confined to that agent |
 | `POST /v1/channels/{agent}/ag-ui` (`ag-ui` feature) | AG-UI 1.0 `RunAgentInput` | SSE stream of AG-UI events, see [AG-UI](#ag-ui) |
 | `POST /v1/channels/{agent}/a2a` (`a2a` feature) | A2A 1.0 JSON-RPC (`SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`) | JSON-RPC result, or SSE for the streaming methods, see [A2A](#a2a) |
 | `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` (`a2a` feature) | | A2A 1.0 Agent Card |
+| `GET /v1/channels/{agent}/voice` (`voice` feature) | | HTML test page that places calls from the browser |
+| `POST /v1/channels/{agent}/voice/calls` (`voice` feature) | `{sdp, session_id?, conversation?}` | `{session_id, call_id, model, voice, answer_sdp}`, see [Voice](#voice) |
+| `POST /v1/channels/{agent}/voice/calls/{call_id}/end` (`voice` feature) | | `{call_id, utterances, spoken_chunks, interruptions}` |
+| `GET /v1/channels/{agent}/voice/ws?session_id=&conversation=` (`voice` feature, cascaded) | WebSocket upgrade | PCM audio and JSON control lines, see [Voice](#voice) |
 | `GET /health` (serve) | | `{status, build_id}` |
 | `POST /dev/schedules/{name}` (serve, `dev` only) | | runs a schedule now |
 
@@ -110,6 +117,24 @@ Durable events, oldest first, as `{data: [...]}`. Query: `after_sequence`,
 `before_sequence`, `since_id`, `types`, `exclude`, and `limit` (1 to 1000,
 the last N; sets `X-Total-Count` to the session's durable event count).
 
+## Agent Execution API
+
+Every top-level agent has an *agent base URL*, `/v1/channels/{agent}`, the
+same per-agent API the everruns server exposes for an agent's API channel, so
+the SDK's agent client works against either host. Its wire types are
+[`everruns::execution_api`](https://docs.rs/everruns/latest/everruns/execution_api/).
+
+| Route under `/v1/channels/{agent}` | Answer |
+|---|---|
+| `GET` | `AgentCard`: `name`, `description`, `streaming`, `input`, `auth` (empty: serve has no auth yet), `links.sessions`, `links.ag_ui` and `links.a2a` when those features are on |
+| `POST /sessions` `{title?, metadata?}` | `201` `Session` running this agent, `Location` under the base URL |
+| `GET /sessions?limit=` | `{data: Session[]}`, this agent's sessions, most recently active first (default 50, at most 200) |
+| `GET /sessions/{id}`, `POST …/messages`, `POST …/cancel`, `GET …/sse`, `GET …/events`, `POST …/question-answers`, `POST …/tool-approvals` | as the `/v1/sessions/{id}` routes |
+
+A session is reachable only under the agent that runs it: another agent's base
+URL answers `404`, the same as for a session that does not exist. A subagent
+has no base URL. `POST /v1/channels/{agent}` stays the channel webhook route.
+
 ## Approvals
 
 A `#[tool(needs_approval …)]` becomes the runtime's per-tool gate
@@ -118,7 +143,7 @@ A `#[tool(needs_approval …)]` becomes the runtime's per-tool gate
 ```text
 gated call ──► session status "waitingfortoolresults", pending_approvals: [{tool_call_id, …}]
                     │
-POST /v1/sessions/{id}/approvals/{tool_call_id} {"decision":"approve"}
+POST /v1/sessions/{id}/tool-approvals {"decisions":[{"tool_call_id":…,"decision":"allow"}]}
                     │
           tool.started … tool.completed   (or, on deny, a tool error: "rejected by user")
 ```
@@ -191,14 +216,54 @@ lists the routes under `a2a`, and the manifest under `routes`.
   running on the context's session.
 - **Errors.** An unknown agent or a subagent is a `404` problem.
 
+
+## Voice
+
+With the `voice` cargo feature, every top-level agent also takes browser voice
+calls through `everruns::voice`, the voice loop the server's voice channels
+run. The agent card lists the settings and each agent's base route under
+`voice`, and the manifest lists the routes under `routes`.
+
+- **Settings.** `[voice]` in `serve.toml` is the platform's
+  `VoiceChannelConfig` (voice, greeting, turn detection, interruption, filler,
+  speaking style), one for the whole app. An invalid section stops the host at
+  startup.
+- **Modes.** `mode = "delegated"` (default) takes WebRTC calls at `calls`;
+  `mode = "cascaded"` takes WebSocket calls at `ws`. The other transport
+  answers `400` naming the right route.
+- **Provider.** OpenAI with `OPENAI_API_KEY`: Realtime for delegated calls,
+  the transcription and speech models for cascaded ones. Without a key, `dev`
+  and `eval` use the offline simulator; `start` answers `400`. A `sim`
+  `model` (delegated) or `speech_model` (cascaded) forces the simulator.
+- **WebSocket calls.** The call is placed before the upgrade, so refusals are
+  plain HTTP errors. Binary messages are 16-bit little-endian PCM, mono,
+  24 kHz, in both directions. Serve sends JSON text messages: `call`
+  (`session_id`, `call_id`, `sample_rate`, `format`), `clear` (drop unplayed
+  audio), `transcript` (`role`, `text`), `interrupted` (`heard`) and `ended`
+  (counts, or `error`). Text from the client is ignored. Closing the socket
+  hangs up.
+- **Calls.** Voice is a streaming channel of the channel host
+  (`voice:{agent}`, like AG-UI and A2A). A call with `conversation` lands in
+  the session bound to that key, created on first use; with `session_id`,
+  in that session, which must belong to the same agent (`400` otherwise);
+  with neither, in a new session. Passing both is `400`. Sessions created
+  for calls carry metadata `channel: voice:{agent}`, `kind: voice`. Each finished utterance is a user message with
+  `metadata.source = "voice"`; the answer is spoken as it streams.
+- **Lifetime.** Calls live in the process that placed them, by provider call
+  id; `end` on another replica is `404`. A WebSocket call lives as long as
+  its socket. Nothing about a call is persisted
+  beyond the session's own messages.
+- **Errors.** An empty `sdp` or invalid settings are `400`; an unknown agent,
+  a subagent, an unknown session or an unknown call is `404`.
 ## Differences from the server
 
 - No auth, organizations, agents CRUD, harnesses, workspaces or files routes.
 - `agent_name` names a serve agent from `#[agent]`; `agent_id` is that name,
   not an `agent_…` id. The SDK validates `agent_name` as kebab-case, so an
   agent reachable through the SDK needs a name like `analyst`, not `run_sql`.
-- No `tool-results` route (serve has no client-side tools); approvals use the
-  serve-only route above.
+- No `tool-results` route (serve has no client-side tools). Besides the
+  server's `tool-approvals`, the serve-only `approvals/{tool_call_id}` route
+  answers one call at a time.
 - The A2A endpoint speaks 1.0 only (the server also speaks 0.3), has no auth
   or HMAC signing, and keeps tasks in memory.
 - `events` supports the listed filters only (no `around`, `q`, `turn_id` …).

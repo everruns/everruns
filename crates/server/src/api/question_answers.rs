@@ -19,14 +19,15 @@
 // turn, and the answer is parked in session storage for the retried tool call
 // to send back to the server. Anything but an answer declines (D5).
 
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{
-    ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
+pub(crate) use crate::domains::tool_results::ask_user_result::{
+    build_result_with_source, default_answered_by,
 };
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
-    AskUserResult, AskUserStatus, session_secret_ref,
+    AskUserResult, AskUserStatus,
 };
 
 /// How far back to look for the question set being answered. The card is emitted
@@ -98,164 +99,19 @@ pub(crate) fn validate_answers(
     questions: &[AskUserQuestion],
     submitted: &[AskUserAnswer],
 ) -> Result<Vec<AskUserAnswer>, String> {
-    for answer in submitted {
-        if !questions
-            .iter()
-            .any(|question| question.id.as_deref() == Some(answer.id.as_str()))
-        {
-            return Err(format!("no question with id {:?} was asked", answer.id));
-        }
-    }
-
-    let mut validated = Vec::with_capacity(questions.len());
-    for question in questions {
-        let id = question.id.as_deref().unwrap_or_default();
-        let matches: Vec<&AskUserAnswer> =
-            submitted.iter().filter(|answer| answer.id == id).collect();
-        if matches.len() > 1 {
-            return Err(format!("question {id:?} was answered more than once"));
-        }
-        // Every asked question needs an answer. A partial set would reach the
-        // model as a question it asked and nobody addressed, which it cannot
-        // tell apart from one the person deliberately skipped.
-        let answer = matches
-            .first()
-            .ok_or_else(|| format!("question {id:?} was not answered"))?;
-
-        if question.kind == AskUserQuestionKind::Secret {
-            // THREAT[TM-AGENT-016]: the only thing a secret answer may carry is
-            // a reference to a secret that was already stored encrypted. Every
-            // value-bearing field is refused here rather than ignored, so a
-            // client that put the credential in one gets an error instead of a
-            // result that quietly persisted it to the event log.
-            if !answer.selected.is_empty() || answer.other_text.is_some() {
-                return Err(format!(
-                    "question {id:?} is a secret; its answer carries only secret_ref"
-                ));
-            }
-            let expected = session_secret_ref(question.secret_name.as_deref().unwrap_or_default());
-            match answer.secret_ref.as_deref() {
-                Some(reference) if reference == expected => {}
-                Some(_) => {
-                    return Err(format!("question {id:?} was not asked for that secret"));
-                }
-                None => return Err(format!("question {id:?} has no secret_ref")),
-            }
-            validated.push(AskUserAnswer {
-                id: id.to_string(),
-                selected: Vec::new(),
-                other_text: None,
-                secret_ref: Some(expected),
-            });
-            continue;
-        }
-        // A choice answer cannot mint a handle to a secret nobody asked for.
-        if answer.secret_ref.is_some() {
-            return Err(format!("question {id:?} is not a secret question"));
-        }
-        if question.kind == AskUserQuestionKind::Text && !answer.selected.is_empty() {
-            return Err(format!(
-                "question {id:?} is text and must not select options"
-            ));
-        }
-
-        for label in &answer.selected {
-            if !question.options.iter().any(|option| &option.label == label) {
-                return Err(format!(
-                    "question {id:?} was not asked with option {label:?}"
-                ));
-            }
-        }
-        if answer.selected.len()
-            != answer
-                .selected
-                .iter()
-                .collect::<std::collections::HashSet<_>>()
-                .len()
-        {
-            return Err(format!("question {id:?} selects the same option twice"));
-        }
-
-        let other = answer
-            .other_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty());
-        if other.is_some() && question.kind != AskUserQuestionKind::Text && !question.allow_other {
-            return Err(format!("question {id:?} does not allow free text"));
-        }
-
-        // EVE-1059: refuse before persistence, never redact after. This text
-        // becomes a tool result — written to `events` and replayed into model
-        // context every turn — and there is no un-persisting an event, so the
-        // only place this check works is here, ahead of the write.
-        if let Some(text) = other
+    let validated =
+        everruns_core::session_commands::normalize_question_answers(questions, submitted, true)?;
+    // Product policy rejects credential-shaped free text before persistence.
+    for answer in &validated {
+        if let Some(text) = answer.other_text.as_deref()
             && let Some(label) = crate::credential_shape::credential_format(text)
         {
-            return Err(crate::credential_shape::credential_rejection(id, label));
-        }
-
-        // An answer has to say something. Free text stands in for a selection,
-        // which is the whole point of `allow_other`.
-        if answer.selected.is_empty() && other.is_none() {
-            return Err(format!("question {id:?} has no selection and no free text"));
-        }
-        if !question.multi_select && answer.selected.len() > 1 {
-            return Err(format!(
-                "question {id:?} is single-select and carries {} selections",
-                answer.selected.len()
+            return Err(crate::credential_shape::credential_rejection(
+                &answer.id, label,
             ));
         }
-
-        validated.push(AskUserAnswer {
-            id: id.to_string(),
-            selected: answer.selected.clone(),
-            other_text: other.map(str::to_string),
-            secret_ref: None,
-        });
     }
     Ok(validated)
-}
-
-/// Build the result the model reads.
-///
-/// `answered_by` is decided here, never taken from the payload: a model-asserted
-/// "a human answered this" would answer nothing. Only an outcome a person
-/// actually produced is attributed to `User`.
-pub(crate) fn build_result(status: AskUserStatus, answers: Vec<AskUserAnswer>) -> AskUserResult {
-    build_result_with_source(status, default_answered_by(status), answers)
-}
-
-fn default_answered_by(status: AskUserStatus) -> AskUserAnsweredBy {
-    match status {
-        AskUserStatus::Answered | AskUserStatus::Declined => AskUserAnsweredBy::User,
-        AskUserStatus::TimedOut => AskUserAnsweredBy::Timeout,
-        AskUserStatus::Cancelled => AskUserAnsweredBy::Unattended,
-    }
-}
-
-/// Build a result for a trusted resolution surface whose source cannot be
-/// inferred from the status, such as a timeout that declines a secret.
-pub(crate) fn build_result_with_source(
-    status: AskUserStatus,
-    answered_by: AskUserAnsweredBy,
-    answers: Vec<AskUserAnswer>,
-) -> AskUserResult {
-    AskUserResult {
-        status,
-        answered_by,
-        // `answered` and `timed_out` carry answers; `declined` and `cancelled`
-        // do not. A decline that shipped the options the person refused to
-        // choose between would read to the model as a choice, but a timeout
-        // *is* the declared defaults being applied (EVE-1056) — dropping them
-        // would leave the model with no value at all. `answered_by: timeout`
-        // is what tells it no human spoke, so the value is not consent.
-        answers: if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
-            answers
-        } else {
-            Vec::new()
-        },
-    }
 }
 
 /// Pull the `ask_user` call out of the current `tool.call_requested` batch.
@@ -263,7 +119,7 @@ pub(crate) fn build_result_with_source(
 /// `tool_call_id` is optional because some answer surfaces rely on the current
 /// pending question set instead of carrying a rendered card's call id.
 pub(crate) fn pending_from_events(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
     tool_call_id: Option<&str>,
 ) -> Option<PendingQuestions> {
     let event = events.last()?;
@@ -440,8 +296,10 @@ pub(crate) async fn resolve_question_answers_with_source(
 
     let result = build_result_with_source(status, answered_by, answers);
 
-    let turn_id = everruns_contracts::typed_id::TurnId::from_uuid(session_id.uuid());
-    let event_message_id = everruns_contracts::typed_id::MessageId::from_uuid(session_id.uuid());
+    // The answer is recorded under the waiting turn, which the worker resumes.
+    let context = crate::turns::open_turn_context(state.db, session_id)
+        .await
+        .map_err(|error| ResolveError::Internal(error.to_string()))?;
     let payload = serde_json::to_value(&result).unwrap_or_default();
 
     // The tool result alone. `ask_user` is called by the model, so the
@@ -484,15 +342,16 @@ pub(crate) async fn resolve_question_answers_with_source(
         // the person was talking to (same reasoning as `mcp_url_consent`).
         let mut message = everruns_core::message::RuntimeMessage::user(spoken);
         message.controls = latest_user_controls(state.db, session_id).await;
+        // Part of the waiting turn, not input that starts or steers one.
         events.push(everruns_core::events::EventRequest::new(
             session_id,
-            everruns_core::events::EventContext::empty(),
+            context.clone(),
             everruns_core::events::InputMessageData::new(message),
         ));
     }
     events.push(everruns_core::events::EventRequest::new(
         session_id,
-        everruns_core::events::EventContext::turn(turn_id, event_message_id),
+        context,
         completed_event,
     ));
     let plan = WaitingTurnResolutionPlan {
@@ -786,7 +645,20 @@ pub async fn submit_question_answers(
         &submitted,
     )
     .await
-    .map_err(|error| match error {
+    .map_err(resolve_error_response)?;
+
+    Ok(question_answers_response(&result))
+}
+
+/// The HTTP answer for a resolution that did not happen. Shared by every
+/// surface that serves `POST …/question-answers`.
+pub(crate) fn resolve_error_response(
+    error: ResolveError,
+) -> (
+    axum::http::StatusCode,
+    axum::Json<super::common::ErrorResponse>,
+) {
+    match error {
         ResolveError::NotWaiting(detail) => super::common::ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {detail})"
         ))
@@ -810,9 +682,13 @@ pub async fn submit_question_answers(
             super::common::ErrorResponse::new("Internal server error".to_string())
                 .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
         }
-    })?;
+    }
+}
 
-    Ok(axum::Json(QuestionAnswersResponse {
+pub(crate) fn question_answers_response(
+    result: &AskUserResult,
+) -> axum::Json<QuestionAnswersResponse> {
+    axum::Json(QuestionAnswersResponse {
         status: serde_json::to_value(result.status)
             .ok()
             .and_then(|v| v.as_str().map(str::to_string))
@@ -822,21 +698,20 @@ pub async fn submit_question_answers(
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default(),
         session_status: "active".to_string(),
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::tool_results::ask_user_result::build_result;
     use everruns_core::builtins::ask_user::{AskUserOption, AskUserQuestionKind};
 
     /// A `tool.call_requested` row carrying one `ask_user` call, shaped the way
     /// the event stream stores it.
-    fn event_with_ask_user_arguments(
-        arguments: serde_json::Value,
-    ) -> crate::storage::models::EventRow {
+    fn event_with_ask_user_arguments(arguments: serde_json::Value) -> crate::storage::EventRow {
         let now = chrono::Utc::now();
-        crate::storage::models::EventRow {
+        crate::storage::EventRow {
             id: everruns_contracts::typed_id::EventId::new(),
             session_id: everruns_contracts::typed_id::SessionId::new(),
             sequence: 1,
@@ -881,10 +756,7 @@ mod tests {
         .expect("an in-profile schema")
     }
 
-    fn with_call_id(
-        mut event: crate::storage::models::EventRow,
-        id: &str,
-    ) -> crate::storage::models::EventRow {
+    fn with_call_id(mut event: crate::storage::EventRow, id: &str) -> crate::storage::EventRow {
         event.data["tool_calls"][0]["id"] = serde_json::json!(id);
         event
     }

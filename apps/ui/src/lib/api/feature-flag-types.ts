@@ -1,4 +1,6 @@
 export interface FeatureFlags {
+  /** Organization execution monitoring. Adoption opt-in. */
+  monitoring?: boolean;
   /** Integrated platform Chat workspace. Organization adoption opt-in. */
   chat_threads?: boolean;
   docker_capability?: boolean;
@@ -8,7 +10,6 @@ export interface FeatureFlags {
   mcp_events?: boolean;
   /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
   agent_change_reasons_required?: boolean;
-  notifications: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */
   skills: boolean;
@@ -18,19 +19,12 @@ export interface FeatureFlags {
   knowledge: boolean;
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
-  channel_budgets: boolean;
   voice: boolean;
-  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
-  agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
-  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
-  webmcp: boolean;
   reports: boolean;
-  /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
-  chatgpt_plan?: boolean;
   /** First-party Mistral AI provider. Off unless the deployment raises it. */
   mistral?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */

@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::models::CreateModelRow;
+use crate::storage::CreateModelRow;
 use crate::storage::{CreateOrganizationRow, CreateProviderRow};
 use everruns_core::{DEFAULT_ORG_ID, PolicyError};
 
@@ -289,6 +289,59 @@ async fn bootstrap_elects_luna_over_other_openai_models() {
         .unwrap()
         .expect("default elected");
     assert_eq!(default.model_id, "gpt-6-luna");
+}
+
+#[test]
+fn argon_is_preferred_over_a_newer_uncurated_gemini_profile() {
+    let argon = get_model_profile(&DriverId::Gemini, "gemini-4-argon").unwrap();
+    let mut flash = get_model_profile(&DriverId::Gemini, "gemini-3.8-flash").unwrap();
+    flash.release_date = Some("2099-01-01".into());
+    assert!(ModelRank::of(&argon) < ModelRank::of(&flash));
+}
+
+#[tokio::test]
+async fn bootstrap_elects_argon_for_gemini_and_preserves_existing_default() {
+    let db = Arc::new(StorageBackend::test_database());
+    let org_id = create_second_org(&db).await;
+    let service = ModelService::new(db.clone());
+    let provider = db
+        .create_provider(
+            org_id,
+            CreateProviderRow {
+                name: "Google Gemini".into(),
+                provider_type: "gemini".into(),
+                base_url: None,
+                api_key_encrypted: Some(b"encrypted".to_vec()),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    let flash = discover_model(&db, org_id, provider.id, "gemini-3.8-flash", &["chat"]).await;
+    let argon = discover_model(&db, org_id, provider.id, "gemini-4-argon", &["chat"]).await;
+    let outcome = service
+        .bootstrap_intelligence(org_id, provider.id.uuid())
+        .await
+        .unwrap();
+    assert_eq!(outcome.default_model_id, Some(argon.id.uuid()));
+    let selected = db.get_default_model(org_id).await.unwrap().unwrap();
+    assert_eq!(selected.model_id, "gemini-4-argon");
+    assert!(selected.enabled && selected.is_favorite);
+
+    db.upsert_organization_settings(org_id, Some(flash.id.uuid()))
+        .await
+        .unwrap();
+    assert!(
+        !service
+            .bootstrap_intelligence(org_id, provider.id.uuid())
+            .await
+            .unwrap()
+            .changed()
+    );
+    assert_eq!(
+        db.get_default_model(org_id).await.unwrap().unwrap().id,
+        flash.id
+    );
 }
 
 /// Disabling the org default must hand the org another *chat* model. An

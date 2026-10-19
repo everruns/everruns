@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { AgentChannel, ChannelType } from "./types";
+import type { AgentChannel, AgentKey, AgentKeyWithSecret, ChannelType } from "./types";
 
 export interface CreateAgentChannelRequest {
   channel_type: ChannelType;
@@ -90,6 +90,51 @@ export async function triggerAgentChannel(
   return response.data;
 }
 
+function agentKeysPath(agentId: string, channelId: string): string {
+  return `/v1/agents/${agentId}/channels/${channelId}/keys`;
+}
+
+/** Agent keys of an api channel, newest first. Secrets are never returned here. */
+export async function listAgentKeys(agentId: string, channelId: string): Promise<AgentKey[]> {
+  const response = await api.get<AgentKey[]>(agentKeysPath(agentId, channelId));
+  return response.data;
+}
+
+/** The response carries the key's `secret` once; it is never readable again. */
+export async function createAgentKey(
+  agentId: string,
+  channelId: string,
+  name: string,
+): Promise<AgentKeyWithSecret> {
+  const response = await api.post<AgentKeyWithSecret>(agentKeysPath(agentId, channelId), {
+    name,
+  });
+  return response.data;
+}
+
+/** New secret for the same key id; the old secret keeps working for `overlapHours`. */
+export async function rotateAgentKey(
+  agentId: string,
+  channelId: string,
+  keyId: string,
+  overlapHours: number,
+): Promise<AgentKeyWithSecret> {
+  const response = await api.post<AgentKeyWithSecret>(
+    `${agentKeysPath(agentId, channelId)}/${keyId}/rotate`,
+    { overlap_hours: overlapHours },
+  );
+  return response.data;
+}
+
+export async function revokeAgentKey(
+  agentId: string,
+  channelId: string,
+  keyId: string,
+): Promise<AgentKey> {
+  const response = await api.post<AgentKey>(`${agentKeysPath(agentId, channelId)}/${keyId}/revoke`);
+  return response.data;
+}
+
 export interface BeginSlackInstallResult {
   /** Send the operator here; Slack shows one consent screen, then redirects back. */
   authorize_url: string;
@@ -100,6 +145,11 @@ export interface SlackInstallCapability {
   connected: boolean;
   reconnect_required: boolean;
   can_manage: boolean;
+  /**
+   * Workspaces connect by one Slack consent through this deployment's manager app, rather than
+   * only by a pasted configuration token (EVE-1102).
+   */
+  manager_app?: boolean;
 }
 
 export async function getSlackInstallCapability(): Promise<SlackInstallCapability> {
@@ -114,6 +164,8 @@ export interface SlackWorkspace {
   team_id: string | null;
   team_name: string | null;
   status: "connected" | "reconnect_required";
+  /** How it was connected: a pasted configuration token, or the manager app's Slack consent. */
+  connected_with?: "config_token" | "manager_app";
   connected_at: string;
 }
 
@@ -127,6 +179,15 @@ export async function connectSlackWorkspace(refreshToken: string): Promise<Slack
   const response = await api.post<SlackWorkspace>("/v1/slack/workspaces", {
     refresh_token: refreshToken,
   });
+  return response.data;
+}
+
+/**
+ * Start connecting a workspace by Slack consent through the deployment's manager app. Admin only.
+ * Slack returns the browser to Settings > Slack workspaces with `slack_connect=ok|failed`.
+ */
+export async function beginSlackManagerConnect(): Promise<BeginSlackInstallResult> {
+  const response = await api.post<BeginSlackInstallResult>("/v1/slack/workspaces/oauth");
   return response.data;
 }
 

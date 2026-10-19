@@ -142,7 +142,7 @@ Tool search requires model-level support. Per Anthropic, it is available on:
 | Opus 4.x (`claude-opus-4*`) | Yes |
 | Sonnet 5.5 / 5 (`claude-sonnet-5-5`, `claude-sonnet-5`) | Yes |
 | Sonnet 4.6 (`claude-sonnet-4-6`) | Yes |
-| Haiku 4.5 (`claude-haiku-4-5`) | Yes |
+| Haiku 5.5 / 4.5 (`claude-haiku-5-5`, `claude-haiku-4-5`) | Yes |
 | Fable 5.1 / 5 (`claude-fable-5-1`, `claude-fable-5`) | Yes |
 | Retired pre-4 Claude models | No (capability is silently ignored) |
 
@@ -226,6 +226,17 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
   ]
 }
 ```
+
+`reveal` (experimental) chooses how a found tool becomes callable. With
+`redefine` (the default), its full schema replaces the placeholder in the tool
+list from the next step. With `in_result`, the tool list never changes: the
+model calls the tool using the schema the search returned, and every call is
+still checked against the tool's real schema before it runs. On models that
+cannot carry tool changes inside the conversation, `in_result` keeps the
+prompt cache through a search. Some models call badly against a placeholder
+schema: in our tests Muse Spark sent numbers and objects as strings and never
+recovered, while GPT-6 Luna and Mistral Large 4 called as well as with
+`redefine`. Use it only with a model you have checked.
 
 ### Benchmarks
 

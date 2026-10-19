@@ -7,11 +7,14 @@ use crate::mcp::form_elicitation::FormElicitationHandler;
 use crate::mcp::http::HttpTransport;
 use crate::mcp::result::map_tool_call_result;
 use crate::mcp::transport::{McpConnection, McpEndpoint, McpTransport};
-use crate::{EgressService, McpToolCallResult, McpToolDefinition};
+use crate::{
+    EgressService, McpReadResourceResult, McpResourceTemplatesPage, McpResourcesPage,
+    McpToolCallResult, McpToolDefinition,
+};
 use anyhow::Result;
 use everruns_contracts::ToolResultImage;
 use everruns_contracts::tool_types::ToolResult;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Transport-selecting MCP client shared by all hosts.
@@ -98,16 +101,80 @@ impl McpClient {
             .await
     }
 
-    /// Execute a tool via `tools/call`, returning the raw MCP result.
+    /// Execute a tool via `tools/call`, returning the raw MCP result. The
+    /// idempotency key, when given, goes in the request's `_meta`.
     pub async fn call(
         &self,
         connection: &McpConnection,
         tool_name: &str,
         arguments: Value,
+        idempotency_key: Option<&str>,
     ) -> Result<McpToolCallResult> {
         let credential = self.credential(connection).await?;
         self.transport_for(connection)
-            .call_tool(connection, tool_name, arguments, credential.as_ref())
+            .call_tool(
+                connection,
+                tool_name,
+                arguments,
+                credential.as_ref(),
+                idempotency_key,
+            )
+            .await
+    }
+
+    /// List one page of the server's resources (`resources/list`). Pass the
+    /// previous page's `next_cursor` to continue.
+    pub async fn list_resources(
+        &self,
+        connection: &McpConnection,
+        cursor: Option<&str>,
+    ) -> Result<McpResourcesPage> {
+        let result = self
+            .request(connection, "resources/list", cursor_params(cursor))
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// List one page of the server's resource templates
+    /// (`resources/templates/list`).
+    pub async fn list_resource_templates(
+        &self,
+        connection: &McpConnection,
+        cursor: Option<&str>,
+    ) -> Result<McpResourceTemplatesPage> {
+        let result = self
+            .request(
+                connection,
+                "resources/templates/list",
+                cursor_params(cursor),
+            )
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// Read one resource's contents (`resources/read`). An unknown URI comes
+    /// back as an [`McpRpcError`](crate::mcp::McpRpcError), code `-32002` on
+    /// servers that follow the spec.
+    pub async fn read_resource(
+        &self,
+        connection: &McpConnection,
+        uri: &str,
+    ) -> Result<McpReadResourceResult> {
+        let result = self
+            .request(connection, "resources/read", json!({ "uri": uri }))
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        let credential = self.credential(connection).await?;
+        self.transport_for(connection)
+            .request(connection, method, params, credential.as_ref())
             .await
     }
 
@@ -118,10 +185,20 @@ impl McpClient {
         tool_call_id: impl Into<String>,
         tool_name: &str,
         arguments: Value,
+        idempotency_key: Option<&str>,
     ) -> Result<ToolResult> {
-        let result = self.call(connection, tool_name, arguments).await?;
+        let result = self
+            .call(connection, tool_name, arguments, idempotency_key)
+            .await?;
         let (json_result, images) = map_tool_call_result(&result);
         Ok(tool_result(tool_call_id.into(), json_result, images))
+    }
+}
+
+fn cursor_params(cursor: Option<&str>) -> Value {
+    match cursor {
+        Some(cursor) => json!({ "cursor": cursor }),
+        None => json!({}),
     }
 }
 
@@ -131,6 +208,7 @@ pub(crate) fn tool_result(
     images: Vec<ToolResultImage>,
 ) -> ToolResult {
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(result),
         images: if images.is_empty() {

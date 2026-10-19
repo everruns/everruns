@@ -1,6 +1,6 @@
 ---
 title: URL mode elicitation
-description: When an MCP server needs a secret, an authorization, or a payment, Everruns holds the turn and asks a person to finish it in their browser — the value never passes through the client or the model.
+description: When an MCP server needs a secret, an authorization or a payment, Everruns pauses the turn and a person finishes it in their browser, out of the model's sight.
 sidebar:
   label: URL elicitation
 appliesTo: [platform, cloud]

@@ -8,7 +8,7 @@
 // - Phase 2 mutation actions go through host postMessage → tools/call,
 //   so the card itself is never the trust boundary
 
-use crate::records::Agent;
+use crate::domains::agents::record::Agent;
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -444,7 +444,7 @@ fn format_date(ts: &DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::{Agent, AgentStatus};
+    use crate::domains::agents::record::{Agent, AgentStatus};
     use chrono::TimeZone;
     use everruns_contracts::typed_id::AgentId;
     use everruns_core::events::TokenUsage;
@@ -475,6 +475,8 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
+            communication: Default::default(),
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,

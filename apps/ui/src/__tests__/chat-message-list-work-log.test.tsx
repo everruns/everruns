@@ -188,6 +188,195 @@ describe("ChatMessageList work-log narration", () => {
       screen.queryByText("Created [Hourly Dad Jokes](/agents/agent_123)"),
     ).not.toBeInTheDocument();
   });
+
+  it("folds commentary into the work log and leaves the final answer as a message", () => {
+    const chatEvents = [
+      event("tool", "tool.call_requested", {
+        tool_calls: [{ id: "tool-1", name: "list_files", arguments: {} }],
+      }),
+      event("note", "output.message.completed", {
+        message: {
+          id: "message-note",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "provider",
+          content: [
+            {
+              type: "text",
+              text: "There isn't a registered GitHub MCP server yet. I'll add it.",
+            },
+          ],
+        },
+      }),
+      event("answer", "output.message.completed", {
+        message: {
+          id: "message-answer",
+          role: "agent",
+          phase: "final_answer",
+          content: [{ type: "text", text: "GitHub is ready to authorise." }],
+        },
+      }),
+      event("done", "turn.completed", { turn_id: "turn-1", duration_ms: 111000 }),
+    ];
+
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={() => []}
+      />,
+    );
+
+    expect(screen.getByText("GitHub is ready to authorise.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("There isn't a registered GitHub MCP server yet. I'll add it."),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /worked_for/i }));
+
+    expect(
+      screen.getByText("There isn't a registered GitHub MCP server yet. I'll add it."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a sent conversation.message as an agent message and keeps explicit notes in the work log", () => {
+    const note = "Checking the deploy log before answering.";
+    const reply = "The deploy **finished** at 10:02.";
+    const chatEvents = [
+      event("note", "output.message.completed", {
+        message: {
+          id: "message-note",
+          role: "agent",
+          phase: "commentary",
+          phase_source: "communication",
+          content: [
+            { type: "text", text: note },
+            {
+              type: "tool_call",
+              id: "call-send",
+              name: "send_message",
+              arguments: { text: reply },
+            },
+          ],
+        },
+      }),
+      event("sent", "conversation.message", {
+        message_id: "message_sent_1",
+        text: reply,
+        tool_call_id: "call-send",
+      }),
+      event("done", "turn.completed", { turn_id: "turn-1", duration_ms: 4000, iterations: 2 }),
+    ];
+
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={(data) =>
+          (data.message?.content ?? []).flatMap((part) =>
+            part.type === "tool_call"
+              ? [{ id: part.id, name: part.name, arguments: part.arguments }]
+              : [],
+          )
+        }
+      />,
+    );
+
+    // The reply is a normal agent bubble, rendered once.
+    expect(screen.getAllByText(reply)).toHaveLength(1);
+    expect(screen.getByText(reply).closest("[data-conversation-message-id]")).toHaveAttribute(
+      "data-conversation-message-id",
+      "message_sent_1",
+    );
+    // Notes and the send_message call stay folded in the work log.
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tool-output")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /worked_for/i }));
+
+    expect(screen.getByTestId("work-log-narration")).toHaveTextContent(note);
+    expect(screen.getByTestId("tool-output")).toBeInTheDocument();
+    expect(screen.getAllByText(reply)).toHaveLength(1);
+  });
+
+  it("skips an empty conversation.message", () => {
+    const chatEvents = [
+      event("sent", "conversation.message", {
+        message_id: "message_sent_1",
+        text: "   ",
+        tool_call_id: "call-send",
+      }),
+    ];
+    const { container } = render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+      />,
+    );
+    expect(container.querySelector("[data-conversation-message-id]")).toBeNull();
+  });
+
+  it("shows live thinking inside Working instead of an assistant message", () => {
+    render(
+      <ChatMessageList
+        events={[]}
+        chatEvents={[]}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+        streamingWork={{ turnId: "turn-1", text: null, isThinking: true }}
+      />,
+    );
+
+    expect(screen.queryByText("no_messages_yet")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+
+    expect(screen.getByText("thinking")).toBeInTheDocument();
+  });
 });
 
 describe("ChatMessageList folded work log", () => {
@@ -225,7 +414,7 @@ describe("ChatMessageList folded work log", () => {
     result: [],
   });
 
-  it("keeps a running turn folded, with its latest step and errors in the header", () => {
+  it("keeps a running turn folded, with its latest step and issues in the header", () => {
     renderEvents([actStarted, toolFailed]);
 
     expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
@@ -233,7 +422,41 @@ describe("ChatMessageList folded work log", () => {
       "false",
     );
     expect(screen.getByTestId("work-log-status")).toHaveTextContent("Creating the support agent");
-    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
+    expect(screen.queryByTestId("work-log-error-count")).not.toBeInTheDocument();
+  });
+
+  it("counts a failed call the runtime marked as an issue in warning style", () => {
+    renderEvents([
+      actStarted,
+      { ...toolFailed, data: { ...toolFailed.data, severity: "issue" } },
+      event("turn-completed", "turn.completed", {
+        turn_id: "turn-1",
+        duration_ms: 33000,
+        issue_count: 1,
+      }),
+    ]);
+
+    const issues = screen.getByTestId("work-log-issue-count");
+    expect(issues).toHaveTextContent("1 issue");
+    expect(issues).toHaveClass("text-warning");
+    expect(screen.queryByTestId("work-log-error-count")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps a fatal turn failure red, separate from recovered issues", () => {
+    renderEvents([
+      actStarted,
+      toolFailed,
+      event("turn-failed", "turn.failed", {
+        turn_id: "turn-1",
+        error: "The model provider is unavailable",
+      }),
+    ]);
+
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
+    const alert = screen.getByRole("alert");
+    expect(alert.querySelector(".text-destructive")).toHaveTextContent("chat_error_title");
   });
 
   it("shows interactive requests outside the fold while the turn runs", () => {
@@ -247,7 +470,7 @@ describe("ChatMessageList folded work log", () => {
     expect(screen.getByText("ask user card").closest("[aria-hidden='true']")).toBeNull();
   });
 
-  it("keeps the error count once the turn completes", () => {
+  it("keeps the issue count once the turn completes", () => {
     renderEvents([
       actStarted,
       toolFailed,
@@ -255,7 +478,7 @@ describe("ChatMessageList folded work log", () => {
     ]);
 
     expect(screen.queryByTestId("work-log-status")).not.toBeInTheDocument();
-    expect(screen.getByTestId("work-log-error-count")).toHaveTextContent("1 error");
+    expect(screen.getByTestId("work-log-issue-count")).toHaveTextContent("1 issue");
   });
 });
 
@@ -436,5 +659,64 @@ describe("ChatMessageList full work log", () => {
 
     expect(screen.getByTestId("tool-output")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /working|worked_for/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("ChatMessageList platform messages", () => {
+  function renderMessages(messages: { text: string; metadata?: Record<string, string> }[]) {
+    const chatEvents = messages.map(({ text, metadata }, index) =>
+      event("m".repeat(index + 1), "input.message", {
+        message: { role: "user", content: [{ type: "text", text }], metadata },
+      }),
+    );
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={() => []}
+      />,
+    );
+  }
+
+  it("shows an automatic update without the task id", () => {
+    renderMessages([
+      {
+        text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.getByText("automatic_update")).toBeInTheDocument();
+    expect(screen.getByText("task_update_done")).toBeInTheDocument();
+    expect(screen.getByText("Found v0.44.0.")).toBeInTheDocument();
+    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+  });
+
+  it("shows a coordinator brief without the worker's instructions", () => {
+    renderMessages([
+      {
+        text: "New assignment from the coordinator: Releases\n\nList the releases.\n\nKeep your checklist current with update_checklist. Then finish.",
+      },
+    ]);
+    expect(screen.getByText("from_chat")).toBeInTheDocument();
+    expect(screen.getByText("List the releases.")).toBeInTheDocument();
+    expect(screen.queryByText(/update_checklist/)).not.toBeInTheDocument();
+  });
+
+  it("shows what the person typed as written", () => {
+    renderMessages([{ text: 'Task "x" is what I typed' }]);
+    expect(screen.getByText('Task "x" is what I typed')).toBeInTheDocument();
+    expect(screen.queryByText("from_chat")).not.toBeInTheDocument();
   });
 });

@@ -1,0 +1,21 @@
+[package]
+name = "everruns-coordinator-agent"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["local", "openai"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+# The scripted model in tests/team_sim stays out of the example's build.
+async-trait.workspace = true
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

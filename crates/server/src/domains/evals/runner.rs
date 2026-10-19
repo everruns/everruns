@@ -6,13 +6,13 @@
 // background task. If the server crashes mid-run, the run stays "running" and can be
 // manually cancelled. Durable execution is a future enhancement.
 
-use crate::api::messages::{CreateMessageRequest, InputMessage};
-use crate::api::sessions::CreateSessionRequest;
+use crate::domains::evals::record::*;
+use crate::domains::messages::types::{CreateMessageRequest, InputMessage};
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
-use crate::records::eval::*;
+use crate::domains::sessions::types::CreateSessionRequest;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateEvalCaseResultRow;
+use crate::storage::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
@@ -299,7 +299,7 @@ async fn execute_case_inner(
             harness_id,
             agent_id,
             agent_id.map(everruns_contracts::typed_id::AgentId::from_uuid),
-            crate::records::SessionSource::Eval,
+            crate::domains::sessions::record::SessionSource::Eval,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,
@@ -328,6 +328,7 @@ async fn execute_case_inner(
                 forked_from_session_id: None,
                 budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
+                fork_up_to_sequence: None,
             },
         )
         .await?;
@@ -371,7 +372,12 @@ async fn execute_case_inner(
     }
 
     // Collect events for scoring using filtered queries to avoid 10k row cap
-    let msg_filter = vec!["output.message.completed".to_string()];
+    // What the agent said: its text, or the messages it sent in explicit
+    // communication.
+    let msg_filter = vec![
+        "output.message.completed".to_string(),
+        "conversation.message".to_string(),
+    ];
     let msg_events = ctx
         .db
         .list_events(session_id, None, None, &msg_filter, &[], None, None)
@@ -531,7 +537,7 @@ async fn send_message_and_wait(
     };
     let msg_req = CreateMessageRequest {
         message: InputMessage {
-            role: crate::api::messages::MessageRole::User,
+            role: crate::domains::messages::types::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
         addressed_participant_id: None,
@@ -539,6 +545,7 @@ async fn send_message_and_wait(
         metadata: None,
         tags: None,
         external_actor: None,
+        client_message_id: None,
     };
     ctx.message_service.create(msg_ctx, msg_req).await?;
 
@@ -582,38 +589,22 @@ async fn send_message_and_wait(
     }
 }
 
-pub(crate) fn extract_final_assistant_content(
-    events: &[crate::storage::models::EventRow],
-) -> String {
-    // Find the last output.message.completed event.
-    // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
-    for event in events.iter().rev() {
-        if event.event_type == "output.message.completed"
-            && let Some(message) = event.data.get("message")
-            && let Some(content) = message.get("content")
-            && let Some(parts) = content.as_array()
-        {
-            let text_parts: Vec<&str> = parts
-                .iter()
-                .filter_map(|p| {
-                    if p.get("type").and_then(|t| t.as_str()) == Some("text") {
-                        p.get("text").and_then(|t| t.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            return text_parts.join("\n");
-        }
-    }
-    String::new()
+pub(crate) fn extract_final_assistant_content(events: &[crate::storage::EventRow]) -> String {
+    // The last thing the agent said; commentary and tool-only messages are not answers.
+    events
+        .iter()
+        .rev()
+        .find_map(|event| {
+            everruns_core::conversation::said_in_event(&event.event_type, &event.data)
+        })
+        .unwrap_or_default()
 }
 
 /// Collect the citation annotations on the final assistant message. They ride
 /// inline on the text content parts of the last `output.message.completed`
 /// event, so they are already in the fetched events.
 pub(crate) fn extract_final_assistant_annotations(
-    events: &[crate::storage::models::EventRow],
+    events: &[crate::storage::EventRow],
 ) -> Vec<TextAnnotation> {
     for event in events.iter().rev() {
         if event.event_type == "output.message.completed"
@@ -639,7 +630,7 @@ pub(crate) fn extract_final_assistant_annotations(
     Vec::new()
 }
 
-pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) -> Vec<String> {
+pub(crate) fn extract_tool_calls(events: &[crate::storage::EventRow]) -> Vec<String> {
     events
         .iter()
         .filter(|e| e.event_type == "tool.completed")
@@ -652,7 +643,7 @@ pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) ->
         .collect()
 }
 
-fn extract_token_usage(events: &[crate::storage::models::EventRow]) -> (u64, u64) {
+fn extract_token_usage(events: &[crate::storage::EventRow]) -> (u64, u64) {
     let mut input = 0u64;
     let mut output = 0u64;
     for event in events {

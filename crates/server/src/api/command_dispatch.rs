@@ -57,9 +57,10 @@
 // session's slash commands (`api/commands.rs`).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -72,7 +73,9 @@ use utoipa::ToSchema;
 use super::common::ErrorResponse;
 use super::mcp_endpoint::{AppState, catalog, catalog_context, cli_tree};
 use crate::auth::ResolvedOrg;
+use crate::auth::pat_scope::{self, PatScope};
 use crate::domains::common::{CommandDescriptor, CommandError};
+use crate::storage::EncryptionService;
 use crate::storage::command_idempotency::{
     ClaimIdempotencyKey, IdempotencyClaim, IdempotencyKeyScope,
 };
@@ -85,11 +88,11 @@ pub const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 /// Response header set when the response is a stored one.
 pub const IDEMPOTENT_REPLAYED_HEADER: &str = "idempotent-replayed";
 /// Longest accepted idempotency key.
-const MAX_IDEMPOTENCY_KEY_LEN: usize = 255;
+pub(crate) const MAX_IDEMPOTENCY_KEY_LEN: usize = 255;
 /// How long a key is remembered.
-const IDEMPOTENCY_KEY_TTL: chrono::Duration = chrono::Duration::hours(24);
+pub(crate) const IDEMPOTENCY_KEY_TTL: chrono::Duration = chrono::Duration::hours(24);
 /// How long a request owns its key before a retry may take it over.
-const IDEMPOTENCY_LOCK_TTL: chrono::Duration = chrono::Duration::minutes(10);
+pub(crate) const IDEMPOTENCY_LOCK_TTL: chrono::Duration = chrono::Duration::minutes(10);
 
 /// Most metadata entries one request may carry, and the longest key or value.
 const MAX_METADATA_ENTRIES: usize = 16;
@@ -222,11 +225,20 @@ pub struct CommandResponse {
     ),
     tag = "commands"
 )]
-pub async fn list_commands(org: ResolvedOrg) -> Json<CommandCatalog> {
+pub async fn list_commands(
+    org: ResolvedOrg,
+    pat_scope: Option<Extension<PatScope>>,
+) -> Json<CommandCatalog> {
+    // A scoped token sees only the commands it may run (for `read`, the
+    // read-only `query` set); everyone else sees the whole contract.
+    let scope = pat_scope.map(|Extension(scope)| scope);
     let commands = cli_tree::contracts_for(&org.feature_flags)
         .into_iter()
         .filter_map(|contract| {
             let desc = descriptor(&contract.wire_name)?;
+            if !pat_scope::scope_permits(scope, pat_scope::classify_command(desc)) {
+                return None;
+            }
             Some(CommandEntry {
                 contract,
                 api_version: COMMAND_API_VERSION,
@@ -263,11 +275,20 @@ pub async fn list_commands(org: ResolvedOrg) -> Json<CommandCatalog> {
 )]
 pub async fn execute_command(
     org: ResolvedOrg,
+    pat_scope: Option<Extension<PatScope>>,
     State(state): State<AppState>,
     Path(name): Path<String>,
     headers: HeaderMap,
     body: Option<Json<CommandRequest>>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    // The route is `PerCommand`: a scoped token is checked against the named
+    // command here. An unknown or unexposed name falls through to the 404.
+    if let Some(desc) = exposed_descriptor(&name)
+        && let Err(denied) =
+            pat_scope::enforce_command(pat_scope.map(|Extension(s)| s), org.user_id, desc)
+    {
+        return Ok(denied.into_response());
+    }
     let request = body.map(|Json(request)| request).unwrap_or_default();
     let key = idempotency_key(&headers)?;
     if let Some(version) = request.api_version.as_deref()
@@ -443,10 +464,17 @@ async fn run(
     })
 }
 
-/// A response as stored for replay: encrypted when the server has a key.
 fn seal_response(state: &AppState, response: &CommandResponse) -> anyhow::Result<Vec<u8>> {
+    seal_replay(state.encryption.as_ref(), response)
+}
+
+/// A response as stored for replay: encrypted when the server has a key.
+pub(crate) fn seal_replay(
+    encryption: Option<&Arc<EncryptionService>>,
+    response: &impl serde::Serialize,
+) -> anyhow::Result<Vec<u8>> {
     let json = serde_json::to_vec(response)?;
-    match &state.encryption {
+    match encryption {
         Some(encryption) => encryption.encrypt(&json),
         None => Ok(json),
     }
@@ -455,7 +483,14 @@ fn seal_response(state: &AppState, response: &CommandResponse) -> anyhow::Result
 /// The stored response back. A row sealed before encryption was configured
 /// (or after it was removed) still reads, as plain JSON.
 fn open_response(state: &AppState, sealed: &[u8]) -> Result<serde_json::Value, CommandError> {
-    let json = match &state.encryption {
+    open_replay(state.encryption.as_ref(), sealed)
+}
+
+pub(crate) fn open_replay<T: serde::de::DeserializeOwned>(
+    encryption: Option<&Arc<EncryptionService>>,
+    sealed: &[u8],
+) -> Result<T, CommandError> {
+    let json = match encryption {
         Some(encryption) => encryption
             .decrypt(sealed)
             .unwrap_or_else(|_| sealed.to_vec()),
@@ -469,7 +504,7 @@ fn open_response(state: &AppState, sealed: &[u8]) -> Result<serde_json::Value, C
 }
 
 /// The `Idempotency-Key` header, if the request sent one.
-fn idempotency_key(headers: &HeaderMap) -> Result<Option<String>, CommandError> {
+pub(crate) fn idempotency_key(headers: &HeaderMap) -> Result<Option<String>, CommandError> {
     let Some(value) = headers.get(IDEMPOTENCY_KEY_HEADER) else {
         return Ok(None);
     };
@@ -525,6 +560,16 @@ fn validate_metadata(metadata: &BTreeMap<String, String>) -> Result<(), CommandE
         )));
     }
     Ok(())
+}
+
+/// The command `catalog::dispatch_named` would run under `name`.
+fn exposed_descriptor(name: &str) -> Option<&'static CommandDescriptor> {
+    inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .find(|desc| {
+            let meta = (desc.meta)();
+            meta.name == name && catalog::is_exposed(&meta)
+        })
 }
 
 fn descriptor(name: &str) -> Option<&'static CommandDescriptor> {

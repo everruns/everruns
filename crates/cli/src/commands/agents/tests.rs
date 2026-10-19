@@ -43,6 +43,20 @@ fn test_apply_harness_none_sets_nothing() {
 }
 
 #[test]
+fn a_json_array_tag_becomes_the_strings_inside_it() {
+    let params = agent_params(
+        None,
+        "a".into(),
+        "p".into(),
+        None,
+        None,
+        None,
+        vec![r#"["company", "ci"]"#.into()],
+    );
+    assert_eq!(params["tags"], serde_json::json!(["company", "ci"]));
+}
+
+#[test]
 fn an_update_from_flags_is_an_upsert_by_id() {
     let params = agent_params(
         Some("agent_1"),

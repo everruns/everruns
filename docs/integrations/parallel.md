@@ -6,7 +6,7 @@ appliesTo: [platform]
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M7 4v16M12 4v16M17 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
 
-> **Status:** Experimental, behind the `parallel_search` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_PARALLEL_SEARCH` can override the grade.
+> **Status:** Experimental, available without a feature flag.
 
 Parallel provides hosted MCP tools for web search and URL fetching.
 
@@ -17,6 +17,14 @@ Add the `parallel_search` capability to an agent or harness. It works for free w
 To use a Parallel API key, add a `Parallel` connection in Settings → My agent experience, then configure the capability with `auth: "connection"`.
 
 To use Parallel's OAuth-compatible MCP endpoint, configure the capability with `endpoint: "oauth"`. This mode requires the `Parallel` connection because the endpoint rejects anonymous requests.
+
+## As a Web search provider
+
+A Parallel API key can also answer the provider-neutral [Web Search](/capabilities/web-search/)
+capability. Connect it as an organization search account in **Registers > Web search**
+(`parallel` connection), then pick it in an agent's Web search settings or put it in the
+Automatic order. Searches go to Parallel's Search API and are billed on that key. Use this
+instead of `parallel_search` when you want one `web_search` tool that can switch providers.
 
 ## Tools
 

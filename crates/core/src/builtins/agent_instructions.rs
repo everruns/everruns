@@ -800,11 +800,8 @@ mod tests {
             "## Style\nUse snake_case.",
         ));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(store.clone()),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
 
         let result = cap.conversation_context_contribution(&ctx).await.unwrap();
@@ -823,11 +820,8 @@ mod tests {
         let cap = AgentInstructionsCapability;
         let store = Arc::new(MockFileStore::empty());
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
 
         assert!(cap.conversation_context_contribution(&ctx).await.is_none());
@@ -846,11 +840,8 @@ mod tests {
         let cap = AgentInstructionsCapability;
         let store = Arc::new(MockFileStore::single(AGENTS_MD_PATH, "   \n  "));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
 
         assert!(cap.conversation_context_contribution(&ctx).await.is_none());
@@ -904,11 +895,8 @@ mod tests {
             "PLACEMENT-MARKER: follow the repository checklist.",
         ));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(file_store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
         let cap = AgentInstructionsCapability;
 
@@ -941,11 +929,8 @@ mod tests {
             "/docs",
         ));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(store.clone()),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
         let cap = AgentInstructionsCapability;
 
@@ -979,11 +964,8 @@ mod tests {
             "/docs",
         ));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(file_store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
         let cap = AgentInstructionsCapability;
 
@@ -1007,11 +989,8 @@ mod tests {
             "/docs",
         ));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(file_store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
         let cap = AgentInstructionsCapability;
 
@@ -1051,11 +1030,8 @@ mod tests {
         let file_store: Arc<dyn SessionFileSystem> =
             Arc::new(MockFileStore::with_cwd(&refs, "/a/a/a/a"));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(file_store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
         let cap = AgentInstructionsCapability;
 
@@ -1132,11 +1108,8 @@ mod tests {
             ("/CLAUDE.md", "Prefer concise replies."),
         ]));
         let ctx = SystemPromptContext {
-            session_id: test_session_id(),
-            locale: None,
             file_store: Some(store.clone()),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(test_session_id())
         };
 
         let result = cap

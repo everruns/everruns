@@ -55,7 +55,7 @@ use everruns_integrations::brave_search::BraveSearch;
 let agent = Agent::builder()
     .instructions("Search and cite primary sources.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .capability(BraveSearch::from_env()?)
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())

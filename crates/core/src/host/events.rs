@@ -1,9 +1,6 @@
 //! Canonical host event persistence, bounded replay, and message projection.
 
 use std::collections::HashMap;
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
@@ -18,7 +15,6 @@ use everruns_contracts::tool_types::ToolResultImage;
 use everruns_contracts::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, RwLock};
 
 /// Default number of canonical envelopes returned by a host event read.
@@ -68,6 +64,19 @@ pub enum EventLogError {
     /// A local log exceeds the bounded in-memory recovery contract.
     #[error("event log recovery limit exceeded: {detail}")]
     RecoveryLimitExceeded { detail: String },
+    /// A conditional append found the session's log ending somewhere other
+    /// than the caller expected; nothing was written.
+    ///
+    /// `None` means an empty log. A caller that lost the race re-reads from
+    /// `actual` before deciding whether to try again.
+    #[error(
+        "event log sequence conflict for session {session_id}: expected last sequence {expected:?}, found {actual:?}"
+    )]
+    SequenceConflict {
+        session_id: SessionId,
+        expected: Option<i32>,
+        actual: Option<i32>,
+    },
     /// The storage backend failed.
     #[error("event log backend failure: {detail}")]
     Backend { detail: String },
@@ -531,11 +540,31 @@ pub trait EventReader: Send + Sync {
 /// Ephemeral requests ([`EventRequest::is_ephemeral`]) never reach a durable
 /// log; reject them with [`EventLogError::InvalidAppend`].
 ///
+/// [`EventLog::append_conditional`] is the single-writer primitive: it commits
+/// only when the session's log still ends at the sequence the caller last saw,
+/// checked atomically with the sequence assignment, and otherwise fails with
+/// [`EventLogError::SequenceConflict`] without writing. It is a required method
+/// so no implementation can silently ignore the precondition.
+///
 /// The log is append-only. There is no truncate, rewind, or mutation contract.
 #[async_trait]
 pub trait EventLog: EventReader {
     /// Commit a durable request, assigning its event id and persisted sequence.
     async fn append(&self, request: EventRequest) -> Result<Event, EventLogError>;
+
+    /// Commit a durable request only if the session's log currently ends at
+    /// `expected_last_sequence` (`None`: the log is empty).
+    ///
+    /// The last sequence is the highest one the log has assigned for the
+    /// session, including entries a filtered reader does not return. On a
+    /// mismatch return [`EventLogError::SequenceConflict`] carrying the actual
+    /// last sequence and write nothing. Of concurrent callers presenting the
+    /// same expectation, at most one succeeds.
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError>;
 
     /// Persistence guarantee used for acknowledged appends.
     fn durability(&self) -> EventDurability;
@@ -687,11 +716,33 @@ struct EventIndex {
 }
 
 impl EventIndex {
-    fn next_sequence(&self, session_id: SessionId) -> Result<i32, EventLogError> {
+    fn last_sequence(&self, session_id: SessionId) -> Option<i32> {
         self.by_session
             .get(&session_id)
             .and_then(|events| events.last())
             .and_then(|event| event.sequence)
+    }
+
+    /// Reject the append unless the session's log ends at `expected`.
+    fn check_last_sequence(
+        &self,
+        session_id: SessionId,
+        expected: Option<i32>,
+    ) -> Result<(), EventLogError> {
+        let actual = self.last_sequence(session_id);
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(EventLogError::SequenceConflict {
+                session_id,
+                expected,
+                actual,
+            })
+        }
+    }
+
+    fn next_sequence(&self, session_id: SessionId) -> Result<i32, EventLogError> {
+        self.last_sequence(session_id)
             .unwrap_or(0)
             .checked_add(1)
             .ok_or_else(|| EventLogError::InvalidAppend {
@@ -836,22 +887,52 @@ impl EventReader for InMemoryEventLog {
     }
 }
 
-#[async_trait]
-impl EventLog for InMemoryEventLog {
-    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
-        if request.is_ephemeral() {
-            return Err(EventLogError::InvalidAppend {
-                detail: format!(
-                    "ephemeral event {} must be routed sink-only",
-                    request.event_type
-                ),
-            });
-        }
+fn reject_ephemeral(request: &EventRequest) -> Result<(), EventLogError> {
+    if request.is_ephemeral() {
+        return Err(EventLogError::InvalidAppend {
+            detail: format!(
+                "ephemeral event {} must be routed sink-only",
+                request.event_type
+            ),
+        });
+    }
+    Ok(())
+}
+
+impl InMemoryEventLog {
+    /// `expected`: `None` appends unconditionally, `Some(last)` only when the
+    /// session's log ends at `last`. Checked under the same write lock that
+    /// assigns the sequence.
+    async fn append_checked(
+        &self,
+        request: EventRequest,
+        expected: Option<Option<i32>>,
+    ) -> Result<Event, EventLogError> {
+        reject_ephemeral(&request)?;
         let mut index = self.index.write().await;
+        if let Some(expected) = expected {
+            index.check_last_sequence(request.session_id, expected)?;
+        }
         let sequence = index.next_sequence(request.session_id)?;
         let event = request.into_event(EventId::new(), sequence);
         index.insert_existing(event.clone())?;
         Ok(event)
+    }
+}
+
+#[async_trait]
+impl EventLog for InMemoryEventLog {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        self.append_checked(request, None).await
+    }
+
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected_last_sequence: Option<i32>,
+    ) -> Result<Event, EventLogError> {
+        self.append_checked(request, Some(expected_last_sequence))
+            .await
     }
 
     fn durability(&self) -> EventDurability {
@@ -859,220 +940,10 @@ impl EventLog for InMemoryEventLog {
     }
 }
 
-struct JsonlState {
-    file: tokio::fs::File,
-    lock_file: std::fs::File,
-    committed_len: u64,
-    index: EventIndex,
-}
-
-struct FileLockGuard(std::fs::File);
-
-impl Drop for FileLockGuard {
-    fn drop(&mut self) {
-        let _ = fs2::FileExt::unlock(&self.0);
-    }
-}
-
-/// Crash-durable JSONL log containing complete canonical [`Event`] envelopes.
-///
-/// An append is acknowledged only after newline-delimited bytes are flushed and
-/// `sync_data` succeeds. A torn final record is an uncommitted tail and is
-/// truncated on open; any malformed complete line is corruption. The in-memory
-/// index is disposable and rebuilt solely from the canonical log.
-pub struct JsonlEventLog {
-    path: PathBuf,
-    state: Mutex<JsonlState>,
-}
-
-impl JsonlEventLog {
-    /// Open or create a canonical event JSONL file and rebuild its index.
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self, EventLogError> {
-        Self::open_with_limits(path, MAX_JSONL_RECOVERY_BYTES, MAX_JSONL_RECOVERY_EVENTS).await
-    }
-
-    async fn open_with_limits(
-        path: impl AsRef<Path>,
-        max_bytes: usize,
-        max_events: usize,
-    ) -> Result<Self, EventLogError> {
-        let path = path.as_ref().to_path_buf();
-        if let Some(parent) = path.parent()
-            && !parent.as_os_str().is_empty()
-        {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        let mut options = tokio::fs::OpenOptions::new();
-        options.create(true).read(true).append(true);
-        #[cfg(unix)]
-        {
-            // THREAT[TM-FS-014]: open and validate the log through one handle
-            // so canonical envelopes cannot be redirected through a symlink.
-            options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
-        }
-        let mut file = options.open(&path).await?;
-        ensure_private_event_log(&file, &path).await?;
-        // Cloned from the validated handle so the advisory lock guards the same
-        // file the symlink check just accepted, not whatever the path resolves
-        // to later.
-        let lock_file = file.try_clone().await?.into_std().await;
-
-        // THREAT[TM-DOS-035]: local state is not assumed trustworthy after a
-        // crash or operator edit. Read through `take` so a concurrently growing
-        // file cannot force an unbounded allocation during index recovery.
-        let mut bytes = Vec::new();
-        (&mut file)
-            .take(max_bytes as u64 + 1)
-            .read_to_end(&mut bytes)
-            .await?;
-        if bytes.len() > max_bytes {
-            return Err(EventLogError::RecoveryLimitExceeded {
-                detail: format!(
-                    "{} exceeds the {max_bytes}-byte local recovery limit",
-                    path.display()
-                ),
-            });
-        }
-        let committed_len = bytes
-            .iter()
-            .rposition(|byte| *byte == b'\n')
-            .map_or(0, |position| position + 1);
-        let mut index = EventIndex::default();
-        for (line_index, line) in bytes[..committed_len]
-            .split(|byte| *byte == b'\n')
-            .filter(|line| !line.is_empty())
-            .enumerate()
-        {
-            if line_index >= max_events {
-                return Err(EventLogError::RecoveryLimitExceeded {
-                    detail: format!(
-                        "{} exceeds the {max_events}-event local recovery limit",
-                        path.display()
-                    ),
-                });
-            }
-            let event: Event =
-                serde_json::from_slice(line).map_err(|error| EventLogError::Corruption {
-                    detail: format!("line {}: {error}", line_index + 1),
-                })?;
-            index.insert_existing(event)?;
-        }
-        if bytes.len() != committed_len {
-            file.set_len(committed_len as u64).await?;
-            file.sync_data().await?;
-        }
-        Ok(Self {
-            path,
-            state: Mutex::new(JsonlState {
-                file,
-                lock_file,
-                committed_len: committed_len as u64,
-                index,
-            }),
-        })
-    }
-
-    /// Backing canonical event-log path.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-#[cfg(unix)]
-async fn ensure_private_event_log(file: &tokio::fs::File, path: &Path) -> std::io::Result<()> {
-    let metadata = file.metadata().await?;
-    if !metadata.is_file() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("event log path is not a regular file: {}", path.display()),
-        ));
-    }
-    // SAFETY: getuid has no preconditions and cannot fail.
-    if metadata.uid() != unsafe { libc::getuid() } {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            format!(
-                "event log is not owned by the current user: {}",
-                path.display()
-            ),
-        ));
-    }
-    if metadata.permissions().mode() & 0o077 != 0 {
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))
-            .await?;
-    }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-async fn ensure_private_event_log(_file: &tokio::fs::File, _path: &Path) -> std::io::Result<()> {
-    Ok(())
-}
-
-#[async_trait]
-impl EventReader for JsonlEventLog {
-    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
-        self.state.lock().await.index.page(request)
-    }
-}
-
-#[async_trait]
-impl EventLog for JsonlEventLog {
-    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
-        if request.is_ephemeral() {
-            return Err(EventLogError::InvalidAppend {
-                detail: format!(
-                    "ephemeral event {} must be routed sink-only",
-                    request.event_type
-                ),
-            });
-        }
-        let mut state = self.state.lock().await;
-        let lock_file = state.lock_file.try_clone()?;
-        fs2::FileExt::try_lock_exclusive(&lock_file).map_err(|error| EventLogError::Backend {
-            detail: format!("cannot lock {} for append: {error}", self.path.display()),
-        })?;
-        let _file_lock = FileLockGuard(lock_file);
-        let actual_len = state.file.metadata().await?.len();
-        if actual_len != state.committed_len {
-            return Err(EventLogError::Backend {
-                detail: format!(
-                    "{} was modified by another writer (expected {} bytes, found {actual_len})",
-                    self.path.display(),
-                    state.committed_len
-                ),
-            });
-        }
-        let sequence = state.index.next_sequence(request.session_id)?;
-        let event = request.into_event(EventId::new(), sequence);
-        let mut encoded =
-            serde_json::to_vec(&event).map_err(|error| EventLogError::InvalidAppend {
-                detail: error.to_string(),
-            })?;
-        encoded.push(b'\n');
-        let previous_len = state.committed_len;
-        let write_result = async {
-            state.file.write_all(&encoded).await?;
-            state.file.flush().await?;
-            state.file.sync_data().await
-        }
-        .await;
-        if let Err(error) = write_result {
-            let _ = state.file.set_len(previous_len).await;
-            let _ = state.file.sync_data().await;
-            return Err(EventLogError::Backend {
-                detail: error.to_string(),
-            });
-        }
-        state.committed_len += encoded.len() as u64;
-        state.index.insert_existing(event.clone())?;
-        Ok(event)
-    }
-
-    fn durability(&self) -> EventDurability {
-        EventDurability::CrashDurable
-    }
-}
+#[cfg(feature = "host")]
+mod jsonl;
+#[cfg(feature = "host")]
+pub use jsonl::JsonlEventLog;
 
 #[derive(Clone)]
 struct ProjectedMessage {
@@ -1504,238 +1375,5 @@ fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::events::{
-        EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
-    };
-    use everruns_contracts::typed_id::{HarnessId, TurnId};
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn jsonl_open_rejects_symlinks_without_touching_the_target() {
-        use std::os::unix::fs::symlink;
-
-        let root = tempfile::tempdir().expect("tempdir");
-        let target = root.path().join("target");
-        let path = root.path().join("events.jsonl");
-        tokio::fs::write(&target, b"unchanged")
-            .await
-            .expect("write target");
-        symlink(&target, &path).expect("create symlink");
-
-        let error = JsonlEventLog::open(&path)
-            .await
-            .err()
-            .expect("symlink is rejected");
-
-        assert!(matches!(error, EventLogError::Backend { .. }));
-        assert_eq!(tokio::fs::read(&target).await.unwrap(), b"unchanged");
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn jsonl_open_hardens_existing_file_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("events.jsonl");
-        tokio::fs::write(&path, b"").await.expect("write fixture");
-        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
-            .await
-            .expect("set fixture permissions");
-
-        let _log = JsonlEventLog::open(&path).await.expect("open event log");
-
-        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-    }
-
-    #[tokio::test]
-    async fn jsonl_recovery_rejects_oversize_files_before_indexing() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("events.jsonl");
-        tokio::fs::write(&path, b"123456789")
-            .await
-            .expect("write fixture");
-
-        let error = JsonlEventLog::open_with_limits(&path, 8, 100)
-            .await
-            .err()
-            .expect("oversize log is rejected");
-        assert!(matches!(error, EventLogError::RecoveryLimitExceeded { .. }));
-    }
-
-    #[tokio::test]
-    async fn jsonl_recovery_rejects_excessive_event_counts() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let path = root.path().join("events.jsonl");
-        let session_id = SessionId::new();
-        let first = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            InputMessageData::new(RuntimeMessage::user("one")),
-        )
-        .into_event(EventId::new(), 1);
-        let second = EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            InputMessageData::new(RuntimeMessage::user("two")),
-        )
-        .into_event(EventId::new(), 2);
-        let bytes = format!(
-            "{}\n{}\n",
-            serde_json::to_string(&first).unwrap(),
-            serde_json::to_string(&second).unwrap()
-        );
-        tokio::fs::write(&path, bytes).await.expect("write fixture");
-
-        let error = JsonlEventLog::open_with_limits(&path, 1_000_000, 1)
-            .await
-            .err()
-            .expect("event-heavy log is rejected");
-        assert!(matches!(error, EventLogError::RecoveryLimitExceeded { .. }));
-    }
-
-    struct LifecycleHeavyReader;
-
-    #[async_trait]
-    impl EventReader for LifecycleHeavyReader {
-        async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
-            let after = request
-                .cursor
-                .as_ref()
-                .map_or(0, EventCursor::after_sequence);
-            let high_watermark = (MAX_EVENT_HISTORY_REPLAY + 1) as i32;
-            let end = after
-                .saturating_add(request.limit.get() as i32)
-                .min(high_watermark);
-            let events = ((after + 1)..=end)
-                .map(|sequence| {
-                    EventRequest::new(
-                        request.session_id,
-                        EventContext::empty(),
-                        OutputMessageDeltaData {
-                            turn_id: TurnId::new(),
-                            message_id: MessageId::new(),
-                            delta: String::new(),
-                            accumulated: String::new(),
-                            phase: None,
-                        },
-                    )
-                    .into_event(EventId::new(), sequence)
-                })
-                .collect();
-            let next_cursor = (end < high_watermark)
-                .then(|| EventCursor::continuation(request.session_id, end, high_watermark))
-                .transpose()?;
-            EventPage::new(events, next_cursor, high_watermark)
-        }
-    }
-
-    #[tokio::test]
-    async fn full_projection_caps_examined_lifecycle_envelopes() {
-        let history = EventHistory::new(Arc::new(LifecycleHeavyReader));
-        let error = match history.project(SessionId::new()).await {
-            Ok(_) => panic!("lifecycle-heavy replay must be bounded"),
-            Err(error) => error,
-        };
-        assert!(matches!(error, EventLogError::InvalidRead { .. }));
-        assert!(error.to_string().contains("examined more than"));
-    }
-
-    #[tokio::test]
-    async fn exact_message_boundary_ignores_trailing_lifecycle_events() {
-        let session_id = SessionId::new();
-        let log = Arc::new(InMemoryEventLog::new());
-        log.append(EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            InputMessageData::new(RuntimeMessage::user("hello")),
-        ))
-        .await
-        .expect("append input message");
-        log.append(EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            OutputMessageCompletedData::new(RuntimeMessage::assistant("hi")),
-        ))
-        .await
-        .expect("append output message");
-        log.append(EventRequest::new(
-            session_id,
-            EventContext::empty(),
-            SessionStartedData {
-                harness_id: HarnessId::new(),
-                agent_id: None,
-                model_id: None,
-            },
-        ))
-        .await
-        .expect("append lifecycle event");
-
-        let page = EventHistory::new(log)
-            .read_page(EventHistoryReadRequest::new(
-                session_id,
-                EventHistoryReadLimit::new(2).expect("valid history limit"),
-            ))
-            .await
-            .expect("read history");
-
-        assert_eq!(page.messages.len(), 2);
-        assert!(page.next_cursor.is_none());
-    }
-
-    #[test]
-    fn tool_completion_projection_preserves_structured_result_and_fingerprints() {
-        let event = EventRequest::new(
-            SessionId::new(),
-            EventContext::empty(),
-            crate::events::ToolCompletedData::success(
-                "call_read".into(),
-                "read_file".into(),
-                vec![ContentPart::text(
-                    serde_json::json!({
-                        "path": "/workspace/src/lib.rs",
-                        "content": "1|fn main() {}"
-                    })
-                    .to_string(),
-                )],
-                Some(1),
-            )
-            .with_fingerprints("sha256:call".into(), "sha256:result".into()),
-        )
-        .into_event(EventId::new(), 1);
-        let message = message_from_event(&event).expect("tool result message");
-        let result = message
-            .tool_result_content()
-            .and_then(|content| content.result.as_ref())
-            .expect("projected result");
-        assert_eq!(result["path"], "/workspace/src/lib.rs");
-        let metadata = message.metadata.expect("tool metadata");
-        assert_eq!(metadata["tool_name"], "read_file");
-        assert_eq!(metadata["tool_call_fingerprint"], "sha256:call");
-        assert_eq!(metadata["tool_result_fingerprint"], "sha256:result");
-    }
-
-    #[test]
-    fn tool_completion_projection_keeps_scalar_json_as_text() {
-        let event = EventRequest::new(
-            SessionId::new(),
-            EventContext::empty(),
-            crate::events::ToolCompletedData::success(
-                "call_scalar".into(),
-                "custom_tool".into(),
-                vec![ContentPart::text("123")],
-                Some(1),
-            ),
-        )
-        .into_event(EventId::new(), 1);
-        let message = message_from_event(&event).expect("tool result message");
-        let result = message
-            .tool_result_content()
-            .and_then(|content| content.result.as_ref())
-            .expect("projected result");
-        assert_eq!(result, &serde_json::Value::String("123".into()));
-    }
-}
+#[path = "events_tests.rs"]
+mod tests;

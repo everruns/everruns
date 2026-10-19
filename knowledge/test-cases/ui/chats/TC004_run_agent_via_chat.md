@@ -16,7 +16,7 @@ Verify that the global chat agent can run a previously created agent by creating
 
 ## Preconditions
 
-- Server running (`just start-dev`)
+- Canonical stack running (see root `AGENTS.md`)
 - User logged in
 - LLM API keys configured
 - At least one agent exists (e.g., "Math Tutor" from TC003)

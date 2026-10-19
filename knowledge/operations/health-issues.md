@@ -24,7 +24,17 @@ requiring attention. Canonical issue state owns identity and recovery; existing
 Reading or snoozing an announcement cannot resolve the underlying condition.
 
 The first detector covers Slack installation permissions and rejected bot credentials.
-Other integrations can extend this domain without creating another inbox. Custom
+Other integrations can extend this domain without creating another inbox.
+
+The second detector is organization-level: the active-turn limit
+(`ORG_MAX_ACTIVE_TURNS`, see [load testing](load-testing.md)). A message refused at
+the limit opens an issue with no agent or channel, so members learn why their
+messages fail; operators get the same signal as a warning log (Sentry in SaaS) and
+the `everruns_org_active_turn_cap_rejections_total` counter. Recording is best effort
+and outside the refused request. The issue resolves once the organization runs fewer
+turns than the limit: a one-minute sweep and **Check again** recount, since sessions
+leave the active state in many places. The limit is protective and approximate,
+so the issue may open slightly above or below it. Custom
 detectors, automatic repairs, background LLM analysis and external delivery are outside
 this delivery's scope.
 
@@ -34,7 +44,7 @@ The existing bell has **Action required** above **Activity**. Its number remains
 unread announcement count; unresolved health has a separate labeled count and warning
 indicator. Active issues stay visible after an announcement is read. The complete,
 paginated list lives in **Settings → Health**, with contextual warnings beside Slack
-channel settings. Health remains available when notifications are disabled.
+channel settings.
 
 An issue explains the affected agent, impact, missing permissions, evidence freshness
 and recovery action. **Check again** verifies current state; **Remind me tomorrow**
@@ -100,7 +110,7 @@ executed. New Slack permissions are granted only through provider consent.
 ## Success bar and implementation
 
 The regression suite covers repeated failures after reading, recurrence, independent
-snooze state, due reminders, disabled notifications, replacement credentials, unknown
+snooze state, due reminders, replacement credentials, unknown
 probe evidence, concurrent checks, revoked membership and cross-organization access.
 PostgreSQL-backed API tests exercise persistence, fresh resolution and channel
 delete behavior. Slack fixtures verify cancelled/replayed callbacks, wrong app/workspace
@@ -114,10 +124,10 @@ Source owns concrete shapes and commands:
 - [Bell](../../apps/ui/src/components/layout/notification-bell.tsx),
   Health page: `apps/ui/src/app/(main)/settings/health/page.tsx`,
   [issue details](../../apps/ui/src/components/health/health-issue-details.tsx).
-- [Slack manifest](../../crates/server/src/api/slack_events/manifest.rs),
-  [install flow](../../crates/server/src/api/slack_install.rs),
-  [provisioning](../../crates/server/src/slack_provisioning.rs),
-  [typed runtime errors](../../crates/server/src/slack_actions.rs).
+- [Slack manifest](../../crates/server/src/channels/slack/events/manifest.rs),
+  [install flow](../../crates/server/src/channels/slack/install.rs),
+  [provisioning](../../crates/server/src/channels/slack/provisioning/mod.rs),
+  [typed runtime errors](../../crates/server/src/channels/slack/actions/mod.rs).
 - [Domain tests](../../crates/server/src/domains/health_issues/tests.rs),
   [API tests](../../crates/server/tests/domain/health_issues_test.rs),
   [OAuth tests](../../crates/server/tests/domain/slack_install_integration_test.rs).

@@ -35,12 +35,16 @@ mod blueprint;
 mod collect;
 mod dependencies;
 mod registry;
+mod sandbox_file_tools;
 mod spawn_agent;
 
 pub use blueprint::*;
 pub use collect::*;
 pub use dependencies::*;
 pub use registry::*;
+pub use sandbox_file_tools::{
+    FILE_SYSTEM_FEATURE, MANAGED_SANDBOX_FEATURE, SESSION_FILE_TOOL_NAMES,
+};
 pub use spawn_agent::*;
 
 /// Descriptor an integration crate publishes for one of its capabilities.
@@ -112,7 +116,7 @@ pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
 /// `tool_approval` capability in `everruns_contracts::runtime::builtins`; defined here so the
 /// session-storage internal-prefix reservation holds without enabling `builtins`.
-pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+pub use crate::tool_approval_types::TOOL_APPROVAL_KV_PREFIX;
 /// KV key prefix for a person's consent to an MCP URL mode elicitation
 /// (EVE-1141). Owned by the MCP client crate; defined here so
 /// the session-storage internal-prefix reservation holds without that crate.
@@ -167,6 +171,25 @@ pub struct SystemPromptContext {
     /// reading the accumulated `ThreadContext`). `None` for callers that do not
     /// provide one; such capabilities then contribute nothing.
     pub session_storage: Option<Arc<dyn crate::runtime::session_services::SessionStorageStore>>,
+    /// Progressive tool disclosure read from the conversation (see
+    /// [`ToolDisclosure`]). Empty for callers without a transcript.
+    pub tool_disclosure: ToolDisclosure,
+}
+
+/// What the conversation says about deferred tool schemas, so a deferral hook
+/// can decide without process memory: the transcript survives restarts and is
+/// the same on every worker.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ToolDisclosure {
+    /// The session has already sent deferred schemas, so it keeps deferring
+    /// even when its tool count drops below the threshold.
+    pub deferring: bool,
+    /// Tools whose full schema the model loaded. An entry ending in `__` is a
+    /// tool-name prefix covering every tool of a revealed MCP server.
+    pub revealed: std::collections::BTreeSet<String>,
+    /// Failed known tool calls need authoritative schemas for recovery,
+    /// including when ordinary search reveals stay only in the result.
+    pub failed: std::collections::BTreeSet<String>,
 }
 
 impl SystemPromptContext {
@@ -178,6 +201,7 @@ impl SystemPromptContext {
             file_store: None,
             model: None,
             session_storage: None,
+            tool_disclosure: ToolDisclosure::default(),
         }
     }
 
@@ -603,6 +627,30 @@ pub trait Capability: Send + Sync {
     /// By default, returns `None` (combinable with anything).
     fn exclusive_group(&self) -> Option<&'static str> {
         None
+    }
+
+    /// Capabilities this one replaces when both are enabled on an agent.
+    ///
+    /// A superseded capability contributes nothing (tools, hooks, prompt,
+    /// provider configuration) while this one is applied, and the agent
+    /// checks report it as redundant. `tools_in_shell` supersedes tool search:
+    /// the tools it would defer are no longer in the model's tool list.
+    ///
+    /// By default, returns an empty vector (supersedes nothing).
+    fn supersedes(&self) -> Vec<&'static str> {
+        vec![]
+    }
+
+    /// Whether this capability, with `config`, gives the model a way to
+    /// search the web.
+    ///
+    /// The agent checks warn when an agent has more than one web search
+    /// source, because the model then has to guess which one to use. A
+    /// capability whose search is optional answers for the config it is given.
+    ///
+    /// By default, returns `false`.
+    fn web_search_source(&self, _config: &serde_json::Value) -> bool {
+        false
     }
 
     /// Returns UI feature strings that this capability contributes to.

@@ -81,7 +81,7 @@ Working instance of an agentic loop. Configured by its harness and situationally
 - Sessions may carry a `goal`, an objective shown in lists and injected into the
   runtime prompt as session metadata rather than as a user message.
 - Since EVE-882 the persisted Session aggregate (status/source/activity facets,
-  participants, ownership, previews, timestamps) lives in `crates/server/src/records`;
+  participants, ownership, previews, timestamps) lives in `crates/server/src/domains/sessions/record.rs`;
   the execution kernel consumes only the portable
   `everruns_core::ExecutionSession` projection plus the neutral
   `SessionExecutionState`, produced at the platform loading boundary.
@@ -110,7 +110,7 @@ See `crates/contracts/src/runtime/config_layer.rs` for implementation.
 
 | Field | Merge rule |
 |-------|-----------|
-| `system_prompt` | Base first, overlay appended |
+| `system_prompt` | Base first, overlay appended. No built-in harness level carries a persona line; when no layer supplies a prompt, `from_overlay` uses the fallback `FALLBACK_SYSTEM_PROMPT`, so it never precedes a prompt someone wrote |
 | `capabilities` | Overlay overrides base by capability ID |
 | `initial_files` | Overlay overrides base by normalized path |
 | `network_access` | Allowed intersects, blocked unions (can only narrow) |
@@ -282,4 +282,4 @@ A linked external service account (GitHub, GitLab, etc.) associated with a user.
 - Tokens encrypted at rest via AES-256-GCM envelope encryption
 - Auto-injected into sessions as secrets (e.g., `GITHUB_TOKEN`) when sessions are created
 - Capabilities like `daytona` use injected tokens transparently for private repo access
-- See [user-connections.md](../../crates/server/specs/user-connections.md) for full specification
+- See [user-connections.md](../integrations/user-connections.md) for full specification

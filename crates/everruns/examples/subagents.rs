@@ -17,7 +17,7 @@ use serde_json::json;
 use tokio::task::JoinHandle;
 
 type ChildResult = Result<String, String>;
-const MODEL_ID: &str = "gpt-5.6-terra";
+const MODEL_ID: &str = "gpt-6.1-sol";
 
 fn validate_wait_task_ids(task_ids: &[String]) -> Result<(), &'static str> {
     if task_ids.len() != 5 {

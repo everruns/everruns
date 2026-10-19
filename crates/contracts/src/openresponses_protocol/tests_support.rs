@@ -121,6 +121,8 @@ pub(crate) fn make_tool(
 /// Minimal `LlmCallConfig` for wire tests.
 pub(crate) fn auth_test_config() -> LlmCallConfig {
     LlmCallConfig {
+        tool_baseline: None,
+        system_prompt_baseline: None,
         speed: None,
         verbosity: None,
         model: "gpt-5.4".to_string(),
@@ -248,6 +250,7 @@ pub(crate) fn cache_config() -> LlmCallConfig {
         .metadata
         .insert("session_id".into(), "session-one".into());
     config.prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
+        retention: Default::default(),
         enabled: true,
         strategy: crate::driver_registry::PromptCacheStrategy::Auto,
         gemini_cached_content: None,

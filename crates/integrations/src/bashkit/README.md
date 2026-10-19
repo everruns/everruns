@@ -31,7 +31,7 @@ assert_eq!(BashkitShellCapability.id(), "bashkit_shell");
 
 ## Documentation
 
-- [Framework capability integrations](https://docs.everruns.com/framework/capability-integrations/)
+- [Framework capability integrations](https://everruns.com/docs/framework/capability-integrations/)
 - [API reference](https://docs.rs/everruns-integrations)
 
 ## License

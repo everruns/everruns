@@ -67,7 +67,7 @@ Design notes:
 - `occurrence_count` supports dedupe without spamming users
 - `href` is optional so future channels are not forced to be URL-based
 
-See `crates/server/src/api/notifications.rs` and `crates/server/src/storage/models.rs` for the concrete API and persistence shapes.
+See `crates/server/src/api/notifications.rs` and `crates/server/src/storage/repositories/notifications/rows.rs` for the concrete API and persistence shapes.
 
 ## Creation Flow
 
@@ -95,14 +95,12 @@ Long-running turn notifications resolve the recipient from the input message tha
 - Only for newly-arrived notifications while the app is visible/focused
 - Never the source of truth
 
-## Feature Flag
+## Availability
 
-- Gated by standard flag `FEATURE_NOTIFICATIONS`
-- Default: off in all environments
-- When disabled:
-  - Notification API routes are not mounted
-  - Turn-completed notification creation is disabled
-  - UI bell, toast, and notification SSE are not mounted
+Notifications are always on: no feature flag gates them. Every deployment mounts
+the notification API and SSE routes, registers the turn-completion listener,
+records turn requests, and raises health-issue notifications; the UI always
+mounts the bell and toasts.
 
 ## Active Chat Suppression
 

@@ -69,6 +69,8 @@ export function makeOutputEvent({
   toolCalls,
   metadata,
   context = {},
+  phase,
+  phaseSource,
 }: {
   id: string;
   sequence: number;
@@ -82,6 +84,8 @@ export function makeOutputEvent({
   }>;
   metadata?: Record<string, unknown>;
   context?: Event["context"];
+  phase?: string;
+  phaseSource?: string;
 }): Event {
   return {
     id,
@@ -107,6 +111,8 @@ export function makeOutputEvent({
         tool_call_id: null,
         created_at: ts,
         metadata,
+        phase,
+        phase_source: phaseSource,
       },
       metadata: { model: "kimi-k2.5" },
       usage: { input_tokens: 820, output_tokens: 140 },

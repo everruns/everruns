@@ -1,5 +1,6 @@
 use crate::api::common::{AllowedAction, ApiResultExt, ErrorResponse, ResourceUrlable};
-use crate::records::{Agent, ChannelStatus, ChannelType};
+use crate::domains::agent_channels::record::{ChannelStatus, ChannelType};
+use crate::domains::agents::record::Agent;
 use crate::storage::StorageBackend;
 use axum::{Json, http::StatusCode};
 use everruns_contracts::typed_id::{AgentId, HarnessId};

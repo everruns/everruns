@@ -1,7 +1,9 @@
 use super::{
+    active_turns,
     service::{SlackHealthService, issue_copy},
     types::{HealthIssue, HealthIssueList},
 };
+use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::{
     agents::{AGENT_MANAGE, AGENT_VIEW},
     common::*,
@@ -35,8 +37,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let (title, body) = issue_copy(&row);
     let href = format!("/settings/health?issue={}", row.id);
     let user = ctx.caller.user_id;
-    let notification_id = if ctx.feature_flags.notifications
-        && matches!(row.status.as_str(), "open" | "needs_check")
+    let notification_id = if matches!(row.status.as_str(), "open" | "needs_check")
         && let Some(user_id) = user
     {
         let notification = ctx
@@ -46,16 +47,22 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
                 user_id,
                 kind: "health.issue".into(),
                 title: title.clone(),
-                body: format!("{}: {body}", row.agent_name),
+                body: match &row.agent_name {
+                    Some(agent) => format!("{agent}: {body}"),
+                    None => body.clone(),
+                },
                 target_type: Some("health_issue".into()),
                 target_id: Some(row.id.to_string()),
                 href: Some(href.clone()),
                 payload: serde_json::json!({"issue_id":row.id,"episode_id":row.episode_id}),
                 dedupe_key: Some(format!("health:{}:{}", row.id, row.episode_id)),
-                source: Some(crate::storage::NotificationSourceRow {
-                    source_type: "agent".into(),
-                    source_id: Some(row.agent_public_id.clone()),
-                    source_name: Some(row.agent_name.clone()),
+                // Organization-level issues have no agent to name as sender.
+                source: row.agent_public_id.clone().map(|agent_id| {
+                    crate::storage::NotificationSourceRow {
+                        source_type: "agent".into(),
+                        source_id: Some(agent_id),
+                        source_name: row.agent_name.clone(),
+                    }
                 }),
             })
             .await?;
@@ -70,11 +77,16 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     } else {
         None
     };
-    let revision = ctx
-        .db
-        .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await?;
-    let stale = revision.is_none_or(|e| e.updated_at != row.channel_revision)
+    // An organization-level issue has no channel revision to compare.
+    let revision_changed = match &row.channel_public_id {
+        Some(channel) => ctx
+            .db
+            .get_ingress_channel_by_public_id(channel)
+            .await?
+            .is_none_or(|e| Some(e.updated_at) != row.channel_revision),
+        None => false,
+    };
+    let stale = revision_changed
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
     Ok(HealthIssue {
@@ -112,10 +124,11 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
         .get_health_issue(ctx.org_id(), id)
         .await?
         .ok_or_else(|| CommandError::not_found("Health issue"))?;
-    if let Some(channel) = ctx
-        .db
-        .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await?
+    if let Some(channel_public_id) = row.channel_public_id.as_deref()
+        && let Some(channel) = ctx
+            .db
+            .get_ingress_channel_by_public_id(channel_public_id)
+            .await?
         && (!channel.enabled || channel.channel_status == "disabled")
     {
         row.status = "inapplicable".into();
@@ -141,6 +154,7 @@ pub struct ListHealthIssues {
     category = "health_issues",
     description = "List pending operational health issues.",
     method = "GET",
+    cli = CliRoute::new(&["health-issues"], "list").with_examples(&[CliExample::new("See what operational problems need attention", "everruns health-issues list --limit 10")]),
     path = "/v1/health-issues",
     policy = AGENT_VIEW,
 )]
@@ -182,6 +196,7 @@ pub struct GetHealthIssue {
     category = "health_issues",
     description = "Get an operational health issue.",
     method = "GET",
+    cli = CliRoute::new(&["health-issues"], "get").with_examples(&[CliExample::new("Read an issue's evidence and recovery steps", "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
     path = "/v1/health-issues/{issue_id}",
     policy = AGENT_VIEW,
 )]
@@ -203,6 +218,7 @@ pub struct CheckHealthIssue {
     category = "health_issues",
     description = "Verify an installation's current health without modifying provider data.",
     method = "POST",
+    cli = CliRoute::new(&["health-issues"], "check").with_examples(&[CliExample::new("Recheck whether an issue is resolved after fixing it", "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000")]),
     path = "/v1/health-issues/{issue_id}/check",
     policy = AGENT_MANAGE,
 )]
@@ -210,10 +226,21 @@ impl Command for CheckHealthIssue {
     type Output = HealthIssue;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
-        if !SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
-            .check_requested(&row.channel_public_id, self.issue_id)
-            .await?
-        {
+        let checked = match row.channel_public_id.as_deref() {
+            Some(channel_public_id) => {
+                SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
+                    .check_requested(channel_public_id, self.issue_id)
+                    .await?
+            }
+            // Same cooldown as a channel check.
+            None if Utc::now() - row.last_checked_at < chrono::Duration::seconds(15) => false,
+            None if row.code == active_turns::ACTIVE_TURN_LIMIT => {
+                active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
+                true
+            }
+            None => true,
+        };
+        if !checked {
             return Err(
                 CommandError::rate_limited("Wait a few seconds before checking again")
                     .with_retry_after(15),
@@ -234,6 +261,7 @@ pub struct SnoozeHealthIssue {
     category = "health_issues",
     description = "Snooze health reminders for the current user for one day.",
     method = "POST",
+    cli = CliRoute::new(&["health-issues"], "snooze").with_examples(&[CliExample::new("Silence your reminders for an issue for a day", "everruns health-issues snooze --issue-id 550e8400-e29b-41d4-a716-446655440000 --reason 'Fix scheduled for tomorrow'")]),
     path = "/v1/health-issues/{issue_id}/snooze",
     policy = AGENT_VIEW,
 )]
@@ -277,14 +305,17 @@ pub async fn filter_notifications(
             let Some(issue) = ctx.db.get_health_issue(ctx.org_id(), id).await? else {
                 continue;
             };
-            let channel = ctx
-                .db
-                .get_ingress_channel_by_public_id(&issue.channel_public_id)
-                .await?;
-            if issue.status == "inapplicable"
-                || channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled")
-            {
+            if issue.status == "inapplicable" {
                 continue;
+            }
+            if let Some(channel_public_id) = issue.channel_public_id.as_deref() {
+                let channel = ctx
+                    .db
+                    .get_ingress_channel_by_public_id(channel_public_id)
+                    .await?;
+                if channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled") {
+                    continue;
+                }
             }
         }
         visible.push(row);

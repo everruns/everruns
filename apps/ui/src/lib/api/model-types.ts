@@ -43,6 +43,10 @@ export interface ModelWithProvider extends Model {
   profile?: ModelProfile;
   /** Vendor/brand from the model registry; drives branding. Not persisted. */
   model_vendor?: ModelVendor;
+  /** Derived: a discovered model the provider stopped listing. Kept, not deleted. */
+  stale?: boolean;
+  /** Derived: discovered after the provider's models were last reviewed, still disabled. */
+  is_new?: boolean;
 }
 
 // ============================================
@@ -183,6 +187,8 @@ export interface ModelProfile {
   tool_search?: boolean;
   /** Whether the model supports native execution phases */
   supports_phases?: boolean;
+  /** The vendor's model card or system card for this model */
+  model_card_url?: string;
 }
 
 export interface CreateModelRequest {

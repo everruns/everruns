@@ -152,7 +152,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
             // Every OAuth lookup uses the attachment's verified acting identity.
-            let base = self.adapters.connection_resolver();
+            let base = self.adapters.connection_resolver(self.org_id);
             let resolver = self
                 .input_message_id
                 .and_then(|id| base.for_execution(id))
@@ -257,7 +257,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         let Some(rejected_credential_fingerprint) = rejected_credential_fingerprint else {
             return Ok(());
         };
-        let base = self.adapters.connection_resolver();
+        let base = self.adapters.connection_resolver(self.org_id);
         let resolver = self
             .input_message_id
             .and_then(|id| base.for_execution(id))
@@ -292,7 +292,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// host phases without depending on in-process-only stores.
 ///
 /// ```ignore
-/// use everruns_durable_engine::host::execute_reason_activity;
+/// use everruns_worker::host::execute_reason_activity;
 /// use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 ///
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
@@ -309,6 +309,9 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reads: PhaseReads,
     write_behind: WriteBehind,
+    /// The session actor lease this host's turn runs on: every event it
+    /// emits is appended under it (see `crate::actor_lease_store::ActorFence`).
+    actor_fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
@@ -318,6 +321,12 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self.write_behind.flush().await;
     }
 
+    /// [`Self::flush_events`], failing when a queued store gave up: the log
+    /// has a gap, and the turn must not go on as if those events were stored.
+    pub async fn stored_events(&self) -> everruns_contracts::error::Result<()> {
+        self.write_behind.stored().await
+    }
+
     /// Share the phase's setup reads with the turn's other phases on this
     /// worker (see `turn_reads`). Call before `prefetching`.
     pub fn with_turn_reads(mut self, turn: crate::turn_reads::TurnSlot) -> Self {
@@ -325,11 +334,25 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self
     }
 
-    /// Start the phase's setup reads now, concurrently (see `phase_reads`).
-    pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
+    /// A new phase of the turn this host runs begins: memoize its setup
+    /// afresh and start its reads (a worker running a whole turn on a session
+    /// lease keeps one host for the turn; see `actor_runtime`).
+    pub fn begin_phase(&self, ids: Option<crate::phase_reads::PhaseIds>) {
+        self.reads.begin_phase();
         if let Some(ids) = ids {
             self.reads.prefetch(&self.adapters, ids);
         }
+    }
+
+    /// Drop the events queued and not yet stored: the turn lost its lease,
+    /// and another worker now owns the session's log.
+    pub fn abandon_events(&self) {
+        drop(self.write_behind.take_pending());
+    }
+
+    /// Append every event this host emits under the actor lease `fence`.
+    pub fn with_actor_fence(mut self, fence: Option<crate::actor_lease_store::ActorFence>) -> Self {
+        self.actor_fence = fence;
         self
     }
 
@@ -357,6 +380,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             event_metadata: metadata,
             reads: PhaseReads::new(),
             write_behind: WriteBehind::new(),
+            actor_fence: None,
         }
     }
 }
@@ -498,7 +522,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             SessionAdapter::new(self.adapters.clone())
                 .with_event_metadata(self.event_metadata.clone())
                 .with_reads(self.reads.clone())
-                .with_write_behind(self.write_behind.clone()),
+                .with_write_behind(self.write_behind.clone())
+                .with_actor_fence(self.actor_fence.clone()),
         )
     }
 
@@ -562,8 +587,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::connection_services::UserConnectionResolver>> {
-        Some(self.adapters.connection_resolver())
+        Some(self.adapters.connection_resolver(org_id))
     }
 
     fn tool_context_extensions(&self, request: ToolContextRequest<'_>) -> ToolContextExtensions {
@@ -607,6 +633,40 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 None,
             );
         }
+        // The Tools in Shell capability: its rating setting and saved scripts.
+        let tools_in_shell = resolved_capabilities.iter().find(|capability| {
+            capability.capability_id()
+                == everruns_integrations::bashkit::tools_in_shell::TOOLS_IN_SHELL_CAPABILITY_ID
+        });
+        // Off only when the agent turned it off; the shell reads the mark, not
+        // the config, so a host without the capability config keeps ratings on.
+        if tools_in_shell.is_some_and(|capability| {
+            !everruns_integrations::bashkit::tools_in_shell::rate_unlabeled_tools(
+                capability.config_value(),
+            )
+        }) {
+            extensions.insert(Arc::new(
+                everruns_integrations::bashkit::tools_in_shell::UnlabeledToolRatingsOff,
+            ));
+        }
+        if let Some(capability) = tools_in_shell
+            && let Some(store) = self.adapters.saved_script_store(org_id, session_id)
+        {
+            extensions.insert(Arc::new(
+                everruns_contracts::runtime::saved_scripts::SavedScripts {
+                    store,
+                    can_save: everruns_integrations::bashkit::tools_in_shell::manage_scripts(
+                        capability.config_value(),
+                    ),
+                },
+            ));
+        }
+        // Lets integration tools (github_checkout_pull_request) run in the
+        // session's managed sandbox without depending on its crate.
+        everruns_capabilities::capabilities::install_sandbox_workspace(
+            &mut extensions,
+            resolved_capabilities,
+        );
         extensions.insert(Arc::new(crate::core::tool_context::ExecutionServicesExt(
             Arc::new(PlatformExecutionScope {
                 store: platform_store.clone(),
@@ -629,6 +689,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         // none and the Slack capability's tools fail closed.
         if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
             everruns_capabilities::channel_message_sender::install(&mut extensions, invoker);
+        }
+        if let Some(invoker) = self.adapters.poppy_invoker(org_id, session_id) {
+            extensions.insert(Arc::new(
+                everruns_capabilities::capabilities::PoppyInvokerExt(invoker),
+            ));
         }
         if let Some(store) = self.adapters.sandbox_persistence_store() {
             let checkpoints: Arc<dyn everruns_capabilities::SandboxCheckpointStore> = store.clone();
@@ -668,20 +733,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn leased_resource_store(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::LeasedResourceStore>> {
-        Some(self.adapters.leased_resource_store())
+        Some(self.adapters.leased_resource_store(org_id))
     }
 
     fn session_resource_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
-        self.adapters.session_resource_registry()
+        self.adapters.session_resource_registry(org_id)
     }
 
     fn session_task_registry(
         &self,
+        org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
-        self.adapters.session_task_registry()
+        self.adapters.session_task_registry(org_id)
     }
 
     fn schedule_store(
@@ -732,10 +800,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
     ) -> Option<Arc<dyn crate::core::delegation_services::SubagentSpawnStore>> {
         self.adapters.subagent_spawn_store()
-    }
-
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        self.adapters.stream_heartbeater()
     }
 
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {

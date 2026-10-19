@@ -13,16 +13,24 @@ use utoipa::ToSchema;
 
 pub const HUMAN_INTENT_ARGUMENT: &str = "human_intent";
 
-/// An image returned by a tool execution.
+/// Inline media returned by a tool execution: an image or a PDF document.
 ///
-/// This allows tools (built-in or MCP) to return images that are sent
-/// to the LLM as native image content blocks, not stringified JSON.
+/// This allows tools (built-in or MCP) to return media that is sent to the
+/// LLM as native image or document content, not stringified JSON. The name
+/// predates documents; the wire shape is unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResultImage {
-    /// Base64-encoded image data
+    /// Base64-encoded data
     pub base64: String,
-    /// MIME type (e.g., "image/png", "image/jpeg")
+    /// MIME type (e.g., "image/png", "image/jpeg", "application/pdf")
     pub media_type: String,
+}
+
+impl ToolResultImage {
+    /// Whether this is a document (such as a PDF) rather than an image.
+    pub fn is_document(&self) -> bool {
+        !self.media_type.starts_with("image/")
+    }
 }
 
 const HUMAN_INTENT_DESCRIPTION: &str = "Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.";
@@ -528,6 +536,12 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_bound: Option<bool>,
 
+    /// Tool must stay a direct tool call and never runs from inside a shell
+    /// script (`tools_in_shell`): it pauses or shapes the turn, or its result
+    /// only makes sense to the model directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stays_direct: Option<bool>,
+
     /// Tool output should be persisted to session VFS before truncation.
     /// When set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes
     /// stdout to `/outputs/{tool_call_id}.stdout` and stderr to
@@ -658,6 +672,12 @@ impl ToolHints {
         self
     }
 
+    /// Builder: set stays_direct hint.
+    pub fn with_stays_direct(mut self, value: bool) -> Self {
+        self.stays_direct = Some(value);
+        self
+    }
+
     /// Builder: set persist_output hint.
     pub fn with_persist_output(mut self, value: bool) -> Self {
         self.persist_output = Some(value);
@@ -676,12 +696,22 @@ impl ToolHints {
         self
     }
 
-    /// Returns the effective side-effect class, defaulting to `AtMostOnce`
-    /// when unset (conservative default).
+    /// The effective side-effect class: an explicit class, else `Pure` for a
+    /// read-only tool, `Idempotent` for an idempotent one, else `AtMostOnce`.
+    ///
+    /// Decision: those hints already promise what the classes mean, so such a
+    /// tool reruns after a crash instead of ending interrupted. MCP hints count
+    /// too: a server that misstates them only gets its own tool run twice.
     pub fn effective_side_effect_class(&self) -> SideEffectClass {
-        self.side_effect_class
-            .clone()
-            .unwrap_or(SideEffectClass::AtMostOnce)
+        if let Some(class) = &self.side_effect_class {
+            class.clone()
+        } else if self.readonly == Some(true) {
+            SideEffectClass::Pure
+        } else if self.idempotent == Some(true) {
+            SideEffectClass::Idempotent
+        } else {
+            SideEffectClass::AtMostOnce
+        }
     }
 }
 
@@ -768,6 +798,36 @@ impl ConnectionRequired {
     }
 }
 
+impl ConnectionRequired {
+    /// The error text a blocked call carries.
+    ///
+    /// A call that stopped on a missing connection did not run, so it is
+    /// reported as a failure: the model must not read it as a result, and the
+    /// timeline shows it as not run. The in-chat connect card is keyed on the
+    /// separate `connection_required` field, not on this text.
+    pub fn blocked_message(&self) -> String {
+        let provider = &self.provider;
+        let who = match self.subject {
+            Some(ConnectionRequiredSubject::Agent) => {
+                format!("An admin has to connect the agent's {provider} account")
+            }
+            Some(ConnectionRequiredSubject::User) => {
+                format!("The person has to connect their {provider} account")
+            }
+            None => format!("The person has to connect {provider}"),
+        };
+        let at = self
+            .setup_url
+            .as_deref()
+            .map(|url| format!(" at {url}"))
+            .unwrap_or_default();
+        format!(
+            "This tool did not run: its {provider} connection is not set up. {who}{at}, \
+             then try again."
+        )
+    }
+}
+
 impl From<String> for ConnectionRequired {
     fn from(provider: String) -> Self {
         Self::provider_only(provider)
@@ -842,13 +902,14 @@ impl<'de> Deserialize<'de> for ConnectionRequired {
 }
 
 /// Tool execution result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Tool call ID this result corresponds to
     pub tool_call_id: String,
     /// Result data (success)
     pub result: Option<serde_json::Value>,
-    /// Images returned by the tool (sent as native image content to LLM)
+    /// Images and PDF documents returned by the tool (sent as native
+    /// image or document content to the LLM)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<ToolResultImage>>,
     /// Error message (failure)
@@ -864,6 +925,13 @@ pub struct ToolResult {
     /// Never serialized to messages or sent to LLM.
     #[serde(skip)]
     pub raw_output: Option<String>,
+    /// Details for people reading the run (chat details view, Session Trace),
+    /// never sent to the model: which provider answered, attempts, raw
+    /// provider responses. Set through
+    /// [`crate::tools::ToolExecutionResult::success_with_details`] and copied
+    /// onto `tool.completed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 /// `result.code` marking a tool result that stopped on a URL mode elicitation.
@@ -1041,6 +1109,7 @@ impl ToolResult {
     /// Construct a minimal error-only ToolResult (used for fingerprinting error paths).
     pub fn error(msg: &str) -> Self {
         Self {
+            details: None,
             tool_call_id: String::new(),
             result: None,
             images: None,
@@ -1052,388 +1121,4 @@ impl ToolResult {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn definition(kind: &str) -> ToolDefinition {
-        serde_json::from_value(json!({"type":kind,"name":"tool","description":"Description","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}})).unwrap()
-    }
-
-    #[test]
-    fn tool_variants_have_complete_literal_wire_defaults_and_effective_policies() {
-        for kind in ["builtin", "client_side"] {
-            let tool = definition(kind);
-            let mut expected = json!({"type":kind,"name":"tool","description":"Description","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}});
-            if kind == "builtin" {
-                expected["policy"] = json!("auto");
-            }
-            assert_eq!(serde_json::to_value(&tool).unwrap(), expected);
-            assert_eq!(tool.name(), "tool");
-            assert_eq!(tool.description(), "Description");
-            assert_eq!(tool.display_name(), None);
-            assert_eq!(
-                tool.parameters(),
-                &json!({"type":"object","properties":{"input":{"type":"string"}},"required":["input"]})
-            );
-            assert_eq!(
-                tool.policy(),
-                if kind == "builtin" {
-                    &ToolPolicy::Auto
-                } else {
-                    &ToolPolicy::ClientSide
-                }
-            );
-            assert_eq!(tool.deferrable(), &DeferrablePolicy::Automatic);
-            assert!(tool.hints().is_empty());
-            assert_eq!(tool.concurrency_class(), None);
-            assert!(!tool.is_cpu_bound());
-            assert_eq!(tool.side_effect_class(), SideEffectClass::AtMostOnce);
-        }
-        let mixed:Vec<ToolDefinition>=serde_json::from_value(json!([
-            {"type":"builtin","name":"server","description":"Server","parameters":{},"policy":"requires_approval"},
-            {"type":"client_side","name":"client","description":"Client","parameters":{},"policy":"auto"}
-        ])).unwrap();
-        assert_eq!(
-            (
-                mixed[0].name(),
-                mixed[0].policy(),
-                mixed[1].name(),
-                mixed[1].policy()
-            ),
-            (
-                "server",
-                &ToolPolicy::RequiresApproval,
-                "client",
-                &ToolPolicy::ClientSide
-            )
-        );
-        assert!(matches!(&mixed[0], ToolDefinition::Builtin(_)));
-        assert!(matches!(&mixed[1], ToolDefinition::ClientSide(_)));
-        for (policy, wire) in [
-            (ToolPolicy::Auto, "auto"),
-            (ToolPolicy::RequiresApproval, "requires_approval"),
-            (ToolPolicy::ClientSide, "client_side"),
-        ] {
-            assert_eq!(serde_json::to_value(&policy).unwrap(), json!(wire));
-            assert_eq!(
-                serde_json::from_value::<ToolPolicy>(json!(wire)).unwrap(),
-                policy
-            );
-        }
-    }
-
-    #[test]
-    fn hints_builders_preserve_false_values_metadata_and_scheduling_fields() {
-        for kind in ["builtin", "client_side"] {
-            let reader = definition(kind).with_hints(ToolHints::default().with_readonly(true));
-            assert_eq!(reader.concurrency_class(), None);
-            assert!(!reader.is_cpu_bound());
-            assert_eq!(reader.side_effect_class(), SideEffectClass::AtMostOnce);
-        }
-
-        for value in [false, true] {
-            let hints = ToolHints::default()
-                .with_readonly(value)
-                .with_destructive(value)
-                .with_idempotent(value)
-                .with_open_world(value)
-                .with_requires_secrets(value)
-                .with_long_running(value)
-                .with_supports_background(value)
-                .with_cpu_bound(value)
-                .with_persist_output(value)
-                .with_concurrency_class("session_workspace")
-                .with_narration_noun("file")
-                .with_side_effect_class(SideEffectClass::Idempotent)
-                .with_capability_attribution("files", Some("Files"))
-                .with_metadata(json!({"risk_tier":"high","nested":[1,false,null]}));
-            let expected = json!({"readonly":value,"destructive":value,"idempotent":value,"open_world":value,"requires_secrets":value,"long_running":value,"supports_background":value,"cpu_bound":value,"persist_output":value,"concurrency_class":"session_workspace","narration_noun":"file","side_effect_class":"Idempotent","capability_id":"files","capability_name":"Files","metadata":{"risk_tier":"high","nested":[1,false,null]}});
-            assert_eq!(serde_json::to_value(&hints).unwrap(), expected);
-            assert_eq!(
-                serde_json::from_value::<ToolHints>(expected).unwrap(),
-                hints
-            );
-            for kind in ["builtin", "client_side"] {
-                let tool = definition(kind)
-                    .with_hints(hints.clone())
-                    .with_category("workspace")
-                    .with_capability_attribution("new-files", Some("New Files"));
-                assert_eq!(tool.category(), Some("workspace"));
-                assert_eq!(tool.concurrency_class(), Some("session_workspace"));
-                assert_eq!(tool.is_cpu_bound(), value);
-                assert_eq!(tool.side_effect_class(), SideEffectClass::Idempotent);
-                assert_eq!(
-                    tool.capability_attribution(),
-                    Some(("new-files", Some("New Files")))
-                );
-                let mut expected_hints = serde_json::to_value(&hints).unwrap();
-                expected_hints["capability_id"] = json!("new-files");
-                expected_hints["capability_name"] = json!("New Files");
-                assert_eq!(serde_json::to_value(tool.hints()).unwrap(), expected_hints);
-            }
-        }
-        assert_eq!(
-            serde_json::to_value(ToolHints::default()).unwrap(),
-            json!({})
-        );
-        let metadata = ToolHints::default().with_metadata(json!({"any":"thing"}));
-        assert!(!metadata.is_empty());
-        assert_eq!(
-            serde_json::to_value(metadata).unwrap(),
-            json!({"metadata":{"any":"thing"}})
-        );
-        for class in [
-            SideEffectClass::Pure,
-            SideEffectClass::Idempotent,
-            SideEffectClass::AtMostOnce,
-        ] {
-            assert_eq!(
-                ToolHints::default()
-                    .with_side_effect_class(class.clone())
-                    .effective_side_effect_class(),
-                class
-            );
-        }
-    }
-
-    #[test]
-    fn tool_display_and_deferred_schemas_survive_both_wire_variants() {
-        for kind in ["builtin", "client_side"] {
-            for (deferrable, wire) in [
-                (DeferrablePolicy::Never, Some("never")),
-                (DeferrablePolicy::Automatic, None),
-                (DeferrablePolicy::Always, Some("always")),
-            ] {
-                let mut payload = json!({"type":kind,"name":"tool","display_name":"Display","description":"Description","parameters":{"type":"object"},"full_parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]},"category":"files"});
-                if let Some(wire) = wire {
-                    payload["deferrable"] = json!(wire);
-                }
-                let tool: ToolDefinition = serde_json::from_value(payload.clone()).unwrap();
-                assert_eq!(tool.display_name(), Some("Display"));
-                assert_eq!(tool.deferrable(), &deferrable);
-                assert_eq!(tool.parameters(), &json!({"type":"object"}));
-                assert_eq!(
-                    tool.full_parameters(),
-                    &json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]})
-                );
-                if kind == "builtin" {
-                    payload["policy"] = json!("auto");
-                }
-                assert_eq!(serde_json::to_value(tool).unwrap(), payload);
-            }
-            let tool = definition(kind);
-            assert_eq!(tool.full_parameters(), tool.parameters());
-        }
-    }
-
-    #[test]
-    fn tool_call_wire_and_openai_arguments_preserve_the_complete_payload() {
-        for (arguments, text) in [
-            (json!({"city":"New York"}), r#"{"city":"New York"}"#),
-            (json!({}), "{}"),
-            (
-                json!({"count":9007199254740993_u64,"text":"line\nquoted\""}),
-                r#"{"count":9007199254740993,"text":"line\nquoted\""}"#,
-            ),
-        ] {
-            let call = ToolCall {
-                id: "call_123".into(),
-                name: "get_weather".into(),
-                arguments: arguments.clone(),
-            };
-            assert_eq!(
-                serde_json::to_value(&call).unwrap(),
-                json!({"id":"call_123","name":"get_weather","arguments":arguments})
-            );
-            let parsed: ToolCall = serde_json::from_value(
-                json!({"id":"call_123","name":"get_weather","arguments":arguments}),
-            )
-            .unwrap();
-            assert_eq!(parsed.arguments, arguments);
-            assert_eq!(
-                call.to_openai_format(),
-                json!({"id":"call_123","type":"function","function":{"name":"get_weather","arguments":text}})
-            );
-        }
-    }
-
-    #[test]
-    fn tool_result_wire_excludes_raw_output_but_preserves_images_errors_and_data() {
-        let expected = json!({"tool_call_id":"call_123","result":{"temperature":72},"images":[{"base64":"aGk=","media_type":"image/png"}],"error":"partial failure","connection_required":"provider"});
-        let mut injected = expected.clone();
-        injected["raw_output"] = json!("private-raw");
-        let mut result: ToolResult = serde_json::from_value(injected).unwrap();
-        assert_eq!(
-            result.connection_required,
-            Some(ConnectionRequired::provider_only("provider"))
-        );
-        assert!(result.raw_output.is_none());
-        result.raw_output = Some("private-raw".into());
-        assert_eq!(serde_json::to_value(result).unwrap(), expected);
-        assert_eq!(
-            serde_json::to_value(ToolResult::error("failed")).unwrap(),
-            json!({"tool_call_id":"","result":null,"error":"failed"})
-        );
-        let success: ToolResult = serde_json::from_value(
-            json!({"tool_call_id":"call_123","result":{"temperature":72},"error":null}),
-        )
-        .unwrap();
-        assert_eq!(
-            serde_json::to_value(success).unwrap(),
-            json!({"tool_call_id":"call_123","result":{"temperature":72},"error":null})
-        );
-    }
-
-    #[test]
-    fn connection_required_wire_distinguishes_subjects_and_accepts_provider_only_values() {
-        for (subject, setup_url) in [
-            (
-                ConnectionRequiredSubject::Agent,
-                "/agents/agent_123?tab=mcp",
-            ),
-            (ConnectionRequiredSubject::User, "/settings/connections"),
-        ] {
-            let required = ConnectionRequired::with_setup("mcp_oauth_123", subject, setup_url);
-            let wire = serde_json::to_value(&required).unwrap();
-            assert_eq!(wire["provider"], "mcp_oauth_123");
-            assert_eq!(
-                wire["subject"],
-                match subject {
-                    ConnectionRequiredSubject::Agent => "agent",
-                    ConnectionRequiredSubject::User => "user",
-                }
-            );
-            assert_eq!(wire["setup_url"], setup_url);
-            assert_eq!(
-                serde_json::from_value::<ConnectionRequired>(wire).unwrap(),
-                required
-            );
-        }
-
-        let legacy: ConnectionRequired = serde_json::from_value(json!("daytona")).unwrap();
-        assert_eq!(legacy, ConnectionRequired::provider_only("daytona"));
-        assert_eq!(serde_json::to_value(legacy).unwrap(), json!("daytona"));
-
-        let provider_object: ConnectionRequired =
-            serde_json::from_value(json!({"provider":"github"})).unwrap();
-        assert_eq!(provider_object, ConnectionRequired::provider_only("github"));
-    }
-
-    #[test]
-    fn narration_schema_is_optional_idempotent_and_does_not_mutate_input_definitions() {
-        let original = vec![definition("builtin"), definition("client_side")];
-        let before = serde_json::to_value(&original).unwrap();
-        let augmented = add_human_intent_to_tool_definitions(&original);
-        assert_eq!(serde_json::to_value(&original).unwrap(), before);
-        let property = json!({"type":"string","description":"Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.","maxLength":120});
-        for tool in &augmented {
-            assert_eq!(
-                tool.parameters(),
-                &json!({"type":"object","properties":{"input":{"type":"string"},"human_intent":property},"required":["input"]})
-            );
-        }
-        assert_eq!(
-            serde_json::to_value(add_human_intent_to_tool_definitions(&augmented)).unwrap(),
-            serde_json::to_value(&augmented).unwrap()
-        );
-        let mut closed = json!({"properties":{"operation":{"type":"string","enum":["list"]}},"required":["operation"],"additionalProperties":false});
-        add_human_intent_to_schema(&mut closed);
-        assert_eq!(
-            closed,
-            json!({"type":"object","properties":{"operation":{"type":"string","enum":["list"]},"human_intent":property},"required":["operation"],"additionalProperties":false})
-        );
-        let mut empty = json!({});
-        add_human_intent_to_schema(&mut empty);
-        assert_eq!(
-            empty,
-            json!({"type":"object","properties":{"human_intent":property}})
-        );
-        for mut scalar in [json!(null), json!(false), json!([])] {
-            let before = scalar.clone();
-            add_human_intent_to_schema(&mut scalar);
-            assert_eq!(scalar, before);
-        }
-    }
-
-    #[test]
-    fn execution_strips_only_top_level_narration_and_trims_display_text() {
-        for (value, expected) in [
-            (
-                json!(" Listing all harnesses "),
-                Some("Listing all harnesses"),
-            ),
-            (json!(" \t"), None),
-            (json!(7), None),
-            (json!(null), None),
-        ] {
-            let arguments = json!({"operation":"list","human_intent":value,"nested":{"human_intent":"ordinary data"}});
-            let call = ToolCall {
-                id: "call".into(),
-                name: "manage_harnesses".into(),
-                arguments: arguments.clone(),
-            };
-            assert_eq!(human_intent(&call.arguments), expected);
-            assert_eq!(
-                call.execution_arguments(),
-                json!({"operation":"list","nested":{"human_intent":"ordinary data"}})
-            );
-            assert_eq!(call.arguments, arguments);
-        }
-        for value in [json!(null), json!([1, "text"]), json!({"operation":"list"})] {
-            assert_eq!(strip_human_intent_argument(&value), value);
-            assert_eq!(human_intent(&value), None);
-        }
-    }
-
-    #[test]
-    fn unattended_never_answers_a_servers_questions() {
-        let arguments = json!({
-            "questions": [{"id": "plan", "header": "billing", "question": "Plan?",
-                "options": [{"label": "Pro", "description": "", "default": true},
-                            {"label": "Team", "description": ""}]}],
-            "mcp_elicitation": {"server": "billing", "tool": "buy"}
-        });
-        let result = unattended_ask_user_result(&arguments);
-        assert_eq!(result["status"], "declined");
-        assert_eq!(result["answers"], json!([]));
-    }
-
-    #[test]
-    fn url_elicitation_requires_discriminator_and_complete_payload() {
-        let payload = json!({"code":"url_elicitation_required","error":"Waiting","url":"https://consent.example/path","url_host":"consent.example","url_is_punycode":false,"server":"server","tool":"tool","retry_tool":"mcp_server_tool","message":"Connect account","declined":false});
-        let mut result = ToolResult::error("unrelated");
-        result.result = Some(payload.clone());
-        assert_eq!(
-            serde_json::to_value(UrlElicitationRequired::from_tool_result(&result).unwrap())
-                .unwrap(),
-            payload
-        );
-        let mut declined = payload.clone();
-        declined["declined"] = json!(true);
-        result.result = Some(declined.clone());
-        assert_eq!(
-            serde_json::to_value(UrlElicitationRequired::from_tool_result(&result).unwrap())
-                .unwrap(),
-            declined
-        );
-        for malformed in [
-            None,
-            Some(json!(null)),
-            Some(json!({"code":"url_elicitation_required"})),
-            Some({
-                let mut value = payload.clone();
-                value["code"] = json!("connection_required");
-                value
-            }),
-            Some({
-                let mut value = payload.clone();
-                value["declined"] = json!("false");
-                value
-            }),
-        ] {
-            result.result = malformed;
-            assert!(UrlElicitationRequired::from_tool_result(&result).is_none());
-        }
-    }
-}
+mod tests;

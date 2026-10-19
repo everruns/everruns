@@ -5,7 +5,7 @@
 // `RequestIdLayer`. Mirrors the field set so a single
 // `request_id=<x>` grep returns the wire-side line plus every child span
 // (LLM calls, DB queries, durable activities) that runs under the
-// per-request span built by `TraceLayer` in `app_builder.rs`.
+// per-request span built by `TraceLayer` in `app_builder/http_layers.rs`.
 //
 // Decisions:
 // - Uses `MatchedPath` (e.g. `/v1/sessions/{id}`) instead of the raw URI to

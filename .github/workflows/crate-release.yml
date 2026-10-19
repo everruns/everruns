@@ -262,6 +262,12 @@ jobs:
             echo "Created and pushed ${#NEW_TAGS[@]} tag(s)"
           fi
 
+          # Preserve rapid immutable tag creation: GITHUB_TOKEN cannot create
+          # refs with old workflow trees after main changes those workflows.
+          # Tags do not dispatch publishing; every actual publication waits for
+          # exact-revision full validation below and in Publish Crate itself.
+          python3 .github/scripts/ci/wait_full.py
+
           for i in $(seq 0 $((count - 1))); do
             PKG=$(jq -r ".[$i].package" release-plan.json)
             VER=$(jq -r ".[$i].version" release-plan.json)

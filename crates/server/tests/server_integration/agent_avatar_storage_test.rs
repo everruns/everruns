@@ -7,7 +7,7 @@ use crate::test_harness::get_database_url;
 
 use everruns_contracts::typed_id::HarnessId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{AgentAvatarVariantInput, Database, SetAgentAvatar, StorageBackend};
 use sqlx::PgPool;
 use uuid::Uuid;

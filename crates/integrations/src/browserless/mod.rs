@@ -18,6 +18,7 @@
 //! ```
 
 pub mod browser_egress;
+pub mod browser_use;
 pub mod cdp;
 pub mod client;
 pub mod computer;
@@ -62,8 +63,14 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
     everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "browserless_browser_use",
+        label: "Browserless browser use",
+        description: "Let agents work in a Browserless browser through the page structure, element refs and tabs.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    },
+    everruns_contracts::runtime::FeatureFlagDefinition {
         name: "browserless",
-        label: "Browserless connection",
+        label: "Browserless",
         description: "Connect your own Browserless account for browser tools.",
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
@@ -83,6 +90,11 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
         feature_flag: Some("browserless_computer_use"),
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
+    // Browser use (the `browser` tool, EVE-1133) ships behind its own flag.
+    IntegrationPlugin {
+        feature_flag: Some("browserless_browser_use"),
+        factory: || Box::new(browser_use::BrowserUseCapability),
+    },
 ];
 
 /// Connector plugins this crate contributes to a hosted catalog.
@@ -93,6 +105,16 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
 // ============================================================================
 // Constants
 // ============================================================================
+
+/// Concurrency class shared by every tool that drives the session's
+/// persistent Browserless browser (`browserless_*` and `browser`).
+///
+/// Decision: these tools share one browser and, without a class, the act
+/// scheduler runs a batch of them concurrently. Two navigations on the same
+/// page then abort each other (`net::ERR_ABORTED`), and a key press lands on a
+/// page another call just navigated. One class makes a batch apply in order.
+pub(crate) const SESSION_BROWSER_CONCURRENCY_CLASS: &str =
+    everruns_contracts::runtime::browser_use::BROWSER_TOOL_NAME;
 
 const DEFAULT_API_BASE: &str = "https://production-sfo.browserless.io";
 const DEFAULT_WS_BASE: &str = "wss://production-sfo.browserless.io";

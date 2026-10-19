@@ -321,6 +321,71 @@ async fn one_shot_delivers_once_and_disables_schedule() {
     assert_eq!(persisted.trigger_count, 1);
 }
 
+/// The embedded store reads a 5-field cron like the hosted one: weekdays count
+/// from Sunday, the minimum interval applies, and a bad cron or timezone is a
+/// rejection the tool reports to the model, not a store failure.
+#[tokio::test]
+async fn create_reads_unix_weekdays_and_rejects_bad_input() {
+    use chrono::{Datelike, Timelike};
+    use everruns_core::session_schedule::ScheduleLimitError;
+
+    let store = store(SqliteDb::open_in_memory().unwrap());
+    let session_id = SessionId::new();
+    let create = |cron: &str, timezone: &str| {
+        store.create_schedule_enforcing_limits(
+            session_id,
+            "weekly".into(),
+            Some(cron.into()),
+            None,
+            timezone.into(),
+        )
+    };
+
+    let Ok(sunday) = create("0 18 * * 0", "UTC").await else {
+        panic!("a Sunday cron is valid");
+    };
+    let next = sunday.next_trigger_at.unwrap();
+    assert_eq!((next.weekday(), next.hour()), (chrono::Weekday::Sun, 18));
+
+    for (cron, timezone, reason) in [
+        ("* * * * 0", "UTC", "no more than once every"),
+        ("not a cron", "UTC", "Invalid cron expression 'not a cron'"),
+        (
+            "0 7 * * *",
+            "Mars/Base",
+            "invalid IANA timezone 'Mars/Base'",
+        ),
+    ] {
+        match create(cron, timezone).await {
+            Err(ScheduleLimitError::Rejected(message)) => {
+                assert!(message.contains(reason), "{cron} {timezone}: {message}");
+            }
+            Err(ScheduleLimitError::Store(error)) => panic!("{cron} {timezone}: store {error}"),
+            Ok(_) => panic!("{cron} {timezone}: created"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn rejects_unknown_cron_interval_before_local_storage() {
+    use everruns_core::session_schedule::ScheduleLimitError;
+    let store = store(SqliteDb::open_in_memory().unwrap());
+    let session_id = SessionId::from_seed(9);
+    for expression in ["not a cron", "0 0 0 1 1 * 2000"] {
+        let result = store
+            .create_schedule_enforcing_limits(
+                session_id,
+                "ordinary configuration".into(),
+                Some(expression.into()),
+                None,
+                "UTC".into(),
+            )
+            .await;
+        assert!(matches!(result, Err(ScheduleLimitError::Rejected(_))));
+    }
+    assert!(store.list_schedules(session_id).await.unwrap().is_empty());
+}
+
 #[tokio::test]
 async fn recurring_schedule_advances_and_delivers_more_than_once() {
     let store = store(SqliteDb::open_in_memory().unwrap());
@@ -659,4 +724,250 @@ async fn existing_recurring_schedule_is_migrated_and_executed() {
         .unwrap();
     session_runner.wait_for_deliveries(1).await;
     handle.shutdown().await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Schedules as timers in the session log (actor-based design, step 3)
+// ---------------------------------------------------------------------------
+
+mod journal {
+    use super::*;
+    use everruns_contracts::runtime::events::{
+        EventContext, EventData, EventRequest, TimerCancelledData, TimerFiredData,
+    };
+    use everruns_core::host::{
+        EventLog, EventReadLimit, EventReadRequest, EventReader, InMemoryEventLog,
+    };
+
+    fn journaled(db: SqliteDb, log: &Arc<InMemoryEventLog>) -> LocalScheduleStore {
+        store(db).with_journal(log.clone() as Arc<dyn EventLog>)
+    }
+
+    async fn timer_events(log: &InMemoryEventLog, session_id: SessionId) -> Vec<EventData> {
+        let page = log
+            .read_page(EventReadRequest::new(
+                session_id,
+                EventReadLimit::new(100).unwrap(),
+            ))
+            .await
+            .unwrap();
+        page.events
+            .into_iter()
+            .map(|event| event.data)
+            .filter(|data| data.event_type().starts_with("timer."))
+            .collect()
+    }
+
+    async fn append(log: &InMemoryEventLog, session_id: SessionId, data: impl Into<EventData>) {
+        log.append(EventRequest::new(session_id, EventContext::empty(), data))
+            .await
+            .unwrap();
+    }
+
+    async fn run_briefly(store: &LocalScheduleStore, runner: &Arc<RecordingRunner>) {
+        let handle = LocalScheduleRunner::new(store.clone(), runner.clone())
+            .with_config(config(Duration::from_millis(10), Duration::from_secs(1)))
+            .start()
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        handle.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_fire_and_cancel_are_written_to_the_session_log() {
+        let log = Arc::new(InMemoryEventLog::new());
+        let store = journaled(SqliteDb::open_in_memory().unwrap(), &log);
+        let session_id = SessionId::new();
+        let once = store
+            .create_schedule(
+                session_id,
+                "wake up".into(),
+                None,
+                Some(chrono::Utc::now()),
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        let daily = store
+            .create_schedule(
+                session_id,
+                "daily".into(),
+                Some("0 9 * * *".into()),
+                None,
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        let runner = Arc::new(RecordingRunner::default());
+        run_briefly(&store, &runner).await;
+        store.cancel_schedule(session_id, daily.id).await.unwrap();
+
+        let kinds: Vec<(&str, String)> = timer_events(&log, session_id)
+            .await
+            .iter()
+            .map(|data| {
+                let id = match data {
+                    EventData::TimerSet(d) => d.timer_id.clone(),
+                    EventData::TimerFired(d) => d.timer_id.clone(),
+                    EventData::TimerCancelled(d) => d.timer_id.clone(),
+                    other => panic!("unexpected {other:?}"),
+                };
+                (data.event_type(), id)
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("timer.set", once.id.to_string()),
+                ("timer.set", daily.id.to_string()),
+                ("timer.fired", once.id.to_string()),
+                ("timer.cancelled", daily.id.to_string()),
+            ]
+        );
+    }
+
+    /// Register `session_id` in the Framework session catalog of `db`.
+    fn catalog(db: &SqliteDb, session_id: SessionId) {
+        everruns::local::LocalSessionStore::new(db.clone()).unwrap();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO framework_sessions (session_id) VALUES (?1)",
+                [session_id.to_string()],
+            )
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_schedule_the_index_lost_is_rebuilt_from_the_log_and_delivered() {
+        let log = Arc::new(InMemoryEventLog::new());
+        let session_id = SessionId::new();
+        let original = journaled(SqliteDb::open_in_memory().unwrap(), &log)
+            .create_schedule(
+                session_id,
+                "still due".into(),
+                None,
+                Some(chrono::Utc::now()),
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+
+        // A fresh database: the index is gone, the log is not.
+        let db = SqliteDb::open_in_memory().unwrap();
+        catalog(&db, session_id);
+        let store = journaled(db, &log);
+        assert!(store.list_schedules(session_id).await.unwrap().is_empty());
+
+        let runner = Arc::new(RecordingRunner::default());
+        run_briefly(&store, &runner).await;
+
+        assert_eq!(
+            runner.delivered.lock().as_slice(),
+            &[(session_id, "still due".into())]
+        );
+        let rebuilt = store.list_schedules(session_id).await.unwrap();
+        assert_eq!(rebuilt.len(), 1);
+        assert_eq!(rebuilt[0].id, original.id);
+        assert!(!rebuilt[0].enabled);
+        assert_eq!(rebuilt[0].trigger_count, 1);
+    }
+
+    #[tokio::test]
+    async fn an_occurrence_the_log_records_is_not_delivered_again() {
+        let log = Arc::new(InMemoryEventLog::new());
+        let store = journaled(SqliteDb::open_in_memory().unwrap(), &log);
+        let session_id = SessionId::new();
+        let schedule = store
+            .create_schedule(
+                session_id,
+                "once".into(),
+                None,
+                Some(chrono::Utc::now()),
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        // The process recorded the occurrence, then died before the index
+        // write: the row still looks due.
+        append(
+            &log,
+            session_id,
+            TimerFiredData {
+                timer_id: schedule.id.to_string(),
+                fired_at: chrono::Utc::now(),
+                next_fire_at: None,
+            },
+        )
+        .await;
+
+        let runner = Arc::new(RecordingRunner::default());
+        run_briefly(&store, &runner).await;
+
+        assert!(runner.delivered.lock().is_empty());
+        let row = &store.list_schedules(session_id).await.unwrap()[0];
+        assert!(!row.enabled);
+        assert_eq!(row.trigger_count, 1);
+    }
+
+    #[tokio::test]
+    async fn a_cancellation_the_log_records_disables_the_row() {
+        let log = Arc::new(InMemoryEventLog::new());
+        let store = journaled(SqliteDb::open_in_memory().unwrap(), &log);
+        let session_id = SessionId::new();
+        let schedule = store
+            .create_schedule(
+                session_id,
+                "daily".into(),
+                Some("0 9 * * *".into()),
+                None,
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        append(
+            &log,
+            session_id,
+            TimerCancelledData {
+                timer_id: schedule.id.to_string(),
+            },
+        )
+        .await;
+
+        let report = store.reconcile_journal().await.unwrap();
+
+        assert_eq!(report.advanced, 1);
+        assert!(!store.list_schedules(session_id).await.unwrap()[0].enabled);
+    }
+
+    #[tokio::test]
+    async fn a_schedule_created_before_journaling_is_written_into_the_log() {
+        let db = SqliteDb::open_in_memory().unwrap();
+        let session_id = SessionId::new();
+        let schedule = store(db.clone())
+            .create_schedule(
+                session_id,
+                "legacy".into(),
+                Some("0 9 * * *".into()),
+                None,
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        let log = Arc::new(InMemoryEventLog::new());
+        let store = journaled(db, &log);
+
+        let first = store.reconcile_journal().await.unwrap();
+        let second = store.reconcile_journal().await.unwrap();
+
+        assert_eq!(first.journaled, 1);
+        assert_eq!(second, Default::default(), "reconcile is idempotent");
+        match timer_events(&log, session_id).await.as_slice() {
+            [EventData::TimerSet(set)] => {
+                assert_eq!(set.timer_id, schedule.id.to_string());
+                assert_eq!(set.cron_expression.as_deref(), Some("0 9 * * *"));
+            }
+            other => panic!("expected one timer.set, got {other:?}"),
+        }
+    }
 }

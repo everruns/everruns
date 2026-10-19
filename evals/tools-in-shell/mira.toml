@@ -1,0 +1,20 @@
+# Mira host config for the tools-in-shell study. Picked up by the `mira` CLI
+# when run from this directory.
+
+# `mira run` with no --bin/--launcher uses this. NOTE: top-level keys must
+# appear before the first [section] header, or TOML nests them under it.
+default_launcher = "tools_in_shell"
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+[launchers.tools_in_shell]
+bin = "tools_in_shell"
+
+# Two cases: discovery from a plain-language need, and choosing between two
+# similar tools. `mira run --preset smoke`.
+[presets.smoke]
+tag = "smoke"

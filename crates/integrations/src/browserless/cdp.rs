@@ -64,6 +64,14 @@ type PendingCommands = Arc<std::sync::Mutex<HashMap<u64, oneshot::Sender<Value>>
 // CdpSession — a single CDP connection to a Browserless browser
 // ============================================================================
 
+/// A page (tab) of the session's guarded browser context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageTarget {
+    pub target_id: String,
+    pub url: String,
+    pub title: String,
+}
+
 pub struct CdpSession {
     sink: SharedSink,
     pending: PendingCommands,
@@ -368,6 +376,134 @@ impl CdpSession {
             .and_then(|value| value.as_str())
             .map(ToOwned::to_owned)
             .ok_or_else(|| "Target.createTarget returned no targetId".to_string())
+    }
+
+    // ========================================================================
+    // Tabs: page targets in the guarded browser context
+    // ========================================================================
+
+    /// Page targets in this session's guarded context, in Chrome's order.
+    pub async fn list_pages(&mut self) -> Result<Vec<PageTarget>, String> {
+        let result = self
+            .send_browser_command("Target.getTargets", json!({}))
+            .await?;
+        let infos = result
+            .get("targetInfos")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "Target.getTargets returned no targetInfos".to_string())?;
+        Ok(infos
+            .iter()
+            .filter(|target| target_is_page(target))
+            .filter(|target| {
+                target.get("browserContextId").and_then(Value::as_str)
+                    == Some(self.browser_context_id.as_str())
+            })
+            .filter_map(|target| {
+                Some(PageTarget {
+                    target_id: target.get("targetId")?.as_str()?.to_string(),
+                    url: target
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    title: target
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                })
+            })
+            .collect())
+    }
+
+    /// Open a blank page in the guarded context and attach to it.
+    pub async fn open_page(&mut self) -> Result<String, String> {
+        let context_id = self.browser_context_id.clone();
+        let target_id = self.create_blank_page_target(&context_id).await?;
+        self.attach_page(&target_id).await?;
+        Ok(target_id)
+    }
+
+    /// Attach to another page of the guarded context and arm `Fetch` on it.
+    ///
+    /// THREAT[TM-TOOL-015][TM-TOOL-056]: only pages of this session's guarded
+    /// context are accepted, so a tab id can never reach another browser
+    /// context. A page the site opened on its own loaded with no `Fetch`
+    /// guard and so only reached the dead proxy; a reload once attached loads
+    /// it through the guard.
+    pub async fn attach_page(&mut self, target_id: &str) -> Result<(), String> {
+        if target_id == self.page_target_id {
+            return Ok(());
+        }
+        if !self
+            .list_pages()
+            .await?
+            .iter()
+            .any(|page| page.target_id == target_id)
+        {
+            return Err(format!("no tab with tab_id {target_id}"));
+        }
+        let result = self
+            .send_browser_command(
+                "Target.attachToTarget",
+                json!({ "targetId": target_id, "flatten": true }),
+            )
+            .await?;
+        let session_id = result
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Target.attachToTarget returned no sessionId".to_string())?
+            .to_string();
+        let previous = (
+            std::mem::replace(&mut self.page_target_id, target_id.to_string()),
+            std::mem::replace(&mut self.page_session_id, session_id),
+        );
+        if let Err(error) = self
+            .send_page_command(
+                "Fetch.enable",
+                json!({
+                    "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
+                    "handleAuthRequests": false
+                }),
+            )
+            .await
+        {
+            (self.page_target_id, self.page_session_id) = previous;
+            return Err(format!("Could not arm the browser network guard: {error}"));
+        }
+        Ok(())
+    }
+
+    /// Close a page of the guarded context.
+    pub async fn close_page(&mut self, target_id: &str) -> Result<(), String> {
+        if !self
+            .list_pages()
+            .await?
+            .iter()
+            .any(|page| page.target_id == target_id)
+        {
+            return Err(format!("no tab with tab_id {target_id}"));
+        }
+        self.send_browser_command("Target.closeTarget", json!({ "targetId": target_id }))
+            .await?;
+        if target_id == self.page_target_id {
+            self.page_target_id.clear();
+            self.page_session_id.clear();
+        }
+        // `Target.closeTarget` answers before the target is gone; wait until
+        // it leaves the target list so the next listing does not report it.
+        for _ in 0..20 {
+            if !self
+                .list_pages()
+                .await?
+                .iter()
+                .any(|page| page.target_id == target_id)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        Ok(())
     }
 
     /// Disconnect the WebSocket gracefully.
@@ -1223,7 +1359,17 @@ fn key_to_code(key: &str) -> &str {
 
 fn command_requires_page_session(method: &str) -> bool {
     method.split('.').next().is_some_and(|domain| {
-        matches!(domain, "Page" | "Runtime" | "Input" | "Emulation" | "Fetch")
+        matches!(
+            domain,
+            "Page"
+                | "Runtime"
+                | "Input"
+                | "Emulation"
+                | "Fetch"
+                | "DOM"
+                | "DOMSnapshot"
+                | "Accessibility"
+        )
     })
 }
 

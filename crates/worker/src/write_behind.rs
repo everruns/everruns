@@ -15,27 +15,111 @@
 // ephemeral path returns). Any other event waits for the queue to drain before
 // it is sent, so the session's event order is unchanged, and the blocking
 // events that end every phase (`reason.completed`, `tool.completed`) flush the
-// queue before the phase completes. A failed background store is logged, as
-// these emits already were on failure.
+// queue before the phase completes.
+//
+// Decision: a queued event is never lost. A background store that fails is
+// retried with backoff for a bounded window (`STORE_RETRY_WINDOW`), while it
+// is retryable: not a refused fenced append (the actor lease is lost, another
+// holder owns the log) and not a deleted session. Past that, the queue fails:
+// the failed batch and everything queued after it are dropped unsent, and every
+// later emit and `stored` return the failure, so the turn stops and nothing is
+// appended past the gap. On a session actor lease the turn then lets the lease
+// expire and the next holder resumes from the log, as after a crash just
+// before the store. Logging and dropping a failed batch let a turn carry on
+// past a hole, and the journal got `turn.completed` without `turn.started`
+// (chaos harness: a control plane pool timeout on the batch holding
+// `session.activated` and `turn.started`).
+//
+// A retried store whose earlier attempt actually landed (a transport error
+// after the control plane committed) stores its events twice. The control
+// plane's own failures roll back the insert, so that takes a lost response,
+// and a repeated lifecycle start event is recoverable where a missing one is
+// not.
 //
 // Decision: queued events that pile up while an earlier store is in flight go
 // out together in one batched store (one RPC, one insert on the control plane)
 // instead of one round trip each. A store takes every event queued before it
 // ran, so later stores in the chain may find nothing left and do nothing.
 //
+// Decision: streamed `output.message.delta` and `llm.generation` are queued
+// too: nothing reads what their stores return, and a failed store was only
+// logged. A reason phase used to end with three blocking stores in a row
+// (final delta, generation, `output.message.completed`).
+//
+// Decision: a blocking emit takes the events still waiting in the queue and
+// stores them together with its own event, in one round trip and one insert,
+// and gets its own event back as stored. So the final delta and the
+// generation ride along with `output.message.completed`. Events whose store
+// has already started stay with that store; the blocking emit waits for it
+// first, so order is unchanged.
+//
 // Decision: `output.message.started` carrying reasoning state is not queued. It
 // is persisted before the provider call so an interrupted worker can resume,
 // and its caller fails the phase when that store fails.
+//
+// Decision: the `tool.started` of an `AtMostOnce` call is not queued. It is
+// stored before the tool runs, so a log without it proves the call never ran
+// and resume may run it instead of settling it as interrupted; the act does
+// not run the call when that store fails. Safe calls (pure, idempotent) keep
+// the queued start: resume runs them again either way.
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use crate::actor_lease_store::{ActorLeaseLost, actor_lease_lost, is_actor_lease_lost};
 use crate::core::{Event, EventData, EventRequest};
-use everruns_contracts::typed_id::EventId;
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::tool_types::SideEffectClass;
+use everruns_contracts::typed_id::{EventId, SessionId};
 use std::future::Future;
 use std::pin::Pin;
 use tokio::sync::watch;
 
-type Store = Pin<Box<dyn Future<Output = ()> + Send>>;
+type Task = Pin<Box<dyn Future<Output = ()> + Send>>;
+/// One attempt to store a batch of queued events.
+pub type Store = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+
+/// How long a failing background store is retried before the queue fails.
+const STORE_RETRY_WINDOW: Duration = Duration::from_secs(5);
+const STORE_RETRY_FIRST_BACKOFF: Duration = Duration::from_millis(100);
+const STORE_RETRY_MAX_BACKOFF: Duration = Duration::from_secs(1);
+
+/// Why the queue stopped storing; see the module notes.
+#[derive(Debug, Clone)]
+enum Failure {
+    LeaseLost(SessionId, String),
+    SessionDeleted(SessionId),
+    Store(String),
+}
+
+impl Failure {
+    fn of(error: &AgentLoopError) -> Self {
+        if let AgentLoopError::SessionNotFound(session_id) = error {
+            return Self::SessionDeleted(*session_id);
+        }
+        if let AgentLoopError::Internal(inner) = error
+            && let Some(lost) = inner.downcast_ref::<ActorLeaseLost>()
+        {
+            return Self::LeaseLost(lost.session_id, lost.detail.clone());
+        }
+        Self::Store(error.to_string())
+    }
+
+    fn error(&self) -> AgentLoopError {
+        match self {
+            Self::LeaseLost(session_id, detail) => actor_lease_lost(*session_id, detail.clone()),
+            Self::SessionDeleted(session_id) => AgentLoopError::session_not_found(*session_id),
+            Self::Store(error) => {
+                AgentLoopError::store(format!("queued events were not stored: {error}"))
+            }
+        }
+    }
+}
+
+/// Whether a failed store may be tried again.
+fn retryable(error: &AgentLoopError) -> bool {
+    !is_actor_lease_lost(error) && !matches!(error, AgentLoopError::SessionNotFound(_))
+}
 
 const QUEUED: &[&str] = &[
     crate::core::events::SESSION_ACTIVATED,
@@ -43,6 +127,8 @@ const QUEUED: &[&str] = &[
     crate::core::events::REASON_STARTED,
     crate::core::events::CAPABILITY_USAGE,
     crate::core::events::OUTPUT_MESSAGE_STARTED,
+    crate::core::events::OUTPUT_MESSAGE_DELTA,
+    crate::core::events::LLM_GENERATION,
     crate::core::events::ACT_STARTED,
     crate::core::events::TOOL_STARTED,
 ];
@@ -55,6 +141,9 @@ pub struct WriteBehind {
     /// Events queued by [`WriteBehind::enqueue_event`] and not yet taken by a
     /// store.
     pending: Arc<Mutex<Vec<EventRequest>>>,
+    /// Set once a store gave up; nothing is stored after it.
+    failed: Arc<Mutex<Option<Failure>>>,
+    retry_window: Duration,
 }
 
 impl Default for WriteBehind {
@@ -68,7 +157,27 @@ impl WriteBehind {
         Self {
             tail: Arc::new(Mutex::new(watch::channel(true).1)),
             pending: Arc::new(Mutex::new(Vec::new())),
+            failed: Arc::new(Mutex::new(None)),
+            retry_window: STORE_RETRY_WINDOW,
         }
+    }
+
+    #[cfg(test)]
+    fn with_retry_window(mut self, window: Duration) -> Self {
+        self.retry_window = window;
+        self
+    }
+
+    /// The failure that stopped the queue, as the error every later emit
+    /// returns; `None` while every store succeeded.
+    pub fn failure(&self) -> Option<AgentLoopError> {
+        lock(&self.failed).as_ref().map(Failure::error)
+    }
+
+    /// Stop the queue on `error`: drop what waits unsent, store nothing more.
+    fn fail(&self, error: &AgentLoopError) {
+        lock(&self.failed).get_or_insert_with(|| Failure::of(error));
+        drop(self.take_pending());
     }
 
     /// Whether `request` may be stored in the background.
@@ -78,11 +187,16 @@ impl WriteBehind {
         {
             return false;
         }
+        if let EventData::ToolStarted(data) = &request.data
+            && data.side_effect_class == Some(SideEffectClass::AtMostOnce)
+        {
+            return false;
+        }
         QUEUED.contains(&request.event_type.as_str())
     }
 
     /// Run `store` after every store queued before it.
-    pub fn enqueue(&self, store: Store) {
+    pub fn enqueue(&self, store: Task) {
         let (done, next) = watch::channel(false);
         let previous = std::mem::replace(&mut *self.lock(), next);
         tokio::spawn(async move {
@@ -93,27 +207,66 @@ impl WriteBehind {
     }
 
     /// Queue `request` and store it, together with every event queued after
-    /// it before the store starts, by calling `store` once with the batch.
-    pub fn enqueue_event<F>(&self, request: EventRequest, store: F)
+    /// it before the store starts, by calling `store` with the batch (again,
+    /// while a failure is retryable; see the module notes). Refused once the
+    /// queue failed: the event would land past the gap.
+    pub fn enqueue_event<F>(&self, request: EventRequest, store: F) -> Result<()>
     where
-        F: FnOnce(Vec<EventRequest>) -> Store + Send + 'static,
+        F: Fn(Vec<EventRequest>) -> Store + Send + 'static,
     {
+        if let Some(error) = self.failure() {
+            return Err(error);
+        }
         lock(&self.pending).push(request);
-        let pending = self.pending.clone();
+        let queue = self.clone();
         self.enqueue(Box::pin(async move {
             // Let a phase's burst of start events land before taking them.
             tokio::task::yield_now().await;
-            let batch = std::mem::take(&mut *lock(&pending));
-            if !batch.is_empty() {
-                store(batch).await;
+            // An earlier store gave up: these would land past its gap.
+            if queue.failure().is_some() {
+                drop(queue.take_pending());
+                return;
+            }
+            let batch = queue.take_pending();
+            if batch.is_empty() {
+                return;
+            }
+            let deadline = tokio::time::Instant::now() + queue.retry_window;
+            let mut backoff = STORE_RETRY_FIRST_BACKOFF;
+            loop {
+                let error = match store(batch.clone()).await {
+                    Ok(()) => return,
+                    Err(error) => error,
+                };
+                if !retryable(&error) || tokio::time::Instant::now() + backoff > deadline {
+                    tracing::warn!(count = batch.len(), error = %error, "queued event store failed; the turn stops");
+                    queue.fail(&error);
+                    return;
+                }
+                tracing::warn!(count = batch.len(), error = %error, "queued event store failed; retrying");
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(STORE_RETRY_MAX_BACKOFF);
             }
         }));
+        Ok(())
+    }
+
+    /// Take the queued events no store has taken yet. The caller stores them
+    /// itself, after [`WriteBehind::flush`], ahead of its own event.
+    pub fn take_pending(&self) -> Vec<EventRequest> {
+        std::mem::take(&mut *lock(&self.pending))
     }
 
     /// Wait until every queued store has finished.
     pub async fn flush(&self) {
         let tail = self.lock().clone();
         finished(tail).await;
+    }
+
+    /// Wait until every queued store has finished, and fail when one gave up.
+    pub async fn stored(&self) -> Result<()> {
+        self.flush().await;
+        self.failure().map_or(Ok(()), Err)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, watch::Receiver<bool>> {
@@ -207,24 +360,139 @@ mod tests {
         request
     }
 
+    type Batches = Arc<Mutex<Vec<Vec<String>>>>;
+
+    /// A store that records each batch's event types, first waiting for
+    /// `gate` when given one.
+    fn recording(
+        batches: &Batches,
+        gate: Option<tokio::sync::oneshot::Receiver<()>>,
+    ) -> impl Fn(Vec<EventRequest>) -> Store + Send + 'static {
+        let batches = batches.clone();
+        let gate = Arc::new(Mutex::new(gate));
+        move |batch| {
+            let batches = batches.clone();
+            let gate = gate.lock().unwrap().take();
+            Box::pin(async move {
+                if let Some(gate) = gate {
+                    gate.await.ok();
+                }
+                let types = batch.into_iter().map(|r| r.event_type).collect();
+                batches.lock().unwrap().push(types);
+                Ok(())
+            })
+        }
+    }
+
+    /// A store that fails its first `failures` attempts with `error`, then
+    /// records like [`recording`].
+    fn failing(
+        batches: &Batches,
+        failures: usize,
+        error: impl Fn() -> AgentLoopError + Send + Sync + 'static,
+    ) -> impl Fn(Vec<EventRequest>) -> Store + Send + 'static {
+        let batches = batches.clone();
+        let error = Arc::new(error);
+        let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        move |batch| {
+            let batches = batches.clone();
+            let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+            let failure = (attempt < failures).then(|| error());
+            Box::pin(async move {
+                if let Some(error) = failure {
+                    return Err(error);
+                }
+                let types = batch.into_iter().map(|r| r.event_type).collect();
+                batches.lock().unwrap().push(types);
+                Ok(())
+            })
+        }
+    }
+
+    fn pool_timeout() -> AgentLoopError {
+        AgentLoopError::store("Failed to store events: pool timed out")
+    }
+
+    // Chaos harness: a pool timeout on the batch holding `session.activated`
+    // and `turn.started` was logged and dropped, and the turn went on to
+    // store `turn.completed` without them.
+    #[tokio::test(start_paused = true)]
+    async fn a_transient_store_failure_is_retried_until_it_lands() {
+        let queue = WriteBehind::new();
+        let batches = Batches::default();
+        queue
+            .enqueue_event(request("turn.started"), failing(&batches, 2, pool_timeout))
+            .unwrap();
+        queue.stored().await.expect("the retried store landed");
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![vec!["turn.started".to_string()]]
+        );
+        assert!(queue.failure().is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_store_that_keeps_failing_fails_the_queue_and_nothing_lands_after_it() {
+        let queue = WriteBehind::new().with_retry_window(Duration::from_secs(2));
+        let batches = Batches::default();
+        queue
+            .enqueue_event(
+                request("turn.started"),
+                failing(&batches, usize::MAX, pool_timeout),
+            )
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        // Queued while the first store is still retrying: behind the gap.
+        queue
+            .enqueue_event(request("reason.started"), recording(&batches, None))
+            .unwrap();
+        let error = queue.stored().await.expect_err("the queue failed");
+        assert!(error.to_string().contains("pool timed out"), "{error}");
+        assert!(
+            !error.is_non_retryable(),
+            "the next holder resumes the turn"
+        );
+        assert!(batches.lock().unwrap().is_empty(), "nothing past the gap");
+        assert!(
+            queue
+                .enqueue_event(request("act.started"), recording(&batches, None))
+                .is_err(),
+            "later events are refused"
+        );
+        assert!(queue.take_pending().is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_fenced_append_fails_the_queue_at_once_as_a_lost_lease() {
+        let queue = WriteBehind::new();
+        let batches = Batches::default();
+        let session_id = SessionId::new();
+        queue
+            .enqueue_event(
+                request("turn.started"),
+                failing(&batches, 1, move || {
+                    actor_lease_lost(session_id, "fence moved")
+                }),
+            )
+            .unwrap();
+        let started = tokio::time::Instant::now();
+        let error = queue.stored().await.expect_err("the lease is lost");
+        assert!(is_actor_lease_lost(&error), "{error}");
+        assert_eq!(started.elapsed(), Duration::ZERO, "no retry");
+        assert!(batches.lock().unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn events_queued_behind_a_store_in_flight_go_out_as_one_batch() {
         let queue = WriteBehind::new();
-        let batches = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let batches = Batches::default();
         let (open, opened) = tokio::sync::oneshot::channel::<()>();
         let mut opened = Some(opened);
         for event_type in ["a", "b", "c"] {
-            let batches = batches.clone();
-            let gate = opened.take();
-            queue.enqueue_event(request(event_type), move |batch| {
-                Box::pin(async move {
-                    if let Some(gate) = gate {
-                        gate.await.ok();
-                    }
-                    let types = batch.into_iter().map(|r| r.event_type).collect();
-                    batches.lock().unwrap().push(types);
-                })
-            });
+            queue
+                .enqueue_event(request(event_type), recording(&batches, opened.take()))
+                .unwrap();
             // The first store has started and holds its batch.
             tokio::task::yield_now().await;
             tokio::task::yield_now().await;
@@ -239,6 +507,51 @@ mod tests {
             ],
             "events queued while the first store ran share the next store"
         );
+    }
+
+    #[tokio::test]
+    async fn a_blocking_emit_takes_waiting_events_and_leaves_started_stores_alone() {
+        let queue = WriteBehind::new();
+        let batches = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let (open, opened) = tokio::sync::oneshot::channel::<()>();
+        // "a" is taken by a store that is still running.
+        queue
+            .enqueue_event(request("a"), recording(&batches, Some(opened)))
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        // "b" and "c" wait; the blocking emit takes them.
+        queue
+            .enqueue_event(request("b"), recording(&batches, None))
+            .unwrap();
+        queue
+            .enqueue_event(request("c"), recording(&batches, None))
+            .unwrap();
+        let taken: Vec<String> = queue
+            .take_pending()
+            .into_iter()
+            .map(|r| r.event_type)
+            .collect();
+        assert_eq!(taken, vec!["b".to_string(), "c".to_string()]);
+
+        open.send(()).ok();
+        queue.flush().await;
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![vec!["a".to_string()]],
+            "the started store keeps its event and the later stores find nothing"
+        );
+    }
+
+    #[test]
+    fn streamed_deltas_and_generations_are_queued() {
+        for event_type in [
+            crate::core::events::OUTPUT_MESSAGE_DELTA,
+            crate::core::events::LLM_GENERATION,
+        ] {
+            assert!(QUEUED.contains(&event_type));
+        }
+        assert!(!QUEUED.contains(&crate::core::events::OUTPUT_MESSAGE_COMPLETED));
     }
 
     #[test]
@@ -279,5 +592,39 @@ mod tests {
         let mut completed = started(None);
         completed.event_type = crate::core::events::OUTPUT_MESSAGE_COMPLETED.to_string();
         assert!(!WriteBehind::queues(&completed));
+    }
+
+    #[test]
+    fn at_most_once_tool_starts_are_stored_before_the_tool_runs() {
+        use crate::core::{EventContext, ToolStartedData};
+        use everruns_contracts::tool_types::ToolCall;
+        use everruns_contracts::typed_id::SessionId;
+
+        let started = |side_effect_class| {
+            EventRequest::new(
+                SessionId::new(),
+                EventContext::empty(),
+                ToolStartedData {
+                    tool_call: ToolCall {
+                        id: "call_1".to_string(),
+                        name: "send_email".to_string(),
+                        arguments: serde_json::json!({}),
+                    },
+                    tool_call_fingerprint: None,
+                    display_name: None,
+                    narration: None,
+                    side_effect_class,
+                },
+            )
+        };
+        assert!(!WriteBehind::queues(&started(Some(
+            SideEffectClass::AtMostOnce
+        ))));
+        assert!(WriteBehind::queues(&started(Some(SideEffectClass::Pure))));
+        assert!(WriteBehind::queues(&started(Some(
+            SideEffectClass::Idempotent
+        ))));
+        // An unknown tool runs nothing; its start may be queued.
+        assert!(WriteBehind::queues(&started(None)));
     }
 }

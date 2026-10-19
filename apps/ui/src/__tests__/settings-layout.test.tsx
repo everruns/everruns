@@ -18,6 +18,13 @@ jest.mock("next/link", () => ({
   ),
 }));
 
+const mockCanManageMcp = jest.fn(() => true);
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({
+    can: (policy: string): boolean => policy === "mcp_server.manage" && mockCanManageMcp(),
+  }),
+}));
+
 const mockPathname = jest.fn();
 const mockMachinePaymentsEnabled = jest.fn(() => true);
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -39,7 +46,32 @@ describe("SettingsLayout", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/settings/providers");
     mockMachinePaymentsEnabled.mockReturnValue(true);
+    mockCanManageMcp.mockReturnValue(true);
     mockNotFound.mockClear();
+  });
+
+  it("lists MCP catalog under Organization for people who manage it", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const link = screen.getByRole("link", { name: "MCP catalog" });
+    expect(link).toHaveAttribute("href", "/settings/mcp-catalog");
+    expect(link.querySelector("svg")).toHaveAttribute("viewBox", "0 0 186 186");
+  });
+
+  it("hides MCP catalog from people who cannot manage it", () => {
+    mockCanManageMcp.mockReturnValue(false);
+
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.queryByRole("link", { name: "MCP catalog" })).not.toBeInTheDocument();
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {
@@ -88,7 +120,8 @@ describe("SettingsLayout", () => {
 
     expect(screen.queryByText("General")).not.toBeInTheDocument();
     expect(screen.getAllByText("Organization")).toHaveLength(2);
-    expect(screen.getByText("LLM Providers")).toBeInTheDocument();
+    // Providers moved to Registries → Models.
+    expect(screen.queryByText("LLM Providers")).not.toBeInTheDocument();
     expect(screen.getByText("Team members")).toBeInTheDocument();
     expect(screen.getByText("Payments")).toBeInTheDocument();
     expect(screen.getByText("Account")).toBeInTheDocument();
@@ -118,7 +151,6 @@ describe("SettingsLayout", () => {
     );
 
     const organizationLink = screen.getByRole("link", { name: /Organization/i });
-    const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const membersLink = screen.getByRole("link", { name: /Team members/i });
     const paymentsLink = screen.getByRole("link", { name: /Payments/i });
     const profileLink = screen.getByRole("link", { name: /Account/i });
@@ -127,7 +159,6 @@ describe("SettingsLayout", () => {
     const slackLink = screen.getByRole("link", { name: /Slack workspaces/i });
 
     expect(organizationLink).toHaveAttribute("href", "/settings/organization");
-    expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
     expect(paymentsLink).toHaveAttribute("href", "/settings/payments");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
@@ -154,7 +185,6 @@ describe("SettingsLayout", () => {
   });
 
   it.each([
-    ["/settings/providers", "LLM Providers"],
     ["/settings/personal-access-tokens", "Personal access tokens"],
     ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
@@ -200,8 +230,8 @@ describe("SettingsLayout", () => {
     const orgSection = orgLabel.closest("div[class]")!.parentElement!;
     expect(orgSection).not.toHaveTextContent("General");
     expect(orgSection).toHaveTextContent("Organization");
-    expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Team members");
+    expect(orgSection).toHaveTextContent("MCP catalog");
     expect(orgSection).toHaveTextContent("Features");
     expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");

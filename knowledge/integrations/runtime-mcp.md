@@ -20,7 +20,7 @@ tags:
 
 > **Status: implemented.** Core’s `mcp` feature exposes the shared client; the runtime
 > builds `mcp_tool_definitions` from its scoped servers
-> (`crates/core/src/host/mcp.rs`, `crates/core/src/host/runtime.rs`). The paragraph
+> (`crates/core/src/host/mcp.rs`, `crates/core/src/host/runtime/mod.rs`). The paragraph
 > below records the original problem state that motivated the extraction.
 
 The MCP client already works on the control plane: org-managed and scoped
@@ -317,7 +317,7 @@ modules while the default kernel dependency graph remains portable.
 | stdio transport | `everruns-core` (`mcp` feature), `#[cfg(feature = "mcp-stdio")]` |
 | Auth provider trait | `everruns-core` (`mcp` feature); web-OAuth adapter in `server`/`worker` |
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/contracts/src/runtime/mcp_server.rs` |
-| Runtime discovery | `crates/core/src/host/runtime.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
+| Runtime discovery | `crates/core/src/host/runtime/mod.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
 | Runtime execution | `crates/core/src/host/runtime_host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
@@ -356,9 +356,17 @@ Landed:
 
 Remaining follow-up:
 
-- Wire hosted (worker) remote-MCP **execution** through `everruns-core` (`mcp` feature) via a
-  gRPC-backed `McpConnectionResolver` + web-OAuth `McpAuthProvider`. Discovery
-  is shared today; execution still needs this adapter (the worker's old
-  executor was already dead code).
 - Per-session TTL cache for runtime tool discovery (currently live per turn,
   matching the control plane's scoped-server behavior).
+
+## Failed discovery caching
+
+The host discovery cache distinguishes typed HTTP authentication rejections
+from transient transport failures. A 401 or 403 clears that attachment's stale
+tools and pauses discovery until invalidation, a new runtime, or a changed
+configuration. Configuration identities are canonical hashes, including static
+credential headers without retaining them in cache keys. Transient failures
+preserve previously discovered tools and permit retry after a short cooldown.
+Both successful and negative entries share the bounded cache and single-flight
+locks. A reload retires in-flight refresh identities so old credentials cannot
+restore a failed entry after invalidation.

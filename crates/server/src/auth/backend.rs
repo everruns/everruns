@@ -60,6 +60,11 @@ pub trait AuthBackend: Send + Sync + 'static {
     /// Default: no-op (backends without caching don't need to override).
     fn on_personal_access_token_deleted(&self) {}
 
+    /// Called when a user revokes an MCP OAuth grant, so a backend that caches
+    /// grant verdicts can drop that one at once. Other replicas, and backends
+    /// that do not override this, catch up when their cache expires (~30s).
+    async fn on_mcp_grant_revoked(&self, _grant_id: uuid::Uuid) {}
+
     /// Return root-level public routes that must not be nested under the API prefix.
     ///
     /// Used for endpoints like `/.well-known/*` and other browser-facing pages that

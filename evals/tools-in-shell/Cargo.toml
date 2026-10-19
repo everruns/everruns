@@ -1,0 +1,32 @@
+# Standalone workspace: this crate is intentionally detached from the everruns
+# workspace so it does not pull mira-eval into the main build. It path-depends
+# on the local Framework so a run always evaluates the working tree's `tools`
+# builtin, help and search. Build it in place (`cargo build`) or run it via the
+# `mira` host CLI.
+[workspace]
+
+[package]
+name = "everruns-tools-in-shell-evals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+description = "Mira eval study: whether a model finds and calls tools through the shell `tools` command"
+publish = false
+
+[[bin]]
+name = "tools_in_shell"
+path = "src/main.rs"
+
+[dependencies]
+mira-eval = "0.4"
+# `bashkit` registers both the shell and the Tools in Shell capability, so the
+# agent gets the shipped builtin, prompt addition and tool-hiding hook.
+everruns = { path = "../../crates/everruns", features = ["bashkit"] }
+everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai", "openrouter"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+serde_json = "1"
+regex = "1"
+async-trait = "0.1"
+
+[dev-dependencies]
+everruns-llmsim = { path = "../../crates/drivers/llmsim" }

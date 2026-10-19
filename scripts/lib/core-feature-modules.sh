@@ -4,8 +4,9 @@
 core_kernel_source_files() {
   find crates/core/src \
     \( -path crates/core/src/host -o -path crates/core/src/mcp \
-       -o -path crates/core/src/ag_ui -o -path crates/core/src/a2a \) -prune -o \
-    -name '*.rs' ! -path crates/core/src/a2a.rs -type f -print
+       -o -path crates/core/src/ag_ui -o -path crates/core/src/a2a \
+       -o -path crates/core/src/channel_auth \) -prune -o \
+    -name '*.rs' ! -path crates/core/src/a2a.rs ! -path crates/core/src/portable_host.rs -type f -print
 }
 
 assert_core_feature_module_gates() {
@@ -14,9 +15,12 @@ import re
 import sys
 from pathlib import Path
 source = Path(sys.argv[1]).read_text()
-for module, feature in [("host", "host"), ("engine", "engine"), ("builtins", "builtins"), ("mcp", "mcp"), ("ag_ui", "ag-ui"), ("a2a", "a2a")]:
+for module, feature in [("host", "host"), ("engine", "engine"), ("builtins", "builtins"), ("mcp", "mcp"), ("ag_ui", "ag-ui"), ("a2a", "a2a"), ("channel_auth", "channel-auth")]:
     pattern = r'#\[cfg\(feature = "' + re.escape(feature) + r'"\)\]\s*(?:(?:#\[[^\n]*\]|//[^\n]*)\s*)*pub mod ' + module + ';'
     if not re.search(pattern, source):
         raise SystemExit(f"core::{module} must stay behind feature {feature}")
+portable = r'#\[cfg\(all\(feature = "execution-host", not\(feature = "host"\)\)\)\]\s*#\[path = "portable_host.rs"\]\s*pub mod host;'
+if not re.search(portable, source):
+    raise SystemExit("portable core::host must stay behind execution-host without native host")
 PY_GATE
 }

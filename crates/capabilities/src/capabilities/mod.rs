@@ -9,11 +9,15 @@ pub mod a2a_delegation;
 #[cfg(feature = "ag-ui")]
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
+pub mod automatic_session_titles;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
+pub mod citation_web;
+pub mod coordination;
 pub mod data_knowledge;
 pub mod delegation_result;
+mod environment_file_tools;
 mod environment_tools;
 pub mod knowledge_base;
 pub mod knowledge_index;
@@ -23,7 +27,10 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+mod platform_skills;
+pub mod poppy_client;
 pub mod research;
+mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
@@ -42,6 +49,7 @@ pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
     RiskLevel, SpawnMode, SystemPromptContext,
 };
+pub use sandbox_workspace::{ManagedSandboxWorkspace, install_sandbox_workspace};
 
 #[cfg(feature = "a2a")]
 pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
@@ -57,6 +65,11 @@ pub use citation_retrieval::{
 pub use citation_verification::{
     CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
     CitationVerificationConfig, VerificationMode,
+};
+pub use citation_web::{CITATION_WEB_CAPABILITY_ID, CitationWebCapability};
+pub use coordination::{
+    AssignmentTaskExecutor, COORDINATION_CAPABILITY_ID, CoordinationCapability,
+    THREAD_RESOLVED_DETAIL,
 };
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
 pub use delegation_result::{
@@ -88,6 +101,14 @@ pub use platform::{
     execute_input_schema, query_input_schema,
 };
 pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
+#[cfg(feature = "poppy-client")]
+pub use poppy_client::{
+    ConversationState, InMemoryPoppyStore, PoppyAccount, PoppyClient, PoppyError, PoppyKey,
+    PoppyPersonalAgent, PoppyStore, StoredConversation,
+};
+pub use poppy_client::{
+    POPPY_CLIENT_CAPABILITY_ID, PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
+};
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
@@ -134,6 +155,9 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations::filesystem::FileSystemCapability);
     registry.register(everruns_integrations::bashkit::BashkitShellCapability);
     registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    // Hosted search reads Brave keys from the session only, never the
+    // process environment.
+    registry.register(everruns_integrations::web_search::WebSearchCapability::default());
     registry.register(everruns_integrations::openrouter::OpenRouterServerToolsCapability);
     registry.register(everruns_core::builtins::OpenAiServerToolsCapability);
     registry.register(everruns_integrations::openrouter::ModelScoutCapability);
@@ -159,10 +183,10 @@ fn register_environment_capabilities(
 /// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
 /// `ag_ui_delegation` (Cargo feature `ag-ui`).
 ///
-/// No feature-flag check here. The hosted product gates delegation behind
-/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
-/// whose opt-in is the Cargo feature plus an explicit capability ref on the
-/// agent (the `everruns` framework facade) calls this directly.
+/// No feature-flag check: the opt-in is the Cargo feature plus an explicit
+/// capability ref on the agent. [`register_hosted_capabilities`] calls this
+/// unconditionally, and an embedder (the `everruns` framework facade) calls it
+/// directly.
 pub fn register_agent_delegation_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
@@ -184,6 +208,7 @@ pub fn register_hosted_capabilities(
     // sandbox provider — so they are composed here rather than shipped by the
     // kernel.
     registry.register(SessionCapability);
+    registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep
@@ -197,9 +222,13 @@ pub fn register_hosted_capabilities(
     registry.register(SessionScheduleCapability);
     registry.register(SubagentCapability);
     registry.register(SessionTasksCapability);
-    if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
-        register_agent_delegation_capabilities(registry);
-    }
+    // Custom agents opt in by adding the capability; Platform Chat's
+    // coordination is gated per org by the server under `chat_threads`.
+    // Registration is unconditional.
+    registry.register(CoordinationCapability);
+    // Delegation has no feature flag: adding the capability to an agent is
+    // the opt-in, like coordination above.
+    register_agent_delegation_capabilities(registry);
     // First channel adapter to implement `Capability::tools()` (EVE-1024). It
     // is inert outside a Slack-originated session: the invoker seam resolves
     // the session's Slack endpoint and fails closed when there is none, so
@@ -217,10 +246,14 @@ pub fn register_hosted_capabilities(
     // Inert outside the hosted control plane, which resolves the chatting
     // person's servers per turn.
     registry.register(UserMcpCapability);
+    // Inert without the control plane's Poppy client, which holds the keys
+    // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
+    registry.register(PoppyClientCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);
     registry.register(CitationRetrievalCapability);
+    registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);
     // Inert unless the org flag lets it through to the worker snapshot.
     registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);
@@ -256,10 +289,8 @@ pub fn portable_capability_registry() -> everruns_core::capabilities::Capability
 
 /// Portable builtins plus the hosted product catalog for a deployment grade.
 ///
-/// Integration crates are not included: they depend on `everruns-capabilities`, so
-/// the catalog that names them (`everruns-integrations-catalog`) sits above it.
-/// Binaries that serve integrations compose all three — see
-/// `everruns_integrations_catalog::oss_capability_registry_for_grade`.
+/// Integration crates are not included. Enable `hosted-integration-catalog` and use
+/// `integrations_catalog::oss_capability_registry_for_grade` for hosted composition.
 pub fn hosted_capability_registry_for_grade(
     grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
@@ -330,16 +361,8 @@ mod tests {
     // client for that protocol at all.
     #[test]
     fn external_delegation_registration_follows_the_cargo_features() {
-        if std::env::var("FEATURE_AGENT_DELEGATION").is_ok() {
-            // A deployment override decides delegation registration here, not the
-            // Cargo feature under test.
-            return;
-        }
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
-        assert!(
-            registry.has(AGENT_HANDOFF_CAPABILITY_ID),
-            "dev grade should register agent delegation, otherwise this test is vacuous"
-        );
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        assert!(registry.has(AGENT_HANDOFF_CAPABILITY_ID));
         assert_eq!(
             registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
             cfg!(feature = "a2a"),

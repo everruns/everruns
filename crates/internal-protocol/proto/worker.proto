@@ -61,19 +61,8 @@ service WorkerService {
 
     // === Durable execution operations ===
     // These operations allow workers to interact with the durable task queue
-    // without direct database access
-
-    // Create a new durable workflow instance
-    rpc CreateDurableWorkflow(CreateDurableWorkflowRequest) returns (CreateDurableWorkflowResponse);
-
-    // Get workflow status
-    rpc GetDurableWorkflowStatus(GetDurableWorkflowStatusRequest) returns (GetDurableWorkflowStatusResponse);
-
-    // Update workflow status
-    rpc UpdateDurableWorkflowStatus(UpdateDurableWorkflowStatusRequest) returns (UpdateDurableWorkflowStatusResponse);
-
-    // Enqueue a task to the durable task queue
-    rpc EnqueueDurableTask(EnqueueDurableTaskRequest) returns (EnqueueDurableTaskResponse);
+    // without direct database access. The queue carries the activities that
+    // are not turns; turns run on session actor leases (below).
 
     // Claim tasks from the queue (for worker polling)
     rpc ClaimDurableTasks(ClaimDurableTasksRequest) returns (ClaimDurableTasksResponse);
@@ -87,15 +76,6 @@ service WorkerService {
     // Send heartbeat for a claimed task
     rpc HeartbeatDurableTask(HeartbeatDurableTaskRequest) returns (HeartbeatDurableTaskResponse);
 
-    // Count active (non-terminal) workflows
-    rpc CountActiveDurableWorkflows(CountActiveDurableWorkflowsRequest) returns (CountActiveDurableWorkflowsResponse);
-
-    // Send a signal to a running workflow (e.g. user_message steering)
-    rpc SendDurableWorkflowSignal(SendDurableWorkflowSignalRequest) returns (SendDurableWorkflowSignalResponse);
-
-    // Get and consume pending signals for a workflow
-    rpc GetAndConsumeDurableWorkflowSignals(GetAndConsumeDurableWorkflowSignalsRequest) returns (GetAndConsumeDurableWorkflowSignalsResponse);
-
     // Register a durable worker
     rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
 
@@ -103,7 +83,7 @@ service WorkerService {
     // whether the worker is draining
     rpc HeartbeatDurableWorker(HeartbeatDurableWorkerRequest) returns (HeartbeatDurableWorkerResponse);
 
-    // A shutting-down worker drains itself: no new tasks, no chained steps
+    // A shutting-down worker drains itself: no new tasks
     rpc DrainDurableWorker(DrainDurableWorkerRequest) returns (DrainDurableWorkerResponse);
 
     // Deregister a durable worker
@@ -142,60 +122,68 @@ service WorkerService {
     rpc ResolveFiles(ResolveFilesRequest) returns (ResolveFilesResponse);
 
     // Persist and read image artifacts for tool-side image generation/editing.
+    // These and the resolvers above stay RPCs by design: they carry bytes (up
+    // to 100 MiB) that outgrow an internal command's 1 MiB JSON.
     rpc CreateImageArtifact(CreateImageArtifactRequest) returns (CreateImageArtifactResponse);
     rpc GetImageArtifact(GetImageArtifactRequest) returns (GetImageArtifactResponse);
-    rpc GetImageArtifactInfo(GetImageArtifactInfoRequest) returns (GetImageArtifactInfoResponse);
 
-    // Resolve default provider credentials for tool-side API clients.
+    // Resolve default provider credentials for tool-side API clients and the
+    // exact provider config for model execution. Stays an RPC: it runs on
+    // every reason step (hot path) and answers with deployment-level keys and
+    // env fallbacks, not data an org-scoped command owns.
     rpc GetDefaultProviderCredentials(GetDefaultProviderCredentialsRequest) returns (GetDefaultProviderCredentialsResponse);
 
     // === MCP server operations ===
-    // Get MCP server info by name prefix (for tool execution)
+    // Get MCP server info by name prefix (for tool execution). Stays an RPC:
+    // it runs on every MCP tool call, and the in-process worker resolves the
+    // same servers through its own turn-cached path. The resolution itself is
+    // shared with the MCP grant commands
+    // (crates/server/src/domains/mcp_servers/worker_lookup.rs).
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
 
-    // === User connection token resolution ===
-    // Resolve user connection tokens (e.g. GitHub, Daytona) lazily at tool execution time
-    // Server-side decrypts stored tokens or mints fresh GitHub App tokens
-    rpc GetConnectionToken(GetConnectionTokenRequest) returns (GetConnectionTokenResponse);
-    // Kept distinct so explicit MCP identity lookup fails closed on older control planes.
-    rpc GetMcpConnectionToken(GetMcpConnectionTokenRequest) returns (GetConnectionTokenResponse);
-    rpc InvalidateMcpConnection(InvalidateMcpConnectionRequest) returns (InvalidateMcpConnectionResponse);
-    // The responding agent's own service-account API key; never the end user's.
-    rpc GetServiceApiKeyConnection(GetServiceApiKeyConnectionRequest) returns (GetServiceApiKeyConnectionResponse);
-    rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
-    rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
-    rpc GetConnectionTokenForConnection(GetConnectionTokenForConnectionRequest) returns (GetConnectionTokenForUserResponse);
+    // === User connection tokens and MCP grants ===
+    // Served by the internal `worker_get_*connection*` commands
+    // (crates/server/src/domains/user_connections/commands/worker) and
+    // `worker_get_mcp_connection_token` / `worker_invalidate_mcp_connection`
+    // (crates/server/src/domains/mcp_servers/commands/worker) over
+    // ExecuteCommand.
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
-    rpc UpsertLeasedResource(UpsertLeasedResourceRequest) returns (UpsertLeasedResourceResponse);
-    rpc ReleaseLeasedResource(ReleaseLeasedResourceRequest) returns (ReleaseLeasedResourceResponse);
-    rpc ListSessionLeasedResources(ListSessionLeasedResourcesRequest) returns (ListSessionLeasedResourcesResponse);
+    // The tool-side upsert, release and list are served by the internal
+    // `worker_*_leased_resource(s)` commands over ExecuteCommand
+    // (crates/server/src/domains/session_resources/commands/leased). These
+    // stay RPCs: the cleanup sweeper claims due leases across every org and
+    // settles them by resource id, outside any one org's turn.
     rpc ClaimDueLeasedResources(ClaimDueLeasedResourcesRequest) returns (ClaimDueLeasedResourcesResponse);
     rpc MarkLeasedResourceReleased(MarkLeasedResourceReleasedRequest) returns (MarkLeasedResourceReleasedResponse);
     rpc MarkLeasedResourceCleanupFailed(MarkLeasedResourceCleanupFailedRequest) returns (MarkLeasedResourceCleanupFailedResponse);
 
+    // === Session actors (actor-based design) ===
+    // Each session is an actor: a worker leases a runnable session and runs
+    // its whole turn, and the session event log is the only turn state
+    // (resume folds the log). Cross-org like the leased resource sweeper: the
+    // lease call picks work from every org. Served from the `session_actors`
+    // runnable index (crates/server/src/storage/repositories/session_actors);
+    // see knowledge/operations/durable-execution-engine.md ("Session actors (runnable index)").
+    rpc LeaseActors(LeaseActorsRequest) returns (LeaseActorsResponse);
+    rpc RenewActorLease(RenewActorLeaseRequest) returns (RenewActorLeaseResponse);
+    rpc ReleaseActor(ReleaseActorRequest) returns (ReleaseActorResponse);
+    rpc ReadActorJournal(ReadActorJournalRequest) returns (ReadActorJournalResponse);
+
     // === Session resource registry ===
-    // Generic registry of active resources (sandboxes, subagents, etc.)
-    rpc RegisterSessionResource(RegisterSessionResourceRequest) returns (RegisterSessionResourceResponse);
-    rpc UpdateSessionResourceStatus(UpdateSessionResourceStatusRequest) returns (UpdateSessionResourceStatusResponse);
-    rpc ListSessionResources(ListSessionResourcesRequest) returns (ListSessionResourcesResponse);
-    rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
+    // Served by the internal `worker_*_session_resource(s)` commands over
+    // ExecuteCommand (crates/server/src/domains/session_resources/commands).
 
     // === Session task registry ===
     // Background work owned by a session (knowledge/runtime-resources/session-tasks.md).
-    // Task and message payloads travel as native protobuf messages (EVE-642):
-    // serialized once by protobuf framing, consumed directly on the worker.
-    // Lifecycle invariants stay defined in one place (everruns-core).
-    rpc CreateSessionTask(CreateSessionTaskRequest) returns (SessionTaskResponse);
-    rpc UpdateSessionTask(UpdateSessionTaskRequest) returns (OptionalSessionTaskResponse);
-    rpc GetSessionTask(GetSessionTaskRequest) returns (OptionalSessionTaskResponse);
-    rpc ListSessionTasks(ListSessionTasksRequest) returns (ListSessionTasksResponse);
-    rpc RequestCancelSessionTask(RequestCancelSessionTaskRequest) returns (OptionalSessionTaskResponse);
-    rpc RecordSessionTaskMessage(RecordSessionTaskMessageRequest) returns (SessionTaskMessageResponse);
-    rpc ListSessionTaskMessages(ListSessionTaskMessagesRequest) returns (ListSessionTaskMessagesResponse);
+    // Create, update, get, list, cancel and the message channel are served by
+    // the internal `worker_*_session_task(s)` / `worker_*_session_task_message(s)`
+    // commands over ExecuteCommand
+    // (crates/server/src/domains/session_tasks/commands/worker). The two RPCs
+    // below stay: the reaper scans and prunes across every org.
 
-    // List (session_id, task_id) pairs for tasks with a stale heartbeat, so
+    // List (org_id, session_id, task_id) for tasks with a stale heartbeat, so
     // gRPC workers can run the session_task_reaper durable activity.
     rpc ListOrphanedSessionTasks(ListOrphanedSessionTasksRequest) returns (ListOrphanedSessionTasksResponse);
 
@@ -206,42 +194,14 @@ service WorkerService {
     rpc PruneTerminalSessionTasks(PruneTerminalSessionTasksRequest) returns (PruneTerminalSessionTasksResponse);
 
     // === Session schedule operations ===
-    // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
-    rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
-    rpc CancelSessionSchedule(CancelSessionScheduleRequest) returns (CancelSessionScheduleResponse);
-    rpc ListSessionSchedules(ListSessionSchedulesRequest) returns (ListSessionSchedulesResponse);
-    rpc CountActiveSessionSchedules(CountActiveSessionSchedulesRequest) returns (CountActiveSessionSchedulesResponse);
-    rpc CountActiveOrgSchedules(CountActiveOrgSchedulesRequest) returns (CountActiveOrgSchedulesResponse);
+    // Served by the internal `worker_*_session_schedule(s)` commands over
+    // ExecuteCommand (crates/server/src/domains/session_schedules/commands).
 
     // === Session storage operations ===
-    // Key/value and secret storage for session-scoped data
-
-    // Set a key/value pair (creates or updates)
-    rpc SessionStorageSetValue(SessionStorageSetValueRequest) returns (SessionStorageSetValueResponse);
-
-    // Get a value by key
-    rpc SessionStorageGetValue(SessionStorageGetValueRequest) returns (SessionStorageGetValueResponse);
-
-    // Atomically remove and return a value by key
-    rpc SessionStorageTakeValue(SessionStorageTakeValueRequest) returns (SessionStorageTakeValueResponse);
-
-    // Delete a key/value pair
-    rpc SessionStorageDeleteValue(SessionStorageDeleteValueRequest) returns (SessionStorageDeleteValueResponse);
-
-    // List all keys in a session
-    rpc SessionStorageListKeys(SessionStorageListKeysRequest) returns (SessionStorageListKeysResponse);
-
-    // Set a secret (encrypted at rest)
-    rpc SessionStorageSetSecret(SessionStorageSetSecretRequest) returns (SessionStorageSetSecretResponse);
-
-    // Get a secret by name (decrypted)
-    rpc SessionStorageGetSecret(SessionStorageGetSecretRequest) returns (SessionStorageGetSecretResponse);
-
-    // Delete a secret
-    rpc SessionStorageDeleteSecret(SessionStorageDeleteSecretRequest) returns (SessionStorageDeleteSecretResponse);
-
-    // List all secret names in a session (without values)
-    rpc SessionStorageListSecrets(SessionStorageListSecretsRequest) returns (SessionStorageListSecretsResponse);
+    // Values and secrets are served by the internal
+    // `worker_*_session_storage_value(s)` / `worker_list_session_storage_keys`
+    // and `worker_*_session_secret(s)` commands over ExecuteCommand
+    // (crates/server/src/domains/session_storage/commands/worker).
 
     // === Session SQL database operations ===
     // Session-scoped SQL databases (SQLite over PostgreSQL VFS)
@@ -365,6 +325,13 @@ message McpToolDef {
     google.protobuf.Struct parameters = 3;  // JSON Schema
     string capability_id = 4;  // Virtual capability that contributed this tool
     string capability_name = 5;
+    // Tool hints after a person's saved label is applied. Absent on an older
+    // server; the worker then falls back to open_world = true.
+    optional bool readonly = 6;
+    optional bool destructive = 7;
+    optional bool idempotent = 8;
+    optional bool open_world = 9;
+    optional string display_name = 10;
 }
 
 // ============================================================================
@@ -390,6 +357,8 @@ message Agent {
     // Full JSON-encoded AgentCapabilityConfig values. Workers prefer this
     // field; capability_ids remains for compatibility with older workers.
     repeated string capabilities = 15;
+    // How the agent talks: "direct" (absent) or "explicit".
+    optional string communication = 17;
 }
 
 message GetAgentRequest {
@@ -671,6 +640,19 @@ message EventContext {
 
 message EmitEventRequest {
     EventRequest event = 1;
+    // Set by a worker that holds the session's actor lease (every write of a
+    // leased turn). The server stores the event only while this is still the
+    // holder's unexpired lease, checked in the insert's transaction, and
+    // otherwise answers FAILED_PRECONDITION with "actor lease lost" and stores
+    // nothing. On EmitEventStream every message of the stream carries the
+    // same fence. Unset = an unleased write (lifecycle, resolutions).
+    optional ActorFence actor_fence = 2;
+}
+
+// A session actor lease, as its holder presents it.
+message ActorFence {
+    string holder = 1;
+    int64 fence = 2;
 }
 
 message EmitEventResponse {
@@ -679,6 +661,8 @@ message EmitEventResponse {
 
 message EmitEventStreamResponse {
     int32 events_processed = 1;
+    // The last stored event, with id and sequence, when the batch was not empty.
+    Event last_event = 2;
 }
 
 // Commit an execution ID to prevent duplicate processing on retry
@@ -796,31 +780,6 @@ enum DurableWorkflowStatus {
     DURABLE_WORKFLOW_STATUS_CONTINUED_AS_NEW = 6;
 }
 
-// Task status enum
-enum DurableTaskStatus {
-    DURABLE_TASK_STATUS_UNSPECIFIED = 0;
-    DURABLE_TASK_STATUS_PENDING = 1;
-    DURABLE_TASK_STATUS_CLAIMED = 2;
-    DURABLE_TASK_STATUS_COMPLETED = 3;
-    DURABLE_TASK_STATUS_FAILED = 4;
-}
-
-// Activity options for task scheduling
-message DurableActivityOptions {
-    optional int32 max_retries = 1;
-    optional int64 retry_delay_ms = 2;
-    optional int64 timeout_ms = 3;
-}
-
-// Task definition for enqueueing
-message DurableTaskDefinition {
-    Uuid workflow_id = 1;
-    string activity_id = 2;
-    string activity_type = 3;
-    google.protobuf.Struct input = 4;
-    optional DurableActivityOptions options = 5;
-}
-
 // Claimed task returned from claim operation
 message DurableClaimedTask {
     Uuid id = 1;
@@ -834,62 +793,6 @@ message DurableClaimedTask {
     // before running the task (a cancelled workflow's task is skipped), and
     // reading it here saves that check a round trip.
     optional DurableWorkflowStatus workflow_status = 8;
-}
-
-// === Create workflow ===
-
-message CreateDurableWorkflowRequest {
-    string workflow_type = 1;
-    google.protobuf.Struct input = 2;
-    optional Uuid workflow_id = 3;  // Optional, will generate if not provided
-}
-
-message CreateDurableWorkflowResponse {
-    Uuid workflow_id = 1;
-}
-
-// === Get workflow status ===
-
-message GetDurableWorkflowStatusRequest {
-    Uuid workflow_id = 1;
-}
-
-message GetDurableWorkflowStatusResponse {
-    DurableWorkflowStatus status = 1;
-    optional google.protobuf.Struct output = 2;
-    optional string error = 3;
-}
-
-// === Update workflow status ===
-
-message UpdateDurableWorkflowStatusRequest {
-    Uuid workflow_id = 1;
-    DurableWorkflowStatus status = 2;
-    optional google.protobuf.Struct output = 3;
-    optional string error = 4;
-}
-
-message UpdateDurableWorkflowStatusResponse {
-    bool updated = 1;
-}
-
-// === Enqueue task ===
-
-message EnqueueDurableTaskRequest {
-    DurableTaskDefinition task = 1;
-    // Enqueue the task already claimed by this worker, so the worker that
-    // finished a turn's step runs the next one without a wakeup and a claim.
-    // The control plane falls back to the queue when the worker is not
-    // registered or is draining; `claimed` is then unset.
-    optional string claim_for_worker_id = 2;
-}
-
-message EnqueueDurableTaskResponse {
-    Uuid task_id = 1;
-    // Set when the task was enqueued claimed by `claim_for_worker_id`. A
-    // control plane that predates the field leaves it unset, and the task
-    // waits in the queue as before.
-    optional DurableClaimedTask claimed = 2;
 }
 
 // === Claim tasks ===
@@ -910,56 +813,15 @@ message CompleteDurableTaskRequest {
     Uuid task_id = 1;
     string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
     google.protobuf.Struct output = 3;
-    // When set, consume the workflow's pending signals of this type once the
-    // task completes. Sent by workers that predate `hand_off`.
-    optional string drain_signal_type = 4;
-    // Hand the task's workflow to its next step in the same atomic write as
-    // the completion: no process exit or lost reply can leave the workflow
-    // running with no task.
-    optional DurableHandOff hand_off = 5;
+    // 4 and 5 carried the per-step turn hand-off, retired with that path.
+    reserved 4, 5;
 }
 
 message CompleteDurableTaskResponse {
     // Whether the task was successfully completed
     // False if task was reclaimed by another worker or already completed
     bool success = 1;
-    // How many signals were consumed for `drain_signal_type`. Absent when no
-    // drain was asked for or it failed; the worker then drains on its own.
-    optional uint32 drained_signal_count = 2;
-    // True when `hand_off` committed with the completion. A control plane
-    // that predates hand-offs only completes the task and leaves it false;
-    // the worker then makes the hand-off's writes itself.
-    bool handed_off = 3;
-    // The next step, when the hand-off enqueued it claimed by the worker.
-    optional DurableClaimedTask claimed = 4;
-}
-
-// What follows a completed turn step.
-message DurableHandOff {
-    // Consume the oldest `drain_limit` pending signals of this type: the ones
-    // the worker counted when it planned the next step.
-    optional string drain_signal_type = 1;
-    uint32 drain_limit = 2;
-    oneof next {
-        DurableHandOffStep step = 3;
-        DurableHandOffComplete complete = 4;
-    }
-}
-
-// Enqueue the next step, claimed by `claim_for_worker_id` when it may claim.
-message DurableHandOffStep {
-    string activity_id = 1;
-    string activity_type = 2;
-    google.protobuf.Struct input = 3;
-    optional string claim_for_worker_id = 4;
-}
-
-// Complete the workflow: record `event_output` as its completion event and
-// store `stored_output` (the turn checkpoint) as its result.
-message DurableHandOffComplete {
-    google.protobuf.Struct event_output = 1;
-    optional google.protobuf.Struct stored_output = 2;
-    optional string error = 3;
+    reserved 2, 3, 4;
 }
 
 // === Fail task ===
@@ -974,8 +836,7 @@ message FailDurableTaskRequest {
 message FailDurableTaskResponse {
     bool failed = 1;
     bool will_retry = 2;
-    // True only for the worker elected to run terminal turn/session effects.
-    bool terminal_failure_owner = 3;
+    reserved 3;
 }
 
 // === Heartbeat task ===
@@ -983,47 +844,13 @@ message FailDurableTaskResponse {
 message HeartbeatDurableTaskRequest {
     Uuid task_id = 1;
     string worker_id = 2;
-    optional google.protobuf.Struct details = 3;  // Optional progress/status details
+    // 3 carried a reason step's stream progress, retired with that path.
+    reserved 3;
 }
 
 message HeartbeatDurableTaskResponse {
     bool acknowledged = 1;
     bool should_cancel = 2;
-}
-
-// === Count active workflows ===
-
-message CountActiveDurableWorkflowsRequest {}
-
-message CountActiveDurableWorkflowsResponse {
-    int64 count = 1;
-}
-
-// === Workflow signals ===
-
-message DurableWorkflowSignal {
-    string signal_type = 1;
-    google.protobuf.Value payload = 2;
-    string sent_at = 3;  // ISO 8601 timestamp
-}
-
-message SendDurableWorkflowSignalRequest {
-    string workflow_id = 1;
-    DurableWorkflowSignal signal = 2;
-}
-
-message SendDurableWorkflowSignalResponse {}
-
-message GetAndConsumeDurableWorkflowSignalsRequest {
-    string workflow_id = 1;
-    string signal_type = 2;
-    // Return the pending signals without consuming them. A control plane
-    // that predates the field consumes them.
-    optional bool peek = 3;
-}
-
-message GetAndConsumeDurableWorkflowSignalsResponse {
-    repeated DurableWorkflowSignal signals = 1;
 }
 
 // === Register worker ===
@@ -1198,15 +1025,6 @@ message GetImageArtifactResponse {
     optional StoredImage image = 1;
 }
 
-message GetImageArtifactInfoRequest {
-    int64 org_id = 1;
-    Uuid image_id = 2;
-}
-
-message GetImageArtifactInfoResponse {
-    optional StoredImageInfo image = 1;
-}
-
 message GetDefaultProviderCredentialsRequest {
     int64 org_id = 1;
     string provider_type = 2;
@@ -1350,174 +1168,6 @@ message GetMcpServerByPrefixResponse {
 }
 
 // ============================================================================
-// Session storage types (key/value + secrets)
-// ============================================================================
-
-// Metadata for a stored key
-message StorageKeyInfo {
-    string key = 1;
-    Timestamp created_at = 2;
-    Timestamp updated_at = 3;
-}
-
-// Metadata for a stored secret (without value)
-message StorageSecretInfo {
-    string name = 1;
-    Timestamp created_at = 2;
-    Timestamp updated_at = 3;
-}
-
-// === Key/Value operations ===
-
-message SessionStorageSetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-    string value = 3;
-}
-
-message SessionStorageSetValueResponse {}
-
-message SessionStorageGetValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageGetValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageTakeValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageTakeValueResponse {
-    optional string value = 1;
-}
-
-message SessionStorageDeleteValueRequest {
-    Uuid session_id = 1;
-    string key = 2;
-}
-
-message SessionStorageDeleteValueResponse {
-    bool deleted = 1;
-}
-
-message SessionStorageListKeysRequest {
-    Uuid session_id = 1;
-}
-
-message SessionStorageListKeysResponse {
-    repeated StorageKeyInfo keys = 1;
-}
-
-// === Secret operations ===
-
-message SessionStorageSetSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-    string value = 3;
-}
-
-message SessionStorageSetSecretResponse {}
-
-message SessionStorageGetSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionStorageGetSecretResponse {
-    optional string value = 1;
-}
-
-message SessionStorageDeleteSecretRequest {
-    Uuid session_id = 1;
-    string name = 2;
-}
-
-message SessionStorageDeleteSecretResponse {
-    bool deleted = 1;
-}
-
-message SessionStorageListSecretsRequest {
-    Uuid session_id = 1;
-}
-
-message SessionStorageListSecretsResponse {
-    repeated StorageSecretInfo secrets = 1;
-}
-
-// ============================================================================
-// User connection token types
-// ============================================================================
-
-message GetConnectionTokenRequest {
-    optional Uuid input_message_id = 4;
-    reserved 3;
-    Uuid session_id = 1;
-    string provider = 2;  // e.g. "github", "daytona", "gitlab"
-}
-
-message GetMcpConnectionTokenRequest {
-    optional string server_prefix = 5;
-    optional Uuid input_message_id = 4;
-    Uuid session_id = 1;
-    string provider = 2;
-    string acts_as = 3;
-}
-
-message GetConnectionTokenResponse {
-    optional string token = 1;  // Decrypted token, or None if not connected
-}
-message InvalidateMcpConnectionRequest {
-    optional string server_prefix = 6;
-    optional Uuid input_message_id = 5;
-    Uuid session_id = 1;
-    string provider = 2;
-    string acts_as = 3;
-    string rejected_credential_fingerprint = 4;
-}
-
-message InvalidateMcpConnectionResponse {}
-
-message GetServiceApiKeyConnectionRequest {
-    optional Uuid input_message_id = 3;
-    Uuid session_id = 1;
-    string provider = 2;
-}
-
-message GetServiceApiKeyConnectionResponse {
-    optional string api_key = 1;        // None when the agent's service account has no connection
-    optional string metadata_json = 2;  // Provider metadata stored with the connection
-}
-
-message GetConnectionUserRequest {
-    optional Uuid input_message_id = 3;
-    Uuid session_id = 1;
-    string provider = 2;
-}
-
-message GetConnectionUserResponse {
-    optional Uuid user_id = 1;
-}
-
-message GetConnectionTokenForUserRequest {
-    Uuid user_id = 1;
-    string provider = 2;
-}
-
-message GetConnectionTokenForConnectionRequest {
-    Uuid connection_id = 1;
-    Uuid virtual_user_id = 2;
-    string provider = 3;
-}
-
-message GetConnectionTokenForUserResponse {
-    optional string token = 1;
-}
-
-// ============================================================================
 // Leased resource types
 // ============================================================================
 
@@ -1541,41 +1191,9 @@ message LeasedResourceProto {
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
     optional Uuid connection_id = 19;
-}
-
-message UpsertLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-    optional string display_name = 5;
-    optional Uuid owner_user_id = 6;
-    uint32 lease_duration_seconds = 7;
-    optional google.protobuf.Struct metadata = 8;
-    optional Uuid connection_id = 9;
-}
-
-message UpsertLeasedResourceResponse {
-    LeasedResourceProto resource = 1;
-}
-
-message ReleaseLeasedResourceRequest {
-    Uuid session_id = 1;
-    string provider = 2;
-    string resource_type = 3;
-    string external_id = 4;
-}
-
-message ReleaseLeasedResourceResponse {
-    optional LeasedResourceProto resource = 1;
-}
-
-message ListSessionLeasedResourcesRequest {
-    Uuid session_id = 1;
-}
-
-message ListSessionLeasedResourcesResponse {
-    repeated LeasedResourceProto resources = 1;
+    // Org that owns the lease. The cleanup sweeper claims across every org and
+    // runs each lease's session storage commands as this org.
+    int64 org_id = 20;
 }
 
 message ClaimDueLeasedResourcesRequest {
@@ -1608,74 +1226,102 @@ message MarkLeasedResourceCleanupFailedResponse {
 }
 
 // ============================================================================
-// Session schedule types
+// Session actors
 // ============================================================================
 
-message SessionScheduleProto {
-    Uuid id = 1;
-    Uuid session_id = 2;
-    string description = 3;
-    optional string cron_expression = 4;
-    optional Timestamp scheduled_at = 5;
-    string timezone = 6;
-    string schedule_type = 7;  // "oneshot" or "recurring"
-    bool enabled = 8;
-    optional Timestamp next_trigger_at = 9;
-    optional Timestamp last_triggered_at = 10;
-    int32 trigger_count = 11;
-    Timestamp created_at = 12;
-    Timestamp updated_at = 13;
-    optional Uuid owner_principal_id = 14;
-    optional Uuid resolved_owner_user_id = 15;
+// Lease runnable actors whose lease is free or expired, oldest first.
+message LeaseActorsRequest {
+    // Who holds the leases: the worker's id. Renew and release present it.
+    string holder = 1;
+    // Most actors to take; the server caps it.
+    uint32 limit = 2;
+    // Lease life in milliseconds; 0 = the server default (10 s).
+    uint32 ttl_ms = 3;
+    // Fairness order: an org holding this many leases or more (counting
+    // leases already held) is leased after every other org. Not a limit;
+    // 0 = the server default.
+    uint32 max_leased_per_org = 4;
 }
 
-message CreateSessionScheduleRequest {
-    Uuid session_id = 1;
-    string description = 2;
-    optional string cron_expression = 3;
-    optional Timestamp scheduled_at = 4;
-    string timezone = 5;
-    int64 org_id = 6;
-}
-
-message CreateSessionScheduleResponse {
-    SessionScheduleProto schedule = 1;
-}
-
-message CancelSessionScheduleRequest {
-    Uuid session_id = 1;
-    Uuid schedule_id = 2;
-    int64 org_id = 3;
-}
-
-message CancelSessionScheduleResponse {
-    SessionScheduleProto schedule = 1;
-}
-
-message ListSessionSchedulesRequest {
+message LeasedActor {
     Uuid session_id = 1;
     int64 org_id = 2;
+    // Raised by every lease; renew and release present it.
+    int64 fence = 3;
+    // Event sequence of the latest input the actor must see.
+    int64 inbox_seq = 4;
+    // A cancel is pending for the turn this lease runs.
+    bool cancel_requested = 5;
+    // The inbox cursor the previous holder left: input up to here reached a
+    // turn.
+    int64 consumed_seq = 6;
+    // The input the next fresh turn starts from, when past the cursor.
+    int64 next_input_seq = 7;
+    // Leases since the last release, this one included (poison guard).
+    uint32 attempts = 8;
+    // With cancel_requested: the inbox position the cancel targets. It ends
+    // the turn whose input is at or before it; later input is not cancelled.
+    // Absent from an older control plane: the cancel targets any turn.
+    optional int64 cancel_inbox_seq = 9;
 }
 
-message ListSessionSchedulesResponse {
-    repeated SessionScheduleProto schedules = 1;
+message LeaseActorsResponse {
+    repeated LeasedActor actors = 1;
 }
 
-message CountActiveSessionSchedulesRequest {
+message RenewActorLeaseRequest {
     Uuid session_id = 1;
-    int64 org_id = 2;
+    string holder = 2;
+    int64 fence = 3;
+    // 0 = the server default (10 s).
+    uint32 ttl_ms = 4;
+    // The holder's inbox cursor; the server keeps the larger of it and its own.
+    int64 consumed_seq = 5;
 }
 
-message CountActiveSessionSchedulesResponse {
-    uint32 count = 1;
+message RenewActorLeaseResponse {
+    // False when the lease is lost (another holder took it, it was released,
+    // or a cancel withdrew the expired lease): stop the turn without writing.
+    bool held = 1;
+    int64 inbox_seq = 2;
+    bool cancel_requested = 3;
+    // See LeasedActor.cancel_inbox_seq.
+    optional int64 cancel_inbox_seq = 4;
 }
 
-message CountActiveOrgSchedulesRequest {
-    int64 org_id = 1;
+message ReleaseActorRequest {
+    Uuid session_id = 1;
+    string holder = 2;
+    int64 fence = 3;
+    // The latest input the turn consumed; newer input keeps the actor runnable.
+    int64 consumed_inbox_seq = 4;
 }
 
-message CountActiveOrgSchedulesResponse {
-    uint32 count = 1;
+message ReleaseActorResponse {
+    // False when the lease was already lost.
+    bool released = 1;
+    // The actor has more to do (newer input, or a cancel the holder never
+    // saw) and the next lease call picks it up.
+    bool still_runnable = 2;
+}
+
+// The tail of a session's event log an actor folds to resume.
+message ReadActorJournalRequest {
+    Uuid session_id = 1;
+    // Read after this sequence; unset = from the latest `turn.started` (the
+    // whole log when no turn started yet).
+    optional int32 after_sequence = 2;
+    // Page size; 0 = the server default, capped by the server.
+    uint32 limit = 3;
+}
+
+message ReadActorJournalResponse {
+    // In sequence order.
+    repeated Event events = 1;
+    // More events follow; read again after the last one returned.
+    bool has_more = 2;
+    // The session's newest event sequence; unset for an empty log.
+    optional int32 head_sequence = 3;
 }
 
 // ============================================================================
@@ -1909,6 +1555,7 @@ message BudgetSummaryProto {
     optional double soft_limit = 4;
     double percent_remaining = 5;
     string status = 6;
+    optional string budget_id = 7;
 }
 
 message CheckBudgetsForSessionResponse {
@@ -2068,294 +1715,6 @@ message AuthorizeSessionCreationResponse {
     string budget_root_session_id = 1;
 }
 
-// ============================================
-// Session resource registry messages
-// ============================================
-
-message SessionResourceEntryProto {
-    string resource_id = 1;
-    Uuid session_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-    Timestamp created_at = 7;
-    Timestamp updated_at = 8;
-}
-
-message RegisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    string status = 5;
-    optional google.protobuf.Struct metadata = 6;
-}
-
-message RegisterSessionResourceResponse {
-    SessionResourceEntryProto entry = 1;
-}
-
-message UpdateSessionResourceStatusRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-    string status = 3;
-}
-
-message UpdateSessionResourceStatusResponse {
-    optional SessionResourceEntryProto entry = 1;
-}
-
-message ListSessionResourcesRequest {
-    Uuid session_id = 1;
-    optional string kind = 2;
-    optional string status = 3;
-}
-
-message ListSessionResourcesResponse {
-    repeated SessionResourceEntryProto entries = 1;
-}
-
-message DeregisterSessionResourceRequest {
-    Uuid session_id = 1;
-    string resource_id = 2;
-}
-
-message DeregisterSessionResourceResponse {
-    bool removed = 1;
-}
-
-// === Session task registry messages ===
-//
-// EVE-642: Task and message payloads are modeled as native protobuf messages so
-// the ~20 structural fields (ids, enums, timestamps, nested TaskLinks/TaskError/
-// artifacts) are serialized once by protobuf framing and consumed directly on
-// the worker — no whole-struct JSON encode/decode into a byte field, no
-// per-element Vec re-encode on list handlers.
-//
-// The genuinely free-form fields (kind-specific `spec`, input-request
-// `expected`, and message `Data` parts) carry canonical serde_json bytes: they
-// are already JSON-shaped `serde_json::Value`s, so serializing them exactly once
-// as compact JSON is cheaper than walking them into a google.protobuf.Value tree
-// (measured — see benches/session_task_encoding.rs). everruns-core remains the
-// source of truth for lifecycle invariants (apply_task_update, new_session_task).
-
-// Lifecycle state (mirrors everruns_core::session_task::SessionTaskState).
-enum SessionTaskState {
-    SESSION_TASK_STATE_UNSPECIFIED = 0;
-    SESSION_TASK_STATE_QUEUED = 1;
-    SESSION_TASK_STATE_RUNNING = 2;
-    SESSION_TASK_STATE_AWAITING_INPUT = 3;
-    SESSION_TASK_STATE_SUCCEEDED = 4;
-    SESSION_TASK_STATE_FAILED = 5;
-    SESSION_TASK_STATE_CANCELED = 6;
-}
-
-// Wake policy (mirrors everruns_core::session_task::TaskWakePolicy).
-enum TaskWakePolicy {
-    TASK_WAKE_POLICY_UNSPECIFIED = 0;
-    TASK_WAKE_POLICY_SILENT = 1;
-    TASK_WAKE_POLICY_ON_TERMINAL = 2;
-    TASK_WAKE_POLICY_ON_ACTIVITY = 3;
-}
-
-// Direction of a task message (mirrors TaskMessageDirection).
-enum TaskMessageDirection {
-    TASK_MESSAGE_DIRECTION_UNSPECIFIED = 0;
-    TASK_MESSAGE_DIRECTION_INBOUND = 1;
-    TASK_MESSAGE_DIRECTION_OUTBOUND = 2;
-}
-
-// Progress shape (mirrors everruns_core::background::BackgroundProgress).
-message TaskProgressProto {
-    optional uint64 current = 1;
-    optional uint64 total = 2;
-    optional string unit = 3;
-    optional string label = 4;
-}
-
-// Structured ask posted by a task awaiting input (mirrors TaskInputRequest).
-message TaskInputRequestProto {
-    string id = 1;
-    string prompt = 2;
-    // Free-form expected-answer descriptor; canonical serde_json bytes. Absent
-    // (empty) means None.
-    bytes expected_json = 3;
-}
-
-// Terminal error detail (mirrors TaskError).
-message TaskErrorProto {
-    string kind = 1;
-    string message = 2;
-}
-
-// Typed artifact link (mirrors TaskArtifact).
-message TaskArtifactProto {
-    string name = 1;
-    string artifact_type = 2;  // serde rename "type"
-    optional string path = 3;
-    optional string url = 4;
-}
-
-// Cross-references owned by a task (mirrors TaskLinks).
-message TaskLinksProto {
-    optional Uuid child_session_id = 1;
-    optional string remote_task_id = 2;
-    repeated string resource_ids = 3;
-}
-
-// A unit of background work owned by a session (mirrors SessionTask).
-message SessionTaskProto {
-    string id = 1;
-    Uuid session_id = 2;
-    string kind = 3;
-    string display_name = 4;
-    // Kind-specific spec; canonical serde_json bytes (free-form JSON value).
-    bytes spec_json = 5;
-    SessionTaskState state = 6;
-    optional string state_detail = 7;
-    optional TaskProgressProto progress = 8;
-    optional TaskInputRequestProto input_request = 9;
-    optional Timestamp cancel_requested_at = 10;
-    optional string summary = 11;
-    optional string result_path = 12;
-    repeated TaskArtifactProto artifacts = 13;
-    optional TaskErrorProto error = 14;
-    int32 attempt = 15;
-    optional string worker_id = 16;
-    optional Timestamp heartbeat_at = 17;
-    TaskLinksProto links = 18;
-    TaskWakePolicy wake_policy = 19;
-    Timestamp created_at = 20;
-    optional Timestamp started_at = 21;
-    optional Timestamp finished_at = 22;
-    Timestamp updated_at = 23;
-}
-
-// Input for creating a task (mirrors CreateSessionTask).
-message CreateSessionTaskProto {
-    Uuid session_id = 1;
-    optional string id = 2;
-    string kind = 3;
-    string display_name = 4;
-    // Kind-specific spec; canonical serde_json bytes (free-form JSON value).
-    bytes spec_json = 5;
-    SessionTaskState state = 6;
-    TaskLinksProto links = 7;
-    TaskWakePolicy wake_policy = 8;
-}
-
-// Partial update (mirrors SessionTaskUpdate). All Option fields are absent when
-// unchanged; the field-presence semantics match the Rust struct.
-message SessionTaskUpdateProto {
-    optional SessionTaskState state = 1;
-    optional string state_detail = 2;
-    optional TaskProgressProto progress = 3;
-    optional TaskInputRequestProto input_request = 4;
-    optional string summary = 5;
-    optional string result_path = 6;
-    // Present (possibly empty) replaces the artifact list; absent leaves it.
-    optional TaskArtifactListProto artifacts = 7;
-    optional TaskErrorProto error = 8;
-    optional TaskLinksProto links = 9;
-    optional string worker_id = 10;
-    optional Timestamp heartbeat_at = 11;
-    optional int32 expected_attempt = 12;
-    bool increment_attempt = 13;
-    // Append under the registry update lock, independently of list replacement.
-    optional TaskArtifactProto append_artifact = 14;
-}
-
-// Wrapper so an absent artifacts update is distinguishable from an empty list.
-message TaskArtifactListProto {
-    repeated TaskArtifactProto artifacts = 1;
-}
-
-// One content part of a task message (mirrors TaskMessagePart).
-message TaskMessagePartProto {
-    oneof part {
-        string text = 1;
-        // Free-form data part; canonical serde_json bytes.
-        bytes data_json = 2;
-    }
-}
-
-// A stored message exchanged between a session and a task (mirrors TaskMessage).
-message TaskMessageProto {
-    string id = 1;
-    string task_id = 2;
-    TaskMessageDirection direction = 3;
-    repeated TaskMessagePartProto content = 4;
-    optional string in_reply_to = 5;
-    Timestamp created_at = 6;
-}
-
-// Input for recording a message (mirrors NewTaskMessage).
-message NewTaskMessageProto {
-    TaskMessageDirection direction = 1;
-    repeated TaskMessagePartProto content = 2;
-    optional string in_reply_to = 3;
-    optional int32 expected_attempt = 4;
-}
-
-message CreateSessionTaskRequest {
-    CreateSessionTaskProto create = 1;
-}
-
-message SessionTaskResponse {
-    SessionTaskProto task = 1;
-}
-
-message OptionalSessionTaskResponse {
-    optional SessionTaskProto task = 1;
-}
-
-message UpdateSessionTaskRequest {
-    Uuid session_id = 1;
-    string task_id = 2;
-    SessionTaskUpdateProto update = 3;
-}
-
-message GetSessionTaskRequest {
-    Uuid session_id = 1;
-    string task_id = 2;
-}
-
-message ListSessionTasksRequest {
-    Uuid session_id = 1;
-    optional string kind = 2;
-    optional string state = 3;
-}
-
-message ListSessionTasksResponse {
-    repeated SessionTaskProto tasks = 1;
-}
-
-message RequestCancelSessionTaskRequest {
-    Uuid session_id = 1;
-    string task_id = 2;
-}
-
-message RecordSessionTaskMessageRequest {
-    Uuid session_id = 1;
-    string task_id = 2;
-    NewTaskMessageProto message = 3;
-}
-
-message SessionTaskMessageResponse {
-    TaskMessageProto message = 1;
-}
-
-message ListSessionTaskMessagesRequest {
-    Uuid session_id = 1;
-    string task_id = 2;
-    optional uint32 limit = 3;
-}
-
-message ListSessionTaskMessagesResponse {
-    repeated TaskMessageProto messages = 1;
-}
-
 // === List orphaned session tasks ===
 
 message ListOrphanedSessionTasksRequest {
@@ -2371,6 +1730,9 @@ message OrphanedSessionTaskEntry {
     // applied client-side when parsing into a SessionId.
     string session_id = 1;
     string task_id = 2;
+    // Org that owns the session. The reaper scans across every org and
+    // reattaches each task with this org's session storage.
+    int64 org_id = 3;
 }
 
 message ListOrphanedSessionTasksResponse {

@@ -35,8 +35,7 @@ use crate::builtins::tool_types::{
 };
 
 pub use crate::builtins::tool_approval_durable::{
-    DurableToolApprover, ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_KV_PREFIX,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    DurableToolApprover, TOOL_APPROVAL_KV_PREFIX, approval_fingerprint,
 };
 use crate::builtins::typed_id::SessionId;
 use crate::tool_context::ToolContext;
@@ -72,6 +71,19 @@ pub trait ToolApprover: Send + Sync {
     ) -> ApprovalDecision {
         let _ = context;
         self.approve(session_id, tool_call, tool_def).await
+    }
+
+    /// What [`approve_in_context`](Self::approve_in_context) would answer,
+    /// read without asking anyone or using up an answer. `None` when that
+    /// cannot be known without asking, which is the default: an interactive
+    /// approver only knows by prompting.
+    async fn peek_in_context(
+        &self,
+        _session_id: SessionId,
+        _tool_call: &ToolCall,
+        _context: &ToolContext,
+    ) -> Option<ApprovalDecision> {
+        None
     }
 
     /// Whether this approver records "always" answers durably itself.
@@ -475,6 +487,7 @@ impl ToolApprovalHook {
             expires_at: expires_at.to_rfc3339(),
         };
         let result = ToolResult {
+            details: None,
             tool_call_id: tool_call.id.clone(),
             result: Some(serde_json::to_value(&request).unwrap_or_default()),
             images: None,
@@ -534,6 +547,39 @@ impl PreToolUseHook for ToolApprovalHook {
             ApprovalDecision::Cancelled => Self::block(tool_call, "turn cancelled"),
             ApprovalDecision::Unavailable => Self::block(tool_call, "approval unavailable"),
             ApprovalDecision::Deferred => self.defer(tool_call, tool_def),
+        }
+    }
+
+    /// Only a call that would be parked on a request is reported: the request
+    /// is raised as if the call had been made, and nothing else changes.
+    async fn preview(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Option<ToolResult> {
+        let gated = match &self.policy {
+            Some(policy) => policy(tool_call, tool_def),
+            None => requires_approval(self.mode, classify(tool_def)),
+        };
+        let key = (context.session_id, tool_call.name.clone());
+        let remembered = self
+            .remembered
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(&key);
+        if !gated || remembered {
+            return None;
+        }
+        let decision = self
+            .approver
+            .peek_in_context(context.session_id, tool_call, context)
+            .await;
+        match (decision, self.defer(tool_call.clone(), tool_def)) {
+            (Some(ApprovalDecision::Deferred), PreToolUseDecision::Defer { result, .. }) => {
+                Some(result)
+            }
+            _ => None,
         }
     }
 }

@@ -110,7 +110,7 @@ export function AgentTriggersPanel({
   };
 
   return (
-    <section className="flex min-w-0 flex-col gap-3">
+    <section id="triggers" className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold tracking-tight">Triggers</h3>
@@ -195,7 +195,7 @@ export function AgentTriggersPanel({
                         ? "New session per run"
                         : config.session_mode === "per_thread"
                           ? "One session per pull request"
-                          : "Shared session"}
+                          : "One session for everything"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

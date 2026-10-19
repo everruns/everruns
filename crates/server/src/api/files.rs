@@ -1,6 +1,6 @@
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
-use crate::storage::models::CreateFileRow;
+use crate::storage::CreateFileRow;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::{Path, Query, State};
@@ -13,6 +13,7 @@ use axum::{
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::FileId;
+use everruns_core::host::attachment_zip as zip_attachments;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -26,7 +27,7 @@ pub const MAX_FILE_SIZE_BYTES: usize = 11 * 1024 * 1024;
 pub const MAX_FILES_PER_RESOLUTION: usize = 8;
 
 /// Allowed content types for model-input files.
-pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf"];
+pub const ALLOWED_FILE_CONTENT_TYPES: &[&str] = &["application/pdf", "application/zip"];
 
 /// File metadata returned after a successful upload (no binary data).
 #[derive(Debug, Serialize, ToSchema)]
@@ -36,7 +37,7 @@ pub struct FileUploadResponse {
     /// Original filename supplied at upload, if known.
     #[schema(example = "report.pdf")]
     pub filename: Option<String>,
-    /// MIME type of the stored file (currently always application/pdf).
+    /// MIME type of the stored file: application/pdf or application/zip.
     #[schema(example = "application/pdf")]
     pub content_type: String,
     /// Size of the stored file in bytes.
@@ -55,7 +56,7 @@ pub struct FileInfo {
     /// Original filename supplied at upload, if known.
     #[schema(example = "report.pdf")]
     pub filename: Option<String>,
-    /// MIME type of the stored file (currently always application/pdf).
+    /// MIME type of the stored file: application/pdf or application/zip.
     #[schema(example = "application/pdf")]
     pub content_type: String,
     /// Size of the stored file in bytes.
@@ -93,7 +94,7 @@ pub struct ListFilesQuery {
     ),
     tag = "Files"
 )]
-/// Upload a PDF file for use as model input.
+/// Upload a PDF or zip file as a message attachment.
 pub async fn upload_file(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -141,6 +142,15 @@ pub async fn upload_file(
             .into_response());
     }
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
+    // Windows browsers label zips with a legacy type, and some clients send
+    // no type at all; the zip check below still verifies the bytes.
+    let content_type = match content_type.as_str() {
+        "application/x-zip-compressed" | "application/x-zip" => "application/zip".to_string(),
+        "application/octet-stream" if zip_attachments::looks_like_zip(&data) => {
+            "application/zip".to_string()
+        }
+        _ => content_type,
+    };
     if !ALLOWED_FILE_CONTENT_TYPES.contains(&content_type.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -148,8 +158,23 @@ pub async fn upload_file(
         )
             .into_response());
     }
-    // Magic-byte check: PDFs start with %PDF-.
-    if !data.starts_with(b"%PDF-") {
+    if content_type == "application/zip" {
+        // A zip is unpacked into the session's files when a message sends it,
+        // so it must pass the unpack limits now: a stored zip always unpacks.
+        if !zip_attachments::looks_like_zip(&data) {
+            return Err(
+                (StatusCode::BAD_REQUEST, "Uploaded file is not a valid zip").into_response(),
+            );
+        }
+        if let Err(reason) = zip_attachments::unpack_zip(&data) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Zip cannot be unpacked: {reason}"),
+            )
+                .into_response());
+        }
+    } else if !data.starts_with(b"%PDF-") {
+        // Magic-byte check: PDFs start with %PDF-.
         return Err((
             StatusCode::BAD_REQUEST,
             "Uploaded file is not a valid PDF (missing %PDF- header)",
@@ -271,17 +296,23 @@ pub async fn get_file(
     } else {
         filename
     };
+    // THREAT[TM-WEB-021]: stored MIME metadata is for agents, not permission to
+    // execute on the authenticated origin. Attachment disposition handles
+    // navigation; an inert type plus nosniff also blocks script/style loads.
     let len = row.data.len();
     let mut response = Response::new(Body::from(row.data));
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, row.content_type.parse().unwrap());
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/octet-stream"),
+    );
     response
         .headers_mut()
         .insert(header::CONTENT_LENGTH, len.into());
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        format!("inline; filename=\"{filename}\"").parse().unwrap(),
+        format!("attachment; filename=\"{filename}\"")
+            .parse()
+            .unwrap(),
     );
     response
         .headers_mut()
@@ -331,4 +362,178 @@ pub fn routes(state: ApiState) -> Router {
         .route("/v1/files/{file_id}", get(get_file).delete(delete_file))
         .layer(DefaultBodyLimit::max(MAX_FILE_SIZE_BYTES + 1024 * 1024))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    use crate::auth::{AuthState, config::AuthConfig};
+    use crate::domains::common::all_feature_flags_for_test;
+    use crate::domains::messages::intake::store_received_attachment;
+    use crate::storage::StorageBackend;
+    use everruns_contracts::runtime::message::ContentPart;
+    use everruns_core::{OrgRole, channel_runtime::ReceivedAttachment};
+
+    fn org(org_id: i64) -> ResolvedOrg {
+        ResolvedOrg {
+            org_id,
+            public_id: format!("org_{org_id}"),
+            name: "Example".to_string(),
+            user_id: None,
+            role: OrgRole::Member,
+            is_platform_user: false,
+            feature_flags: all_feature_flags_for_test(),
+            read_only: false,
+        }
+    }
+
+    fn state(db: Arc<StorageBackend>) -> ApiState {
+        ApiState::for_test(
+            db.clone(),
+            None,
+            AuthState::builtin(AuthConfig::default(), db),
+        )
+    }
+
+    #[tokio::test]
+    async fn stored_files_are_downloads_with_inert_http_media_type() {
+        let db = Arc::new(StorageBackend::test_database());
+        let state = state(db.clone());
+        // MIME labels only; every fixture contains the same inert plain bytes.
+        for media_type in [
+            "text/html",
+            "application/javascript",
+            "text/javascript",
+            "image/svg+xml",
+            "text/xml",
+            "text/css",
+            "text/csv",
+            "application/octet-stream",
+            "application/pdf",
+            "application/javascript; charset=utf-8",
+            "invalid media type",
+        ] {
+            let bytes = b"ordinary attachment";
+            let part = store_received_attachment(
+                &db,
+                1,
+                ReceivedAttachment {
+                    name: "example.txt".to_string(),
+                    media_type: media_type.to_string(),
+                    data: bytes.to_vec(),
+                },
+            )
+            .await
+            .unwrap();
+            let ContentPart::File(file) = part else {
+                panic!("expected a file");
+            };
+            let row = db.get_file(1, file.file_id.uuid()).await.unwrap().unwrap();
+            assert_eq!(row.content_type, media_type);
+            assert_eq!(row.data, bytes);
+
+            let request = axum::http::Request::builder()
+                .uri(format!("/v1/files/{}", file.file_id))
+                .body(Body::empty())
+                .unwrap();
+            let response = routes(state.clone()).oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "application/octet-stream",
+                "{media_type}"
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_DISPOSITION],
+                "attachment; filename=\"example.txt\""
+            );
+            assert_eq!(
+                response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+                "nosniff"
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_LENGTH],
+                bytes.len().to_string()
+            );
+            assert_eq!(
+                axum::body::to_bytes(response.into_body(), 64)
+                    .await
+                    .unwrap(),
+                bytes.as_slice()
+            );
+            let denied = get_file(org(2), State(state.clone()), Path(file.file_id.to_string()))
+                .await
+                .err()
+                .expect("another org cannot read the attachment");
+            assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+        }
+    }
+
+    #[tokio::test]
+    async fn download_route_requires_authentication() {
+        let db = Arc::new(StorageBackend::test_database());
+        let auth = AuthState::builtin(
+            AuthConfig {
+                mode: crate::auth::config::AuthMode::Full,
+                ..AuthConfig::default()
+            },
+            db.clone(),
+        );
+        let state = ApiState::for_test(db, None, auth);
+        let request = axum::http::Request::builder()
+            .uri(format!("/v1/files/{}", FileId::new()))
+            .body(Body::empty())
+            .unwrap();
+        let response = routes(state).oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn download_filename_remains_a_single_bounded_header_value() {
+        let db = Arc::new(StorageBackend::test_database());
+        let state = state(db.clone());
+        let long = "a".repeat(205);
+        let bounded = "a".repeat(200);
+        for (filename, expected) in [
+            (Some("report.pdf"), "report.pdf"),
+            (Some("a\"b\\c\r\nd.txt"), "abcd.txt"),
+            (Some("\"\\\r\n"), "file.pdf"),
+            (None, "file.pdf"),
+            (Some(long.as_str()), bounded.as_str()),
+        ] {
+            let row = db
+                .create_file(
+                    1,
+                    CreateFileRow {
+                        org_id: 1,
+                        filename: filename.map(str::to_string),
+                        content_type: "application/zip".to_string(),
+                        size_bytes: 4,
+                        data: b"data".to_vec(),
+                        metadata: serde_json::json!({}),
+                    },
+                )
+                .await
+                .unwrap();
+            let response = get_file(org(1), State(state.clone()), Path(row.id.to_string()))
+                .await
+                .unwrap()
+                .into_response();
+            assert_eq!(
+                response.headers()[header::CONTENT_DISPOSITION],
+                format!("attachment; filename=\"{expected}\"")
+            );
+            assert_eq!(
+                response
+                    .headers()
+                    .get_all(header::CONTENT_DISPOSITION)
+                    .iter()
+                    .count(),
+                1
+            );
+        }
+    }
 }

@@ -14,7 +14,10 @@
 // deferral, and search all work transparently.
 
 use crate::runtime::error::Result;
-use crate::runtime::mcp_server::{McpServerActsAs, is_mcp_tool};
+use crate::runtime::mcp_resources::{McpResourceListing, McpResourceOutcome};
+use crate::runtime::mcp_server::{
+    McpReadResourceResult, McpServerActsAs, is_mcp_tool, parse_mcp_tool_name,
+};
 use crate::runtime::tool_context::ToolContext;
 use crate::runtime::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolHints};
 use crate::runtime::tools::{Tool, ToolExecutionResult};
@@ -50,6 +53,64 @@ pub trait McpToolInvoker: Send + Sync {
     )> {
         self.invoke(tool_call).await.map(|result| (result, None))
     }
+
+    /// [`invoke_recorded`](Self::invoke_recorded) with the call's idempotency
+    /// key, which an invoker that reaches the server sends with the call.
+    /// Invokers that cannot send one drop it.
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        _idempotency_key: Option<&str>,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        self.invoke_recorded(tool_call).await
+    }
+
+    /// List one server's tools now, from inside a tool call, by its sanitized
+    /// prefix, with the same connection and account a call would use. The
+    /// `tools` shell command loads a deferred server this way instead of
+    /// waiting for the next step. `None` means this invoker cannot list, and
+    /// the caller falls back to a reveal that lists the server on the next
+    /// step.
+    async fn list_server_tools(
+        &self,
+        _server_prefix: &str,
+        _session_id: uuid::Uuid,
+    ) -> Result<Option<McpServerTools>> {
+        Ok(None)
+    }
+
+    /// List one page of a server's resources, with its resource templates on
+    /// the first page, by sanitized prefix, with the same connection and
+    /// account a call would use. `None` means this invoker cannot.
+    async fn list_resources(
+        &self,
+        _server_prefix: &str,
+        _cursor: Option<&str>,
+    ) -> Result<Option<McpResourceOutcome<McpResourceListing>>> {
+        Ok(None)
+    }
+
+    /// Read one resource from a server by sanitized prefix. `None` means this
+    /// invoker cannot.
+    async fn read_resource(
+        &self,
+        _server_prefix: &str,
+        _uri: &str,
+    ) -> Result<Option<McpResourceOutcome<McpReadResourceResult>>> {
+        Ok(None)
+    }
+}
+
+/// A server's tools listed from inside a tool call.
+#[derive(Debug, Clone)]
+pub enum McpServerTools {
+    /// The server's tools, as prefixed definitions.
+    Listed(Vec<ToolDefinition>),
+    /// The server needs a connection first; the result says which and where.
+    ConnectionRequired(crate::runtime::tool_types::ToolResult),
 }
 
 /// Per-call slot the engine puts in a tool's context extensions so an MCP
@@ -75,14 +136,22 @@ impl McpCallIdentity {
 /// configured `server`/`tool` references are out-of-band; without this check a
 /// config edit could invoke an org MCP server that was not scoped to the
 /// current agent/session.
+///
+/// A deferred server's placeholder puts the whole server in scope: its tools
+/// are not in the definitions yet, but the server is attached to this turn, so
+/// listing it and calling its tools is allowed.
 pub struct ScopedMcpToolInvoker {
     inner: Arc<dyn McpToolInvoker>,
     allowed_tool_names: HashSet<String>,
+    deferred_prefixes: HashSet<String>,
+    /// Every server attached to this turn: the prefixes of its MCP tools plus
+    /// its deferred servers. Resource requests may reach these only.
+    server_prefixes: HashSet<String>,
 }
 
 impl ScopedMcpToolInvoker {
     pub fn new(definitions: &[ToolDefinition], inner: Arc<dyn McpToolInvoker>) -> Self {
-        let allowed_tool_names = definitions
+        let allowed_tool_names: HashSet<String> = definitions
             .iter()
             .filter_map(|def| match def {
                 ToolDefinition::Builtin(builtin) if is_mcp_tool(&builtin.name) => {
@@ -94,10 +163,49 @@ impl ScopedMcpToolInvoker {
                 ToolDefinition::ClientSide(_) | ToolDefinition::Builtin(_) => None,
             })
             .collect();
+        let deferred_prefixes: HashSet<String> = allowed_tool_names
+            .iter()
+            .filter_map(|name| crate::runtime::mcp_deferred::deferred_mcp_server_prefix(name))
+            .map(str::to_string)
+            .collect();
+        let server_prefixes = allowed_tool_names
+            .iter()
+            .filter_map(|name| parse_mcp_tool_name(name).map(|(prefix, _)| prefix))
+            .chain(deferred_prefixes.iter().cloned())
+            .collect();
         Self {
             inner,
             allowed_tool_names,
+            deferred_prefixes,
+            server_prefixes,
         }
+    }
+
+    fn check_server(&self, server_prefix: &str) -> Result<()> {
+        if self.server_prefixes.contains(server_prefix) {
+            return Ok(());
+        }
+        let mut attached: Vec<&str> = self.server_prefixes.iter().map(String::as_str).collect();
+        attached.sort_unstable();
+        Err(crate::runtime::AgentLoopError::tool(format!(
+            "MCP server '{server_prefix}' is not attached to this conversation. Attached: {}",
+            if attached.is_empty() {
+                "none".to_string()
+            } else {
+                attached.join(", ")
+            }
+        )))
+    }
+
+    fn check(&self, tool_name: &str) -> Result<()> {
+        let on_deferred_server = parse_mcp_tool_name(tool_name)
+            .is_some_and(|(prefix, _)| self.deferred_prefixes.contains(&prefix));
+        if self.allowed_tool_names.contains(tool_name) || on_deferred_server {
+            return Ok(());
+        }
+        Err(crate::runtime::AgentLoopError::tool(format!(
+            "MCP tool '{tool_name}' is not allowed in the current tool scope"
+        )))
     }
 }
 
@@ -108,17 +216,14 @@ impl McpToolInvoker for ScopedMcpToolInvoker {
             Arc::new(Self {
                 inner,
                 allowed_tool_names: self.allowed_tool_names.clone(),
+                deferred_prefixes: self.deferred_prefixes.clone(),
+                server_prefixes: self.server_prefixes.clone(),
             }) as Arc<dyn McpToolInvoker>
         })
     }
 
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::runtime::tool_types::ToolResult> {
-        if !self.allowed_tool_names.contains(&tool_call.name) {
-            return Err(crate::runtime::AgentLoopError::tool(format!(
-                "MCP tool '{}' is not allowed in the current tool scope",
-                tool_call.name
-            )));
-        }
+        self.check(&tool_call.name)?;
         self.inner.invoke(tool_call).await
     }
 
@@ -129,13 +234,53 @@ impl McpToolInvoker for ScopedMcpToolInvoker {
         crate::runtime::tool_types::ToolResult,
         Option<McpServerActsAs>,
     )> {
-        if !self.allowed_tool_names.contains(&tool_call.name) {
+        self.check(&tool_call.name)?;
+        self.inner.invoke_recorded(tool_call).await
+    }
+
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> Result<(
+        crate::runtime::tool_types::ToolResult,
+        Option<McpServerActsAs>,
+    )> {
+        self.check(&tool_call.name)?;
+        self.inner.invoke_keyed(tool_call, idempotency_key).await
+    }
+
+    async fn list_server_tools(
+        &self,
+        server_prefix: &str,
+        session_id: uuid::Uuid,
+    ) -> Result<Option<McpServerTools>> {
+        if !self.deferred_prefixes.contains(server_prefix) {
             return Err(crate::runtime::AgentLoopError::tool(format!(
-                "MCP tool '{}' is not allowed in the current tool scope",
-                tool_call.name
+                "MCP server '{server_prefix}' is not a deferred server in the current tool scope"
             )));
         }
-        self.inner.invoke_recorded(tool_call).await
+        self.inner
+            .list_server_tools(server_prefix, session_id)
+            .await
+    }
+
+    async fn list_resources(
+        &self,
+        server_prefix: &str,
+        cursor: Option<&str>,
+    ) -> Result<Option<McpResourceOutcome<McpResourceListing>>> {
+        self.check_server(server_prefix)?;
+        self.inner.list_resources(server_prefix, cursor).await
+    }
+
+    async fn read_resource(
+        &self,
+        server_prefix: &str,
+        uri: &str,
+    ) -> Result<Option<McpResourceOutcome<McpReadResourceResult>>> {
+        self.check_server(server_prefix)?;
+        self.inner.read_resource(server_prefix, uri).await
     }
 }
 
@@ -164,13 +309,14 @@ impl McpProxyTool {
         tool_call_id: String,
         arguments: Value,
         identity: Option<&McpCallIdentity>,
+        idempotency_key: Option<&str>,
     ) -> ToolExecutionResult {
         let call = ToolCall {
             id: tool_call_id,
             name: self.definition.name.clone(),
             arguments,
         };
-        match self.invoker.invoke_recorded(&call).await {
+        match self.invoker.invoke_keyed(&call, idempotency_key).await {
             Ok((result, acted_as)) => {
                 if let Some(identity) = identity {
                     identity.record(acted_as);
@@ -217,7 +363,7 @@ impl Tool for McpProxyTool {
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        self.invoke(String::new(), arguments, None).await
+        self.invoke(String::new(), arguments, None, None).await
     }
 
     async fn execute_with_context(
@@ -227,6 +373,7 @@ impl Tool for McpProxyTool {
     ) -> ToolExecutionResult {
         let tool_call_id = context.tool_call_id.clone().unwrap_or_default();
         let identity = context.extensions.get::<McpCallIdentity>();
+        let key = context.idempotency_key.as_deref();
         if let Some(id) = context
             .event_context
             .as_ref()
@@ -238,23 +385,24 @@ impl Tool for McpProxyTool {
                 invoker,
             };
             return scoped
-                .invoke(tool_call_id, arguments, identity.as_deref())
+                .invoke(tool_call_id, arguments, identity.as_deref(), key)
                 .await;
         }
-        self.invoke(tool_call_id, arguments, identity.as_deref())
+        self.invoke(tool_call_id, arguments, identity.as_deref(), key)
             .await
     }
 }
 
-/// Build proxy tools for every MCP-prefixed definition in `definitions`,
-/// delegating execution to `invoker`. Non-MCP definitions are ignored.
+/// Build proxy tools for every MCP-prefixed definition in `definitions`, and
+/// the resource tools when their definitions are present, delegating
+/// execution to the turn-scoped `invoker`. Other definitions are ignored.
 ///
 /// Hosts call this when assembling the per-turn `ToolRegistry`, passing the
-/// turn's tool definitions (which already include MCP tools) so no re-discovery
-/// is needed.
+/// turn's tool definitions (which already include MCP tools) and an invoker
+/// scoped to those same definitions so no re-discovery is needed.
 pub fn build_mcp_proxy_tools(
     definitions: &[ToolDefinition],
-    invoker: Arc<dyn McpToolInvoker>,
+    invoker: Arc<ScopedMcpToolInvoker>,
 ) -> Vec<Box<dyn Tool>> {
     definitions
         .iter()
@@ -279,6 +427,10 @@ pub fn build_mcp_proxy_tools(
             // MCP tool would not be worker-executable, so skip it.
             ToolDefinition::ClientSide(_) => None,
         })
+        .chain(crate::runtime::mcp_resources::build_mcp_resource_tools(
+            definitions,
+            &invoker,
+        ))
         .collect()
 }
 
@@ -365,6 +517,7 @@ mod tests {
 
     fn ok_result(value: Value) -> ToolResult {
         ToolResult {
+            details: None,
             tool_call_id: String::new(),
             result: Some(value),
             images: None,
@@ -393,7 +546,10 @@ mod tests {
             result: ok_result(serde_json::json!({"answer":42,"nested":[true,null]})),
         });
         let mut registry = crate::runtime::tools::ToolRegistry::new();
-        for tool in build_mcp_proxy_tools(&definitions, invoker.clone()) {
+        for tool in build_mcp_proxy_tools(
+            &definitions,
+            Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker.clone())),
+        ) {
             registry.register_boxed(tool);
         }
         assert_eq!(registry.len(), 1);
@@ -428,6 +584,39 @@ mod tests {
                 {"id":"","name":"mcp_docs__search","arguments":arguments}
             ])
         );
+    }
+
+    /// The proxy hands the call's idempotency key to the invoker, so the MCP
+    /// server receives it; a call without one sends none.
+    #[tokio::test]
+    async fn proxy_passes_the_call_idempotency_key_to_the_invoker() {
+        #[derive(Default)]
+        struct KeyInvoker(Mutex<Vec<Option<String>>>);
+        #[async_trait]
+        impl McpToolInvoker for KeyInvoker {
+            async fn invoke(&self, _: &ToolCall) -> Result<ToolResult> {
+                unreachable!("the proxy invokes with the key")
+            }
+            async fn invoke_keyed(
+                &self,
+                tool_call: &ToolCall,
+                key: Option<&str>,
+            ) -> Result<(ToolResult, Option<McpServerActsAs>)> {
+                self.0.lock().unwrap().push(key.map(str::to_string));
+                Ok((ok_result(serde_json::json!({"id": tool_call.id})), None))
+            }
+        }
+        let invoker = Arc::new(KeyInvoker::default());
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker.clone());
+        let mut context = ToolContext::new(crate::runtime::typed_id::SessionId::from_seed(1));
+        context.tool_call_id = Some("call-1".into());
+        context.idempotency_key = Some("key-1".into());
+        tool.execute_with_context(serde_json::json!({}), &context)
+            .await;
+        context.idempotency_key = None;
+        tool.execute_with_context(serde_json::json!({}), &context)
+            .await;
+        assert_eq!(*invoker.0.lock().unwrap(), vec![Some("key-1".into()), None]);
     }
 
     #[tokio::test]
@@ -596,5 +785,60 @@ mod tests {
             serde_json::to_value(&*inner.calls.lock().unwrap()).unwrap(),
             serde_json::json!([allowed])
         );
+    }
+
+    #[test]
+    fn server_scope_configuration_uses_builtin_and_deferred_metadata() {
+        let scoped = ScopedMcpToolInvoker::new(
+            &[
+                mcp_def("mcp_docs__search"),
+                crate::runtime::mcp_deferred::deferred_mcp_server_definition("wiki", None),
+                client_side_mcp_def("mcp_client__search"),
+                mcp_def("read_file"),
+            ],
+            Arc::new(RecordingInvoker {
+                calls: Mutex::new(vec![]),
+                result: ok_result(Value::Null),
+            }),
+        );
+        assert!(scoped.check_server("docs").is_ok());
+        assert!(scoped.check_server("wiki").is_ok());
+        assert_eq!(
+            scoped.check_server("client").unwrap_err().to_string(),
+            "Tool execution error: MCP server 'client' is not attached to this conversation. Attached: docs, wiki"
+        );
+        assert!(scoped.check_server("read_file").is_err());
+    }
+
+    #[tokio::test]
+    async fn a_deferred_placeholder_scopes_its_whole_server() {
+        let placeholder =
+            crate::runtime::mcp_deferred::deferred_mcp_server_definition("docs", None);
+        let inner = Arc::new(RecordingInvoker {
+            calls: Mutex::new(vec![]),
+            result: ok_result(Value::Null),
+        });
+        let scoped = ScopedMcpToolInvoker::new(&[placeholder, mcp_def("mcp_wiki__read")], inner);
+        let call = |name: &str| ToolCall {
+            id: String::new(),
+            name: name.to_string(),
+            arguments: serde_json::json!({}),
+        };
+        assert!(scoped.invoke(&call("mcp_docs__search")).await.is_ok());
+        assert!(scoped.invoke(&call("mcp_wiki__read")).await.is_ok());
+        assert!(scoped.invoke(&call("mcp_wiki__write")).await.is_err());
+        assert!(scoped.invoke(&call("mcp_other__search")).await.is_err());
+
+        let session = uuid::Uuid::nil();
+        // The inner invoker cannot list, which reads as "not here" rather
+        // than an error; a listed server is outside the deferred scope.
+        assert!(
+            scoped
+                .list_server_tools("docs", session)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(scoped.list_server_tools("wiki", session).await.is_err());
     }
 }

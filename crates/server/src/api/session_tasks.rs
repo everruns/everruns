@@ -91,6 +91,8 @@ pub struct ListOrgTasksQuery {
     pub limit: Option<u32>,
 }
 
+/// List background tasks across the organization
+///
 /// List background tasks across every session in the caller's org.
 #[utoipa::path(
     get,

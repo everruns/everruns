@@ -1,4 +1,5 @@
-import { Server, Scale } from "lucide-react";
+import { ProviderIcon as FacetProviderIcon } from "@/components/icons/facet-icons";
+import { Scale } from "lucide-react";
 import type { DriverId } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -223,7 +224,7 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
 
 const PROVIDER_LABELS: Record<DriverId, string> = {
   openai: "OpenAI (Responses)",
-  chatgpt: "ChatGPT plan",
+  chatgpt: "ChatGPT Plan",
   "openai-codex": "Codex",
   openrouter: "OpenRouter",
   typesafe: "TypeSafe",
@@ -234,7 +235,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   bedrock: "AWS Bedrock",
   mai: "Microsoft MAI",
   fireworks: "Fireworks AI",
-  meta: "Meta Model API",
+  meta: "Meta",
   mistral: "Mistral AI",
   cloudflare: "Cloudflare AI Gateway",
   vercel: "Vercel AI Gateway",
@@ -243,7 +244,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
 // Short, accurate one-line taglines shown next to each provider in pickers.
 const PROVIDER_DESCRIPTIONS: Record<DriverId, string> = {
   openai: "GPT and o-series models via the Responses API.",
-  chatgpt: "Use your ChatGPT plan. Personal to you, with no API key.",
+  chatgpt: "Use your ChatGPT Plan. Personal to you, with no API key.",
   "openai-codex": "Codex models with ChatGPT authentication.",
   openrouter: "One key for a large multi-vendor model catalog.",
   typesafe: "Calibrated Jev judgments via System One.",
@@ -286,7 +287,7 @@ export function ProviderIcon({
   if (!IconComponent) {
     return (
       <div className={cn(showBackground && "bg-primary/10", container, className)}>
-        <Server className="text-primary" style={{ width: iconSize, height: iconSize }} />
+        <FacetProviderIcon className="text-primary" style={{ width: iconSize, height: iconSize }} />
       </div>
     );
   }

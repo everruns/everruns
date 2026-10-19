@@ -31,11 +31,18 @@ Provider APIs retain their existing root and module paths. Capability APIs live 
 offline profile registry keyed by provider wire ID; `model_profiles` keeps the typed
 `DriverId` adapters.
 
+The `http` protocols also build for `wasm32-unknown-unknown`: inject an
+`http_transport::HttpTransport` with `.with_transport(...)` on
+`OpenAIProtocolChatDriver` or `OpenResponsesProtocolChatDriver`. Applications
+supply host fetch, network policy and cancellation; the shared protocols keep
+encoding, SSE, tools and errors. See the
+[host fetch guide](https://everruns.com/docs/framework/models-and-providers/#wasm-and-host-fetch).
+
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-contracts)
-- [Everruns Framework](https://docs.everruns.com/framework/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Everruns Framework](https://everruns.com/docs/framework/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 

@@ -1,65 +1,57 @@
-# celld (serve, experimental)
+# serve with Engine-owned celld sessions
 
-A [serve](../../../crates/serve) app that runs durably on
-[celld](https://github.com/denoland/celld) with
-[serve-celld](../../../crates/serve-celld). The app is ordinary serve code; only
-`main` changes, from `serve::start` to `serve_celld::start`. `worker/` is the
-celld application: a Durable Object per name that runs the app in a container and
-keeps its state. The full guide is
-[Serve on celld](https://docs.everruns.com/framework/serve-celld/).
+This source-only reference uses the public hosting SPI. The celld and DO adapters
+are not published product dependencies; build this example from the repository.
 
-## Try it without containers
+An ordinary [serve](../../../crates/serve) app with
+[`serve_celld::start`](../../../crates/serve-celld). A per-session Durable Object
+owns canonical state and alarms. A replaceable native container runs the same
+Engine used by serve's `/v1` API. The Worker forwards protocol requests and
+activation; Rust owns execution, recovery and tool policy.
 
-The external cell reaches a serve process by URL instead of a container, so this
-needs only [celld](https://celld.dev) and Node.js:
+To run without a container engine, configure matching private variables in the
+Worker's ignored `.dev.vars` and the native process environment:
 
-```sh
-cargo run -p serve-example-celld -- celld --dev --port 8080   # the container half, offline
-cd examples/serve/celld/worker && npm install
-celld dev wrangler.external.jsonc                             # the cells, on :9876
-```
-
-```sh
-S=$(curl -s -XPOST localhost:9876/cells/demo/v1/sessions -H 'content-type: application/json' -d '{}' | jq -r .id)
-curl -s -XPOST localhost:9876/cells/demo/v1/sessions/$S/messages \
-  -H 'content-type: application/json' \
-  -d '{"message":{"role":"user","content":[{"type":"text","text":"look up celld"}]}}'
-curl -s localhost:9876/cells/demo/_cell/state
-# {"boot_id":"…","snapshot_seq":1,"snapshot_bytes":…,"journal":1,"restores":0,"replayed":0}
-```
-
-Kill the serve process while the turn runs (the tool sleeps for
-`RESEARCH_DELAY_MS`, 2 s by default), start it again, and read the session: the
-cell restores the last snapshot and replays the message.
-
-`npm run test:e2e` does exactly that against a real `celld dev` node, then kills
-the node itself with a turn outstanding and checks that the cell's alarm snapshots
-it after the restart. Build the binary first with
-`cargo build -p serve-example-celld`.
-
-## Run it with containers
-
-Every celld node that serves the cell needs Docker or Podman.
+- `TENANT_ID=example` and `AUTHORITY_URL=http://127.0.0.1:9876` (use your celld port).
+- Distinct random `AUTHORITY_TOKEN`, `EXECUTOR_TOKEN`, `API_TOKEN` of at least 32 bytes.
+- `SERVE_API_KEYS` on the native process matching `API_TOKEN`.
+- `OPENAI_API_KEY` for the real model. Use `CONTAINER_ENV=OPENAI_API_KEY` to pass it
+  into a deployed container.
 
 ```sh
-docker build -f examples/serve/celld/Dockerfile -t serve-celld-example .   # repository root
-cd examples/serve/celld/worker && npm install && celld dev
+cargo run -p serve-example-celld -- celld --port 8080
+# Another terminal, with the matching .dev.vars:
+cd examples/serve/celld/worker
+npm ci
+celld dev wrangler.external.jsonc
 ```
 
-`celld deploy` builds or pulls images for `linux/amd64`, so for a fleet push the
-image to a registry the deploying machine can pull and name it in
-`wrangler.jsonc`. Pass the model gateway as variables: names starting with
-`SERVE_` (`SERVE_GATEWAY_URL`, `SERVE_GATEWAY_KEY`) reach the container, and
-`CONTAINER_ENV` lists any others.
+Use `/v1/sessions` and `/v1/sessions/{id}/messages` with a user bearer token.
+Retain a creation `id` and `message_id` across uncertain replies. Canonical
+history and outcomes remain in the session authority when the native process
+restarts; the DO alarm retries activation without resubmitting input.
 
-| File | Is |
-|---|---|
-| `src/main.rs` | `serve_celld::start(...)` instead of `serve::start(...)` |
-| `src/agent.rs` | `#[agent] fn assistant()`, with an offline script |
-| `src/tools.rs` | `#[tool] async fn look_up(cx, topic)`, slow on purpose |
-| `Dockerfile` | the container image |
-| `worker/src/cell.js` | the cell: snapshot, journal, restore and replay |
-| `worker/src/index.js` | the Worker and the two cell classes (container, external) |
-| `worker/wrangler.jsonc` | the container deployment |
-| `worker/wrangler.external.jsonc` | the same cells over `SERVE_URL` |
-| `worker/test/e2e.mjs` | crash and node-loss recovery on a real celld node |
+For containers, build from the repository root:
+
+```sh
+docker build -f examples/serve/celld/Dockerfile -t serve-celld-example .
+```
+
+Run `celld dev` from `worker/`. Set `AUTHORITY_URL` to the reachable authority
+Worker origin. For a fleet, push an immutable image and pin it in the deployment
+configuration. Retain matching builds for active sessions.
+
+`SERVE_WORKSPACE_DIR` provides a separate directory per session; preserve it with
+your chosen workspace service. OS tools additionally require an explicit isolated
+`Options::microvm` adapter. `Options::environment` can reopen remote workspace and
+compute services. The adapter does not enable an uncontained shell in the Engine
+process: its authority credentials must remain inaccessible to commands. Journal
+durability does not preserve container files. The
+local serve catalog is a projection. Channels and schedules require their own
+qualified host services; the new profile migration is still being qualified.
+
+The old app-level cell, canonical snapshot and HTTP replay protocol are retired.
+The isolate placement is [celld-engine](../../celld-engine), which imports the
+same Framework Agent module as Cloudflare. See the
+[shared qualification harness](../../../crates/durable-object/worker/test) for
+workerd and replicated celld owner-loss proofs.

@@ -11,6 +11,10 @@ const mockUnpinMutate = jest.fn();
 const mockArchiveMutate = jest.fn();
 const mockUnarchiveMutate = jest.fn();
 
+jest.mock("@/hooks/use-chat-mcp-servers", () => ({
+  useChatMcpServers: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }),
+  useRemoveChatMcpServer: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+}));
 jest.mock("@/components/chat/streamdown-message", () => ({
   StreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   InlineStreamdownMessage: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -270,7 +274,7 @@ describe("Thread surface", () => {
     );
     expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
     const openSession = screen.getByRole("link", { name: /Open session/ });
-    expect(openSession).toHaveAttribute("href", "/sessions/sess_1/transcript");
+    expect(openSession).toHaveAttribute("href", "/sessions/sess_1/trace");
     // Toolbar siblings must share the sm control height (h-7), not a taller
     // hand-padded link.
     expect(openSession).toHaveClass("h-7");

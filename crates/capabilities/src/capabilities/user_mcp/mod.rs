@@ -18,11 +18,10 @@
 // An agent or capability server with the same name wins over a user server.
 //
 // Decision: adding a server is how a prompt injection would exfiltrate data,
-// so `add` and `enable` are held for the person's approval: the tools declare
-// `requires_approval`, and with `manage` on the capability contributes its own
-// durable approval gate for exactly those two tools, whether or not the agent
-// enables `tool_approval`. `remove`, `disable` and `list` only reduce what the
-// agent can reach, and run without asking.
+// so `add` and `enable` declare `requires_approval` for the shared
+// `tool_approval` policy. Normal/protective modes hold them; absent/off permits
+// autonomous management. This capability does not install a separate gate.
+// Management authorization, URL restrictions and OAuth consent stay separate.
 //
 // Decision: custom URLs are refused unless `allow_custom_urls` is on. The tool
 // checks the setting it was built with, and the hosted store re-derives it from
@@ -36,7 +35,6 @@ use async_trait::async_trait;
 use everruns_core::capabilities::SystemPromptContext;
 use everruns_core::tools::Tool;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 pub use forwarding::{ForwardingUserMcpStore, UserMcpCallInvoker, install_user_mcp_store};
 // Re-exported so hosts that forward calls (the worker) need no direct core
@@ -51,7 +49,7 @@ pub use tools::{
 
 pub const USER_MCP_CAPABILITY_ID: &str = everruns_core::mcp::USER_MCP_CAPABILITY_ID;
 
-/// Tools that change what the agent can reach and so wait for approval.
+/// Tools that declare approval required under the shared approval policy.
 pub const USER_MCP_APPROVAL_TOOLS: &[&str] = &[tools::ADD_TOOL, tools::ENABLE_TOOL];
 
 /// Whether the person's own MCP servers join their turns (`use`, default on).
@@ -91,9 +89,10 @@ pub fn user_mcp_custom_urls_allowed(config: &Value) -> bool {
 const MANAGE_PROMPT: &str = "You can manage the MCP servers of the person you are talking to: \
 list_user_mcp_servers, add_user_mcp_server, remove_user_mcp_server, enable_user_mcp_server, \
 disable_user_mcp_server and connect_mcp_server. These change only that person's own list, never \
-the organization's. Adding or enabling a server asks them to approve it first. A server added or \
-enabled now is usable from their next message. After adding a server that needs a sign-in, offer \
-connect_mcp_server: it shows them a Connect card and you never see or handle their credentials.";
+the organization's. Adding or enabling a server follows the agent's configured tool approval policy. \
+A server added or enabled now is usable from their next message. To add a server for this conversation only, \
+pass scope \"chat\" to add_user_mcp_server; remove_user_mcp_server takes it away again. After \
+adding a server that needs a sign-in, offer connect_mcp_server: it shows them a Connect card and you never see or handle their credentials.";
 
 const CONNECT_PROMPT: &str = "Some of your MCP servers sign in as the person you are talking to. \
 When one of them needs that person to connect their account, call connect_mcp_server with the \
@@ -153,6 +152,16 @@ impl Capability for UserMcpCapability {
         Vec::new()
     }
 
+    fn tool_definitions_with_config(
+        &self,
+        config: &Value,
+    ) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
+        self.tools_with_config(config)
+            .iter()
+            .map(|tool| tool.to_definition())
+            .collect()
+    }
+
     async fn system_prompt_contribution_with_config(
         &self,
         _ctx: &SystemPromptContext,
@@ -163,16 +172,6 @@ impl Capability for UserMcpCapability {
         } else {
             user_mcp_connect_enabled(config).then(|| CONNECT_PROMPT.to_string())
         }
-    }
-
-    fn pre_tool_use_hooks_with_config(
-        &self,
-        config: &Value,
-    ) -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
-        if !user_mcp_manage_enabled(config) {
-            return Vec::new();
-        }
-        approval_gate()
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -188,7 +187,7 @@ impl Capability for UserMcpCapability {
                 "manage": {
                     "type": "boolean",
                     "title": "Let the agent manage them",
-                    "description": "Give the agent tools to list, add, remove, enable, disable and connect the person's MCP servers. Adding and enabling ask the person to approve first.",
+                    "description": "Give the agent tools to list, add, remove, enable, disable and connect the person's MCP servers. Adding and enabling follow the shared Tool Approval policy.",
                     "default": false
                 },
                 "allow_custom_urls": {
@@ -220,24 +219,6 @@ impl Capability for UserMcpCapability {
         }
         Ok(())
     }
-}
-
-/// The durable approval gate for `add` and `enable`.
-#[cfg(feature = "portable-builtins")]
-fn approval_gate() -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
-    use everruns_core::builtins::{DurableToolApprover, ToolApprovalCapability};
-    ToolApprovalCapability::new(Arc::new(DurableToolApprover))
-        .with_policy(Arc::new(|call, _definition| {
-            USER_MCP_APPROVAL_TOOLS.contains(&call.name.as_str())
-        }))
-        .pre_tool_use_hooks()
-}
-
-/// Without the portable builtins there is no durable approver to park on; the
-/// tools still declare `requires_approval` for a host gate to honor.
-#[cfg(not(feature = "portable-builtins"))]
-fn approval_gate() -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
-    Vec::new()
 }
 
 #[cfg(test)]

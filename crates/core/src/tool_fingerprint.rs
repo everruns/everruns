@@ -182,6 +182,7 @@ mod tests {
     #[test]
     fn results_ignore_volatile_fields_but_preserve_result_error_and_connection_identity() {
         let mut result = ToolResult {
+            details: None,
             tool_call_id: "call_a".into(),
             result: Some(json!({"value":1})),
             images: None,

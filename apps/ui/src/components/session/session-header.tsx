@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
@@ -26,18 +27,18 @@ import {
 } from "@/lib/entity-lifecycle";
 import { formatCompactNumber, formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
+import { sessionOutcome } from "@/lib/session-outcome";
 import {
   Activity,
-  Bot,
   Coins,
   Download,
   ExternalLink,
   Folder,
-  ListTree,
   MessageSquare,
   ShieldCheck,
   Sparkles,
   Waypoints,
+  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -46,14 +47,7 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey =
-  | "transcript"
-  | "timeline"
-  | "approvals"
-  | "work"
-  | "events"
-  | "files"
-  | "cost";
+export type SessionNavKey = "trace" | "approvals" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -124,24 +118,19 @@ function SessionTraceBadge({ href, label }: { href?: string; label?: string }) {
   );
 }
 
-export function SessionStatusBadge({ status }: { status: SessionStatus | undefined }) {
-  if (status === "active") {
-    return <Badge variant="default">Processing...</Badge>;
-  }
-
-  if (status === "idle") {
-    return <Badge variant="secondary">Ready</Badge>;
-  }
-
-  if (status === "waiting_for_tool_results") {
-    return <Badge variant="outline">Waiting on tools</Badge>;
-  }
-
-  if (status === "started") {
-    return <Badge variant="outline">New</Badge>;
-  }
-
-  return null;
+export function SessionStatusBadge({
+  status,
+  session,
+}: {
+  status: SessionStatus | undefined;
+  session?: Session;
+}) {
+  const outcome = sessionOutcome(session ?? { status: status ?? "started" }, status);
+  return (
+    <Badge variant={outcome.variant} className={outcome.className}>
+      {outcome.label}
+    </Badge>
+  );
 }
 
 /**
@@ -181,16 +170,10 @@ export function buildSessionNavigation({
 
   return [
     {
-      key: "transcript",
-      label: "Transcript",
-      href: `${basePath}/transcript`,
-      icon: MessageSquare,
-    },
-    {
-      key: "timeline",
-      label: "Timeline",
-      href: `${basePath}/timeline`,
-      icon: ListTree,
+      key: "trace",
+      label: "Trace",
+      href: `${basePath}/trace`,
+      icon: Workflow,
     },
     // Approvals pairs each request with the grant recorded for it. The count
     // is not a denormalized session counter, so the tab stays unbadged rather
@@ -375,14 +358,14 @@ export function SessionHeader({
                     href={`/agents/${agentId}`}
                     className="inline-flex items-center gap-1 hover:text-foreground"
                   >
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
                   </Link>
                 ) : (
                   <span className="inline-flex items-center gap-1">
-                    <Bot className="icon-sharp h-3 w-3" />
+                    <AgentIcon className="icon-sharp h-3 w-3" />
                     <span className={getEntityReferenceClassName(agentReferenceStatus)}>
                       {agentReferenceLabel}
                     </span>
@@ -406,7 +389,7 @@ export function SessionHeader({
 
           <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
 
-          <SessionStatusBadge status={effectiveStatus} />
+          <SessionStatusBadge status={effectiveStatus} session={session} />
 
           <SessionRecordingActions
             sessionId={sessionId}

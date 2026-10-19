@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use crate::records::eval::Score;
-use crate::records::observer::{ObserverScorerConfig, ScorerMethod};
+use crate::domains::evals::record::Score;
+use crate::domains::observers::record::{ObserverScorerConfig, ScorerMethod};
 use everruns_contracts::typed_id::SessionId;
 use tracing::{debug, warn};
 
@@ -19,7 +19,8 @@ use crate::domains::evals::runner::{extract_final_assistant_content, extract_too
 use crate::domains::evals::scoring::score_rule;
 use crate::domains::observers::judge::{JudgeClient, TurnEvidence};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CompleteTraceScoreRow, EventRow, ListEventsParams, TraceScoreRow};
+use crate::storage::{CompleteTraceScoreRow, TraceScoreRow};
+use crate::storage::{EventRow, ListEventsParams};
 
 /// Dependencies the worker loop needs to score: storage plus an optional judge
 /// client. `judge` is `None` when no LLM path is available (e.g. dev without
@@ -133,10 +134,17 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
 
     // Load this turn's trace slice.
     let session_id = SessionId::from_uuid(score.session_id);
-    let msg_events =
-        list_turn_events(db, session_id, &score.turn_id, "output.message.completed").await?;
-    let tool_events = list_turn_events(db, session_id, &score.turn_id, "tool.completed").await?;
-    let turn_events = list_turn_events(db, session_id, &score.turn_id, "turn.completed").await?;
+    // What the agent said: its text, or the messages it sent in explicit
+    // communication.
+    let msg_events = list_turn_events(
+        db,
+        session_id,
+        &score.turn_id,
+        &["output.message.completed", "conversation.message"],
+    )
+    .await?;
+    let tool_events = list_turn_events(db, session_id, &score.turn_id, &["tool.completed"]).await?;
+    let turn_events = list_turn_events(db, session_id, &score.turn_id, &["turn.completed"]).await?;
 
     let final_content = extract_final_assistant_content(&msg_events);
     let tool_calls = extract_tool_calls(&tool_events);
@@ -227,12 +235,12 @@ async fn list_turn_events(
     db: &StorageBackend,
     session_id: SessionId,
     turn_id: &str,
-    event_type: &str,
+    event_types: &[&str],
 ) -> anyhow::Result<Vec<EventRow>> {
     let params = ListEventsParams {
         session_id,
         turn_id: Some(turn_id.to_string()),
-        filter_types: vec![event_type.to_string()],
+        filter_types: event_types.iter().map(|t| t.to_string()).collect(),
         ..Default::default()
     };
     db.list_events_advanced(&params).await
@@ -266,12 +274,11 @@ fn extract_input_content(turn_events: &[EventRow]) -> String {
 mod tests {
     use super::*;
     use crate::domains::observers::judge::{JudgeResult, TurnEvidence};
-    use crate::records::observer::{
+    use crate::domains::observers::record::{
         LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
-    use crate::storage::models::{
-        CreateEventRow, CreateObserverRow, CreateSessionRow, CreateTraceScoreRow,
-    };
+    use crate::storage::{CreateEventRow, CreateSessionRow};
+    use crate::storage::{CreateObserverRow, CreateTraceScoreRow};
     use everruns_contracts::typed_id::{
         AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
     };
@@ -321,7 +328,7 @@ mod tests {
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: ORG,
             app_id: None,
@@ -391,7 +398,7 @@ mod tests {
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
             description: None,
-            match_config: serde_json::to_value(crate::records::observer::ObserverMatch {
+            match_config: serde_json::to_value(crate::domains::observers::record::ObserverMatch {
                 agent_ids: Some(vec![agent]),
                 ..Default::default()
             })
@@ -408,7 +415,7 @@ mod tests {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
                 method: ScorerMethod::Rule {
-                    rule: crate::records::eval::Scorer::Contains {
+                    rule: crate::domains::evals::record::Scorer::Contains {
                         text: text.to_string(),
                         weight: 1.0,
                     },
@@ -469,7 +476,7 @@ mod tests {
         let scores = db
             .list_trace_scores(
                 ORG,
-                crate::storage::models::ListTraceScoresParams {
+                crate::storage::ListTraceScoresParams {
                     observer_id: observer.id,
                     session_id: None,
                     limit: 10,
@@ -511,7 +518,7 @@ mod tests {
         let scores = db
             .list_trace_scores(
                 ORG,
-                crate::storage::models::ListTraceScoresParams {
+                crate::storage::ListTraceScoresParams {
                     observer_id: observer.id,
                     session_id: None,
                     limit: 10,
@@ -548,7 +555,7 @@ mod tests {
         db.update_observer(
             ORG,
             observer.id,
-            crate::storage::models::UpdateObserverRow {
+            crate::storage::UpdateObserverRow {
                 scorers: Some(serde_json::json!([])),
                 ..Default::default()
             },
@@ -563,7 +570,7 @@ mod tests {
         let scores = db
             .list_trace_scores(
                 ORG,
-                crate::storage::models::ListTraceScoresParams {
+                crate::storage::ListTraceScoresParams {
                     observer_id: observer.id,
                     session_id: None,
                     limit: 10,
@@ -616,7 +623,7 @@ mod tests {
             .unwrap();
         db.list_trace_scores(
             ORG,
-            crate::storage::models::ListTraceScoresParams {
+            crate::storage::ListTraceScoresParams {
                 observer_id: observer.id,
                 session_id: None,
                 limit: 10,

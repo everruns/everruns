@@ -6,10 +6,12 @@
 * [TC004: List MCP Servers](TC004_list_mcp_servers.md) - Verify that MCP servers can be listed and viewed.
 * [TC005: Update MCP Server](TC005_update_mcp_server.md) - Verify that an existing MCP server's name, description, and URL can be edited from the MCP Servers list.
 * [TC006: Archive MCP Server](TC006_archive_mcp_server.md) - Verify that an MCP server can be archived and remains available in the archived view.
-* [TC007: Delete MCP Server](TC007_delete_mcp_server.md) - Verify that an MCP server can be deleted.
+* [TC007: Delete Archived MCP Server](TC007_delete_mcp_server.md) - Verify archive-before-delete enforcement, cancellation, dangerous permission checks, and deleted tombstones for existing MCP references.
 * [TC008: Create MCP Server - Validation: Empty Name](TC008_validation_empty_name.md) - Verify that the create action remains unavailable while the required name is empty.
 * [TC009: Create MCP Server - Validation: Empty URL](TC009_validation_empty_url.md) - Verify that the create action remains unavailable while the required URL is empty.
 * [TC010: Get Non-existent MCP Server](TC010_get_nonexistent_server.md) - Verify that attempting to get a non-existent MCP server returns 404.
-* [TC011: MCP Catalog Usage and Archive Impact](TC011_catalog_usage_and_archive_impact.md) - Verify active-agent usage counts and archive impact names.
+* [TC011: MCP Catalog Usage and Archive Impact](TC011_catalog_usage_and_archive_impact.md) - Verify active-agent usage counts and archive impact details in the MCP catalog.
 * [TC012: Personal MCP Connections](TC012_personal_mcp_connections.md) - Verify that users can inspect and revoke only their own MCP connections.
-* [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view permission.
+* [TC013: MCP Catalog View Permission](TC013_mcp_catalog_view_permission.md) - Verify that catalog visibility follows the MCP server view and manage permissions.
+* [TC014: Published MCP title and icon](TC014_published_title_and_icon.md) - Verify that a catalog server shows the title and icon it publishes, and keeps the operator slug.
+* [TC015: MCP Tool Risk Labels](TC015_tool_risk_labels.md) - Verify manual tool labels persist, override upstream annotations, survive tool-list changes, and remain distinct from unconfirmed suggestions.

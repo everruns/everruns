@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListUsers {
+    /// Only users whose name or email matches this text.
     #[serde(default)]
     pub search: Option<String>,
 }
@@ -15,7 +16,8 @@ pub struct ListUsers {
     category = "users",
     description = "List users in the current organization. Supports search filtering.",
     method = "GET",
-    path = "/v1/users"
+    path = "/v1/users",
+    cli = CliRoute::new(&["users"], "list").with_examples(&[CliExample::new("Find a user by name or email in the current organization", "everruns users list --search alice",)]),
 )]
 impl Command for ListUsers {
     type Output = ListUsersResponse;
@@ -32,7 +34,7 @@ impl Command for ListUsers {
             .list_users_by_org(ctx.org_id(), self.search.as_deref())
             .await?;
 
-        Ok(crate::api::common::ListResponse::new(
+        Ok(crate::common_dto::ListResponse::new(
             rows.into_iter().map(q::row_to_user).collect(),
         ))
     }

@@ -2,7 +2,7 @@
 
 Fix a failing Rust test suite by compiling and running it, through the
 `host_shell` capability: real processes on this machine, bounded by a kernel
-policy. This is a real `gpt-5.6-terra` agent, not a scripted turn.
+policy. This is a real `gpt-6.1-sol` agent, not a scripted turn.
 
 ## What you learn
 

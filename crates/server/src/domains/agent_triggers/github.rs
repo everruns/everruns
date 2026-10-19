@@ -15,6 +15,11 @@
 //!   `filtered`, since those are the ones a user debugs.
 //! - **The App never wakes itself.** Events sent by the App's own bot are
 //!   dropped, so a comment the agent posts cannot trigger it again.
+//! - **CI results are events too.** `workflow_run` and `check_suite`
+//!   deliveries carry a `github.ci` object (workflow, branch, conclusion and a
+//!   normalized `outcome`) and a per-workflow-and-branch subject, so a watcher
+//!   keeps one conversation per thing it watches
+//!   (knowledge/runtime-resources/proactive-agents.md, D1).
 //! - Everything after normalization (dedupe on `X-GitHub-Delivery`, per pull
 //!   request sessions, filters, delivery log) is the shared event pipeline in
 //!   [`super::events`].
@@ -22,16 +27,17 @@
 use super::events::{self, TriggerEvent, TriggerEventOutcome, TriggerEventRoute};
 use super::queries as q;
 use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use crate::domains::agent_triggers::record::{
+    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
+};
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::{
-    AgentTrigger, AgentTriggerType, GitHubTriggerConfig, TriggerEventFilter, TriggerFilterCondition,
-};
+use crate::github_apps::{EVERRUNS_APP_CONNECTION_TYPE, GITHUB_PROVIDER};
+use crate::storage::AgentRow;
+use crate::storage::GitHubAppRow;
 use crate::storage::StorageBackend;
-use crate::storage::github_app_rows::GitHubAppRow;
-use crate::storage::models::AgentRow;
-use everruns_contracts::typed_id::{AgentId, TriggerId};
+use everruns_contracts::typed_id::{AgentId, TriggerId, VirtualUserId};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -78,10 +84,22 @@ pub(super) async fn create_config(
     req: &CreateAgentTriggerRequest,
 ) -> Result<Value, CommandError> {
     let identity_id = agent.virtual_user_id.ok_or_else(connect_first)?;
-    ctx.db
+    // The agent's own App, or a shared Everruns App link it chose: either has
+    // a webhook that delivers events to this trigger.
+    let has_app = ctx
+        .db
         .get_github_app_for_identity(ctx.org_id(), identity_id)
         .await?
-        .ok_or_else(connect_first)?;
+        .is_some();
+    let chose_everruns_app = || async {
+        ctx.db
+            .get_virtual_user_connection(identity_id, GITHUB_PROVIDER)
+            .await
+            .map(|row| row.is_some_and(|row| row.connection_type == EVERRUNS_APP_CONNECTION_TYPE))
+    };
+    if !has_app && !chose_everruns_app().await? {
+        return Err(connect_first());
+    }
     let config = GitHubTriggerConfig {
         events: normalize_events(req.github_events.clone())?,
         repositories: normalize_repositories(req.repositories.clone())?,
@@ -243,7 +261,56 @@ fn github_context(delivery: &GitHubDelivery) -> Value {
         "is_pull_request": payload.get("pull_request").is_some()
             || payload.pointer("/issue/pull_request").is_some(),
         "sender": payload.pointer("/sender/login"),
+        "ci": ci_context(delivery),
     })
+}
+
+/// CI facts for `workflow_run` and `check_suite` deliveries; null otherwise.
+fn ci_context(delivery: &GitHubDelivery) -> Value {
+    let payload = &delivery.payload;
+    let (run, name, url) = match delivery.event.as_str() {
+        "workflow_run" => {
+            let Some(run) = payload.get("workflow_run").filter(|run| run.is_object()) else {
+                return Value::Null;
+            };
+            (run, run.get("name").cloned(), run.get("html_url").cloned())
+        }
+        "check_suite" => {
+            let Some(suite) = payload.get("check_suite").filter(|suite| suite.is_object()) else {
+                return Value::Null;
+            };
+            let url = payload
+                .pointer("/repository/html_url")
+                .and_then(Value::as_str)
+                .zip(suite.get("head_sha").and_then(Value::as_str))
+                .map(|(repo, sha)| Value::String(format!("{repo}/commit/{sha}/checks")));
+            (suite, suite.pointer("/app/name").cloned(), url)
+        }
+        _ => return Value::Null,
+    };
+    let conclusion = run.get("conclusion").and_then(Value::as_str);
+    json!({
+        "workflow": name,
+        "branch": run.get("head_branch"),
+        "head_sha": run.get("head_sha"),
+        "status": run.get("status"),
+        "conclusion": conclusion,
+        "outcome": ci_outcome(conclusion),
+        "url": url,
+        "run_number": run.get("run_number"),
+        "actor": run.pointer("/actor/login").or_else(|| payload.pointer("/sender/login")),
+    })
+}
+
+/// `success` or `failure`; null for results that say nothing about health
+/// (cancelled, skipped, neutral, stale, or not finished), so a cancelled run
+/// never reads as a recovery.
+fn ci_outcome(conclusion: Option<&str>) -> Option<&'static str> {
+    match conclusion? {
+        "success" => Some("success"),
+        "failure" | "timed_out" | "action_required" | "startup_failure" => Some("failure"),
+        _ => None,
+    }
 }
 
 fn event_key(event: &str, action: Option<&str>) -> String {
@@ -253,9 +320,16 @@ fn event_key(event: &str, action: Option<&str>) -> String {
     }
 }
 
-/// `owner/repo#12` for pull request and issue events, `owner/repo` otherwise.
+/// `owner/repo#12` for pull request and issue events, `owner/repo@branch:workflow`
+/// for CI results, `owner/repo` otherwise.
 fn subject(github: &Value) -> Option<String> {
     let repository = github.get("repository").and_then(Value::as_str)?;
+    let ci = github.get("ci").filter(|ci| ci.is_object());
+    if let Some(ci) = ci {
+        let branch = ci.get("branch").and_then(Value::as_str).unwrap_or("");
+        let workflow = ci.get("workflow").and_then(Value::as_str).unwrap_or("");
+        return Some(format!("{repository}@{branch}:{workflow}"));
+    }
     Some(match github.get("number").and_then(Value::as_i64) {
         Some(number) => format!("{repository}#{number}"),
         None => repository.to_string(),
@@ -270,25 +344,74 @@ fn subscribes(config: &GitHubTriggerConfig, event: &str, action: Option<&str>) -
         .any(|subscribed| subscribed == event || *subscribed == with_action)
 }
 
-/// Whether the App's own bot sent this event.
-fn sent_by_app(app: &GitHubAppRow, payload: &Value) -> bool {
-    let bot_login = format!("{}[bot]", app.slug);
+/// Who one verified delivery may reach: the agents in one org whose service
+/// virtual user acts through the App that received it.
+///
+/// Decision: an agent App's webhook reaches the one identity that created the
+/// App; the shared Everruns App's webhook reaches every agent in the linking
+/// org that chose that installation (`everruns_app` rows, D3). Both go through
+/// the same trigger pipeline below.
+#[derive(Debug, Clone)]
+pub struct GitHubDeliveryRecipients {
+    pub org_id: i64,
+    /// The receiving App's bot (`<slug>[bot]`); its own events are dropped so
+    /// an agent's comment never wakes it again. `None` when unknown.
+    pub bot_login: Option<String>,
+    /// Service virtual users whose agents' GitHub triggers are candidates.
+    pub identities: Vec<VirtualUserId>,
+}
+
+impl GitHubDeliveryRecipients {
+    /// A per-agent App's delivery: the identity that created it.
+    pub fn agent_app(app: &GitHubAppRow) -> Self {
+        Self {
+            org_id: app.org_id,
+            bot_login: Some(format!("{}[bot]", app.slug)),
+            identities: vec![app.virtual_user_id],
+        }
+    }
+
+    /// A shared Everruns App delivery for an installation `org_id` links:
+    /// every agent in the org that chose it.
+    pub async fn everruns_app(
+        db: &StorageBackend,
+        org_id: i64,
+        installation_id: i64,
+        app_slug: Option<&str>,
+    ) -> Result<Self, CommandError> {
+        Ok(Self {
+            org_id,
+            bot_login: app_slug.map(|slug| format!("{slug}[bot]")),
+            identities: db
+                .list_everruns_app_identities(org_id, installation_id)
+                .await?,
+        })
+    }
+}
+
+/// Whether the receiving App's own bot sent this event.
+fn sent_by_bot(bot_login: Option<&str>, payload: &Value) -> bool {
+    let Some(bot_login) = bot_login else {
+        return false;
+    };
     payload
         .pointer("/sender/login")
         .and_then(Value::as_str)
-        .is_some_and(|login| login.eq_ignore_ascii_case(&bot_login))
+        .is_some_and(|login| login.eq_ignore_ascii_case(bot_login))
 }
 
-/// Hand one verified delivery to every GitHub trigger of the App's identity.
+/// Hand one verified delivery to every GitHub trigger of the recipients.
 pub async fn dispatch_github_delivery(
     db: &Arc<StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
-    app: &GitHubAppRow,
+    recipients: &GitHubDeliveryRecipients,
     delivery: &GitHubDelivery,
     request_id: Option<String>,
 ) -> Result<Vec<GitHubDispatch>, CommandError> {
-    if sent_by_app(app, &delivery.payload) {
+    if recipients.identities.is_empty()
+        || sent_by_bot(recipients.bot_login.as_deref(), &delivery.payload)
+    {
         return Ok(Vec::new());
     }
     let action = delivery.payload.get("action").and_then(Value::as_str);
@@ -296,7 +419,7 @@ pub async fn dispatch_github_delivery(
     let subject = subject(&github);
 
     let triggers = db
-        .list_agent_triggers(app.org_id, None, false)
+        .list_agent_triggers(recipients.org_id, None, false)
         .await?
         .into_iter()
         .filter(|row| {
@@ -311,7 +434,11 @@ pub async fn dispatch_github_delivery(
             .get_agent(row.org_id, row.agent_id)
             .await?
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
-            .filter(|agent| agent.virtual_user_id == Some(app.virtual_user_id))
+            .filter(|agent| {
+                agent
+                    .virtual_user_id
+                    .is_some_and(|id| recipients.identities.contains(&id))
+            })
         else {
             continue;
         };
@@ -369,8 +496,10 @@ pub async fn dispatch_github_delivery(
                 // one session per event in the pipeline.
                 session_mode: config.session_mode,
                 filter: filter.as_ref(),
-                session_source: crate::records::SessionSource::Webhook,
+                session_source: crate::domains::sessions::record::SessionSource::Webhook,
                 webhook_compat: None,
+                script: None,
+                channel: None,
             },
             TriggerEvent {
                 source: "github",
@@ -477,6 +606,70 @@ mod tests {
         assert_eq!(push["event_action"], "push");
         assert_eq!(subject(&push).as_deref(), Some("acme/api"));
         assert_eq!(subject(&github_context(&delivery("ping", json!({})))), None);
+    }
+
+    #[test]
+    fn ci_results_carry_outcome_and_a_per_workflow_subject() {
+        let run = github_context(&delivery(
+            "workflow_run",
+            json!({
+                "action": "completed",
+                "workflow_run": {
+                    "name": "CI",
+                    "head_branch": "main",
+                    "head_sha": "abc",
+                    "status": "completed",
+                    "conclusion": "timed_out",
+                    "html_url": "https://github.com/acme/api/actions/runs/1",
+                    "run_number": 42,
+                    "actor": {"login": "octo"}
+                },
+                "repository": {"full_name": "acme/api"}
+            }),
+        ));
+        assert_eq!(run["event_action"], "workflow_run.completed");
+        assert_eq!(run["ci"]["outcome"], "failure");
+        assert_eq!(run["ci"]["conclusion"], "timed_out");
+        assert_eq!(run["ci"]["actor"], "octo");
+        assert_eq!(subject(&run).as_deref(), Some("acme/api@main:CI"));
+
+        let suite = github_context(&delivery(
+            "check_suite",
+            json!({
+                "action": "completed",
+                "check_suite": {
+                    "head_branch": "main",
+                    "head_sha": "abc",
+                    "conclusion": "cancelled",
+                    "app": {"name": "Buildkite"}
+                },
+                "repository": {"full_name": "acme/api", "html_url": "https://github.com/acme/api"}
+            }),
+        ));
+        assert_eq!(suite["ci"]["outcome"], Value::Null);
+        assert_eq!(
+            suite["ci"]["url"],
+            "https://github.com/acme/api/commit/abc/checks"
+        );
+        assert_eq!(subject(&suite).as_deref(), Some("acme/api@main:Buildkite"));
+
+        let pr = github_context(&delivery(
+            "pull_request",
+            json!({"repository": {"full_name": "acme/api"}}),
+        ));
+        assert_eq!(pr["ci"], Value::Null);
+    }
+
+    #[test]
+    fn ci_outcome_ignores_results_that_say_nothing_about_health() {
+        assert_eq!(ci_outcome(Some("success")), Some("success"));
+        for failed in ["failure", "timed_out", "action_required", "startup_failure"] {
+            assert_eq!(ci_outcome(Some(failed)), Some("failure"), "{failed}");
+        }
+        for quiet in ["cancelled", "skipped", "neutral", "stale"] {
+            assert_eq!(ci_outcome(Some(quiet)), None, "{quiet}");
+        }
+        assert_eq!(ci_outcome(None), None);
     }
 
     #[test]

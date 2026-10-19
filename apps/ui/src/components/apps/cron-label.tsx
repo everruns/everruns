@@ -15,17 +15,45 @@ const CRON_PRESETS = [
   { label: "Daily 09:00", value: "0 0 9 * * * *" },
 ];
 
+// The server's `cron` crate numbers 7-field weekdays 1-7 from Sunday, while
+// cron-parser and cronstrue read 0-6 from Sunday. Day names mean the same day
+// to both, so 7-field weekday numbers become names before previewing (EVE-1260).
+const CRATE_WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+function crateWeekdaysToNames(field: string): string | null {
+  const day = (value: string): string | null => {
+    if (!/^\d+$/.test(value)) return value;
+    const index = Number(value);
+    return index >= 1 && index <= 7 ? CRATE_WEEKDAYS[index - 1] : null;
+  };
+  const parts = field.split(",").map((part) => {
+    const [range, step] = part.split("/");
+    const days = range.split("-").map(day);
+    if (days.some((value) => value === null)) return null;
+    const named = days.join("-");
+    return step === undefined ? named : `${named}/${step}`;
+  });
+  return parts.some((part) => part === null) ? null : parts.join(",");
+}
+
+/** The expression as cron-parser and cronstrue read it: 5-field standard cron
+ *  as is, or the 7-field crate form (year `*`) as 6 fields with named weekdays. */
 function previewExpression(expression: string): string | null {
   const fields = expression.trim().split(/\s+/).filter(Boolean);
   if (fields.length === 5) return fields.join(" ");
-  if (fields.length === 7 && fields[6] === "*") return fields.slice(0, 6).join(" ");
+  if (fields.length === 7 && fields[6] === "*") {
+    const weekdays = crateWeekdaysToNames(fields[5]);
+    if (weekdays === null) return null;
+    return [...fields.slice(0, 5), weekdays].join(" ");
+  }
   return null;
 }
 
 export function describeCronExpression(expression: string): string {
   try {
-    if (!previewExpression(expression)) return "Invalid schedule";
-    return cronstrue.toString(expression, {
+    const parserExpression = previewExpression(expression);
+    if (!parserExpression) return "Invalid schedule";
+    return cronstrue.toString(parserExpression, {
       throwExceptionOnParseError: true,
       verbose: false,
     });
@@ -78,7 +106,9 @@ function getNextRuns(expression: string, timezone: string): Date[] {
   try {
     const parserExpression = previewExpression(expression);
     if (!parserExpression) return [];
-    const interval = CronExpressionParser.parse(parserExpression, { tz: timezone });
+    const interval = CronExpressionParser.parse(parserExpression, {
+      tz: timezone,
+    });
     return Array.from({ length: 8 }, () => interval.next().toDate());
   } catch {
     return [];

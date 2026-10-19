@@ -4,7 +4,9 @@
 
 use crate::api::state::ApiState;
 use crate::auth::audit;
-use crate::records::{AuditEvent, ManagementAction, validate_org_public_id};
+use crate::domains::audit_logs::record::{AuditEvent, ManagementAction};
+use crate::domains::organizations::record::validate_org_public_id;
+pub use crate::domains::users::types::User;
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Query, State},
@@ -20,26 +22,9 @@ use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
-use crate::storage::models::UpdateUser;
+use crate::storage::UpdateUser;
 
 pub use crate::auth::middleware::ORG_COOKIE_NAME;
-
-/// User response for listing
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct User {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    pub id: String,
-    pub email: String,
-    /// Human-readable name. Safe to render in user-facing messages.
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avatar_url: Option<String>,
-    pub roles: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auth_provider: Option<String>,
-    /// Timestamp when this resource was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-}
 
 /// Query parameters for listing users
 #[derive(Debug, Deserialize, ToSchema)]
@@ -77,7 +62,7 @@ pub struct UpdateProfileRequest {
 /// Response from profile update
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProfileResponse {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -95,7 +80,7 @@ pub struct DeleteAccountResponse {
 /// Exported user profile data
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedUserProfile {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "user_01933b5a000070008000000000000001")]
     pub id: String,
     /// Email address associated with the user account.
@@ -129,7 +114,7 @@ pub struct ExportedOrganization {
     /// Owning organization's internal numeric id (not part of the public identifier surface).
     #[schema(example = 42)]
     pub org_id: i64,
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "org_01933b5a000070008000000000000001")]
     pub public_id: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -143,7 +128,7 @@ pub struct ExportedOrganization {
 /// Exported personal access token metadata (no sensitive data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedPersonalAccessToken {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     #[schema(example = "019e8957539a7aa0bb92e0d2b49427b1")]
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.

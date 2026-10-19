@@ -104,6 +104,7 @@ echo ""
 echo "8️⃣  Checking OpenAPI spec freshness..."
 TEMP_SPEC=$(mktemp)
 if cargo run --bin export-openapi --release 2>/dev/null > "$TEMP_SPEC"; then
+  node scripts/canonicalize-openapi.mjs "$TEMP_SPEC"
   if diff -q "$PROJECT_ROOT/docs/api/openapi.json" "$TEMP_SPEC" > /dev/null 2>&1; then
     echo "   ✅ OpenAPI spec is up to date"
   else
@@ -121,9 +122,9 @@ echo ""
 # 9. Migration ordering
 echo "9️⃣  Checking migration ordering..."
 if bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh"; then
-  echo "   ✅ migrations sequential"
+  echo "   ✅ migration names valid, versions unique"
 else
-  echo "   ❌ migration ordering broken (see knowledge/operations/migrations.md)"
+  echo "   ❌ migration names or versions invalid (see knowledge/operations/migrations.md)"
   FAILED=1
 fi
 echo ""

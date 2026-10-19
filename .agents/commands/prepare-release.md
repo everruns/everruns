@@ -126,26 +126,69 @@ and where their API moved, since those are the packages consumers must migrate o
 
 ## 6. Prepare the release card
 
-Update `release-card.yml` for this release. Keep the card editorial: one short headline, a one-to-three-line
-summary, and no more than three user-facing highlights. Every claim must already be supported by the release's
+Update `release-card.yml` for this release: a one-or-two-line headline, a one-to-three-line summary, and
+the release's highlights (at most four). Every claim must already be supported by the release's
 `CHANGELOG.md` section. Each highlight's `source` is a PR or commit marker that the renderer verifies in that
-version's changelog section. Validate and render the reviewed card locally:
+version's changelog section.
+
+Write it plainly. The headline names the release's main features ("Agents in Slack, Agent API."), never a
+tagline or wordplay ("Callable agents, durable sessions." was rejected in 0.48.0); the summary lines say what
+changed. Show the user the rendered PNG with the proposed highlights and wait for their OK: the card is what
+people see first in the GitHub release and the changelog.
+
+The character limits are not a fit check: glyph widths vary, so "Agents you can call," (20 characters) ran
+into the highlights column. Rendering and `--check` measure every line with the same renderer and fail when
+one is wider than its column; shorten the line when they do. Validate and render the reviewed card locally:
 
 ```bash
 (cd apps/docs && pnpm run release-card --check --expect-version X.Y.Z)
 (cd apps/docs && pnpm run release-card --expect-version X.Y.Z)
 ```
 
-The rendered PNG is generated, not committed. The release workflow regenerates it from the tagged commit and
-attaches it to the GitHub Release.
+The root `release-card.png` is generated, not committed. The release workflow regenerates it from the tagged
+commit and attaches it to the GitHub Release. The copy that is committed is the changelog entry's
+`card@2x.png` (step 7); the GitHub Release body opens with that image, pinned to the release commit, so the
+card shows in the release itself and not only in its asset list.
 
-## 7. Verify migrations without rewriting them
+## 7. Publish the release in the changelog
 
-Never squash, rename, or delete existing migrations for a release. Confirm the sorted basenames in
-`crates/server/migrations/` still start at `001_` and stay strictly sequential
-(`bash scripts/lib/check-migration-ordering.sh`).
+The public changelog (`docs/changelog/`, design in `knowledge/docs/changelog.md`) gets a release
+entry, and the feature entries the release carries get their version:
 
-## 8. Refresh lockfiles
+1. Every entry folder dated after the previous release entry whose `products` include `platform`,
+   `framework` or `cli` and that has no `release:` gets `release: "X.Y.Z"`.
+2. Each **Highlights** bullet in the new `CHANGELOG.md` section links its changelog entry, for
+   example `- **Agent keys** - ... ([changelog](https://everruns.com/docs/changelog/2026-10-11-agent-keys/), [#4527](...))`.
+   A highlight with no entry is a missing entry: write it (`.agents/skills/ship/references/changelog-entry.md`).
+   A highlight that groups several fixes around one theme (0.48.0's "Agents in Slack") gets one entry
+   for the theme.
+3. Add `docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/index.md` with `kind: release`, `significance`
+   `major` for a minor-version release with highlights (else `notable`), `products` covering what
+   the release ships, and `release: "X.Y.Z"`. The `description` names the release's highlights in
+   one sentence, for example "Agents get a browser tool, coordinator threads arrive in Platform
+   Chat, and agents can run tools from the shell." Never a count of highlights or entries: it is
+   the line readers see in the list, feeds and search results. Body, shaped like the release notes: the card, a
+   `## Highlights` list copied from the `CHANGELOG.md` section, a `## In the changelog` list of the
+   entries from step 1 as links (this list does not count toward the 400-word body budget, so list
+   every entry), upgrade notes when any entry is `breaking`, and links to the GitHub
+   Release (`https://github.com/everruns/everruns/releases/tag/vX.Y.Z`) and the `CHANGELOG.md`
+   section. Entry titles name the change, not the product: the product tag already says it.
+4. Render the card into the entry folder:
+   ```bash
+   (cd apps/docs && pnpm run release-card --expect-version X.Y.Z \
+     --output ../../docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/card@2x.png)
+   ```
+   and embed it as `![Everruns X.Y.Z release card](./card@2x.png)`.
+5. Add a line under the version heading in `CHANGELOG.md`:
+   `Changelog: https://everruns.com/docs/changelog/YYYY-MM-DD-everruns-X-Y-Z/`.
+6. `(cd apps/docs && pnpm run check:changelog)`.
+
+## 8. Verify migrations without rewriting them
+
+Never squash, rename, or delete existing migrations for a release. Confirm migration names and
+versions are valid (`bash scripts/lib/check-migration-ordering.sh`).
+
+## 9. Refresh lockfiles
 
 Every lockfile that resolves a workspace crate records the platform version, including the
 out-of-workspace ones — miss one and its `--locked` build fails against the new version. `cargo update --workspace` moves only the workspace crates; `cargo generate-lockfile` would re-resolve every dependency.
@@ -161,7 +204,7 @@ done
 (cd apps/docs && pnpm install --lockfile-only)
 ```
 
-## 9. Commit and open the PR
+## 10. Commit and open the PR
 
 Stage the files you touched by name, then:
 

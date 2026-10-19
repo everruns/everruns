@@ -1,6 +1,6 @@
 ---
 title: OpenAI Server Tools
-description: Enable OpenAI's hosted tools (web search, code interpreter, hosted shell, file search, remote MCP) on agents that run on the OpenAI or Azure OpenAI Responses API. OpenAI runs them inside the response.
+description: Enable OpenAI's hosted tools (web search, code interpreter, hosted shell, file search, remote MCP) for agents on the OpenAI or Azure OpenAI Responses API.
 sidebar:
   order: 94
 appliesTo: [platform, cloud]
@@ -65,7 +65,7 @@ Everruns' own execution capabilities when the agent's work must land there.
       "config": {
         "tools": ["web_search"],
         "web_search_context_size": "high",
-        "web_search_allowed_domains": ["openai.com", "docs.everruns.com"],
+        "web_search_allowed_domains": ["openai.com", "everruns.com"],
         "web_search_user_location": { "country": "US", "city": "Chicago", "timezone": "America/Chicago" }
       }
     }

@@ -13,7 +13,12 @@
 //!   (approvals, channels, the agent card, dev schedules). With the `ag-ui`
 //!   feature, `POST /v1/channels/{agent}/ag-ui` mirrors the server's AG-UI channel
 //!   route (see `ag_ui`); with `a2a`, `POST /v1/channels/{agent}/a2a` and its Agent
-//!   Card mirror the server's A2A endpoint (see `a2a`).
+//!   Card mirror the server's A2A endpoint (see `a2a`); with `voice`,
+//!   `/v1/channels/{agent}/voice` takes calls (see `voice`).
+//! - Each top-level agent also has the Agent Execution API under
+//!   `/v1/channels/{agent}` (see `agent_api`).
+//! - Open unless auth is configured; then every route but discovery needs a
+//!   bearer credential (see `auth`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
 
@@ -29,7 +34,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
-use everruns::ask_user::{Answer, Status};
+use everruns::ask_user::Status;
 use everruns::{EventStreamError, SessionEvent};
 use futures::Stream;
 use serde::Deserialize;
@@ -37,7 +42,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use crate::app::Mode;
-use crate::channel::Inbound;
+use crate::channels::ChannelRequest;
 use crate::host::{ApiError, Host, NewSession, wire_json};
 
 /// The fixed organization a serve app reports; it has no tenants.
@@ -55,11 +60,16 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/messages", post(create_message))
         .route("/v1/sessions/{id}/cancel", post(cancel))
+        .route("/v1/sessions/{id}/admissions/{message_id}", get(admission))
         .route("/v1/sessions/{id}/sse", get(sse))
         .route("/v1/sessions/{id}/events", get(list_events))
         .route("/v1/sessions/{id}/question-answers", post(question_answers))
         .route("/v1/sessions/{id}/approvals/{tool_call_id}", post(approval))
-        .route("/v1/channels/{name}", post(channel));
+        .route(
+            "/v1/channels/{name}",
+            get(crate::agent_api::card).post(channel),
+        );
+    router = crate::agent_api::routes(router);
     #[cfg(feature = "ag-ui")]
     {
         router = router
@@ -70,11 +80,27 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
     {
         router = crate::a2a::routes(&host, router);
     }
+    #[cfg(feature = "voice")]
+    {
+        router = router
+            .route("/v1/channels/{name}/voice", get(crate::voice::page))
+            .route("/v1/channels/{name}/voice/calls", post(crate::voice::call))
+            .route("/v1/channels/{name}/voice/ws", get(crate::voice::socket))
+            .route(
+                "/v1/channels/{name}/voice/calls/{call_id}/end",
+                post(crate::voice::end),
+            );
+    }
     if host.mode == Mode::Dev {
         // Dev only: fire a schedule without waiting for its cron.
         router = router.route("/dev/schedules/{name}", post(run_schedule));
     }
-    router.with_state(host)
+    router
+        .layer(axum::middleware::from_fn_with_state(
+            host.clone(),
+            crate::auth::require,
+        ))
+        .with_state(host)
 }
 
 pub(crate) struct Failure(anyhow::Error);
@@ -108,7 +134,25 @@ impl IntoResponse for Failure {
             Some(ApiError::BadRequest(_)) => (StatusCode::BAD_REQUEST, None),
             Some(ApiError::Conflict(_)) => (StatusCode::CONFLICT, None),
             Some(ApiError::Pinned { build_id }) => (StatusCode::CONFLICT, Some(build_id.clone())),
-            None => (StatusCode::INTERNAL_SERVER_ERROR, None),
+            None => {
+                let status = self
+                    .0
+                    .chain()
+                    .find_map(|cause| {
+                        cause.downcast_ref::<everruns_contracts::error::AgentLoopError>()
+                    })
+                    .map(|error| match error {
+                        everruns_contracts::error::AgentLoopError::SessionNotFound(_) => {
+                            StatusCode::NOT_FOUND
+                        }
+                        everruns_contracts::error::AgentLoopError::Configuration(_) => {
+                            StatusCode::BAD_REQUEST
+                        }
+                        _ => StatusCode::INTERNAL_SERVER_ERROR,
+                    })
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                (status, None)
+            }
         };
         let mut response = problem(status, detail);
         if let Some(build) = build.and_then(|b| HeaderValue::from_str(&b).ok()) {
@@ -118,9 +162,9 @@ impl IntoResponse for Failure {
     }
 }
 
-type ApiResult<T> = Result<T, Failure>;
+pub(crate) type ApiResult<T> = Result<T, Failure>;
 
-fn bad_request(why: impl Into<String>) -> Failure {
+pub(crate) fn bad_request(why: impl Into<String>) -> Failure {
     ApiError::BadRequest(why.into()).into()
 }
 
@@ -171,6 +215,13 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
             .into();
         card
     };
+    // The voice channel's settings and each top-level agent's endpoint.
+    #[cfg(feature = "voice")]
+    let card = {
+        let mut card = card;
+        card["voice"] = crate::voice::card(&host);
+        card
+    };
     Json(card)
 }
 
@@ -178,6 +229,9 @@ async fn agent_card(State(host): State<Arc<Host>>) -> Json<Value> {
 /// Unknown fields are accepted and ignored.
 #[derive(Deserialize, Default)]
 struct CreateSessionBody {
+    /// Optional stable identity for retryable session creation.
+    #[serde(default)]
+    id: Option<everruns::SessionId>,
     /// The serve agent; the app's default agent when absent.
     #[serde(default)]
     agent_name: Option<String>,
@@ -193,7 +247,11 @@ struct CreateSessionBody {
 }
 
 /// A session in the server's `Session` shape, plus serve's optional extras.
-fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
+pub(crate) async fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
+    let authority = host.authoritative_status(id).await?;
+    if authority.is_some() {
+        host.session(id).await?;
+    }
     let row = host.session_row(id)?;
     let mut session = json!({
         "id": row.id,
@@ -218,6 +276,24 @@ fn session_json(host: &Host, id: &str) -> crate::Result<Value> {
     if let Some(metadata) = row.metadata {
         session["metadata"] = metadata;
     }
+    if let Some(authority) = authority {
+        session["build_id"] = json!(authority.binding.behavior.build_id);
+        session["agent_name"] = json!(authority.binding.behavior.agent);
+        session["agent_id"] = session["agent_name"].clone();
+        session["created_at"] = json!(authority.created_at);
+        session["status"] = json!(authority.phase());
+        let approvals:Vec<_>=authority.waiting.iter().filter(|call|call.name=="approve_tool_call").map(|call|json!({"tool_call_id":call.id,"tool_name":call.arguments["tool"],"arguments":call.arguments["arguments"]})).collect();
+        let questions: Vec<_> = authority
+            .waiting
+            .iter()
+            .filter(|call| call.name == "ask_user")
+            .map(|call| json!({"tool_call_id":call.id,"questions":call.arguments["questions"]}))
+            .collect();
+        session["turn_id"] = json!(authority.open_turn);
+        session["suspension_reason"] = json!(authority.suspension_reason);
+        session["pending_approvals"] = json!(approvals);
+        session["pending_questions"] = json!(questions);
+    }
     Ok(session)
 }
 
@@ -235,36 +311,41 @@ async fn create_session(
     let body = body.map(|b| b.0).unwrap_or_default();
     let id = host
         .create_session(NewSession {
+            id: body.id,
             agent: body.agent_name,
             title: body.title,
             tags: body.tags,
             hints: body.hints,
             metadata: body.metadata,
-            deliver_to: None,
         })
         .await?;
     Ok((
         StatusCode::CREATED,
         [(header::LOCATION, format!("/v1/sessions/{id}"))],
-        Json(session_json(&host, &id)?),
+        Json(session_json(&host, &id).await?),
     )
         .into_response())
 }
 
-async fn get_session(
+pub(crate) async fn get_session(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
     // After a restart, a turn waiting on a person shows as waiting again.
     host.wake(&id).await;
-    Ok(Json(session_json(&host, &id)?))
+    Ok(Json(session_json(&host, &id).await?))
 }
 
 #[derive(Deserialize)]
-struct CreateMessageBody {
+pub(crate) struct CreateMessageBody {
+    #[serde(default)]
+    message_id: Option<everruns::MessageId>,
     message: InputMessage,
     #[serde(default)]
     metadata: Option<Value>,
+    /// Files sent with the message, as on the server's Agent API.
+    #[serde(default)]
+    files: Vec<everruns::execution_api::MessageFile>,
     /// Accepted for compatibility; serve has no per-message controls.
     #[serde(default)]
     #[allow(dead_code)]
@@ -278,8 +359,17 @@ struct InputMessage {
     content: Vec<Value>,
 }
 
-/// Text of a user message. serve accepts text parts only.
+/// Text of a user message. serve accepts text parts only; files come in
+/// the body's `files`. Empty text is allowed when `files` is not.
 fn message_text(message: &InputMessage) -> Result<String, Failure> {
+    let text = joined_text(message)?;
+    if text.trim().is_empty() {
+        return Err(bad_request("message has no text"));
+    }
+    Ok(text)
+}
+
+fn joined_text(message: &InputMessage) -> Result<String, Failure> {
     if message.role.as_deref().is_some_and(|role| role != "user") {
         return Err(bad_request("only user messages can be created"));
     }
@@ -295,28 +385,43 @@ fn message_text(message: &InputMessage) -> Result<String, Failure> {
             }
         }
     }
-    let text = texts.join("\n");
-    if text.trim().is_empty() {
-        return Err(bad_request("message has no text"));
-    }
-    Ok(text)
+    Ok(texts.join("\n"))
 }
 
 /// `POST /v1/sessions/{id}/messages`: starts a turn when idle, steers the
 /// running turn otherwise. Answers with the server's `Message` shape.
-async fn create_message(
+pub(crate) async fn create_message(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Json(body): Json<CreateMessageBody>,
 ) -> ApiResult<Response> {
-    let text = message_text(&body.message)?;
-    host.session_row(&id)?;
-    let sent = host.send(&id, text.clone()).await?;
+    let text = if body.files.is_empty() {
+        message_text(&body.message)?
+    } else {
+        joined_text(&body.message)?
+    };
+    host.session(&id).await?;
+    let mut content = Vec::new();
+    if !text.trim().is_empty() {
+        content.push(everruns::ContentPart::text(text));
+    }
+    if !body.files.is_empty() {
+        let session = host.session(&id).await?;
+        content.extend(crate::files::receive(session, body.files).await);
+    }
+    let mut input = everruns::InputMessage::user("");
+    input.content = content;
+    let parts = serde_json::to_value(&input.content)?;
+    let sent = if let Some(message_id) = body.message_id {
+        host.send_message_with_id(&id, message_id, input).await?
+    } else {
+        host.send_message(&id, input).await?
+    };
     let mut message = json!({
         "id": sent.message_id,
         "session_id": id,
         "role": "user",
-        "content": [{ "type": "text", "text": text }],
+        "content": parts,
         "created_at": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
     });
     // The canonical `input.message` event carries the message's sequence. It
@@ -327,12 +432,22 @@ async fn create_message(
             events.iter().rev().find_map(|event| {
                 (event.event_type() == "input.message"
                     && event.canonical_json()["data"]["message"]["id"] == sent.message_id.as_str())
-                .then(|| event.sequence())
+                .then(|| {
+                    event.sequence().map(|sequence| {
+                        (
+                            sequence,
+                            event.canonical_json()["data"]["message"]["created_at"].clone(),
+                        )
+                    })
+                })
                 .flatten()
             })
         });
-        if let Some(sequence) = sequence {
+        if let Some((sequence, created_at)) = sequence {
             message["sequence"] = json!(sequence);
+            if !created_at.is_null() {
+                message["created_at"] = created_at;
+            }
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -343,13 +458,51 @@ async fn create_message(
     Ok((StatusCode::CREATED, Json(message)).into_response())
 }
 
-async fn cancel(State(host): State<Arc<Host>>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
-    Ok(Json(if host.cancel(&id).await? {
-        json!({ "status": "cancelled", "message": "Turn cancelled successfully" })
-    } else {
-        json!({ "status": "no_op", "message": "No turn was running" })
-    }))
+async fn admission(
+    State(host): State<Arc<Host>>,
+    Path((id, message)): Path<(String, everruns::MessageId)>,
+) -> ApiResult<Json<Value>> {
+    let session = host.session(&id).await?;
+    let accepted = session
+        .admission(message)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("admission receipt".into()))?;
+    Ok(Json(serde_json::to_value(accepted.state().await?)?))
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct CancelBody {
+    #[serde(default)]
+    command_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    message_id: Option<everruns::MessageId>,
+}
+
+pub(crate) async fn cancel(
+    State(host): State<Arc<Host>>,
+    Path(id): Path<String>,
+    body: Option<Json<Option<CancelBody>>>,
+) -> ApiResult<Response> {
+    let body = body.and_then(|body| body.0).unwrap_or_default();
+    host.session(&id).await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(
+            if host
+                .cancel_target(
+                    &id,
+                    body.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+                    body.message_id,
+                )
+                .await?
+            {
+                json!({ "status": "accepted", "message": "Cancellation requested" })
+            } else {
+                json!({ "status": "no_op", "message": "No turn was running" })
+            },
+        ),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
@@ -375,11 +528,11 @@ async fn approval(
     Path((id, tool_call_id)): Path<(String, String)>,
     Json(body): Json<ApprovalBody>,
 ) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
+    host.session(&id).await?;
     // After a restart, the approval is pending again once the session is.
     host.session(&id).await?;
     let approve = matches!(body.decision, DecisionKind::Approve);
-    host.resolve_approval(&id, &tool_call_id, approve)?;
+    host.resolve_approval(&id, &tool_call_id, approve).await?;
     Ok(Json(json!({
         "status": if approve { "approved" } else { "denied" },
         "tool_call_id": tool_call_id,
@@ -387,60 +540,51 @@ async fn approval(
     })))
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SubmittedStatus {
-    Answered,
-    Declined,
-}
+pub(crate) type QuestionAnswersBody = everruns::hosting::QuestionAnswersRequest;
 
-/// The server's `QuestionAnswersRequest`.
-#[derive(Deserialize)]
-struct QuestionAnswersBody {
-    #[serde(default)]
-    tool_call_id: Option<String>,
-    #[serde(default = "answered")]
-    status: SubmittedStatus,
-    #[serde(default)]
-    answers: Vec<SubmittedAnswer>,
-}
-
-fn answered() -> SubmittedStatus {
-    SubmittedStatus::Answered
-}
-
-#[derive(Deserialize)]
-struct SubmittedAnswer {
-    id: String,
-    #[serde(default)]
-    selected: Vec<String>,
-    #[serde(default)]
-    other_text: Option<String>,
-}
-
-async fn question_answers(
+pub(crate) async fn question_answers(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Json(body): Json<QuestionAnswersBody>,
 ) -> ApiResult<Json<Value>> {
-    host.session_row(&id)?;
+    host.session(&id).await?;
     // After a restart, the question is pending again once the session is.
     host.session(&id).await?;
-    let status = match body.status {
-        SubmittedStatus::Answered => Status::Answered,
-        SubmittedStatus::Declined => Status::Declined,
-    };
-    let answers = body
-        .answers
-        .into_iter()
-        .map(|answer| Answer {
-            id: answer.id,
-            selected: answer.selected,
-            other_text: answer.other_text,
-            secret_ref: None,
-        })
-        .collect();
-    host.answer_questions(&id, body.tool_call_id.as_deref(), status, answers)?;
+    let status = body.status;
+    if host.engine.has_session_hosting() {
+        let session = host.session(&id).await?;
+        if body.command_id.is_none() {
+            let pending = session.pending_tools().await?;
+            if !pending.iter().any(|call| {
+                call.name == "ask_user"
+                    && body.tool_call_id.as_ref().is_none_or(|id| id == &call.id)
+            }) {
+                if let Some(call) = &body.tool_call_id {
+                    let completed = session.events_after(0).await?.iter().any(|event| {
+                        event.event_type() == "tool.completed"
+                            && event.canonical_json()["data"]["tool_call_id"].as_str()
+                                == Some(call.as_str())
+                            && event.canonical_json()["data"]["tool_name"] == "ask_user"
+                    });
+                    if completed {
+                        return Err(ApiError::Conflict(
+                            "question set has already been answered".into(),
+                        )
+                        .into());
+                    }
+                }
+                return Err(ApiError::NotFound("pending question set".into()).into());
+            }
+        }
+        session.answer_questions(body).await?;
+        let phase = host.engine.session_status(session.session_id()).await?;
+        return Ok(Json(
+            json!({"status":status,"answered_by":"user","session_status":phase.phase()}),
+        ));
+    }
+    let answers = body.answers;
+    host.answer_questions(&id, body.tool_call_id.as_deref(), status, answers)
+        .await?;
     Ok(Json(json!({
         "status": match status { Status::Declined => "declined", _ => "answered" },
         "answered_by": "user",
@@ -453,8 +597,9 @@ async fn channel(
     Path(name): Path<String>,
     headers: HeaderMap,
     body: Bytes,
-) -> ApiResult<Json<Value>> {
-    let inbound = Inbound {
+) -> Response {
+    let request = ChannelRequest {
+        path: String::new(),
         headers: headers
             .iter()
             .filter_map(|(key, value)| {
@@ -466,7 +611,9 @@ async fn channel(
             .collect(),
         body: body.to_vec(),
     };
-    Ok(Json(host.inbound(&name, inbound).await?))
+    let response = host.channels().handle(&name, &request).await;
+    let status = StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, Json(response.body)).into_response()
 }
 
 async fn run_schedule(
@@ -495,7 +642,7 @@ impl Filters {
 }
 
 #[derive(Deserialize, Default)]
-struct SseQuery {
+pub(crate) struct SseQuery {
     #[serde(default)]
     since_id: Option<String>,
     #[serde(default)]
@@ -512,6 +659,16 @@ struct SseQuery {
 async fn resolve_since_id(host: &Host, id: &str, since_id: &str) -> crate::Result<i32> {
     if !since_id.starts_with("event_") {
         return Err(ApiError::BadRequest(format!("invalid since_id {since_id:?}")).into());
+    }
+    if host.authoritative_status(id).await?.is_some() {
+        return host
+            .session(id)
+            .await?
+            .event_sequence(since_id)
+            .await?
+            .ok_or_else(|| {
+                ApiError::BadRequest("event cursor does not belong to this session".into()).into()
+            });
     }
     Ok(host
         .events_after(id, 0)
@@ -537,11 +694,23 @@ fn sse_event(event: &SessionEvent) -> Event {
 /// `GET /v1/sessions/{id}/sse`: `connected`, then durable events after the
 /// cursor, then live events (deltas included). Without a cursor the stream
 /// starts live, as on the server.
-async fn sse(
+pub(crate) async fn sse(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
-    Query(query): Query<SseQuery>,
+    Query(mut query): Query<SseQuery>,
+    headers: HeaderMap,
 ) -> ApiResult<Sse<impl Stream<Item = Result<Event, Infallible>>>> {
+    if query.since_id.is_none()
+        && query.after_sequence.is_none()
+        && let Some(value) = headers.get("last-event-id")
+    {
+        query.since_id = Some(
+            value
+                .to_str()
+                .map_err(|_| bad_request("invalid Last-Event-ID"))?
+                .to_owned(),
+        );
+    }
     if query.since_id.is_some() && query.after_sequence.is_some() {
         return Err(bad_request(
             "since_id and after_sequence are mutually exclusive",
@@ -550,10 +719,13 @@ async fn sse(
     if query.after_sequence.is_some_and(|seq| seq < 0) {
         return Err(bad_request("after_sequence must be >= 0"));
     }
-    host.session_row(&id)?;
+    host.session(&id).await?;
     let session = host.session(&id).await?;
     let after = match (&query.since_id, query.after_sequence) {
         (Some(since_id), _) => Some(resolve_since_id(&host, &id, since_id).await?),
+        (None, None) if host.authoritative_status(&id).await?.is_some() => {
+            Some(session.event_page(None, 1).await?.high_watermark)
+        }
         (None, after) => after,
     };
     let events = match after {
@@ -613,7 +785,7 @@ async fn forward(
 }
 
 #[derive(Deserialize, Default)]
-struct ListQuery {
+pub(crate) struct ListQuery {
     #[serde(default)]
     since_id: Option<String>,
     #[serde(default)]
@@ -630,7 +802,7 @@ struct ListQuery {
 
 /// `GET /v1/sessions/{id}/events`: durable events as `{data: [...]}`, oldest
 /// first. `limit` keeps the last N and sets `X-Total-Count`.
-async fn list_events(
+pub(crate) async fn list_events(
     State(host): State<Arc<Host>>,
     Path(id): Path<String>,
     Query(query): Query<ListQuery>,
@@ -641,7 +813,7 @@ async fn list_events(
     {
         return Err(bad_request("limit must be between 1 and 1000"));
     }
-    host.session_row(&id)?;
+    host.session(&id).await?;
     let after = match (&query.since_id, query.after_sequence) {
         (Some(since_id), _) => resolve_since_id(&host, &id, since_id).await?,
         (None, after) => after.unwrap_or(0),

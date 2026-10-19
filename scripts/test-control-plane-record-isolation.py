@@ -24,9 +24,17 @@ class RecordIsolation(unittest.TestCase):
                 + ('' if publish else 'publish = false\n')
             )
             (crate / 'src/lib.rs').write_text('')
-        records = self.root / 'crates/server/src/records'
-        records.mkdir()
-        (records / 'agent.rs').write_text('pub struct Agent;\npub enum AgentStatus { Active }\n')
+        server = self.root / 'crates/server/src'
+        (server / 'records').mkdir()
+        # Records live in their owning domain; the guard derives its vocabulary there.
+        (server / 'domains/agents').mkdir(parents=True)
+        (server / 'domains/agents/record.rs').write_text(
+            'pub struct Agent;\npub enum AgentStatus { Active }\n'
+        )
+        (server / 'domains/agent_channels/record').mkdir(parents=True)
+        (server / 'domains/agent_channels/record/slack_channel.rs').write_text(
+            'pub struct SlackChannelConfig;\n'
+        )
 
     def guard(self):
         return subprocess.run(
@@ -60,6 +68,20 @@ class RecordIsolation(unittest.TestCase):
         result = self.guard()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('references server records', result.stdout)
+
+    def test_private_adapter_cannot_import_domain_record(self):
+        (self.root / 'crates/worker/src/lib.rs').write_text(
+            'use everruns_server::domains::agents::record::Agent;\n'
+        )
+        result = self.guard()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('references server records', result.stdout)
+
+    def test_nested_domain_record_is_vocabulary(self):
+        (self.root / 'crates/library/src/lib.rs').write_text('pub struct SlackChannelConfig;\n')
+        result = self.guard()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('control-plane SlackChannelConfig must be server-owned', result.stdout)
 
     def test_renamed_persisted_row_cannot_bypass_guard(self):
         (self.root / 'crates/library/src/lib.rs').write_text(

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::config_layer::AgentConfigOverlay;
+use crate::conversation::Communication;
 use crate::error::{AgentLoopError, Result};
 use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{
@@ -110,6 +111,13 @@ pub struct ResolvedExecutionSnapshot {
     pub max_iterations: Option<usize>,
     /// Request-level parallel tool calling preference.
     pub parallel_tool_calls: Option<bool>,
+    /// Per-call output token ceiling; owned by the agent layer. Omitted when
+    /// unset so earlier snapshots serialize identically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
+    /// How the agent talks; owned by the agent layer.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 
     // --- Non-secret execution metadata ---
     pub locale: Option<String>,
@@ -193,6 +201,8 @@ impl ResolvedExecutionSnapshot {
             network_access: effective.network_access,
             max_iterations: effective.max_iterations,
             parallel_tool_calls: effective.parallel_tool_calls,
+            max_output_tokens: effective.max_output_tokens,
+            communication: effective.communication.unwrap_or_default(),
             locale: session.locale.clone(),
             tags: session.tags.clone(),
             blueprint_id: session.blueprint_id.clone(),
@@ -541,6 +551,26 @@ mod tests {
             ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.max_iterations, Some(0));
         assert_eq!(snapshot.parallel_tool_calls, Some(false));
+    }
+
+    #[test]
+    fn agent_max_output_tokens_reaches_snapshot() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        let unset = ResolvedExecutionSnapshot::project(&harness(), Some(&agent), &session).unwrap();
+        assert_eq!(unset.max_output_tokens, None);
+        assert!(
+            serde_json::to_value(&unset)
+                .unwrap()
+                .get("max_output_tokens")
+                .is_none()
+        );
+
+        agent.max_output_tokens = Some(1500);
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&harness(), Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.max_output_tokens, Some(1500));
     }
 
     #[test]

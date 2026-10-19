@@ -1,0 +1,314 @@
+use super::queries as q;
+use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretBinding, SecretInfo};
+use crate::domains::common::*;
+use everruns_capabilities::capabilities::{
+    is_internal_session_kv_key, is_internal_session_secret_name,
+};
+use serde::Deserialize;
+use utoipa::ToSchema;
+
+const MAX_SECRET_COUNT_PER_REQUEST: usize = 100;
+const MAX_SECRET_VALUE_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ListSessionStorage {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+impl Command for ListSessionStorage {
+    type Output = Vec<KeyValueInfo>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_session_storage",
+            category: "session_storage",
+            description: "List all key-value pairs stored for a session.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/storage/keys",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("session_id")
+    }
+
+    fn cli() -> Option<CliRoute> {
+        const ARGS: &[CliArg] = &[CliArg::new("session_id").at(1)];
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "storage", "keys"], "list")
+            .with_args(ARGS)
+            .with_examples(&[CliExample::new(
+                "Inspect the key-value pairs a session has stored",
+                "everruns sessions storage keys list session_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        // THREAT[TM-AUTHZ-023]: the list includes plaintext values.
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<KeyValueInfo>, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+
+        let keys = ctx.db.list_session_keys(session_id.uuid()).await?;
+
+        let mut items = Vec::with_capacity(keys.len());
+        for key_info in keys {
+            if is_internal_session_kv_key(&key_info.key) {
+                continue;
+            }
+
+            let value = ctx
+                .db
+                .get_session_key_value(session_id.uuid(), &key_info.key)
+                .await?
+                .map(|row| row.value)
+                .unwrap_or_default();
+
+            items.push(KeyValueInfo {
+                key: key_info.key,
+                value,
+                created_at: key_info.created_at.to_rfc3339(),
+                updated_at: key_info.updated_at.to_rfc3339(),
+            });
+        }
+
+        Ok(items)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListSessionStorage>() }
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ListSessionSecrets {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+impl Command for ListSessionSecrets {
+    type Output = Vec<SecretInfo>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_session_secrets",
+            category: "session_storage",
+            description: "List all secrets stored for a session without revealing values.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/storage/secrets",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("session_id")
+    }
+
+    fn cli() -> Option<CliRoute> {
+        const ARGS: &[CliArg] = &[CliArg::new("session_id").at(1)];
+        const ROUTE: CliRoute = CliRoute::new(&["sessions", "storage", "secrets"], "list")
+            .with_args(ARGS)
+            .with_examples(&[CliExample::new(
+                "See which secrets a session has, without their values",
+                "everruns sessions storage secrets list session_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        // THREAT[TM-AUTHZ-023]: names are credential metadata.
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<SecretInfo>, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+
+        let secrets = ctx.db.list_session_secrets(session_id.uuid()).await?;
+
+        Ok(secrets
+            .into_iter()
+            .filter(|row| !is_internal_session_secret_name(&row.name))
+            .map(|row| SecretInfo {
+                name: row.name,
+                binding: row.binding.map(|b| b.0),
+                created_at: row.created_at.to_rfc3339(),
+                updated_at: row.updated_at.to_rfc3339(),
+            })
+            .collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListSessionSecrets>() }
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct BatchSetSessionSecrets {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Secret values keyed by name, e.g. `{"SERVICE_TOKEN": "..."}`. At most 100 per call.
+    pub secrets: std::collections::HashMap<String, String>,
+    /// Optional bindings keyed by secret name, e.g.
+    /// `{"JEV_API_KEY": {"url": "https://api.typesafe.ai", "auth": {"type": "bearer"}}}`.
+    /// A bound secret is write-only: the shell sees `$NAME` as a placeholder
+    /// and the platform puts the value on requests to the bound URL only.
+    #[serde(default)]
+    pub bindings: std::collections::HashMap<String, SecretBinding>,
+}
+
+#[command(
+    name = "batch_set_session_secrets",
+    category = "session_storage",
+    description = "Encrypt and store multiple session secrets in one request.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/storage/secrets",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "storage", "secrets"], "batch").with_examples(&[CliExample::new("Give a session several credentials in one call", "everruns sessions storage secrets batch --session-id session_01h9 --secrets '{\"SERVICE_TOKEN\":\"s3cr3t\",\"DB_PASSWORD\":\"hunter2\"}' --reason 'Provision credentials for the deploy run'",)]),
+)]
+impl Command for BatchSetSessionSecrets {
+    type Output = BatchSetSecretsResponse;
+
+    async fn execute(self, ctx: &Ctx) -> Result<BatchSetSecretsResponse, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+
+        let encryption = ctx.encryption.as_ref().ok_or_else(|| {
+            CommandError::bad_request(
+                "Encryption not configured. Set SECRETS_ENCRYPTION_KEY environment variable.",
+            )
+        })?;
+
+        if self.secrets.is_empty() {
+            return Ok(BatchSetSecretsResponse { count: 0 });
+        }
+        if self.secrets.len() > MAX_SECRET_COUNT_PER_REQUEST {
+            return Err(CommandError::bad_request(format!(
+                "At most {MAX_SECRET_COUNT_PER_REQUEST} secrets can be stored per request"
+            )));
+        }
+
+        for (name, value) in &self.secrets {
+            let trimmed = name.trim();
+            if trimmed.is_empty() || trimmed.len() > 255 {
+                return Err(CommandError::bad_request(format!(
+                    "Secret name must be between 1 and 255 non-whitespace characters: '{name}'"
+                )));
+            }
+            if is_internal_session_secret_name(name) {
+                return Err(CommandError::bad_request(
+                    "Secret name is reserved for internal use",
+                ));
+            }
+            if value.is_empty() || value.len() > MAX_SECRET_VALUE_BYTES {
+                return Err(CommandError::bad_request(
+                    "Secret values must be between 1 byte and 64 KiB",
+                ));
+            }
+        }
+
+        let bindings = validate_bindings(&self.secrets, self.bindings)?;
+
+        for (name, value) in &self.secrets {
+            let encrypted = encryption
+                .encrypt_string(value)
+                .map_err(CommandError::internal)?;
+            ctx.db
+                .upsert_session_secret(crate::storage::UpsertSessionSecret {
+                    session_id,
+                    name: name.clone(),
+                    value_encrypted: encrypted,
+                    binding: bindings.get(name).cloned(),
+                })
+                .await?;
+        }
+
+        Ok(BatchSetSecretsResponse {
+            count: self.secrets.len(),
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+/// Delete one encrypted secret from a session's private storage.
+pub struct DeleteSessionSecret {
+    /// Session that owns the secret.
+    #[schema(example = "session_01933b5a000070008000000000000001")]
+    pub session_id: String,
+    /// Exact secret name to delete.
+    #[schema(example = "SERVICE_TOKEN")]
+    pub name: String,
+}
+
+#[command(
+    name = "delete_session_secret",
+    category = "session_storage",
+    description = "Delete a user-managed encrypted session secret by name.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+    cli = CliRoute::new(&["sessions", "storage", "secrets"], "delete").with_examples(&[CliExample::new("Revoke a credential from a session", "everruns sessions storage secrets delete --session-id session_01h9 --name SERVICE_TOKEN --reason 'Token rotated'",)]),
+)]
+impl Command for DeleteSessionSecret {
+    type Output = bool;
+
+    async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if is_internal_session_secret_name(&self.name) {
+            return Err(CommandError::not_found("Secret"));
+        }
+        ctx.db
+            .delete_session_secret(session_id.uuid(), &self.name)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+/// A bound secret's name doubles as the env var the shell sees.
+pub(crate) fn validate_bound_name(name: &str) -> Result<(), CommandError> {
+    let mut bytes = name.bytes();
+    let valid = name.len() <= 128
+        && bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+        && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if !valid {
+        return Err(CommandError::bad_request(format!(
+            "Bound secret name must be an env var name (letters, digits, '_'): '{name}'"
+        )));
+    }
+    Ok(())
+}
+
+/// Validate one binding and return it with its normalized URL.
+pub(crate) fn validate_binding(
+    name: &str,
+    binding: SecretBinding,
+) -> Result<SecretBinding, CommandError> {
+    validate_bound_name(name)?;
+    let url = binding
+        .validate()
+        .map_err(|e| CommandError::bad_request(format!("Secret '{name}': {e}")))?;
+    Ok(SecretBinding { url, ..binding })
+}
+
+fn validate_bindings(
+    secrets: &std::collections::HashMap<String, String>,
+    bindings: std::collections::HashMap<String, SecretBinding>,
+) -> Result<std::collections::HashMap<String, SecretBinding>, CommandError> {
+    bindings
+        .into_iter()
+        .map(|(name, binding)| {
+            if !secrets.contains_key(&name) {
+                return Err(CommandError::bad_request(format!(
+                    "Binding for '{name}' has no value in secrets"
+                )));
+            }
+            let binding = validate_binding(&name, binding)?;
+            Ok((name, binding))
+        })
+        .collect()
+}
+
+mod worker;
+pub use worker::*;

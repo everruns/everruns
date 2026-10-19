@@ -27,12 +27,12 @@ Both hang off the command contract every surface shares ([Command
 Tree](command-tree.md), [Domain Modules](../foundations/domains.md)), not off a
 domain, so a new editable entity gets both by declaring what it is. User-facing
 behavior is in `docs/features/change-history.md`; the guarantees of one command
-run are in `docs/advanced/command-path.md`.
+run are in `docs/explanation/command-path.md`.
 
 ## Where it lives
 
 `crates/server/src/domains/change_history/` (one module per concern, each with
-its decisions on top), `Command::run` in `crates/server/src/domains/common.rs`,
+its decisions on top), `Command::run` in `crates/server/src/domains/common/mod.rs`,
 `crates/server/src/storage/transaction.rs`, migrations `176` to `178` and `184`,
 and `apps/ui/src/components/entity-actions/`.
 
@@ -60,12 +60,19 @@ idempotency fingerprint, so a reworded retry replays the first response.
 ### Agents must give a reason; people may
 
 A change from an agent runtime (a Platform session's worker command, the
-Platform capability, any caller acting for a session) without a reason goes
-through with a warning and counts in `everruns_entity_changes_without_reason_total`.
-With the per-org `agent_change_reasons_required` flag on, it fails with
-`reason_required` and a `retry` action. People and scripts may always omit it.
-Agents are the callers whose intent is otherwise lost and the ones that follow
-an error's recovery hint; the warning default kept older agents working.
+Platform capability, any caller acting for a session) without a reason fails
+with `reason_required` and a `retry` action. The `agent_change_reasons_required`
+flag is Prod-graded: on by default, and an org that turns it off gets the older
+behavior, where the change goes through with a warning and counts in
+`everruns_entity_changes_without_reason_total`. People and scripts may always
+omit it. Agents are the callers whose intent is otherwise lost and the ones
+that follow an error's recovery hint.
+
+Built-in tools that change sessions on the agent's behalf (`spawn_agent`
+subagents and handoffs, coordination threads) state their own reason, naming
+the tool and what it was asked to do. The delegate contract
+(`PlatformCreateSessionRequest`, `SubagentSessionDelegate`) requires one, so a
+new tool cannot forget it and get refused once the flag is on.
 
 Platform Chat's prompt (`crates/server/src/platform_chat_agent.rs`), the
 Platform capability and the `/mcp` server instructions carry one rule: read an
@@ -205,9 +212,6 @@ agent, so a pinned configuration is one restore away. Fork lineage stays.
 - The UI menu is on nine detail pages (agent, harness, skill, provider,
   knowledge index, memory, observer, eval, virtual user); other kinds use the
   CLI and API. Only the agent page has the reason field and the notes hint.
-- CORS `allow_headers` (`crates/server/src/app_builder.rs`) omits
-  `Everruns-Change-Reason` and `Everruns-Context-Revision`, so cross-origin
-  browser clients cannot send them; the same-origin UI is unaffected.
 - Open: whether `agents export` and `agents copy` should carry context, whether
   high-churn kinds need a history cap, and whether Platform Chat's memory notes
   about an entity belong in its context.

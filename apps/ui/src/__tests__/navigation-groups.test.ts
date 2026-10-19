@@ -49,15 +49,19 @@ describe("navigationGroupForPath", () => {
       defaultNavigationSections
         .find((section) => section.label === label)
         ?.items.map((item) => item.name);
-    expect(itemsFor("Building")).toEqual(["Agents", "Playground", "Harnesses", "Virtual Users"]);
-    expect(itemsFor("Operational")).toEqual(["Sessions", "Exposures"]);
-    expect(itemsFor("Sandboxes")).toEqual(["Fleet", "Templates", "Provider Accounts"]);
-    expect(
-      defaultNavigationSections.find((section) => section.label === "Sandboxes")?.defaultCollapsed,
-    ).toBe(true);
-    expect(navigationGroupForPath("/sandboxes")).toBe("Sandboxes");
-    expect(navigationGroupForPath("/sandbox-templates/template-1")).toBe("Sandboxes");
-    expect(navigationGroupForPath("/sandbox-provider-accounts")).toBe("Sandboxes");
+    expect(itemsFor("Building")).toEqual([
+      "Agents",
+      "Playground",
+      "Harnesses",
+      "Sandboxes",
+      "Virtual Users",
+    ]);
+    expect(itemsFor("Operational")).toEqual(["Monitoring", "Sessions"]);
+    // Sandboxes is one page with tabs, not a sidebar group of its own.
+    expect(defaultNavigationSections.some((section) => section.label === "Sandboxes")).toBe(false);
+    expect(navigationGroupForPath("/sandboxes")).toBe("Building");
+    expect(navigationGroupForPath("/sandboxes/templates/template-1")).toBe("Building");
+    expect(navigationGroupForPath("/sandboxes/accounts")).toBe("Building");
     expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
     expect(navigationGroupForPath("/memory")).toBe("Registers");
     expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");

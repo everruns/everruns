@@ -1,4 +1,4 @@
-import { isDriverOffered } from "@/lib/api/provider-driver-types";
+import { isDriverOffered, isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
 
 describe("isDriverOffered", () => {
   it("always offers ungated drivers", () => {
@@ -10,6 +10,11 @@ describe("isDriverOffered", () => {
     expect(isDriverOffered("mistral", undefined)).toBe(false);
     expect(isDriverOffered("mistral", [{ driver: "openai" }])).toBe(false);
     expect(isDriverOffered("mistral", [{ driver: "mistral" }])).toBe(true);
-    expect(isDriverOffered("chatgpt", [{ driver: "mistral" }])).toBe(false);
+  });
+
+  it("keeps the framework ChatGPT driver out of platform provider and model UI", () => {
+    expect(isPlatformProviderVisible("openai")).toBe(true);
+    expect(isPlatformProviderVisible("chatgpt")).toBe(false);
+    expect(isDriverOffered("chatgpt", [{ driver: "chatgpt" }])).toBe(false);
   });
 });

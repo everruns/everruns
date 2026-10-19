@@ -14,8 +14,54 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use super::StorageBackend;
 use super::repositories::Database;
 
-/// Name of the template every test database is copied from.
-const TEMPLATE_DB: &str = "everruns_template";
+/// Test fixtures can use a disposable, production-configured cluster without
+/// changing DEV_MODE's rule that it never uses an external database.
+enum TestCluster {
+    Embedded(&'static super::embedded_postgres::EmbeddedPostgres),
+    External(url::Url),
+}
+
+impl TestCluster {
+    fn url(&self, name: &str) -> String {
+        match self {
+            Self::Embedded(cluster) => cluster.url(name),
+            Self::External(url) => {
+                let mut url = url.clone();
+                url.set_path(name);
+                url.to_string()
+            }
+        }
+    }
+
+    async fn create_database(&self, name: &str, template: Option<&str>) -> anyhow::Result<()> {
+        super::embedded_postgres::create_database(&self.url("postgres"), name, template).await
+    }
+
+    async fn drop_database(&self, name: &str) -> anyhow::Result<()> {
+        super::embedded_postgres::drop_database(&self.url("postgres"), name).await
+    }
+}
+
+async fn test_cluster() -> anyhow::Result<&'static TestCluster> {
+    static CLUSTER: tokio::sync::OnceCell<TestCluster> = tokio::sync::OnceCell::const_new();
+    CLUSTER
+        .get_or_try_init(|| async {
+            let cluster = match std::env::var("EVERRUNS_TEST_POSTGRES_URL") {
+                Ok(url) => TestCluster::External(url.parse()?),
+                Err(std::env::VarError::NotPresent) => TestCluster::Embedded(
+                    super::embedded_postgres::EmbeddedPostgres::shared().await?,
+                ),
+                Err(error) => return Err(error.into()),
+            };
+            // The CI batch runner starts other processes only after the first
+            // has finished installing/starting PostgreSQL, including cold caches.
+            if let Some(path) = std::env::var_os("EVERRUNS_TEST_BATCH_READY") {
+                std::fs::write(path, [])?;
+            }
+            anyhow::Ok(cluster)
+        })
+        .await
+}
 
 /// Owns one test database and drops it with the last backend that uses it.
 ///
@@ -83,6 +129,24 @@ impl TestDatabase {
         &self.url
     }
 
+    /// Copy a prepared test fixture into a private database with fresh hooks.
+    /// Close every connection to this database before using it as a template.
+    pub async fn copy(&self) -> anyhow::Result<(PgPool, Arc<Self>)> {
+        let name = format!("test_{}", uuid::Uuid::now_v7().simple());
+        let pg = test_cluster().await?;
+        pg.create_database(&name, Some(&self.name)).await?;
+        let url = pg.url(&name);
+        let pool = PgPoolOptions::new().max_connections(4).connect_lazy(&url)?;
+        Ok((
+            pool,
+            Arc::new(Self {
+                name,
+                url,
+                hooks: TestHooks::default(),
+            }),
+        ))
+    }
+
     /// Counters and fault injection shared by every clone of the backend.
     pub fn hooks(&self) -> &TestHooks {
         &self.hooks
@@ -99,12 +163,8 @@ impl Drop for TestDatabase {
         // waits for that backend until the runtime closes its socket (or
         // authentication_timeout, 60s, passes).
         std::thread::spawn(move || {
-            let dropped = run_on_own_runtime(async move {
-                everruns_pg_embedded::EmbeddedPostgres::shared()
-                    .await?
-                    .drop_database(&name)
-                    .await
-            });
+            let dropped =
+                run_on_own_runtime(async move { test_cluster().await?.drop_database(&name).await });
             if let Err(error) = dropped {
                 eprintln!("could not drop test database: {error:#}");
             }
@@ -125,7 +185,7 @@ fn run_on_own_runtime<T>(future: impl Future<Output = anyhow::Result<T>>) -> any
 /// Migrations run once per process into a template database; every call then
 /// copies that template, which takes milliseconds. The caller owns dropping it.
 pub async fn create_migrated_database(name: &str) -> anyhow::Result<String> {
-    let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
+    let pg = test_cluster().await?;
     pg.create_database(name, Some(migrated_template().await?))
         .await?;
     Ok(pg.url(name))
@@ -133,40 +193,42 @@ pub async fn create_migrated_database(name: &str) -> anyhow::Result<String> {
 
 /// The template holding the migrated schema, created once per process.
 async fn migrated_template() -> anyhow::Result<&'static str> {
-    static TEMPLATE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-    TEMPLATE
+    static TEMPLATE: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+    Ok(TEMPLATE
         .get_or_try_init(|| async {
-            let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
-            pg.create_database(TEMPLATE_DB, None).await?;
-            let pool = PgPool::connect(&pg.url(TEMPLATE_DB)).await?;
-            sqlx::migrate!("./migrations").run(&pool).await?;
-            // A template cannot be copied while anything is connected to it.
+            let name = format!("everruns_template_{}", uuid::Uuid::now_v7().simple());
+            let pg = test_cluster().await?;
+            pg.create_database(&name, None).await?;
+            let pool = PgPool::connect(&pg.url(&name)).await?;
+            crate::setup::migrations::migrator().run(&pool).await?;
             pool.close().await;
-            anyhow::Ok(())
+            anyhow::Ok(name)
         })
-        .await?;
-    Ok(TEMPLATE_DB)
+        .await?
+        .as_str())
 }
 
-/// The migrated template plus [`FIXTURES`], created once per process.
+/// Schema plus fixtures, uniquely named so separate test processes can share
+/// an external PostgreSQL service without racing on template initialization.
 async fn fixture_template() -> anyhow::Result<&'static str> {
-    static TEMPLATE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-    TEMPLATE
+    static TEMPLATE: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+    Ok(TEMPLATE
         .get_or_try_init(|| async {
-            let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
-            pg.create_database(FIXTURE_TEMPLATE_DB, Some(migrated_template().await?))
+            let name = format!(
+                "everruns_template_fixtures_{}",
+                uuid::Uuid::now_v7().simple()
+            );
+            let pg = test_cluster().await?;
+            pg.create_database(&name, Some(migrated_template().await?))
                 .await?;
-            let pool = PgPool::connect(&pg.url(FIXTURE_TEMPLATE_DB)).await?;
+            let pool = PgPool::connect(&pg.url(&name)).await?;
             sqlx::raw_sql(FIXTURES).execute(&pool).await?;
             pool.close().await;
-            anyhow::Ok(())
+            anyhow::Ok(name)
         })
-        .await?;
-    Ok(FIXTURE_TEMPLATE_DB)
+        .await?
+        .as_str())
 }
-
-/// Template of [`create_test_database`]: the schema plus [`FIXTURES`].
-const FIXTURE_TEMPLATE_DB: &str = "everruns_template_fixtures";
 
 /// Rows unit tests may reference without creating them.
 ///
@@ -202,14 +264,28 @@ FROM unnest(ARRAY[0, 1, 2]) AS n;
 /// Sync so tests can build one anywhere: the database is created on a helper
 /// thread with its own runtime, and the pool connects lazily on first use.
 pub fn create_test_database() -> (PgPool, Arc<TestDatabase>) {
+    create_isolated_database(true)
+}
+
+/// A private migrated database without the unit-test fixture rows. API servers
+/// seed their own product configuration, isolated from other test servers.
+pub fn create_migrated_test_database() -> (PgPool, Arc<TestDatabase>) {
+    create_isolated_database(false)
+}
+
+fn create_isolated_database(with_fixtures: bool) -> (PgPool, Arc<TestDatabase>) {
     let name = format!("test_{}", uuid::Uuid::now_v7().simple());
     let url = {
         let name = name.clone();
         std::thread::spawn(move || {
             run_on_own_runtime(async move {
-                let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
-                pg.create_database(&name, Some(fixture_template().await?))
-                    .await?;
+                let pg = test_cluster().await?;
+                let template = if with_fixtures {
+                    fixture_template().await?
+                } else {
+                    migrated_template().await?
+                };
+                pg.create_database(&name, Some(template)).await?;
                 Ok(pg.url(&name))
             })
         })
@@ -244,14 +320,14 @@ pub fn create_test_database() -> (PgPool, Arc<TestDatabase>) {
     )
 }
 
-/// A database of its own on the embedded cluster, migrated up to but not
-/// including `version`, for tests that convert pre-migration data with that
+/// A database of its own on the embedded cluster, migrated through the legacy
+/// history up to but not including `version`, for tests that convert pre-migration data with that
 /// migration. Slower than [`create_test_database`]: it runs the migrations
 /// instead of copying a template.
 pub async fn create_database_migrated_before(
     version: i64,
 ) -> anyhow::Result<(PgPool, Arc<TestDatabase>)> {
-    let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
+    let pg = test_cluster().await?;
     let name = format!("test_{}", uuid::Uuid::now_v7().simple());
     pg.create_database(&name, None).await?;
     let url = pg.url(&name);
@@ -264,7 +340,9 @@ pub async fn create_database_migrated_before(
         .max_connections(2)
         .connect(&url)
         .await?;
-    let mut migrator = sqlx::migrate!("./migrations");
+    // Historical data conversions are tested against the legacy history the
+    // baseline replaced, so these databases replay it.
+    let mut migrator = crate::setup::migrations::legacy_migrator();
     migrator.migrations = migrator
         .migrations
         .iter()
@@ -295,7 +373,7 @@ impl StorageBackend {
 pub fn test_session_row(org_id: i64) -> super::CreateSessionRow {
     super::CreateSessionRow {
         playground_user_id: None,
-        source: crate::records::SessionSource::Api,
+        source: crate::domains::sessions::record::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,
@@ -419,7 +497,7 @@ impl StorageBackend {
     pub async fn create_test_app(&self, org_id: i64) -> uuid::Uuid {
         self.create_app(
             org_id,
-            super::models::CreateAppRow {
+            super::CreateAppRow {
                 public_id: format!("app_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test app".to_string(),
                 description: None,
@@ -495,5 +573,49 @@ impl StorageBackend {
             .await
             .expect("disable constraints");
         conn
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn isolated_templates_work_with_native_and_configured_postgres() {
+        let (first, first_owner) = create_test_database();
+        let (second, second_owner) = create_test_database();
+        assert_ne!(first_owner.url(), second_owner.url());
+        let fsync: (String,) = sqlx::query_as("SHOW fsync")
+            .fetch_one(&first)
+            .await
+            .expect("read durability setting");
+        assert_eq!(
+            fsync.0,
+            if std::env::var_os("EVERRUNS_TEST_POSTGRES_URL").is_some() {
+                "on"
+            } else {
+                "off"
+            }
+        );
+        sqlx::raw_sql(
+            "CREATE TABLE isolation_probe (value int); INSERT INTO isolation_probe VALUES (1)",
+        )
+        .execute(&first)
+        .await
+        .expect("write isolated database");
+        let absent: (bool,) = sqlx::query_as("SELECT to_regclass('isolation_probe') IS NULL")
+            .fetch_one(&second)
+            .await
+            .expect("query other database");
+        assert!(absent.0);
+        let seeded: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM organizations WHERE org_id = 999")
+                .fetch_one(&second)
+                .await
+                .expect("read shared fixtures");
+        assert_eq!(seeded.0, 1);
+        first.close().await;
+        second.close().await;
+        drop((first_owner, second_owner));
     }
 }

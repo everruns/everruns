@@ -148,7 +148,7 @@ async fn versions_become_one_history_timeline_and_pins_are_dropped() {
 
     let mut transaction = pool.begin().await.expect("begin migration");
     sqlx::raw_sql(include_str!(
-        "../../migrations/184_retire_agent_versions.sql"
+        "../../migrations/legacy/184_retire_agent_versions.sql"
     ))
     .execute(&mut *transaction)
     .await

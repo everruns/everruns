@@ -10,7 +10,7 @@ fn test_proto_agent_includes_capability_ids() {
 
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
-    let agent = crate::records::Agent {
+    let agent = crate::domains::agents::record::Agent {
         is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
@@ -37,10 +37,12 @@ fn test_proto_agent_includes_capability_ids() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: Some(4096),
+        communication: Default::default(),
         sandbox_policy: None,
         tools: vec![],
         mcp_servers: Default::default(),
-        status: crate::records::AgentStatus::Active,
+        status: crate::domains::agents::record::AgentStatus::Active,
         exposures_suspended: false,
         exposed: false,
         created_at: Utc::now(),
@@ -52,6 +54,8 @@ fn test_proto_agent_includes_capability_ids() {
 
     // Convert to proto
     let proto_agent = schema_agent_to_proto(&agent);
+
+    assert_eq!(proto_agent.max_tokens, Some(4096));
 
     // Verify capability_ids are preserved
     assert!(
@@ -77,6 +81,7 @@ fn test_proto_agent_includes_capability_ids() {
         .collect();
     assert!(cap_ids.contains(&"tools:read_file"));
     assert!(cap_ids.contains(&"tools:write_file"));
+    assert_eq!(schema_agent.max_output_tokens, Some(4096));
 }
 
 #[test]
@@ -86,7 +91,7 @@ fn test_proto_agent_without_capabilities() {
 
     // Create an Agent without capabilities
     let id = Uuid::now_v7();
-    let agent = crate::records::Agent {
+    let agent = crate::domains::agents::record::Agent {
         is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
@@ -110,10 +115,12 @@ fn test_proto_agent_without_capabilities() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
+        communication: Default::default(),
         sandbox_policy: None,
         tools: vec![],
         mcp_servers: Default::default(),
-        status: crate::records::AgentStatus::Active,
+        status: crate::domains::agents::record::AgentStatus::Active,
         exposures_suspended: false,
         exposed: false,
         created_at: Utc::now(),
@@ -143,10 +150,11 @@ fn test_proto_session_roundtrip_includes_organization_id() {
 
     let now = Utc::now();
     let session_id = everruns_contracts::typed_id::SessionId::new();
-    let session = crate::records::Session {
+    let session = crate::domains::sessions::record::Session {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         // Equality invariant: workspace.id == session.id for default sessions.
@@ -165,6 +173,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec!["slack:thread:123.456".to_string()],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
@@ -176,7 +185,7 @@ fn test_proto_session_roundtrip_includes_organization_id() {
         max_iterations: None,
         parallel_tool_calls: Some(true),
         mcp_servers: Default::default(),
-        status: crate::records::SessionStatus::Idle,
+        status: crate::domains::sessions::record::SessionStatus::Idle,
         created_at: now,
         updated_at: now,
         started_at: None,
@@ -333,10 +342,11 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
 
     let now = Utc::now();
     let session_id = everruns_contracts::typed_id::SessionId::new();
-    let session = crate::records::Session {
+    let session = crate::domains::sessions::record::Session {
         playground_user_id: None,
         source: Default::default(),
         activity: Default::default(),
+        last_turn_status: None,
         run_summary: None,
         id: session_id,
         workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
@@ -354,6 +364,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         locale: None,
         preview: None,
         output_preview: None,
+        last_message_at: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![AgentCapabilityConfig::new("session")],
@@ -365,7 +376,7 @@ fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         max_iterations: None,
         parallel_tool_calls: None,
         mcp_servers: Default::default(),
-        status: crate::records::SessionStatus::Idle,
+        status: crate::domains::sessions::record::SessionStatus::Idle,
         created_at: now,
         updated_at: now,
         started_at: None,

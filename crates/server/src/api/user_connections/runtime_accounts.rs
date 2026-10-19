@@ -31,14 +31,7 @@ pub(super) fn oauth_state_cookie_name(provider: &str) -> String {
 
 pub(super) fn normalize_return_to(value: Option<&str>, default_path: &str) -> String {
     match value {
-        Some(path)
-            if path.starts_with('/')
-                && !path.starts_with("//")
-                && !path.contains('\\')
-                && !path.chars().any(char::is_control) =>
-        {
-            path.to_string()
-        }
+        Some(path) if is_safe_return_to(path) => path.to_string(),
         _ => default_path.to_string(),
     }
 }
@@ -76,7 +69,12 @@ pub(super) async fn register_pending_setup(
     );
     state
         .db
-        .register_connection_setup(&pending.state, &pending.provider, &hash)
+        .register_connection_setup(
+            &pending.state,
+            &pending.provider,
+            &hash,
+            chrono::Utc::now() + chrono::Duration::minutes(10),
+        )
         .await
         .map_err(|e| sanitized_internal_error("Setup state", &e))
 }
@@ -219,7 +217,36 @@ pub(crate) async fn authorize_target_connection(
     account: crate::auth::runtime::RuntimeAccount,
     jar: CookieJar,
     Path((id, provider)): Path<(String, String)>,
-    Query(mut query): Query<OAuthAuthorizeQuery>,
+    Query(query): Query<OAuthAuthorizeQuery>,
+    headers: axum::http::HeaderMap,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    // Browser navigation: a failure goes back to `return_to` when it is safe.
+    let auth_config = state.auth_config.clone();
+    let return_to = query.return_to.clone();
+    let popup = query.popup.unwrap_or(false);
+    let result =
+        start_target_connection_inner(state, account, jar, id, provider.clone(), query, headers)
+            .await;
+    match redirect_on_connect_error(
+        &auth_config,
+        result,
+        return_to.as_deref(),
+        &provider,
+        popup,
+        None,
+    )? {
+        Ok(redirect) => Ok(redirect),
+        Err(target) => Ok((CookieJar::new(), Redirect::to(&target))),
+    }
+}
+
+async fn start_target_connection_inner(
+    state: AppState,
+    account: crate::auth::runtime::RuntimeAccount,
+    jar: CookieJar,
+    id: String,
+    provider: String,
+    mut query: OAuthAuthorizeQuery,
     headers: axum::http::HeaderMap,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     if !account
@@ -298,8 +325,11 @@ pub(super) async fn start_target_connection(
     headers: axum::http::HeaderMap,
     Json(body): Json<OAuthAuthorizeQuery>,
 ) -> Result<(CookieJar, Json<ConnectionSetupResponse>), (StatusCode, String)> {
+    // JSON variant: errors stay JSON-shaped status responses (the caller has
+    // no page to return to); a blocked host carries a message naming the policy.
+    let (State(state), Path((id, provider))) = (state, path);
     let (jar, redirect) =
-        authorize_target_connection(state, account, jar, path, Query(body), headers).await?;
+        start_target_connection_inner(state, account, jar, id, provider, body, headers).await?;
     let response = redirect.into_response();
     let authorization_url = response
         .headers()
@@ -417,7 +447,7 @@ pub(super) async fn callback_authority(
     })
 }
 
-#[utoipa::path(summary = "List legacy credentials requiring an explicit organization destination.", get, path = "/v1/user/connection-migrations",   responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "List legacy credentials awaiting an organization", description = "List legacy credentials requiring an explicit organization destination.", get, path = "/v1/user/connection-migrations",   responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub(super) async fn list_pending_connection_migrations(
     State(state): State<AppState>,
     auth: ManagementUser,
@@ -431,7 +461,7 @@ pub(super) async fn list_pending_connection_migrations(
         serde_json::json!({"data":rows.into_iter().map(|r|serde_json::json!({"id":r.id,"provider":r.provider,"connection_type":r.connection_type,"provider_username":r.provider_username,"connected_at":r.created_at})).collect::<Vec<_>>()}),
     ))
 }
-#[utoipa::path(summary = "Move one legacy credential into the selected organization without copying it.", post, path = "/v1/user/connection-migrations/{connection_id}", params(("connection_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Move a legacy credential into an organization", description = "Move one legacy credential into the selected organization without copying it.", post, path = "/v1/user/connection-migrations/{connection_id}", params(("connection_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub(super) async fn migrate_pending_connection(
     State(state): State<AppState>,
     org: ResolvedOrg,

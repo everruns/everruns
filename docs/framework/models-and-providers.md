@@ -29,7 +29,7 @@ use everruns::{Agent, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -111,7 +111,7 @@ The set below is what ships today. The boundary is open, so a
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
 | OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
-| ChatGPT plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
+| ChatGPT Plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
@@ -119,13 +119,13 @@ The set below is what ships today. The boundary is open, so a
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
 | OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One | chat, decisions | yes |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | curated Jev profiles |
-| Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
+| Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
-| Meta Model API | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
+| Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
 | Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
-| LLM Simulator | `everruns-llmsim` | none — in-process test double | chat | no |
+| LLM Simulator | `everruns-llmsim` | none — in-process test double | chat, realtime (simulated) | no |
 
 Every chat driver produces an incremental stream — server-sent events for the
 HTTP protocols, `ConverseStream` for Bedrock — so token-by-token output works
@@ -135,9 +135,10 @@ typed events, which is why swapping a provider does not change application
 code.
 
 The environment variables each API driver reads are in [Credentials](#credentials).
-ChatGPT plan connections use host-owned OAuth credentials; see [ChatGPT plan](/features/chatgpt/).
+ChatGPT Plan connections use host-owned OAuth credentials; see [ChatGPT Plan](/features/chatgpt/).
 The optional `codex` SDK feature provides the legacy Codex backend for hosts such
-as Yolop. Everruns Platform registers the public ChatGPT plan route.
+as Yolop. The Platform UI does not offer ChatGPT Plan because Everruns does not
+have a registered web OAuth client and callback for that flow.
 
 ### Beyond chat
 
@@ -214,7 +215,7 @@ let model = Model::new(
 | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
 | TypeSafe | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL` |
 | Fireworks AI | `FIREWORKS_API_KEY` | `FIREWORKS_BASE_URL` |
-| Meta Model API | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
+| Meta | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
 | Mistral AI | `MISTRAL_API_KEY` | `MISTRAL_BASE_URL` |
 | AWS Bedrock | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (or `AWS_DEFAULT_REGION`), `AWS_SESSION_TOKEN` | — (the region selects it) |
 | Microsoft MAI | `AZURE_AI_API_KEY`, **or** `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` | `AZURE_AI_ENDPOINT` |
@@ -437,7 +438,7 @@ The profile registry is static data, so a model's identity can be read offline:
 ```rust
 use everruns::{DriverId, models};
 
-let profile = models::profile(&DriverId::OpenAI, "gpt-5.6-terra");
+let profile = models::profile(&DriverId::OpenAI, "gpt-6.1-sol");
 assert!(profile.is_some());
 ```
 
@@ -472,6 +473,54 @@ driver says it has no catalog. See [Custom providers](#custom-providers).
 The runnable version of this section is
 [`model_catalog.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/model_catalog.rs),
 which runs offline without an API key.
+
+## WASM and host fetch
+
+The Chat Completions and Responses protocol drivers, plus OpenAI and OpenRouter
+chat drivers, build for `wasm32-unknown-unknown`. Enable `http` on
+`everruns-contracts`, or `openai` / `openrouter` on `everruns-drivers`. The native
+socket and TLS dependencies are excluded on that target.
+
+Supply an `HttpTransport` backed by your host's `fetch`. It receives the encoded
+method, URL, headers and body, and returns the HTTP status, headers and a lazy
+byte stream. The existing driver still owns provider options, tool replay,
+request encoding, response parsing, SSE, retry policy and error classification.
+
+```rust
+use std::sync::Arc;
+use everruns_contracts::{BearerAuth, Provider};
+use everruns_contracts::http_transport::HttpTransport;
+use everruns_drivers::openrouter::OpenRouterChatDriver;
+
+fn provider(api_key: String, host_fetch: Arc<dyn HttpTransport>) -> Provider {
+    Provider::new(
+        "openrouter",
+        OpenRouterChatDriver::new().with_transport(host_fetch),
+    )
+    .base_url("https://openrouter.ai/api/v1")
+    .auth(BearerAuth::new(api_key))
+}
+```
+
+The same `.with_transport(...)` method is available on `OpenAIChatDriver`,
+`OpenAICompletionsChatDriver`, `OpenAIProtocolChatDriver` and
+`OpenResponsesProtocolChatDriver`. Native applications may also inject a
+transport; otherwise they keep the shared HTTP client. WASM requires an adapter
+and reports an error if none is supplied.
+
+The adapter owns endpoint and DNS policy, redirect refusal, network timeouts,
+and cancellation when a request or response stream is dropped. Treat it as
+trusted application code: it handles provider credentials. Return response
+headers before consuming the body and stream bytes incrementally. Host JS
+futures must be wrapped for the single-threaded WASM `Send` contract. OpenAI
+WebSocket, realtime, speech, embeddings and decision transports remain native;
+this support covers HTTP chat.
+
+The [Workers/Durable Object fetch adapter](https://github.com/everruns/everruns/blob/main/examples/durable-object-agent/src/fetch.rs)
+shows exact bytes, manual redirects, cancellation and read deadlines. The
+[workerd integration tests](https://github.com/everruns/everruns/tree/main/tests/wasm-providers)
+run model/tool/model exchanges in both a Worker and a Durable Object without
+reimplementing either provider protocol.
 
 ## Custom providers
 

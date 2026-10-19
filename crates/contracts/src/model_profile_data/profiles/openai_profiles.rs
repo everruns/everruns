@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::{INLINE_TOOL_ADDITIONS_PARAMETER, INLINE_TOOL_CHANGES_PARAMETER};
 
 fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelProfile {
     ModelProfile {
@@ -38,6 +39,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
         supported_parameters: Vec::new(),
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     }
 }
@@ -55,35 +57,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             "text-embedding-3-large",
             0.13,
         )),
-        "gpt-realtime-2" => Some(ModelProfile {
-            name: "GPT Realtime 2".into(),
-            family: "gpt-realtime".into(),
-            description: Some("OpenAI Realtime model for low-latency voice sessions".into()),
-            release_date: None,
-            last_updated: None,
-            attachment: false,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: false,
-            open_weights: false,
-            cost: None,
-            limits: None,
-            modalities: Some(ModelModalities {
-                input: vec![Modality::Text, Modality::Audio],
-                output: vec![Modality::Text, Modality::Audio],
-            }),
-            reasoning_effort: Some(reasoning_effort_realtime()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: true,
-            supports_server_compaction: false,
-            decisions: None,
-        }),
-
+        "gpt-realtime-2" | "gpt-realtime-2.1" => realtime::profile_data(model_id),
         "o3" => Some(ModelProfile {
             name: "o3".into(),
             family: "o3".into(),
@@ -121,6 +95,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -161,6 +136,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -201,6 +177,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -242,6 +219,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -282,6 +260,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -322,6 +301,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -364,6 +344,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -404,6 +385,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -444,6 +426,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -484,6 +467,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -524,6 +508,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -565,6 +550,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -605,6 +591,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -645,6 +632,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -686,6 +674,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -727,6 +716,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -767,6 +757,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -807,6 +798,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -848,6 +840,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -901,9 +894,10 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             speed: Some(speed_flex_priority()),
             verbosity: Some(verbosity_standard()),
             tool_search: true,
-            supported_parameters: Vec::new(),
+            supported_parameters: vec![INLINE_TOOL_CHANGES_PARAMETER.to_string()],
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -947,9 +941,10 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             speed: Some(speed_flex_priority()),
             verbosity: Some(verbosity_standard()),
             tool_search: true,
-            supported_parameters: Vec::new(),
+            supported_parameters: vec![INLINE_TOOL_CHANGES_PARAMETER.to_string()],
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -993,9 +988,10 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             speed: Some(speed_flex_priority()),
             verbosity: Some(verbosity_standard()),
             tool_search: true,
-            supported_parameters: Vec::new(),
+            supported_parameters: vec![INLINE_TOOL_CHANGES_PARAMETER.to_string()],
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1038,9 +1034,10 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             speed: Some(speed_flex_priority()),
             verbosity: Some(verbosity_standard()),
             tool_search: true,
-            supported_parameters: Vec::new(),
+            supported_parameters: vec![INLINE_TOOL_ADDITIONS_PARAMETER.to_string()],
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1081,6 +1078,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1127,9 +1125,10 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             speed: Some(speed_flex_priority()),
             verbosity: None,
             tool_search: true,
-            supported_parameters: Vec::new(),
+            supported_parameters: vec![INLINE_TOOL_ADDITIONS_PARAMETER.to_string()],
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1170,6 +1169,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1210,6 +1210,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1256,6 +1257,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: true,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1297,6 +1299,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1337,6 +1340,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1377,6 +1381,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1418,6 +1423,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 
@@ -1458,6 +1464,7 @@ pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
 

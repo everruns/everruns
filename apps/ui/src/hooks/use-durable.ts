@@ -14,7 +14,6 @@ import {
   getWorkflow,
   getWorkflowEvents,
   cancelWorkflow,
-  signalWorkflow,
   listTasks,
   getTaskStats,
   enqueueTask,
@@ -391,27 +390,6 @@ export function useCancelWorkflow() {
         queryKey: ["durable", "workflow", workflowId],
       });
       queryClient.invalidateQueries({ queryKey: ["durable", "health"] });
-    },
-  });
-}
-
-export function useSignalWorkflow() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      workflowId,
-      signalType,
-      payload,
-    }: {
-      workflowId: string;
-      signalType: string;
-      payload?: Record<string, unknown>;
-    }) => signalWorkflow(workflowId, signalType, payload),
-    onSuccess: (_, { workflowId }) => {
-      queryClient.invalidateQueries({
-        queryKey: ["durable", "workflow", workflowId],
-      });
     },
   });
 }

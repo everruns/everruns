@@ -512,6 +512,7 @@ fn test_tool_result_image_serialization() {
 #[test]
 fn test_tool_result_with_images_serialization() {
     let result = everruns_contracts::tool_types::ToolResult {
+        details: None,
         tool_call_id: "call_1".to_string(),
         result: Some(json!({"ok": true})),
         images: Some(vec![ToolResultImage {
@@ -563,7 +564,14 @@ fn test_connection_required_into_tool_result() {
             "daytona"
         ))
     );
-    assert!(tool_result.error.is_none());
+    // A blocked call did not run: it is reported as a failure, so the model
+    // and the timeline never read it as a successful empty result.
+    let error = tool_result
+        .error
+        .as_deref()
+        .expect("blocked call carries an error");
+    assert!(error.contains("did not run"), "{error}");
+    assert!(error.contains("daytona"), "{error}");
 
     // Result JSON contains connection_required key
     let result_json = tool_result.result.unwrap();
@@ -573,6 +581,7 @@ fn test_connection_required_into_tool_result() {
 #[test]
 fn test_connection_required_serialization_roundtrip() {
     let result = everruns_contracts::tool_types::ToolResult {
+        details: None,
         tool_call_id: "call_conn".to_string(),
         result: Some(json!({"connection_required": "daytona"})),
         images: None,

@@ -142,8 +142,9 @@ Call any Daytona REST endpoint directly, for operations the dedicated tools do n
 
 ## Git
 
-- `daytona_git_clone` uses your connected GitHub account, so private repositories clone without extra setup.
+- `daytona_git_clone` uses your connected GitHub account, so private repositories clone without extra setup. When no person is in the run, or the person has not connected GitHub, it uses the agent's GitHub connection.
 - For push, pull, or fetch, call `daytona_git_credentials` once after creating the sandbox, then run git commands with `daytona_exec`.
+- Tokens written into the sandbox only reach repository contents: `daytona_git_clone`'s token covers the cloned repository alone, and `daytona_git_credentials` covers contents of every repository the connection reaches. Neither can open issues or review pull requests.
 - Repository arguments accept `user/repo` shorthand instead of full URLs.
 
 ## Sandbox lifecycle
@@ -161,6 +162,7 @@ All sandbox-scoped tools require a `sandbox_id`. The exceptions are `daytona_cre
 
 ## See also
 
+- [Computer Use](/capabilities/computer-use/): `computer_use_daytona` drives a desktop in a Daytona sandbox.
 - [Storage](/capabilities/session-storage/): API key and state persistence.
 - [Daytona documentation](https://www.daytona.io/docs)
 - [Integrations](/integrations/): every vendor integration.

@@ -2,8 +2,8 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::domains::users::row_to_principal;
 use crate::kernel_imports::{VirtualUser, VirtualUserStatus, contracts::typed_id::VirtualUserId};
-use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 
 use super::types::VirtualUserRow;
@@ -32,8 +32,10 @@ pub async fn row_to_identity(
     Ok(VirtualUser {
         id: row.id,
         organization_id: everruns_core::org_public_id_from_internal(org_id),
-        usage: crate::records::VirtualUserUsage::try_from(row.usage.as_str())
-            .map_err(anyhow::Error::msg)?,
+        usage: crate::domains::virtual_users::record::VirtualUserUsage::try_from(
+            row.usage.as_str(),
+        )
+        .map_err(anyhow::Error::msg)?,
         name: row.name,
         description: row.description,
         principal: principal.as_ref().map(|principal| principal.summary()),

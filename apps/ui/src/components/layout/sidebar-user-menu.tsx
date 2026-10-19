@@ -8,7 +8,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronUp, Key, LogOut, User } from "lucide-react";
+import { AccountIcon } from "@/components/icons/facet-icons";
+import { BookOpen, ChevronUp, Key, LogOut, ScrollText } from "lucide-react";
 import { McpConnectDialog, McpConnectMenuItem } from "@/components/layout/mcp-connect-button";
 import { NotificationIndicator, NotificationMenuSub } from "@/components/layout/notification-bell";
 import { ThemeMenuSub } from "@/components/layout/theme-menu";
@@ -23,6 +24,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+const DOCS_URL = "https://everruns.com/docs";
+const CHANGELOG_URL = "https://everruns.com/docs/changelog/";
 
 export type SidebarUserMenuUser = {
   name?: string | null;
@@ -96,7 +100,7 @@ export function SidebarUserMenu({
           <Avatar className="h-7 w-7">
             {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name || user.email} />}
             <AvatarFallback>
-              {user.name ? getInitials(user.name) : <User className="h-4 w-4" />}
+              {user.name ? getInitials(user.name) : <AccountIcon className="h-4 w-4" />}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1 text-left">
@@ -116,7 +120,7 @@ export function SidebarUserMenu({
               <DropdownMenuLabel>{requiresAuth ? "My Account" : "Local Account"}</DropdownMenuLabel>
               <NotificationMenuSub />
               <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
-                <User className="icon-sharp mr-2 h-4 w-4" />
+                <AccountIcon className="icon-sharp mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
               {requiresAuth && (
@@ -127,6 +131,25 @@ export function SidebarUserMenu({
               )}
               <ThemeMenuSub />
               <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
+              <DropdownMenuItem
+                onClick={() => window.open(DOCS_URL, "_blank", "noopener,noreferrer")}
+              >
+                <BookOpen className="icon-sharp mr-2 h-4 w-4" />
+                Documentation
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={
+                  <a
+                    href={CHANGELOG_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Changelog"
+                  />
+                }
+              >
+                <ScrollText className="icon-sharp mr-2 h-4 w-4" />
+                Changelog
+              </DropdownMenuItem>
               {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

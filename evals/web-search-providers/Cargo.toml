@@ -1,0 +1,30 @@
+# Standalone workspace: detached from the everruns workspace so it does not pull
+# mira-eval into the main build. It path-depends on the local integrations crate
+# so a run measures the working tree's search drivers, not a published snapshot.
+[workspace]
+
+[package]
+name = "everruns-web-search-providers-eval"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+description = "Mira eval study: result quality of the web search providers"
+publish = false
+
+[[bin]]
+name = "web_search_providers"
+path = "src/main.rs"
+
+[dependencies]
+mira-eval = "0.4"
+# The shipped drivers: free, Brave, Parallel and Cloudflare (Ceramic, Exa, Linkup).
+everruns-integrations = { path = "../../crates/integrations", default-features = false, features = ["web-search"] }
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["runtime"] }
+# Direct egress, the same transport the live driver tests use.
+everruns-core = { path = "../../crates/core", default-features = false, features = ["host", "direct-egress"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+futures = "0.3"

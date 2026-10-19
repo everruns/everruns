@@ -2,6 +2,7 @@ use super::*;
 use crate::browserless::test_chromium::{connect_guarded, launch_chromium};
 use base64::Engine;
 use everruns_contracts::runtime::capabilities::Capability;
+use everruns_contracts::runtime::computer_use::png_dimensions;
 use everruns_contracts::runtime::network_access::NetworkAccessList;
 use everruns_contracts::typed_id::SessionId;
 
@@ -302,6 +303,95 @@ async fn fills_and_submits_a_form_on_a_real_browser() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert_eq!(scrolled.as_f64(), Some(300.0));
+
+    display.into_session().disconnect().await;
+    let _ = browser.child.kill().await;
+}
+
+#[test]
+fn a_held_button_survives_between_calls() {
+    assert_eq!(parse_cursor("12,34"), Some(([12, 34], false)));
+    assert_eq!(parse_cursor("12,34,down"), Some(([12, 34], true)));
+    assert_eq!(parse_cursor("nope"), None);
+}
+
+const POINTER_PAGE: &str = r#"<!doctype html><html><body style="margin:0;height:3000px">
+<div id="pad" style="width:400px;height:300px;background:#eee"></div>
+<script>
+  window.log = [];
+  for (const kind of ['mousedown', 'mousemove', 'mouseup']) {
+    document.addEventListener(kind, (e) => {
+      if (kind !== 'mousemove' || e.buttons) window.log.push(kind + ':' + e.clientX + ',' + e.clientY + ':' + e.buttons);
+    });
+  }
+  document.addEventListener('keydown', (e) => window.log.push('keydown:' + e.key));
+  document.addEventListener('keyup', (e) => window.log.push('keyup:' + e.key));
+</script>
+</body></html>"#;
+
+#[tokio::test]
+async fn button_down_up_hold_key_and_zoom_on_a_real_browser() {
+    let Some(mut browser) = launch_chromium().await else {
+        eprintln!("skipping: no local Chromium found (set CHROMIUM_PATH to run)");
+        return;
+    };
+    let session = connect_guarded(&browser, BrowserEgress::new(None)).await;
+    let size = DisplaySize {
+        width: 800,
+        height: 600,
+    };
+    let mut display = CdpDisplay::attach(session, size, [0, 0])
+        .await
+        .map_err(|(_, e)| e)
+        .unwrap();
+    let url = format!(
+        "data:text/html;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(POINTER_PAGE)
+    );
+    display
+        .perform(&ComputerAction::Navigate { url })
+        .await
+        .unwrap();
+
+    for arguments in [
+        json!({"action": "mouse_move", "coordinate": [10, 20]}),
+        json!({"action": "left_mouse_down"}),
+        json!({"action": "mouse_move", "coordinate": [50, 60]}),
+        json!({"action": "left_mouse_up"}),
+        json!({"action": "hold_key", "text": "shift", "duration": 0.1}),
+    ] {
+        display
+            .perform(&action(arguments.clone()))
+            .await
+            .unwrap_or_else(|e| panic!("{arguments}: {e}"));
+    }
+    assert!(!display.button_held());
+    let log = eval(&mut display, "window.log").await;
+    let log: Vec<&str> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        log,
+        vec![
+            "mousedown:10,20:1",
+            "mousemove:50,60:1",
+            "mouseup:50,60:0",
+            "keydown:Shift",
+            "keyup:Shift",
+        ]
+    );
+
+    // Zoom reads the viewport region even after the page scrolled, scaled to
+    // the display.
+    eval(&mut display, "window.scrollTo(0, 500)").await;
+    let zoomed = display.zoom([0, 0, 200, 150]).await.unwrap();
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(&zoomed.base64)
+        .unwrap();
+    assert_eq!(png_dimensions(&png).unwrap(), (800, 600));
 
     display.into_session().disconnect().await;
     let _ = browser.child.kill().await;

@@ -52,7 +52,7 @@ rather than duplicate.
 
 | Capability       | Registers when                        | kind              | resource_id source         |
 |-----------------|---------------------------------------|--------------------|----------------------------|
-| Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
+| Sandbox (Daytona, E2B) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
 | Modal                        | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
@@ -107,7 +107,10 @@ V1 limitation:
 |--------|--------------------------------------------------|
 | Full   | PostgreSQL `session_resources` table              |
 | Dev    | Same table, on embedded PostgreSQL                |
-| gRPC   | `RegisterSessionResource`, `UpdateSessionResourceStatus`, `ListSessionResources`, `DeregisterSessionResource` RPCs |
+| Worker | Internal `worker_*_session_resource(s)` commands, over `ExecuteCommand` (gRPC) or `dispatch` (in-process); see [Internal worker commands](../foundations/domains.md#internal-worker-commands) |
+
+A worker's registry is built for one org and refuses a session outside it; `get`
+is a filtered list on the worker side.
 
 ### Auto-registration from LeasedResourceStore
 

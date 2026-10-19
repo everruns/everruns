@@ -228,8 +228,11 @@ Responsibilities:
 - cancel idle pause on `session.activated`
 - schedule idle pause on `session.idled`
 
-Current implementation uses in-process timers. Durable multi-instance
-scheduling can replace it without changing the Sandbox contract.
+The idle timer is in-process, so a restart or a failed pause can lose it. A
+cluster-once sweep (`crates/server/src/background/sandbox_idle_sweep.rs`, every
+minute) is the backstop: it pauses any managed Sandbox still running one sweep
+period past its idle limit while its session is not running a turn, and skips
+`keep_running` lifecycles.
 
 ## State and cleanup
 
@@ -241,14 +244,16 @@ to a disposable incarnation and may change after recovery.
 
 The Sandboxes page (`/sandboxes`, `GET /v1/sandboxes[/stats|/timeline|/{id}]`,
 [`domains/sandboxes`](../../crates/server/src/domains/sandboxes/commands.rs))
-lists every logical Sandbox in an organization across providers. It reads
-three things the hosted store keeps:
+lists every logical Sandbox in an organization across providers, on the
+first of its tabs; Templates (`/sandboxes/templates`) and provider accounts
+(`/sandboxes/accounts`, admins) are the others. It reads three things the
+hosted store keeps:
 
 - `sandboxes` rows outlive their Session. Deleting a Session marks its
   Sandboxes deleted and keeps the Session title and Agent, so deleted compute
   stays explainable. Deleted rows are purged after
   `SANDBOX_HISTORY_RETENTION_DAYS` (default 30,
-  [`sandbox_history_retention.rs`](../../crates/server/src/sandbox_history_retention.rs)).
+  [`sandbox_history_retention.rs`](../../crates/server/src/background/sandbox_history_retention.rs)).
 - `sandbox_state_transitions` is an append-only log written by a database
   trigger on every `observed_state` or `generation` change, so running time,
   pauses and rebuilds can be drawn without each writer remembering to log.
@@ -267,6 +272,27 @@ fallback. That fallback is not the hosted control-plane authority.
 Provider-owned remote resources should also register leased resources so the
 session resource registry and cleanup infrastructure can see them. Daytona does
 this through the existing leased-resource store.
+
+### Orphaned sandbox scan
+
+Records can still lose a provider sandbox (a create whose state save failed, a
+delete that never reached the provider). An hourly cluster-once job
+([`sandbox_orphan_scan.rs`](../../crates/server/src/background/sandbox_orphan_scan.rs))
+asks Daytona, E2B and Modal directly, by provider-side label, for sandboxes
+Everruns created, and cleans up the ones no live `sandbox_instances` row tracks.
+
+- Managed creates carry `everruns.managed=true` on top of the common
+  `everruns`, `everruns.session_id` and `everruns.org_id` labels. Tool-created
+  sandboxes lack the managed label, so the scan never touches them. The
+  logical Sandbox id is not stamped: it is assigned after the provider create
+  returns, and the session id already identifies it.
+- Credentials are the accounts managed Sandboxes pinned in
+  `profile_snapshot.target.credential`; targets with a custom `api_base` are
+  skipped. The job is off without an encryption key.
+- A candidate younger than 30 minutes, or still owned by an unreleased lease,
+  is left alone. The first sighting stops it (pause on E2B, terminate on
+  Modal) and is recorded in `sandbox_orphan_sightings`; a sighting 24 hours
+  later deletes it. At most 20 provider actions per run.
 
 ## Non-goals
 

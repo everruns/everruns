@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ConnectionFormField } from "@/lib/api/types";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "./locale-data";
+import { parseJsonStringList } from "./tags";
 
 export type FieldErrors = Partial<Record<string, string>>;
 
@@ -53,6 +54,9 @@ export function getFieldErrors(error: z.ZodError): FieldErrors {
 }
 
 export function parseTagList(value: string): string[] {
+  const fromJson = parseJsonStringList(value);
+  if (fromJson) return fromJson;
+
   return value
     .split(",")
     .map((tag) => tag.trim())
@@ -88,6 +92,19 @@ export const agentFormSchema = z.object({
   ),
   /** Conversation starters for a fresh Platform Chat thread. */
   starters: startersSchema.optional(),
+  /** Output token ceiling per model response; empty keeps the provider default. */
+  max_output_tokens: z.preprocess(
+    trimInput,
+    z
+      .string()
+      .refine(
+        (value) =>
+          value === "" ||
+          (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 2147483647),
+        "Enter a whole number of at least 1",
+      )
+      .optional(),
+  ),
 });
 
 export const harnessFormSchema = z.object({

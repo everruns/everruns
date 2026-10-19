@@ -25,8 +25,10 @@ token that creates them is the only real variable, and it decides whether the
 customer clicks consent once or once per agent.
 
 That design shipped in #3830 and #602 against a customer-supplied configuration
-token. The remaining upgrade — a manager app, which removes the per-agent
-consent — is blocked on Slack enrolling us, and is the only open item here.
+token. The manager app's org-level consent is built behind deployment
+configuration (EVE-1102) and stays dormant until Slack enables manager app
+support for our app; removing the per-agent consent on top of it
+(`managed_apps:install`) is the remaining open item.
 
 ## The constraint everything hangs on
 
@@ -131,6 +133,21 @@ grant once Slack enrolls us. Everything downstream — org-scoped encrypted toke
 storage, rotation, `apps.manifest.create`, the OAuth callback — is identical.
 Building behind that seam is what stopped the enrollment question from blocking.
 
+**The manager grant is the second token source, built ahead of enrollment.**
+A deployment with `SLACK_MANAGER_APP_CLIENT_ID`/`_SECRET` offers "Connect with
+Slack": one OAuth consent with `user_scope=app_configurations:read,write` and an
+empty bot `scope`, whose user token becomes the same `org_slack_connections` row
+a pasted token does, marked `grant_kind = manager_app`. That kind only decides
+refresh: a manager grant is a rotating OAuth user token, refreshed through
+`oauth.v2.access` with the manager app's client pair, not `tooling.tokens.rotate`.
+It was safe to build before Step 1's install question is answered because it
+does not depend on the answer: per-agent consent is unchanged, and
+`managed_apps:install` is deliberately not requested until we know what Slack
+does with it. The consent callback is unauthenticated, so the organization
+travels in an encrypted, expiring state (TM-SLACK-014). A grant without write
+scope or without token rotation is refused, not stored. The consent returns to
+Settings > Slack workspaces, not to the channel editor that may have started it.
+
 **The customer-supplied token path ships regardless of enrollment.** It is not a
 stopgap. It is the only path before enrollment, the required fallback after it
 (a customer may untick `managed_apps:install`, leaving a grant that cannot
@@ -168,7 +185,7 @@ preserve the exported Slack configuration, including permissions, endpoint URLs,
 agent-surface settings and suggested prompts. They run off the mutation request
 path; failures leave the saved agent intact and are logged. Manual apps remain
 operator-managed. See [identity propagation](../../crates/server/src/domains/agents/branding_slack.rs)
-and [manifest patching](../../crates/server/src/slack_provisioning/branding.rs).
+and [manifest patching](../../crates/server/src/channels/slack/provisioning/branding.rs).
 
 That rules out the cheapest true one-click: a single publicly distributed
 Everruns app behind a standard "Add to Slack" button. It is self-serve and needs
@@ -214,7 +231,7 @@ flows from recreating removed apps. Settings and delivery-evidence writes share 
 channel lock and re-read the current installation so stale writes cannot restore
 removed credentials. Archived Agents cannot start or finish
 an installation. See [cleanup](../../crates/server/src/domains/agent_channels/slack_cleanup.rs)
-and [regression coverage](../../crates/server/src/domains/agents/lifecycle_slack_tests.rs).
+and [regression coverage](../../crates/server/src/domains/agents/commands/tests/lifecycle_slack_tests.rs).
 
 **One-click is an OSS capability, not a SaaS feature.** A self-hosted deployment
 has a workspace and can generate a config token, so it gets the same path. Only
@@ -253,7 +270,7 @@ The generated manifest declared no `oauth_config.redirect_urls`. Slack rejects
 `/oauth/v2/authorize` outright without it — "redirect_uri did not match any
 configured URIs" — so no generated app could ever be installed by OAuth. The
 omission was invisible because the copy-paste flow never runs OAuth. See
-`slack_oauth_redirect_url` in `crates/server/src/api/slack_events/manifest.rs`.
+`slack_oauth_redirect_url` in `crates/server/src/channels/slack/events/manifest.rs`.
 
 Consent also has to request the bot permissions explicitly. Declaring them in
 the manifest does not replace requesting them in the OAuth URL. The manifest
@@ -296,11 +313,13 @@ reverse-engineering.
 
 ## Files
 
-- `crates/server/src/slack_provisioning.rs` — `configure`, the two early returns above, the provisioner, and the supervised `slack_token_rotation` sweep
-- `crates/server/src/records/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
+- `crates/server/src/channels/slack/provisioning/mod.rs` — `configure`, the two early returns above, the provisioner, and the supervised `slack_token_rotation` sweep
+- `crates/server/src/domains/agent_channels/record/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
 - `crates/server/src/storage/org_slack_connections.rs` — per-workspace connection storage; migrations `145`, `146` and `159`
-- `crates/server/src/api/slack_install.rs` — install and connection routes, and their deliberately different auth
-- `crates/server/src/api/slack_events/manifest.rs` — manifest generation and the endpoint URLs it declares
+- `crates/server/src/channels/slack/install.rs` — install and connection routes, and their deliberately different auth, including the manager app consent and callback
+- `crates/server/src/channels/slack/provisioning/manager_app.rs` — the manager app consent, its sealed state, and grant refresh
+- `crates/server/migrations/20261013113828_org_slack_connection_grant_kind.sql` — which token source a connection came from
+- `crates/server/src/channels/slack/events/manifest.rs` — manifest generation and the endpoint URLs it declares
 - `apps/ui/src/components/apps/channel-form.tsx` — the setup states the capability drives, and the workspace choice
 - `apps/ui/src/components/slack/slack-workspaces.tsx` — the connect wizard and token-shape check; the settings page lives at `apps/ui/src/app/(main)/settings/slack/`
 - [Slack Integration Modernization](slack-modernization.md) — where setup ordering was decided

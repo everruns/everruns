@@ -218,7 +218,8 @@ struct SendMessagesOptions<'a> {
     needs_interleaved_thinking: bool,
     wants_million_context: bool,
     wants_cache_diagnostics: bool,
-    wants_clear_at: bool,
+    /// Betas the conversation's own blocks need (`clear_at`, inline tools).
+    conversation_betas: &'a [&'static str],
     wants_server_compaction: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
@@ -275,7 +276,7 @@ impl AnthropicChatDriver {
             needs_interleaved_thinking,
             wants_million_context,
             wants_cache_diagnostics,
-            wants_clear_at,
+            conversation_betas,
             wants_server_compaction,
             max_tokens_from_profile,
             model,
@@ -329,9 +330,7 @@ impl AnthropicChatDriver {
                     if binds_thinking {
                         beta_features.push(layout::THINKING_BINDING_BETA);
                     }
-                    if wants_clear_at {
-                        beta_features.push("mid-conversation-system-clear-at-2026-08-21");
-                    }
+                    beta_features.extend(conversation_betas);
                     if wants_server_compaction {
                         beta_features.push(SERVER_COMPACTION_BETA);
                     }
@@ -666,7 +665,8 @@ impl AnthropicChatDriver {
         for (message_index, msg) in messages.iter().enumerate() {
             if let Some(clear_at) = prepared.and_then(|p| p.in_place_system(message_index)) {
                 in_place_systems.push((converted.len(), clear_at));
-                converted.push(layout::in_place_system(Self::convert_content(&msg.content)));
+                let content = Self::convert_content(&msg.content);
+                converted.push(layout::carrier(prepared, message_index, content));
                 continue;
             }
             match msg.role {
@@ -686,46 +686,7 @@ impl AnthropicChatDriver {
                             continue;
                         }
 
-                        let has_images = match &msg.content {
-                            MessageContent::Parts(parts) => parts
-                                .iter()
-                                .any(|p| matches!(p, LlmContentPart::Image { .. })),
-                            _ => false,
-                        };
-
-                        let content = if has_images {
-                            // Build array of text + image content blocks
-                            let blocks = match &msg.content {
-                                MessageContent::Parts(parts) => parts
-                                    .iter()
-                                    .filter_map(|p| match p {
-                                        LlmContentPart::Text { text } => {
-                                            Some(AnthropicToolResultBlock::Text {
-                                                text: text.clone(),
-                                            })
-                                        }
-                                        LlmContentPart::Image { url } => {
-                                            let source = if let Some(parsed) = parse_data_url(url) {
-                                                AnthropicImageSource::Base64 {
-                                                    media_type: parsed.media_type,
-                                                    data: parsed.data,
-                                                }
-                                            } else {
-                                                AnthropicImageSource::Url { url: url.clone() }
-                                            };
-                                            Some(AnthropicToolResultBlock::Image { source })
-                                        }
-                                        _ => None,
-                                    })
-                                    .collect(),
-                                MessageContent::Text(text) => {
-                                    vec![AnthropicToolResultBlock::Text { text: text.clone() }]
-                                }
-                            };
-                            AnthropicToolResultContent::Blocks(blocks)
-                        } else {
-                            AnthropicToolResultContent::Text(msg.content.to_text())
-                        };
+                        let content = tool_result::tool_result_content(&msg.content);
 
                         converted.push(AnthropicMessage {
                             role: "user".to_string(),
@@ -877,8 +838,7 @@ impl AnthropicChatDriver {
     /// tool entry. The model sees names + descriptions for deferred tools and
     /// loads their full schemas on demand via a natural-language search query.
     ///
-    /// Mirrors the
-    /// OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
+    /// Mirrors the OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
     /// defers each tool individually).
     ///
     /// `DeferrablePolicy::Never` tools keep full schemas (hot-path tools the model
@@ -928,19 +888,6 @@ impl AnthropicChatDriver {
 
         entries
     }
-}
-
-/// Store a `diagnostics` payload from the stream and log its headline.
-///
-/// The payload shape is Anthropic's, so it is carried verbatim on the
-/// completion metadata; the log line exists because a cache divergence is the
-/// kind of thing an operator wants to see without reading stored metadata.
-fn record_cache_diagnostics(slot: &Arc<Mutex<Option<serde_json::Value>>>, diagnostics: Value) {
-    tracing::info!(
-        diagnostics = %diagnostics,
-        "AnthropicDriver: received prompt cache diagnostics"
-    );
-    *slot.lock().unwrap() = Some(diagnostics);
 }
 
 mod chat_driver;
@@ -1141,19 +1088,6 @@ impl AnthropicToolChoice {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AnthropicCacheControl {
-    r#type: String,
-}
-
-impl AnthropicCacheControl {
-    fn ephemeral() -> Self {
-        Self {
-            r#type: "ephemeral".to_string(),
-        }
-    }
-}
-
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 enum AnthropicSystem {
@@ -1231,7 +1165,7 @@ struct AnthropicOutputConfig {
 }
 
 /// Claude families that use adaptive thinking. On Fable 5.x, Opus 5.5/5/4.8/4.7,
-/// and Sonnet 5.5/5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6
+/// Sonnet 5.5/5, and Haiku 5.5 budget thinking is removed (400); on Opus/Sonnet 4.6
 /// it is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_contracts::model_profiles`.
 ///
@@ -1248,6 +1182,7 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
+    "claude-haiku-5-5",
 ];
 
 /// Anthropic families with the 1M context window; gates `[1m]` suffix handling.
@@ -1264,6 +1199,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-sonnet-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
+    "claude-haiku-5-5",
 ];
 
 /// Split a `[1m]`-suffixed Anthropic model id (e.g. `claude-opus-4-8[1m]`) into
@@ -1303,9 +1239,6 @@ pub(crate) fn uses_adaptive_thinking(model_id: &str) -> bool {
         .any(|f| family.eq_ignore_ascii_case(f))
 }
 
-/// Map an everruns reasoning-effort level to the `output_config.effort` value
-/// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
-/// profiles and maps to the API's `max` level.
 /// Map a reasoning effort onto Anthropic's adaptive `output_config.effort`.
 ///
 /// Anthropic's scale tops out at `max` rather than `xhigh`, and has no separate
@@ -1401,6 +1334,9 @@ enum AnthropicContentBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
+    /// A beta block sent as built (`tool_addition`, see `tool_changes`).
+    #[serde(untagged)]
+    Raw(Value),
 }
 
 /// Content of a tool_result block - either a simple string or array of content blocks.
@@ -1422,6 +1358,8 @@ enum AnthropicToolResultBlock {
     Text { text: String },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "document")]
+    Document { source: AnthropicDocumentSource },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1517,6 +1455,13 @@ struct AnthropicUsage {
     /// Tokens written to cache
     #[serde(default)]
     cache_creation_input_tokens: Option<u32>,
+    /// Cache writes split by TTL; prices the 1 hour share.
+    #[serde(default)]
+    cache_creation: Option<cache::AnthropicCacheCreation>,
+    /// Server tool counts, e.g. `{"web_search_requests": 2}` (native web
+    /// search, billed per search).
+    #[serde(default)]
+    server_tool_use: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1626,6 +1571,9 @@ enum AnthropicDelta {
     /// Cryptographic signature for thinking content (sent after thinking_delta completes)
     #[serde(rename = "signature_delta")]
     SignatureDelta { signature: String },
+    /// A citation added to the text block being streamed (web search).
+    #[serde(rename = "citations_delta")]
+    CitationsDelta { citation: Value },
     #[serde(rename = "compaction_delta")]
     CompactionDelta {
         #[serde(default)]
@@ -1848,8 +1796,8 @@ impl AnthropicModelInfo {
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
-            // Only curated direct Anthropic profiles can prove server compaction.
-            supports_server_compaction: false,
+            supports_server_compaction: false, // only curated direct profiles prove it
+            model_card_url: None,
             decisions: None,
         }
     }
@@ -1968,12 +1916,15 @@ impl AnthropicModelInfo {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
+#[path = "driver_cache.rs"]
+mod cache;
 #[path = "driver_layout.rs"]
 mod layout;
+#[path = "driver_tool_changes.rs"]
+mod tool_changes;
+#[path = "driver_tool_result.rs"]
+mod tool_result;
+use cache::{AnthropicCacheControl, record_cache_diagnostics};
 
 #[cfg(test)]
 #[path = "driver_family_tests.rs"]

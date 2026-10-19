@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::*;
+use base64::Engine;
 use everruns_contracts::runtime::capabilities::Capability;
 use everruns_contracts::runtime::session_services::SessionStorageStore;
 use everruns_contracts::runtime::session_services::{KeyInfo, SecretInfo};
@@ -86,6 +87,47 @@ fn drag_presses_moves_through_a_midpoint_and_releases() {
 }
 
 #[test]
+fn a_modified_drag_holds_its_modifiers_and_buttons_act_at_the_pointer() {
+    let drag = commands(json!({
+        "action": "left_click_drag", "start_coordinate": [10, 10], "coordinate": [30, 50],
+        "text": "shift"
+    }));
+    let drag = strs(&drag);
+    assert_eq!(drag[1], vec!["keydown", "shift"]);
+    assert_eq!(drag.last().unwrap(), &vec!["keyup", "shift"]);
+    assert_eq!(
+        strs(&commands(json!({"action": "left_mouse_down"}))),
+        vec![vec!["mousedown", "1"]]
+    );
+    assert_eq!(
+        strs(&commands(json!({"action": "left_mouse_up"}))),
+        vec![vec!["mouseup", "1"]]
+    );
+}
+
+#[test]
+fn zoom_crops_the_region_and_scales_it_to_the_display() {
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let args = zoom_args([100, 100, 356, 292], display);
+    // 256x192 fits 1024x768 at 4x.
+    assert_eq!(&args[5..], ["100", "100", "256", "192", "1024", "768"]);
+    assert!(args[1].contains("import -display"));
+    assert!(args[1].contains("ffmpeg"));
+}
+
+#[test]
+fn the_pointer_position_is_read_from_xdotool() {
+    assert_eq!(
+        parse_mouse_location("X=12\nY=34\nSCREEN=0\nWINDOW=1\n").unwrap(),
+        [12, 34]
+    );
+    assert!(parse_mouse_location("garbage").is_err());
+}
+
+#[test]
 fn move_scroll_and_wait() {
     assert_eq!(
         strs(&commands(
@@ -165,13 +207,26 @@ fn the_display_script_gets_values_as_positional_arguments() {
     assert_eq!(args[3..], [":99", "1024x768", WORK_DIR]);
 }
 
+/// Without `-noreset`, Xvfb regenerates whenever its last client
+/// disconnects: every one-shot xdotool call is that client until the desktop
+/// session connects, so the pointer snapped back to the screen center and a
+/// held button or key was dropped between actions.
+#[test]
+fn the_display_survives_its_last_client_disconnecting() {
+    let xvfb = START_DISPLAY_SCRIPT
+        .lines()
+        .find(|line| line.starts_with("setsid Xvfb"))
+        .expect("the script starts Xvfb");
+    assert!(xvfb.contains(" -noreset "), "{xvfb}");
+}
+
 // ---------------------------------------------------------------------------
 // Screenshot decoding
 // ---------------------------------------------------------------------------
 
 /// A minimal PNG header: signature plus an IHDR chunk.
 fn png(width: u32, height: u32) -> Vec<u8> {
-    let mut bytes = PNG_SIGNATURE.to_vec();
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     bytes.extend(13u32.to_be_bytes());
     bytes.extend(b"IHDR");
     bytes.extend(width.to_be_bytes());

@@ -131,6 +131,7 @@ pub use everruns_contracts::runtime::agent_definition;
 #[cfg(feature = "agent-package")]
 pub mod agent_package;
 pub mod ard_attachment;
+pub mod session_mcp_servers;
 pub use everruns_contracts::runtime::capability_dto;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
@@ -143,6 +144,7 @@ pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
 pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
+pub use everruns_contracts::runtime::mcp_resources;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
 pub use everruns_contracts::runtime::network_access;
@@ -174,9 +176,12 @@ pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub use everruns_contracts::runtime::channel;
+// The shared channel host and reply delivery.
+#[cfg(feature = "channels")]
+pub mod channel_runtime;
 
 // Permissions model (policies, rules, caller context)
-pub use everruns_contracts::runtime::channel_messaging;
+pub use everruns_contracts::runtime::conversation;
 pub mod permissions;
 pub use everruns_contracts::runtime::resource_names;
 
@@ -192,6 +197,7 @@ pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub mod compaction_checkpoint;
+pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
 pub use everruns_contracts::runtime::computer_use;
 pub mod config;
@@ -208,6 +214,7 @@ pub mod guardrail_gallery;
 pub use everruns_contracts::runtime::llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
+pub(crate) mod attachment_labels;
 pub mod llm_conversions;
 pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
@@ -251,7 +258,6 @@ pub use everruns_contracts::runtime::truncation_info;
 mod test_fixtures;
 
 // Stable completion semantics; execution state and planning live in everruns_core::engine.
-pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
@@ -269,8 +275,7 @@ pub use config_layer::{
 pub use connection_services::UserConnectionResolver;
 pub use delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
 pub use durability::{
-    DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
-    StreamProgress, ToolCallClaimResult,
+    DurableToolResultStore, PartialStreamState, PartialStreamStore, ToolCallClaimResult,
 };
 #[cfg(test)]
 pub(crate) use error::Result;
@@ -314,10 +319,10 @@ pub use workspace_roots::{
 
 // Channel abstraction re-exports
 pub use channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelStreamDelivery, ChannelViewContext,
+    DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
+    InboundAttachment, InboundChannelEvent, OutboundChannelMessage, Participant, RemoteCredential,
+    SessionBinding, ThreadContext,
 };
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted
@@ -349,9 +354,14 @@ pub use database_failure::{DatabaseFailureKind, log_database_failure};
 // Outbound egress service re-exports
 pub use egress::{
     DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+    EgressResponse, EgressResult, EgressScope, EgressService, EgressSigning, EgressStreamResponse,
+    ScopedEgressService,
 };
-pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use system_allowlist::{
+    AllowGroup, EGRESS_POLICY_ENV, EgressAccess, EgressPolicyDenial, EgressPolicyGrant,
+    EgressPolicyMode, OPEN_READ_MAX_URL_LEN, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist,
+    SystemEgressPolicy,
+};
 
 // EVE-879: the system email contract and its concrete senders (Resend,
 // disabled/noop, `SystemEmailConfig`) moved to the `crates/server/src/records/` —
@@ -489,6 +499,11 @@ pub use guardrail_checks::{
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
 };
+pub use session_mcp_servers::{
+    SESSION_MCP_SERVER_KV_PREFIX, SessionMcpServer, SessionMcpServerSource, get_session_mcp_server,
+    load_session_mcp_servers, put_session_mcp_server, remove_session_mcp_server,
+    session_mcp_server_kv_key,
+};
 // EVE-881: the stored `Harness` persistence record, its lifecycle enum, the
 // chain-merge helpers, and the built-in provisioning templates moved to the
 // `crates/server/src/records/`. Core keeps only the portable harness execution
@@ -501,19 +516,26 @@ pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
 pub use mcp_deferred::{
-    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
-    deferred_mcp_server_prefix, partition_deferred_mcp_servers, reveal_deferred_mcp_server,
-    revealed_mcp_servers,
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
+    deferred_mcp_server_definition, deferred_mcp_server_prefix, partition_deferred_mcp_servers,
+    reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use mcp_proxy::{
-    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
+    build_mcp_proxy_tools,
+};
+pub use mcp_resources::{
+    LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
+    add_mcp_resource_tool_definitions, is_mcp_resource_tool,
 };
 pub use mcp_server::{
-    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpConnectInChat, McpContent, McpElicitationPolicy, McpError, McpProtocolMode,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2025_11,
+    MCP_PROTOCOL_VERSION_2026_07, McpAnnotations, McpConnectInChat, McpContent,
+    McpElicitationPolicy, McpError, McpProtocolMode, McpReadResourceResult, McpResource,
+    McpResourceContents, McpResourceTemplate, McpResourceTemplatesPage, McpResourcesPage,
     McpSecretBindingMetadata, McpServerActsAs, McpServerAuthMode, McpServerPresetRef,
     McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolLabel, McpToolsListRequest,
     McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers,
     apply_mcp_secret_binding_schemas, is_mcp_tool, mcp_oauth_provider_id_for_uuid,
     mcp_oauth_session_secret_name, mcp_tool_name, merge_scoped_mcp_servers,
@@ -558,12 +580,13 @@ pub use session_resource::{
 // the trait's signature vocabulary — and nothing in the kernel names either:
 // the capability resolves the store as a typed context extension.
 pub use session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION,
-    TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRecoveryGuard,
+    SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AG_UI, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
+    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
+    TaskMessageDirection, TaskMessagePart, TaskOwnership, TaskProgress, TaskSink, TaskWakePolicy,
+    apply_task_update, find_task_executor, recover_orphaned_task,
 };
 pub use skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,
@@ -603,6 +626,9 @@ pub mod ag_ui;
 /// Portable first-party capability implementations.
 #[cfg(feature = "builtins")]
 pub mod builtins;
+/// Credential verification for agent endpoints (OIDC/JWKS, introspection).
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth;
 /// Portable turn planning and Input/Reason/Act algorithms.
 #[cfg(feature = "engine")]
 pub mod engine;
@@ -611,9 +637,20 @@ pub mod engine;
 // The inherited host module contains audited Unix ownership and containment calls.
 #[allow(unsafe_code)]
 pub mod host;
+/// Portable host orchestration for isolate execution.
+#[cfg(all(feature = "execution-host", not(feature = "host")))]
+#[path = "portable_host.rs"]
+pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// Transactional session command semantics shared by Framework and platform hosts.
+#[cfg(all(feature = "engine", feature = "builtins"))]
+pub mod session_commands;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;
+
+/// Shared voice loop for voice channels.
+#[cfg(feature = "voice")]
+pub mod voice;

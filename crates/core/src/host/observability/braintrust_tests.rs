@@ -18,6 +18,7 @@ fn bare_generation_metadata(model: &str) -> LlmGenerationMetadata {
         model: model.to_string(),
         provider: None,
         response_model: None,
+        provider_id: None,
         usage: None,
         duration_ms: None,
         time_to_first_token_ms: None,
@@ -33,6 +34,7 @@ fn bare_generation_metadata(model: &str) -> LlmGenerationMetadata {
         tool_calls_dropped: 0,
         tool_calls_truncated_executed: 0,
         truncation_gate: None,
+        tool_changes: None,
     }
 }
 use everruns_contracts::tool_types::ToolCall;

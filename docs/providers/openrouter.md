@@ -48,7 +48,9 @@ Providers are configured by organization admins under **Settings** →
 Click **Connect with OpenRouter** and authorize in the browser. OpenRouter's
 one-click [PKCE](https://openrouter.ai/docs/use-cases/oauth-pkce) flow returns a
 user-controlled API key that Everruns stores org-wide, no key copy-pasting, and
-no app registration. An admin authorizes once; everyone in the org then uses the
+no app registration. The consent screen's key label is preset to
+`Everruns <organization name>`, which is also the name of the key OpenRouter
+creates. An admin authorizes once; everyone in the org then uses the
 models the provider serves against the single stored credential. The key is
 encrypted at rest and never returned by the API.
 
@@ -95,6 +97,15 @@ estimate. Everruns records this as the generation's authoritative
 when needed) alongside its own estimated cost. Budgets debit the actual cost when
 present and fall back to the estimate otherwise, so spend tracking and
 [budgeting](/capabilities/budgeting/) reflect what OpenRouter actually charged.
+
+## Low balance
+
+When a request does not set a token limit, OpenRouter reserves the model's full
+output limit against your credits and rejects the call with HTTP 402 ("can only
+afford N tokens") if the balance cannot cover it. Set **Max output tokens** on
+the agent (`max_output_tokens` in the API, `--max-output-tokens` in the CLI) to
+a value below that number so each call fits. Everruns sends it as `max_tokens`
+and never asks for more than the model's own output limit.
 
 ## Logs, traces, and observability
 

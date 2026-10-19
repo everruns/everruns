@@ -41,11 +41,11 @@ A **check** binds a **rule** to a **stage** with an **on-fail action**.
 | `regex` | Any of the patterns matches the stage text | all | in-process, sync |
 | `blocklist` | Any word/phrase appears as a substring (case-insensitive by default) | all | in-process, sync |
 | `tool_pattern` | The tool name matches a `*`-wildcard glob | `tool_use` only | in-process, sync |
-| `llm_judge` | A natural-language policy, evaluated by a system model | `tool_use`, `tool_output` | async, model-backed |
-| `mcp` | Decision delegated to an external guardrail served over scoped MCP | `tool_use`, `tool_output` | async, off-platform |
+| `llm_judge` | A natural-language policy, evaluated by a system model | all | async, model-backed |
+| `mcp` | Decision delegated to an external guardrail served over scoped MCP | all | async, off-platform |
 | `moderation` | The finalized message scored against content categories | `output` only | async, model-backed |
 
-Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming and per-tool-call hot path, linear-time, no I/O, with hard limits on check count, entries, and lengths so an authored pattern can never wedge a worker. Model-backed and MCP rules run only in the async hook path (and, for `output`, on a post-generation end-of-message boundary), never on the sync hot path.
+Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming and per-tool-call hot path, linear-time, no I/O, with hard limits on check count, entries, and lengths so an authored pattern can never wedge a worker. Model-backed and MCP rules run only in the async hook path (and, for `output`, on a post-generation end-of-message boundary), never on the sync hot path. On `output` they inspect the finished message once, after streaming, and a block replaces the whole message; an `mcp` check there receives `tool: null`.
 
 ### Engines
 
@@ -120,7 +120,7 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 - **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's decision model, or your organization's default decision model when **System decisions** is set to it. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
-Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for all `jev` checks on a stage) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
+Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per tool call or finalized message, and one batched request for all `jev` checks on a stage) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.
 
 ## Tuning: dry-run and advisory
 
@@ -145,7 +145,7 @@ Each listing carries a full `config` plus trust metadata so a picker can show wh
 | `stages` | Which stages the preset's checks run in |
 | `data_egress` | `none` for deterministic presets; `utility_llm` when a preset contains a model-backed check |
 
-`data_egress` is **derived from the check types**, not hand-authored, so it stays correct as presets mix deterministic and model-backed checks. Adoption is client-side config composition: drop a preset's `config` into the agent's `guardrails` capability config (merging or replacing checks). There is no new persisted resource and no import endpoint. Noisy presets (PII, prompt-injection heuristics) ship `log`-only so they are safe to adopt active and tune before switching individual checks to `block`.
+`data_egress` is **derived from the check types**, not hand-authored, so it stays correct as presets mix deterministic and model-backed checks. Adoption is client-side config composition: drop a preset's `config` into the agent's `guardrails` capability config (merging or replacing checks). The capability settings on an agent or harness do this in the editor: add a preset to append its checks, or add a check and set its rule, stage, and what happens on a match. There is no new persisted resource and no import endpoint. Noisy presets (PII, prompt-injection heuristics) ship `log`-only so they are safe to adopt active and tune before switching individual checks to `block`.
 
 Shipped presets include secret detection, a model-backed secret-leak judge, PII detection, a profanity starter, dangerous-shell blocking, shell-access blocking, and prompt-injection heuristics.
 

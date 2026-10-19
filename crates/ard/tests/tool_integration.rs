@@ -194,6 +194,24 @@ async fn discover_then_attach_mcp_server() {
         other => panic!("expected mcp server attachment, got {other:?}"),
     }
 
+    // The server joins through the general session MCP server record, and the
+    // next turn's fold puts it in the session's mcpServers.
+    let record = everruns_core::get_session_mcp_server(store.as_ref(), session_id, "docs")
+        .await
+        .expect("session MCP server record written");
+    assert_eq!(
+        record.source,
+        everruns_core::SessionMcpServerSource::Ard {
+            urn: "urn:ai:acme.com:mcp:docs".into()
+        }
+    );
+    let mut session = everruns_core::ExecutionSession::with_own_workspace(
+        session_id,
+        everruns_contracts::typed_id::HarnessId::new(),
+    );
+    everruns_core::apply_session_attachments(store.as_ref(), &mut session).await;
+    assert_eq!(session.mcp_servers["docs"].url, format!("{base}/mcp"));
+
     // Idempotent: re-attaching the same URN reports already_attached.
     let res = attach
         .execute_with_context(json!({ "urn": "urn:ai:acme.com:mcp:docs" }), &context)

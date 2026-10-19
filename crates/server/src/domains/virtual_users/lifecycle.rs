@@ -5,10 +5,11 @@
 // Both routes must end at the same identity with the same principal parent, so
 // the guarded write lives here once rather than in each caller.
 
+use crate::domains::users::PrincipalService;
 use crate::kernel_imports::Caller;
-use crate::services::PrincipalService;
+use crate::storage::CreateVirtualUserRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::{AgentRow, CreateVirtualUserRow, PrincipalRow};
+use crate::storage::{AgentRow, PrincipalRow};
 use everruns_contracts::typed_id::VirtualUserId;
 use std::sync::Arc;
 
@@ -89,7 +90,11 @@ pub(crate) async fn ensure_identity_for_agent(
     // is harmless: the orphan is an unreferenced, archivable row on a rare race.
     let _ = db.delete_virtual_user(org_id, new_id).await;
     let _ = principals
-        .sync_virtual_user_status(org_id, new_id, crate::records::PrincipalStatus::Archived)
+        .sync_virtual_user_status(
+            org_id,
+            new_id,
+            crate::domains::users::record::PrincipalStatus::Archived,
+        )
         .await;
     let winner_principal = principals
         .default_owner_principal(&caller, Some(winner))
@@ -107,7 +112,7 @@ mod tests {
 
     use super::*;
     use crate::kernel_imports::DEFAULT_ORG_ID;
-    use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
+    use crate::storage::{CreateAgentRow, CreateHarnessRow};
     use everruns_contracts::typed_id::AgentId;
 
     /// An agent needs a harness, so seed both. Mirrors the trigger-side helper
@@ -160,6 +165,8 @@ mod tests {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    max_output_tokens: None,
+                    communication: Default::default(),
                     environments: None,
                     is_built_in: false,
                 },

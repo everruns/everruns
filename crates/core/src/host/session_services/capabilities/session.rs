@@ -85,14 +85,18 @@ pub async fn update_session_title_with_event(
     let current = session_store
         .get_session(session_id)
         .await?
-        .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
     let previous_title = current.title.clone();
 
     let Some(event) =
         session_title_updated_event(session_id, event_context, previous_title, title.clone())
     else {
+        // Explicit naming takes ownership even when the text is unchanged.
+        let session = session_mutator
+            .update_session_title(session_id, title)
+            .await?;
         return Ok(SessionTitleMutation {
-            session: current,
+            session,
             changed: false,
         });
     };

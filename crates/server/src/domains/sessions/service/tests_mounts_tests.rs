@@ -133,7 +133,6 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -154,6 +153,8 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
+        communication: Default::default(),
     })
     .execute(&other_ctx)
     .await
@@ -162,7 +163,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
     let session_row = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
@@ -332,6 +333,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service
@@ -355,7 +357,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
 
 #[tokio::test]
 async fn create_rejects_declarative_capability_with_high_risk_dependency_for_members() {
-    use crate::storage::models::CreateDeclarativeCapabilityRow;
+    use crate::storage::CreateDeclarativeCapabilityRow;
 
     let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
@@ -423,6 +425,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
         role: OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     };
 
     let err = session_service
@@ -476,7 +479,6 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "other-agent".to_string(),
         display_name: Some("Other Agent".to_string()),
@@ -497,6 +499,8 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
+        communication: Default::default(),
     })
     .execute(&other_ctx)
     .await
@@ -505,7 +509,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
     let session_row = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
@@ -786,6 +790,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
                     title: None,
                     goal: None,
                     virtual_user_id: UpdateField::Unchanged,
+                    model_id: UpdateField::Unchanged,
                     locale: None,
                     tags: Some(forbidden.clone()),
                 },
@@ -922,6 +927,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
                 title: None,
                 goal: None,
                 virtual_user_id: UpdateField::Unchanged,
+                model_id: UpdateField::Unchanged,
                 locale: None,
                 tags: Some(updated_tags.clone()),
             },
@@ -1019,7 +1025,7 @@ async fn app_session_creation_enforces_total_session_cap() {
 async fn concurrent_session_cap_enforced() {
     use crate::domains::sessions::limits::OrgCaps;
     use crate::errors::BadRequestError;
-    use crate::storage::models::UpdateSession;
+    use crate::storage::UpdateSession;
 
     let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -1250,7 +1256,7 @@ async fn shared_agent_memory_is_visible_across_sessions() {
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "shared-memory@example.com").await;
     let _ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+    let harness_id = crate::setup::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
     let managed = db
@@ -1324,6 +1330,25 @@ async fn shared_agent_memory_is_visible_across_sessions() {
     assert_eq!(listing.len(), 1);
     assert_eq!(listing[0].path, "/memory/shared/notes.md");
 
+    // `/memory` itself has no row, yet it is a directory that shows the
+    // mounts below it; an agent listing it used to conclude it had no memory.
+    let memory = files
+        .stat(second.id.uuid(), "/memory")
+        .await
+        .unwrap()
+        .expect("/memory is a directory");
+    assert!(memory.is_directory);
+    let listing = files
+        .list_directory(second.id.uuid(), "/memory")
+        .await
+        .unwrap();
+    assert!(
+        listing
+            .iter()
+            .any(|entry| entry.path == "/memory/shared" && entry.is_directory),
+        "{listing:?}"
+    );
+
     let hits = files
         .grep(
             second.id.uuid(),
@@ -1389,7 +1414,6 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         service_virtual_user_id: None,
-
         id: None,
         name: "memory-agent".to_string(),
         display_name: Some("Memory Agent".to_string()),
@@ -1410,6 +1434,8 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
+        communication: Default::default(),
     })
     .execute(&ctx)
     .await

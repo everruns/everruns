@@ -3,7 +3,5 @@
 
 #[cfg(feature = "agentid")]
 pub mod agentid;
-#[cfg(feature = "deno")]
-pub mod deno;
 #[cfg(feature = "sprites")]
 pub mod sprites;

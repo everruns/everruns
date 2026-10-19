@@ -8,8 +8,8 @@
 
 use crate::engine::{ActInput, ExecutionContext, ReasonResult};
 use crate::events::{TokenUsage, TurnCompletedData};
-use crate::turn::TurnStopReason;
 use chrono::{DateTime, Utc};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{
     AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId, WorkspaceId,
 };
@@ -22,9 +22,8 @@ use tracing::{debug, info};
 
 /// Host-owned state carried across turn phases.
 ///
-/// Durable hosts can persist this between activities; in-memory hosts can hold
-/// it directly in memory. The type itself is engine-level and has no host,
-/// store, or durable-engine coupling.
+/// A host can persist this between phases or hold it in memory. The type
+/// itself is engine-level and has no host or store coupling.
 ///
 /// Hosts are expected to serialize this however they want. `everruns_core::engine`
 /// only defines the fields required to resume the next semantic step.
@@ -51,6 +50,10 @@ pub struct TurnState {
     pub tool_call_count: u32,
     #[serde(default)]
     pub llm_call_count: u32,
+    /// Failed tool calls the act phases returned to the model; reported as
+    /// `turn.completed.issue_count`.
+    #[serde(default)]
+    pub issue_count: u32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub time_to_first_token_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -153,6 +156,9 @@ pub enum TurnLifecycleEffect {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ActOutcome {
     pub blocked: bool,
+    /// Tool calls that failed and went back to the model as results. Issues,
+    /// not errors: the turn carries on.
+    pub issue_count: u32,
     pub waiting_for_tool_results: bool,
     /// The pause is a URL mode elicitation consent card, which only a client
     /// that declared `url_elicitation` can answer.
@@ -248,7 +254,10 @@ impl TurnState {
             next.time_to_first_token_ms = reason_result.time_to_first_token_ms;
         }
         next.final_message_id = reason_result.output_message_id;
-        next.final_answer_preview = preview_final_answer(&reason_result.text);
+        // An explicit agent's text is working notes, never an answer to preview.
+        if !reason_result.commentary {
+            next.final_answer_preview = preview_final_answer(&reason_result.text);
+        }
         next
     }
 
@@ -400,6 +409,7 @@ pub fn plan_after_reason(
                     input_message_id: state.input_message_id,
                     exec_id: ExecId::new(),
                     workspace_id: facts.workspace_id,
+                    tool_calls_message_id: reason_result.output_message_id,
                 },
                 harness_id: state.harness_id,
                 agent_id: state.agent_id,
@@ -445,6 +455,21 @@ pub fn plan_after_reason(
         return (TurnPlan::ScheduleReason(next), Vec::new());
     }
 
+    let stop_reason = if !reason_result.success {
+        match TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref()) {
+            TurnStopReason::Refusal => TurnStopReason::Refusal,
+            _ => TurnStopReason::Error,
+        }
+    } else if max_turn_requests_reached
+        && (reason_result.has_tool_calls
+            || pending_user_message_count > 0
+            || reason_result.truncation_retry)
+    {
+        TurnStopReason::MaxTurnRequests
+    } else {
+        TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
+    };
+
     let turn_id = state.turn_id.unwrap_or_default();
     let mut effects = Vec::new();
 
@@ -452,6 +477,7 @@ pub fn plan_after_reason(
         effects.push(TurnLifecycleEffect::TurnCompleted {
             input_message_id: state.input_message_id,
             data: TurnCompletedData {
+                termination_reason: Some(stop_reason),
                 turn_id,
                 iterations: state.iteration,
                 duration_ms: summarized_state.duration_ms(now),
@@ -462,6 +488,7 @@ pub fn plan_after_reason(
                 time_to_first_token_ms: summarized_state.time_to_first_token_ms,
                 tool_call_count: Some(summarized_state.tool_call_count),
                 llm_call_count: Some(summarized_state.llm_call_count),
+                issue_count: Some(summarized_state.issue_count),
                 status: Some("completed".to_string()),
                 stop_reason: reason_result.finish_reason.clone(),
             },
@@ -484,28 +511,13 @@ pub fn plan_after_reason(
     }
 
     // turn_end lifecycle hooks (advisory). Fired once the turn reaches a
-    // terminal reason outcome on the durable/strategy path.
+    // terminal reason outcome on the strategy path.
     effects.push(TurnLifecycleEffect::FireTurnEndHooks {
         harness_id: state.harness_id,
         agent_id: state.agent_id,
         turn_id,
         success: reason_result.success,
     });
-
-    let stop_reason = if !reason_result.success {
-        match TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref()) {
-            TurnStopReason::Refusal => TurnStopReason::Refusal,
-            _ => TurnStopReason::Error,
-        }
-    } else if max_turn_requests_reached
-        && (reason_result.has_tool_calls
-            || pending_user_message_count > 0
-            || reason_result.truncation_retry)
-    {
-        TurnStopReason::MaxTurnRequests
-    } else {
-        TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
-    };
 
     (
         TurnPlan::Complete {
@@ -585,6 +597,7 @@ pub fn plan_after_act(
 
     let next = TurnState {
         iteration: state.iteration.saturating_add(1),
+        issue_count: state.issue_count.saturating_add(outcome.issue_count),
         ..state.clone()
     };
 

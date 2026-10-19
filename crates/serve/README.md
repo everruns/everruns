@@ -104,6 +104,7 @@ credential chain whenever `AWS_REGION` is set.
 | [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | The full layout: a tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals, and the bashkit sandbox. |
 | [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | The `ag-ui` feature: an agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
 | [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | The `a2a` feature: a served `researcher`, and an `everruns` agent that delegates to it over A2A. |
+| [`examples/serve/voice`](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | The `voice` feature: a hotel front desk people call from the browser. |
 
 ## Project layout
 
@@ -143,7 +144,7 @@ cron, a filter naming an unknown tool.
 |---|---|---|
 | `#[agent]`, `#[agent(default)]`, `#[agent(sub)]` | `fn() -> Agent` | An agent. `/v1/sessions` serves the default one; a subagent becomes an `ask_<name>` tool on the others. |
 | `#[tool]`, `#[tool(needs_approval)]`, `#[tool(needs_approval = \|a: &Args\| …)]` | `async fn([cx: &Cx,] args…) -> Result<T>` | A tool. The name is the fn name and the doc comment is the description. It also generates an `Args` struct (`run_sql` → `RunSql`) with a JSON Schema. |
-| `#[channel]` | `fn() -> impl Channel` | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back to it. It also generates `name::channel(target)`. |
+| `#[channel]` | `fn() -> impl Into<Channel>` (a driver such as `Slack` or `Webhook`) | `POST /v1/channels/{name}`. Each thread maps to one session, and replies are delivered back while the turn runs. `agent = "…"` picks the agent. It also generates `name::channel(target)`. |
 | `#[schedule("0 9 * * MON")]` | `async fn(&Cx) -> Result` | A cron entry. |
 | `#[connection]` | `fn() -> T` or `fn() -> Result<T>` | A value tools get with `cx.connection::<T>()`. An `McpServer` is also attached to every agent. |
 | `#[eval]` | `async fn(&mut EvalCx) -> Result` | A conversation with assertions. It runs in-process or `--against <url>`. |
@@ -177,6 +178,22 @@ session, and each task one turn whose reply is the task's `response` artifact.
 everruns-serve = { version = "0.33", features = ["a2a"] }
 ```
 
+## Voice
+
+With the `voice` feature, every top-level agent also takes browser voice calls:
+`POST /v1/channels/{agent}/voice/calls` exchanges the WebRTC offer for an SDP
+answer, and `GET /v1/channels/{agent}/voice` is a test page with a call
+button. Each utterance becomes a user message on an ordinary session; the
+answer is spoken as it streams. `[voice]` in `serve.toml` sets the voice,
+greeting and speaking style. With `mode = "cascaded"`, calls use separate
+speech-to-text and text-to-speech models and connect a WebSocket to
+`/v1/channels/{agent}/voice/ws`, with PCM audio both ways. Speech uses OpenAI
+with `OPENAI_API_KEY`; `dev` falls back to an offline simulator.
+
+```toml
+everruns-serve = { version = "0.33", features = ["voice"] }
+```
+
 ## Commands
 
 The commands are part of the app binary, because only the linked binary knows
@@ -187,12 +204,12 @@ what it registered.
 | `dev` (default) | Runs the wire API with SQLite under `.serve/` and a live console of turns, tool calls and approvals. Models fall back to the simulator. Markdown prompts and skills hot-reload; for Rust changes use `cargo watch -x run`. `POST /dev/schedules/{name}` fires a schedule on demand. |
 | `start` | Production mode. Every model must route through a gateway, and every declared secret must be set. |
 | `manifest [--out f]` | Prints the host contract as JSON. |
-| `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion). |
+| `eval [--against URL] [filter]` | Runs the evals. With `--against`, it runs them against a running deploy (a CI gate before promotion); `SERVE_CREDENTIAL` or `--credential` supplies the bearer credential a protected deploy needs. |
 | `deploy` | Prints what a host would provision from the manifest. This PoC has no cloud target. |
 
 ## Documentation
 
-- [Serve overview](https://docs.everruns.com/framework/serve/)
+- [Serve overview](https://everruns.com/docs/framework/serve/)
 - [API reference](https://docs.rs/everruns-serve)
 - [Guide](https://github.com/everruns/everruns/blob/main/crates/serve/docs/guide.md): writing an app, piece by piece.
 - [Wire API](https://github.com/everruns/everruns/blob/main/crates/serve/docs/wire-api.md): the `/v1` routes, the event stream, and resuming.
@@ -217,7 +234,6 @@ It does not have:
 - a deny note that reaches the model, or "always" approvals and subagent
   requests that survive a restart;
 - auth, organizations, or the server's agent, harness and workspace routes;
-- Slack signature checks without `SLACK_SIGNING_SECRET` (they are skipped in dev).
 
 ## License
 

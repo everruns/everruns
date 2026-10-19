@@ -202,9 +202,24 @@ def check_test_cases(root: pathlib.Path, errors: list[str]) -> None:
         errors.append(f"{rel}/: duplicate test case identifier {identifier}: {names}")
 
 
+def check_no_crate_specs(root: pathlib.Path, errors: list[str]) -> None:
+    # Design intent lives in the bundle only. A `specs/` folder inside a crate
+    # is a second home that drifts from it (crates/server/specs held four
+    # concepts until 2026-10-09).
+    crates = root.resolve().parent / "crates"
+    if not crates.is_dir():
+        return
+    for spec in sorted(crates.glob("**/specs/*.md")):
+        if "node_modules" in spec.parts or "target" in spec.parts:
+            continue
+        rel = spec.relative_to(crates.parent)
+        errors.append(f"{rel}: specs belong in knowledge/, not in a crate")
+
+
 def check_bundle(root: pathlib.Path) -> tuple[list[str], dict[str, int]]:
     errors: list[str] = []
     counts = {"concepts": 0, "indexes": 0, "logs": 0}
+    check_no_crate_specs(root, errors)
     if not (root / "index.md").exists():
         errors.append("index.md: bundle root index is missing")
     check_test_cases(root, errors)

@@ -8,6 +8,7 @@
 
 use crate::test_harness;
 
+use everruns_contracts::typed_id::SessionId;
 use everruns_server::storage::{CreateOrganizationRow, CreatePrincipalRow};
 use serde_json::json;
 use test_harness::TestServer;
@@ -77,18 +78,44 @@ async fn create_org(server: &TestServer, label: &str) -> i64 {
 }
 
 async fn counts(server: &TestServer, session_id: Uuid, workspace_id: Uuid) -> (i64, i64, i64) {
-    let (event_count, task_count): (i64, i64) =
-        sqlx::query_as("SELECT event_count, task_count FROM sessions WHERE id = $1")
-            .bind(session_id)
-            .fetch_one(&server.pool)
-            .await
-            .expect("load session tab counters");
-    let file_count: i64 = sqlx::query_scalar("SELECT file_count FROM workspaces WHERE id = $1")
+    (
+        event_count(server, session_id).await,
+        task_count(server, session_id).await,
+        file_count(server, workspace_id).await,
+    )
+}
+
+/// Read through the session repository: `event_count` is derived from
+/// `event_sequences` by the query, not stored on the row.
+async fn event_count(server: &TestServer, session_id: Uuid) -> i64 {
+    let org_id: i64 = sqlx::query_scalar("SELECT org_id FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_one(&server.pool)
+        .await
+        .expect("load session org");
+    server
+        .db
+        .get_session(org_id, SessionId::from_uuid(session_id))
+        .await
+        .expect("load session")
+        .expect("session exists")
+        .event_count
+}
+
+async fn task_count(server: &TestServer, session_id: Uuid) -> i64 {
+    sqlx::query_scalar("SELECT task_count FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_one(&server.pool)
+        .await
+        .expect("load session task counter")
+}
+
+async fn file_count(server: &TestServer, workspace_id: Uuid) -> i64 {
+    sqlx::query_scalar("SELECT file_count FROM workspaces WHERE id = $1")
         .bind(workspace_id)
         .fetch_one(&server.pool)
         .await
-        .expect("load workspace file counter");
-    (event_count, task_count, file_count)
+        .expect("load workspace file counter")
 }
 
 #[tokio::test]
@@ -102,7 +129,8 @@ async fn tab_counters_track_events_tasks_and_files() {
     sqlx::query(
         r#"
         INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
-        SELECT uuidv7(), $1, n, 'output.message.delta', '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
+        SELECT uuidv7(), $1, allocate_event_sequence($1), 'output.message.delta',
+               '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
           FROM generate_series(1, 250) n
         "#,
     )
@@ -180,6 +208,132 @@ async fn tab_counters_track_events_tasks_and_files() {
     );
 }
 
+/// Retention deletes leave the derived event count matching the live events
+/// (migration 191): deleted events are recorded as removed sequence numbers.
+#[tokio::test]
+async fn event_count_follows_retention_deletes() {
+    let server = TestServer::new().await;
+    let org_id = create_org(&server, "Session event count deletes org").await;
+    let (session_id, _workspace_id) = create_counted_session(&server, org_id).await;
+
+    sqlx::query(
+        r#"
+        INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+        SELECT uuidv7(), $1, allocate_event_sequence($1), 'output.message.delta',
+               '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
+          FROM generate_series(1, 5) n
+        "#,
+    )
+    .bind(session_id)
+    .execute(&server.pool)
+    .await
+    .expect("seed events");
+    assert_eq!(event_count(&server, session_id).await, 5);
+
+    let mut tx = server.pool.begin().await.expect("begin");
+    sqlx::query("SET LOCAL app.archival_bypass = 'true'")
+        .execute(&mut *tx)
+        .await
+        .expect("archival bypass");
+    sqlx::query("DELETE FROM events WHERE session_id = $1 AND sequence <= 2")
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await
+        .expect("archive two events");
+    tx.commit().await.expect("commit");
+    assert_eq!(event_count(&server, session_id).await, 3);
+
+    sqlx::query(
+        r#"
+        INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+        VALUES (uuidv7(), $1, allocate_event_sequence($1), 'output.message.delta',
+                '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+        "#,
+    )
+    .bind(session_id)
+    .execute(&server.pool)
+    .await
+    .expect("insert after archival");
+    assert_eq!(event_count(&server, session_id).await, 4);
+}
+
+/// Turn counters and the last-turn pointer move once per turn, when its
+/// terminal event lands (migration 191). Tool calls are counted from the
+/// events since the previous terminal event, and the pointer never moves back
+/// for an older turn.
+#[tokio::test]
+async fn turn_counters_move_once_per_turn() {
+    let server = TestServer::new().await;
+    let org_id = create_org(&server, "Session turn counters org").await;
+    let (session_id, _workspace_id) = create_counted_session(&server, org_id).await;
+
+    let insert = |sequence: i64, kind: &'static str| {
+        sqlx::query(
+            r#"
+            INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+            VALUES (uuidv7(), $1, $2, $3, '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+            "#,
+        )
+        .bind(session_id)
+        .bind(sequence)
+        .bind(kind)
+    };
+    let read = || {
+        sqlx::query_as::<_, (i64, i64, Option<String>, Option<i32>)>(
+            "SELECT turn_count, tool_call_count, last_turn_status, last_turn_sequence \
+             FROM sessions WHERE id = $1",
+        )
+        .bind(session_id)
+    };
+
+    insert(1, "tool.completed")
+        .execute(&server.pool)
+        .await
+        .expect("tool call");
+    assert_eq!(
+        read().fetch_one(&server.pool).await.expect("read counters"),
+        (0, 0, None, None),
+        "events inside a turn leave the session row alone"
+    );
+
+    // One statement with two turns: each counts the tool calls since the
+    // previous one, and the later one wins the pointer. The trailing tool call
+    // belongs to the next turn.
+    sqlx::query(
+        r#"
+        INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
+        SELECT uuidv7(), $1, n, kind, '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
+          FROM unnest(
+                 ARRAY[2, 3, 4, 5, 6],
+                 ARRAY['tool.completed', 'turn.completed', 'output.message.completed',
+                       'turn.failed', 'tool.completed']
+               ) AS e(n, kind)
+        "#,
+    )
+    .bind(session_id)
+    .execute(&server.pool)
+    .await
+    .expect("seed a batch of events");
+    assert_eq!(
+        read().fetch_one(&server.pool).await.expect("read counters"),
+        (2, 2, Some("failed".to_string()), Some(5))
+    );
+
+    insert(9, "turn.completed")
+        .execute(&server.pool)
+        .await
+        .expect("newer turn");
+    // An older turn arriving late counts, but does not move the pointer back.
+    insert(7, "turn.cancelled")
+        .execute(&server.pool)
+        .await
+        .expect("older turn");
+    assert_eq!(
+        read().fetch_one(&server.pool).await.expect("read counters"),
+        (4, 3, Some("completed".to_string()), Some(9))
+    );
+}
+
 #[tokio::test]
 async fn session_response_carries_the_counts_and_omits_the_empty_ones() {
     use axum::http::StatusCode;
@@ -248,7 +402,8 @@ async fn session_detail_read_never_scans_events() {
     sqlx::query(
         r#"
         INSERT INTO events (id, session_id, sequence, event_type, data, context, ts, created_at)
-        SELECT uuidv7(), $1, n, 'output.message.delta', '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
+        SELECT uuidv7(), $1, allocate_event_sequence($1), 'output.message.delta',
+               '{}'::jsonb, '{}'::jsonb, NOW(), NOW()
           FROM generate_series(1, 2000) n
         "#,
     )
@@ -270,7 +425,10 @@ async fn session_detail_read_never_scans_events() {
     let plan: Vec<(String,)> = sqlx::query_as(
         r#"
         EXPLAIN
-        SELECT s.id, s.event_count, s.task_count, COALESCE(w.file_count, 0) AS workspace_file_count
+        SELECT s.id,
+               COALESCE((SELECT es.next_sequence - 1 - es.removed_count
+                           FROM event_sequences es WHERE es.session_id = s.id), 0)::BIGINT AS event_count,
+               s.task_count, COALESCE(w.file_count, 0) AS workspace_file_count
           FROM sessions s
           LEFT JOIN workspaces w ON w.id = s.workspace_id
          WHERE s.org_id = $1 AND s.id = $2

@@ -20,6 +20,7 @@
 //! ```
 
 mod driver;
+mod grounding;
 
 pub use driver::{GeminiChatDriver, descriptor, from_env, provider, register_driver};
 

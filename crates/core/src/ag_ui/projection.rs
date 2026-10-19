@@ -25,18 +25,18 @@
 // with `everruns-core`'s own data types. One state machine then serves the
 // server endpoint, `serve`, and the framework.
 
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use crate::events::{
-    OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData, SessionTaskEventData,
-    TaskMessageEventData, TurnFailedData,
+    ConversationMessageData, OutputMessageCompletedData, OutputMessageDeltaData,
+    OutputMessageStartedData, ReasonItemData, SessionTaskEventData, TaskMessageEventData,
+    TurnFailedData,
 };
 use crate::session_task::{
     SessionTask, SessionTaskState, TASK_KIND_SUBAGENT, TaskMessageDirection, TaskMessagePart,
 };
 use crate::{ContentPart, RuntimeMessage};
-use everruns_contracts::execution_phase::ExecutionPhase;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -152,9 +152,17 @@ pub struct Projector {
     assistant_message_id: Option<String>,
     assistant_content_started: bool,
     assistant_emitted_delta: bool,
+    /// The runtime message that streamed last and the text it had then.
+    streamed: Option<(String, String)>,
+    /// AG-UI ids for runtime messages whose stream restarted; see
+    /// `output.message.delta` in [`Self::project`].
+    message_alias: HashMap<String, String>,
     /// The last assistant message that carried tool calls rather than an
     /// answer: the parent of any frontend tool call the run stops on.
     tool_call_message_id: Option<String>,
+    /// The streaming output message is working notes (explicit
+    /// communication): its deltas are not the answer and are not shown.
+    commentary_message_id: Option<String>,
     /// The open reasoning span and reasoning message, if any.
     reasoning_span: Option<String>,
     reasoning_message: Option<String>,
@@ -195,7 +203,10 @@ impl Projector {
             assistant_message_id: None,
             assistant_content_started: false,
             assistant_emitted_delta: false,
+            streamed: None,
+            message_alias: HashMap::new(),
             tool_call_message_id: None,
+            commentary_message_id: None,
             reasoning_span: None,
             reasoning_message: None,
             span_opened_by_tools: false,
@@ -388,16 +399,70 @@ impl Projector {
             return;
         }
         match event_type {
-            "output.message.delta" => {
-                if let Some(data) = parse::<OutputMessageDeltaData>(data) {
+            "output.message.started" => {
+                // A repeated start for a message that streamed text is a
+                // retried stream (the engine's `StreamReplayState::Text`).
+                if let Some(started) = parse::<OutputMessageStartedData>(data)
+                    && let id = started.message_id.uuid().to_string()
+                    && self.streamed.as_ref().is_some_and(|(seen, _)| *seen == id)
+                {
+                    self.restart_message(id);
+                }
+                self.commentary_message_id = data
+                    .get("phase")
+                    .and_then(Value::as_str)
+                    .filter(|phase| *phase == "commentary")
+                    .and_then(|_| data.get("message_id").and_then(Value::as_str))
+                    .map(str::to_owned);
+            }
+            "output.message.delta"
+                if self.commentary_message_id.is_some()
+                    && data.get("message_id").and_then(Value::as_str)
+                        == self.commentary_message_id.as_deref() => {}
+            // A message the agent sent (explicit communication) is a whole
+            // assistant text message. It does not end the run: the agent may
+            // send more, and the run ends with the turn.
+            "conversation.message" => {
+                if let Some(data) = parse::<ConversationMessageData>(data)
+                    && !data.text.trim().is_empty()
+                {
                     let message_id =
                         self.ensure_assistant_message(data.message_id.uuid().to_string());
                     self.open_assistant_text(&message_id);
                     self.queue
                         .push_back(Event::TextMessageContent(TextMessageContentEvent::new(
-                            message_id, data.delta,
+                            message_id, data.text,
+                        )));
+                    self.close_assistant_text();
+                }
+            }
+            "output.message.delta" => {
+                if let Some(data) = parse::<OutputMessageDeltaData>(data) {
+                    let runtime_id = data.message_id.uuid().to_string();
+                    // A stream restarted without a repeated start (resume
+                    // after a crash) shows as text that stops extending what
+                    // was streamed.
+                    let restarted = self.streamed.as_ref().is_some_and(|(id, seen)| {
+                        *id == runtime_id
+                            && !data.accumulated.is_empty()
+                            && !data.accumulated.starts_with(seen.as_str())
+                    });
+                    let content = if restarted {
+                        self.restart_message(runtime_id.clone());
+                        data.accumulated.clone()
+                    } else {
+                        data.delta
+                    };
+                    let message_id = self.ensure_assistant_message(self.ag_ui_id(&runtime_id));
+                    self.open_assistant_text(&message_id);
+                    self.queue
+                        .push_back(Event::TextMessageContent(TextMessageContentEvent::new(
+                            message_id, content,
                         )));
                     self.assistant_emitted_delta = true;
+                    // `accumulated` is empty where a host strips it (the
+                    // Framework does); the repeated start still detects a retry.
+                    self.streamed = Some((runtime_id, data.accumulated));
                 }
             }
             "output.message.completed" => {
@@ -603,7 +668,8 @@ impl Projector {
             self.tool_call_message_id = Some(message.id.uuid().to_string());
             return;
         }
-        let message_id = self.ensure_assistant_message(message.id.uuid().to_string());
+        let message_id =
+            self.ensure_assistant_message(self.ag_ui_id(&message.id.uuid().to_string()));
         self.open_assistant_text(&message_id);
         let text = public_text(&message.content);
         if !self.assistant_emitted_delta && !text.is_empty() {
@@ -615,6 +681,23 @@ impl Projector {
         }
         self.close_assistant_text();
         self.finish(None);
+    }
+
+    /// The AG-UI id of a runtime message: its own, unless its stream restarted.
+    /// AG-UI content only appends, so a restarted stream moves to a fresh
+    /// AG-UI message, which then carries the completion too.
+    fn restart_message(&mut self, runtime_id: String) {
+        self.close_assistant_text();
+        self.streamed = None;
+        let alias = self.next_id("message");
+        self.message_alias.insert(runtime_id, alias);
+    }
+
+    fn ag_ui_id(&self, runtime_id: &str) -> String {
+        self.message_alias
+            .get(runtime_id)
+            .cloned()
+            .unwrap_or_else(|| runtime_id.to_string())
     }
 
     /// Switches to `message_id`, closing a different open assistant message.
@@ -1037,7 +1120,7 @@ fn parse<T: DeserializeOwned>(data: &Value) -> Option<T> {
 /// Whether a completed output message is the run's public answer: not
 /// commentary, not a tool-call carrier, and with something to show.
 pub fn is_terminal_public_output(message: &RuntimeMessage, emitted_delta: bool) -> bool {
-    if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+    if crate::conversation::is_commentary(message.phase) {
         return false;
     }
     if message

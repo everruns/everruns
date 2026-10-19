@@ -826,10 +826,7 @@ mod tests {
         ToolResult {
             tool_call_id: "call".to_string(),
             result: Some(json!({ "ok": true })),
-            images: None,
-            error: None,
-            connection_required: None,
-            raw_output: None,
+            ..Default::default()
         }
     }
 

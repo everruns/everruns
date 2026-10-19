@@ -38,10 +38,12 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
 - **Variants live in PostgreSQL.** They are tens of KB each, so `bytea` beats the object store's
   extra pointer rows and GC.
 - **Slack gets it as the app icon.** Each Slack endpoint is its own Slack app, and a manifest cannot
-  carry an icon. With one-click provisioning the 512 px preset goes through `apps.icon.set` when
-  the app is created and on every avatar change, best effort (Slack allows about one call a
-  minute). Removing an avatar leaves the last icon, since Slack has no reset. Manually created
-  apps keep Slack's default icon.
+  carry an icon. With one-click provisioning Everruns calls `apps.icon.set` when the app is created,
+  again after it is installed (an icon set before the bot user exists may never appear), and on
+  every avatar change. When the API origin is public HTTPS, Slack fetches the immutable square URL;
+  otherwise the PNG is uploaded. Best effort, and retried when Slack rate-limits the call. Removing
+  an avatar leaves the last icon, since Slack has no reset. Manually created apps keep Slack's
+  default icon. See [`avatar_slack.rs`](../../crates/server/src/domains/agents/avatar_slack.rs).
 - **Agent Cards.** The A2A card carries the 256 px square as `iconUrl` on the card's own origin.
   The MCP agent card inlines the 64 px square as a data URI because its CSP blocks fetches.
 
@@ -50,6 +52,13 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
   [`avatar_presets.rs`](../../crates/server/src/domains/agents/avatar_presets.rs). Selection accepts
   only an exact catalog ID, retains that identity with the stored avatar, and persists the same
   square/circle variants and Slack updates as upload. No client-supplied source URL is fetched.
+- **Agents set avatars through the command catalog.** An agent building another agent works over
+  the CLI or MCP, which carry JSON arguments only. `set_agent_avatar` (`everruns agents avatar
+  set`) takes a catalog preset id or the image inline as base64, capped at 1 MB decoded so the
+  request stays under the 2 MB default body limit the command transports share;
+  `list_avatar_presets` (`everruns agents avatar presets`) lists the catalog. Larger images keep
+  the multipart route. All three sources share one write path and agent rule (not deleted, not
+  built-in) in [`avatar_commands`](../../crates/server/src/domains/agents/avatar_commands/mod.rs).
 - **Search is presentation only.** Each whitespace-separated term can match any metadata field,
   case-insensitively. Tiles and selected previews show artwork only; metadata remains available to
   search and assistive technology. Roles never change the agent's behavior or configuration. Current

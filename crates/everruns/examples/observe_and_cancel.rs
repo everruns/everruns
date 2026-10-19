@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-5.6-terra")
+        .model("gpt-6.1-sol")
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------
@@ -27,8 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pending = session.send("hi").await?;
     let mut rendered = String::new();
     while let Some(event) = events.recv().await? {
-        let terminal =
-            event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal();
+        let terminal = event.kind.is_terminal();
         match event.kind {
             SessionEventKind::TurnStarted => println!("[turn started]"),
             SessionEventKind::TextDelta { delta } => {

@@ -29,8 +29,8 @@ export default function HealthPage() {
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Health</h2>
         <p className="text-sm text-muted-foreground">
-          Pending integration issues and actions to restore their functionality. Reading or snoozing
-          a notification does not resolve an issue.
+          Pending organization and integration issues, and the actions that restore them. Reading or
+          snoozing a notification does not resolve an issue.
         </p>
       </div>
       {policies.isLoading ? (
@@ -81,7 +81,7 @@ export default function HealthPage() {
                   >
                     <p className="text-sm font-medium">{issue.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {issue.agent_name} ·{" "}
+                      {issue.agent_name ?? "Organization"} ·{" "}
                       {issue.status === "needs_check"
                         ? "Needs check"
                         : issue.stale

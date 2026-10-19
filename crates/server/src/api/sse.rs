@@ -268,7 +268,7 @@ impl SseConnectionRejection {
     /// conversation than it is allowed — a reconnect storm or a tab left
     /// duplicating itself. It is client-driven, self-limiting, and already
     /// answered with a 429, so it is backpressure rather than a fault: the same
-    /// reading `slack_delivery` applies to a Slack rate limit. Reporting it at
+    /// reading `channels::slack::delivery` applies to a Slack rate limit. Reporting it at
     /// `warn` filled the error tracker with 86 occurrences affecting no users
     /// (EVERRUNS-1M).
     ///

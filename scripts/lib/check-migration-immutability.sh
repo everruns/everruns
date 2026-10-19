@@ -44,6 +44,25 @@ if [ -n "$violations" ]; then
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/178_durable_task_queue_queue.sql\tcrates/server/migrations/179_durable_task_queue_queue.sql' || true)"
   # #4333 and #4334 both merged a migration 186; the later one moves to 187.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/186_agentid_sign_in.sql\tcrates/server/migrations/187_agentid_sign_in.sql' || true)"
+  # #4350 and #4335 both merged a migration 188 (189 was taken by then); the
+  # later one moves to 190.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/188_events_session_counters_one_trigger.sql\tcrates/server/migrations/190_events_session_counters_one_trigger.sql' || true)"
+  # #4458 and #4467 both merged a migration 200 (201 was taken by then); the
+  # later one moves to 202.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/200_session_trace.sql\tcrates/server/migrations/202_session_trace.sql' || true)"
+  # #4474 and #4447 both merged a migration 201 (202 and 203 were taken by
+  # then); the later one moves to 204.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/201_agent_communication.sql\tcrates/server/migrations/204_agent_communication.sql' || true)"
+  # #4537 and #4534 both merged a migration 215; the later one moves to 216.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/215_org_egress_open.sql\tcrates/server/migrations/216_org_egress_open.sql' || true)"
+  # #4549, #4546 and #4553 all merged a migration 218; Poppy keeps 218, the
+  # trigger subject values move to 219 and the session database generation to 220.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_agent_trigger_subject_values.sql\tcrates/server/migrations/219_agent_trigger_subject_values.sql' || true)"
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/218_session_database_generation.sql\tcrates/server/migrations/220_session_database_generation.sql' || true)"
+  # The 2026-10-11 baseline moved the legacy history 001..222, unchanged, into
+  # migrations/legacy/ (knowledge/operations/migrations.md). Only an exact,
+  # content-identical move of a NNN_ file into legacy/ under its own name passes.
+  violations="$(printf '%s\n' "$violations" | grep -vE $'^R100\tcrates/server/migrations/([0-9]{3}_[^/]+\\.sql)\tcrates/server/migrations/legacy/\\1$' || true)"
 fi
 
 if [ -n "$violations" ]; then

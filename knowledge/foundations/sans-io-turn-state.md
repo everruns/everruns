@@ -14,9 +14,10 @@ The turn loop was historically implemented twice: a mutable in-memory machine
 and a serializable planner driven by the durable worker. They encoded the same
 phases and transitions in different shapes, so semantics could drift.
 
-Both real hosts now advance the engine-owned `TurnExecution`: the durable path
-restores it from each step's checkpoint in durable-engine's `TurnTaskDriver`,
-and the in-process runtime through `InProcessExecution`. The former core/test-support state machines and the
+Both real hosts now advance the engine-owned `TurnExecution` through
+`drive_turn`: a platform worker under a session lease, resuming from a fold of
+the session log, and the in-process runtime through `InProcessExecution`. (The
+retired per-step durable path restored it from a checkpoint after every step.) The former core/test-support state machines and the
 stateless host compatibility planner have been removed.
 
 This spec converges them on one **sans-IO** representation: a
@@ -118,9 +119,11 @@ the default kernel contains no atom implementation or compatibility module.
 
 `everruns_core::engine::TurnExecution` owns state advancement as well as planning.
 `everruns_core::host::InProcessExecution` retains it for the turn lifetime;
-durable-engine's `TurnTaskDriver` restores a `TurnExecution` from the
-checkpoint and saves its state again between durable activities. A cross-driver conformance test feeds identical outcomes into both
-implementations and compares the resulting engine state.
+the retired per-step durable driver restored a `TurnExecution` from a
+checkpoint between activities. A cross-driver conformance test
+(`crates/worker/tests/execution_conformance.rs`) still restores the machine
+from a serialized checkpoint between every phase and compares it with the
+continuous driver, which keeps `TurnExecution` serializable.
 
 ### Stage 2, fold in the durable bookkeeping (landed)
 
@@ -200,6 +203,6 @@ converge later.
 - `crates/core/src/host/turn_strategy.rs`, `advance_host_execution`, the runtime
   host's thin I/O wrapper over an explicit engine driver, plus host-fact
   resolvers and the lifecycle-effect applier both drivers share
-- `crates/core/src/host/runtime.rs`, `InProcessRuntime::run_turn`, the engine-planned
+- `crates/core/src/host/runtime/mod.rs`, `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)
 - `knowledge/operations/durable-execution-engine.md`, the durable host this converges with

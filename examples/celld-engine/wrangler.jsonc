@@ -1,16 +1,11 @@
 {
-  "name": "celld-engine-cell",
-  "main": "build/worker/shim.mjs",
-  "compatibility_date": "2026-01-01",
+  "name": "everruns-celld-engine",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "TENANT_ID": "example", "MODEL": "gpt-6-luna" },
   "durable_objects": {
-    "bindings": [{ "name": "CELL", "class_name": "AgentCell" }]
+    "bindings": [{ "name": "SESSIONS", "class_name": "SessionAuthority" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgentCell"] }],
-  // OPENAI_API_KEY is a secret: `.dev.vars` locally.
-  "vars": {
-    "OPENAI_BASE_URL": "https://api.openai.com/v1",
-    "MODEL": "gpt-5-mini",
-    "TOOL_DELAY_MS": "2000",
-    "LEASE_MS": "30000"
-  }
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionAuthority"] }]
 }

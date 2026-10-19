@@ -24,6 +24,14 @@ use serde_json::{Value, json};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+// A fresh server per test, not one from wiremock's pool: the driver shares one
+// process-wide HTTP client, so a keep-alive connection left to a pooled
+// server's port by an earlier test can fail on reuse, and the driver's
+// transparent reconnect then sends the request twice.
+async fn server() -> MockServer {
+    MockServer::builder().start().await
+}
+
 fn hosted_driver(server: &MockServer, hosted_tools: bool) -> Provider {
     Provider::new(
         "openai",
@@ -92,7 +100,7 @@ async fn drain(provider: &Provider, config: &LlmCallConfig) -> Vec<LlmStreamEven
 
 #[tokio::test]
 async fn web_search_is_sent_without_function_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     drain(
@@ -112,7 +120,7 @@ async fn web_search_is_sent_without_function_tools() {
 
 #[tokio::test]
 async fn web_search_follows_function_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let mut config = web_search_config("gpt-6.1-sol");
     config.tools = vec![ToolDefinition::function(
@@ -135,7 +143,7 @@ async fn web_search_follows_function_tools() {
 
 #[tokio::test]
 async fn endpoint_without_hosted_tools_refuses_instead_of_dropping() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     let Err(error) = hosted_driver(&server, false)
@@ -153,7 +161,7 @@ async fn endpoint_without_hosted_tools_refuses_instead_of_dropping() {
 
 #[tokio::test]
 async fn no_option_sends_no_hosted_tools() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     drain(
@@ -211,7 +219,7 @@ fn web_search_stream() -> String {
 
 #[tokio::test]
 async fn web_search_response_streams_as_answer_text() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, web_search_stream()).await;
 
     let events = drain(
@@ -281,7 +289,7 @@ fn mcp_config() -> LlmCallConfig {
 
 #[tokio::test]
 async fn mcp_approval_request_pauses_as_a_synthetic_call() {
-    let server = MockServer::start().await;
+    let server = server().await;
     let approval = json!({
         "type": "mcp_approval_request", "id": "mcpr_1", "server_label": "deepwiki",
         "name": "ask_question", "arguments": "{\"repoName\":\"everruns/everruns\"}"
@@ -329,7 +337,7 @@ async fn mcp_approval_request_pauses_as_a_synthetic_call() {
 
 #[tokio::test]
 async fn approved_call_replays_as_approval_response() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let arguments =
         json!({ "server_label": "deepwiki", "name": "ask_question", "arguments": "{}" });
@@ -393,7 +401,7 @@ fn registered_mcp_config() -> LlmCallConfig {
 
 #[tokio::test]
 async fn registered_mcp_server_sends_resolved_credentials() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
     let inner = OpenResponsesProtocolChatDriver::new()
         .with_native_features(true, true)
@@ -416,7 +424,7 @@ async fn registered_mcp_server_sends_resolved_credentials() {
 
 #[tokio::test]
 async fn registered_mcp_server_without_a_resolver_is_refused() {
-    let server = MockServer::start().await;
+    let server = server().await;
     mount(&server, completed_only()).await;
 
     let Err(error) = hosted_driver(&server, true)
@@ -430,4 +438,216 @@ async fn registered_mcp_server_without_a_resolver_is_refused() {
     };
     assert!(error.to_string().contains("MCP server gh"), "{error}");
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+// Native web search (`everruns/web_search`): the shared `web_search` function
+// tool is swapped for OpenAI's hosted search only when the endpoint, the model
+// and the agent's filters allow it; otherwise the function tool stays so the
+// search plan's next provider answers.
+
+fn web_search_function() -> ToolDefinition {
+    ToolDefinition::function(
+        "web_search",
+        "Search the web",
+        json!({ "type": "object", "properties": { "query": { "type": "string" } } }),
+    )
+}
+
+fn native_search_config(
+    model: &str,
+    native: everruns_contracts::native_web_search::NativeWebSearch,
+) -> LlmCallConfig {
+    let mut config = LlmCallConfig::new(model);
+    config.tools = vec![
+        web_search_function(),
+        ToolDefinition::function(
+            "lookup",
+            "look something up",
+            json!({ "type": "object", "properties": {} }),
+        ),
+    ];
+    let (key, value) = native.to_driver_option();
+    config.driver_options.insert(key, value);
+    config
+}
+
+fn tool_entries(body: &Value) -> Vec<(String, Option<String>)> {
+    body["tools"]
+        .as_array()
+        .map(|tools| {
+            tools
+                .iter()
+                .map(|tool| {
+                    (
+                        tool["type"].as_str().unwrap_or_default().to_string(),
+                        tool["name"].as_str().map(str::to_string),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn native_search_replaces_the_web_search_function_tool() {
+    let server = server().await;
+    mount(&server, completed_only()).await;
+    let native = everruns_contracts::native_web_search::NativeWebSearch {
+        provider: "auto".into(),
+        allowed_domains: vec!["docs.rs".into()],
+        ..Default::default()
+    };
+
+    drain(
+        &hosted_driver(&server, true),
+        &native_search_config("gpt-6.1-sol", native),
+    )
+    .await;
+
+    let body = sent_body(&server).await;
+    assert_eq!(
+        tool_entries(&body),
+        [
+            ("function".to_string(), Some("lookup".to_string())),
+            ("web_search".to_string(), None)
+        ]
+    );
+    assert_eq!(
+        body["tools"][1],
+        json!({ "type": "web_search", "filters": { "allowed_domains": ["docs.rs"] } })
+    );
+    assert!(!body.to_string().contains("everruns/web_search"));
+}
+
+#[tokio::test]
+async fn native_search_declines_and_keeps_the_function_tool() {
+    use everruns_contracts::native_web_search::NativeWebSearch;
+    let blocked = NativeWebSearch {
+        blocked_domains: vec!["pinterest.com".into()],
+        ..Default::default()
+    };
+    // (driver has hosted tools, model, request)
+    let cases = [
+        // OpenAI cannot exclude domains: the plan's next provider must.
+        (true, "gpt-6.1-sol", blocked),
+        // A model without web search.
+        (true, "gpt-3.5-turbo", NativeWebSearch::default()),
+        // A gateway without OpenAI's hosted tools ignores the request (no
+        // error: unlike the hosted-tools option it is not a requirement).
+        (false, "gpt-6.1-sol", NativeWebSearch::default()),
+    ];
+    for (hosted, model, native) in cases {
+        let server = server().await;
+        mount(&server, completed_only()).await;
+        drain(
+            &hosted_driver(&server, hosted),
+            &native_search_config(model, native),
+        )
+        .await;
+        assert_eq!(
+            tool_entries(&sent_body(&server).await),
+            [
+                ("function".to_string(), Some("web_search".to_string())),
+                ("function".to_string(), Some("lookup".to_string()))
+            ],
+            "{model} hosted={hosted}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn configured_hosted_web_search_is_not_sent_twice() {
+    let server = server().await;
+    mount(&server, completed_only()).await;
+    let mut config = native_search_config("gpt-6.1-sol", Default::default());
+    config
+        .driver_options
+        .extend(web_search_config("gpt-6.1-sol").driver_options);
+
+    drain(&hosted_driver(&server, true), &config).await;
+
+    let body = sent_body(&server).await;
+    // OpenAI Server Tools' own entry (context size low) wins.
+    assert_eq!(
+        tool_entries(&body),
+        [
+            ("function".to_string(), Some("lookup".to_string())),
+            ("web_search".to_string(), None)
+        ]
+    );
+    assert_eq!(body["tools"][1]["search_context_size"], "low");
+}
+
+/// A session that searched natively on OpenAI and then moves to a model
+/// without native search replays its history as plain messages: the hosted
+/// `web_search_call` items were never part of the transcript, so nothing
+/// provider-specific is sent, and the function tool is back.
+#[tokio::test]
+async fn history_after_native_search_replays_on_a_model_without_it() {
+    let server = server().await;
+    mount(&server, completed_only()).await;
+    let mut config = native_search_config("gpt-3.5-turbo", Default::default());
+    // The earlier turn's continuation handle belongs to the other model.
+    config.previous_response_id = None;
+    let messages = vec![
+        Message::text(MessageRole::User, "What shipped in tokio 1.50?"),
+        Message::text(
+            MessageRole::Assistant,
+            "Tokio 1.50 shipped on 2026-10-02 (https://tokio.rs/blog/2026-10-tokio-1-50).",
+        ),
+        Message::text(MessageRole::User, "And 1.51?"),
+    ];
+    let mut stream = hosted_driver(&server, true)
+        .chat_completion_stream(messages, &config)
+        .await
+        .expect("request accepted");
+    while let Some(event) = stream.next().await {
+        event.expect("no transport error");
+    }
+
+    let body = sent_body(&server).await;
+    assert!(!body.to_string().contains("web_search_call"));
+    assert_eq!(
+        tool_entries(&body)[0],
+        ("function".to_string(), Some("web_search".to_string()))
+    );
+    let roles: Vec<&str> = body["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["role"].as_str())
+        .collect();
+    assert_eq!(roles, ["user", "assistant", "user"]);
+}
+
+#[tokio::test]
+async fn gateway_server_tool_use_reaches_completion_metadata() {
+    let server = server().await;
+    mount(
+        &server,
+        sse(&[json!({
+            "type": "response.completed",
+            "response": { "id": "resp_or", "status": "completed", "output": [],
+                          "usage": { "input_tokens": 5, "output_tokens": 1, "total_tokens": 6,
+                                     "cost": 0.021,
+                                     "server_tool_use": { "web_search_requests": 2 } } }
+        })]),
+    )
+    .await;
+
+    let events = drain(
+        &hosted_driver(&server, false),
+        &LlmCallConfig::new("openai/gpt-5.2"),
+    )
+    .await;
+
+    let done = events
+        .into_iter()
+        .find_map(|event| match event {
+            LlmStreamEvent::Done(meta) => Some(meta),
+            _ => None,
+        })
+        .expect("stream completes");
+    assert_eq!(done.hosted_tool_calls.get("web_search_call"), Some(&2));
+    assert_eq!(done.provider_cost_usd, Some(0.021));
 }

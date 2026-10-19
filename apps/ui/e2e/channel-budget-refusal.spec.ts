@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 
 const apiBaseUrl = process.env.PLAYWRIGHT_REAL_API_URL;
@@ -103,16 +103,11 @@ test.describe("channel budget refusal", () => {
       }),
     );
 
-    const apiKey = `evr_app_${randomUUID().replaceAll("-", "")}`;
     const bootstrapChannel = await jsonResponse<{ id: string }>(
       await request.post(`${apiBaseUrl}/api/v1/agents/${agent.id}/channels`, {
         data: {
-          channel_type: "api_endpoint",
-          channel_config: {
-            session_mode: "session_per_invocation",
-            api_key_hash: createHash("sha256").update(apiKey).digest("hex"),
-            api_key_prefix: apiKey.slice(0, 12),
-          },
+          channel_type: "api",
+          channel_config: {},
           enabled: true,
         },
       }),

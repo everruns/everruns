@@ -129,7 +129,7 @@ Dedicated workflow `.github/workflows/duckduckgo-integration.yml`:
 `crates/integrations/src/duckduckgo/` → `everruns-integrations`
 
 External integration crate. It publishes plugin consts and is named in
-`crates/integrations-catalog`.
+`everruns-capabilities::integrations_catalog`.
 
 **Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_duckduckgo;`.
 

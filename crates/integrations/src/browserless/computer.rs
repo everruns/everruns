@@ -36,7 +36,8 @@ use serde_json::{Value, json};
 use everruns_contracts::runtime::computer_use::{
     COMPUTER_TOOL_NAME, COMPUTER_USE_CAPABILITY_ID, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
     ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
+    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers, png_base64_image,
+    zoom_factor,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
@@ -64,16 +65,38 @@ pub struct CdpDisplay {
     session: CdpSession,
     display: DisplaySize,
     cursor: [u32; 2],
+    /// Whether `left_mouse_down` left the button pressed.
+    button_held: bool,
 }
 
 impl CdpDisplay {
     /// Wrap an attached page and size its viewport to `display`.
     pub async fn attach(
-        mut session: CdpSession,
+        session: CdpSession,
         display: DisplaySize,
         cursor: [u32; 2],
     ) -> Result<Self, (CdpSession, String)> {
-        let sized = session
+        let mut wrapped = Self::detached(session, cursor);
+        match wrapped.resize(display).await {
+            Ok(()) => Ok(wrapped),
+            Err(e) => Err((wrapped.session, e)),
+        }
+    }
+
+    /// Wrap a page without sizing it; [`Self::resize`] sizes the viewport
+    /// once the caller has picked the page to drive.
+    pub fn detached(session: CdpSession, cursor: [u32; 2]) -> Self {
+        Self {
+            session,
+            display: DisplaySize::default(),
+            cursor,
+            button_held: false,
+        }
+    }
+
+    /// Size the attached page's viewport to `display`.
+    pub async fn resize(&mut self, display: DisplaySize) -> Result<(), String> {
+        self.session
             .send_command(
                 "Emulation.setDeviceMetricsOverride",
                 json!({
@@ -83,25 +106,33 @@ impl CdpDisplay {
                     "mobile": false
                 }),
             )
-            .await;
-        if let Err(e) = sized {
-            return Err((session, format!("failed to size the display: {e}")));
+            .await
+            .map_err(|e| format!("failed to size the display: {e}"))?;
+        self.display = display;
+        if !display.contains(self.cursor) {
+            self.cursor = [0, 0];
         }
-        let cursor = if display.contains(cursor) {
-            cursor
-        } else {
-            [0, 0]
-        };
-        Ok(Self {
-            session,
-            display,
-            cursor,
-        })
+        Ok(())
     }
 
     /// The last known cursor position.
     pub fn cursor(&self) -> [u32; 2] {
         self.cursor
+    }
+
+    /// Whether the left button is held from an earlier `left_mouse_down`.
+    pub fn button_held(&self) -> bool {
+        self.button_held
+    }
+
+    /// Restore a held left button recorded by an earlier call.
+    pub fn set_button_held(&mut self, held: bool) {
+        self.button_held = held;
+    }
+
+    /// `buttons` for a pointer move: the left button while it is held.
+    fn held_buttons(&self) -> u8 {
+        u8::from(self.button_held)
     }
 
     /// The underlying CDP session.
@@ -128,12 +159,41 @@ impl CdpDisplay {
             return self.click(point, click.button, click.count, mask).await;
         }
         match action {
-            ComputerAction::Screenshot => Ok(()),
+            ComputerAction::Screenshot
+            | ComputerAction::Zoom { .. }
+            | ComputerAction::CursorPosition => Ok(()),
             ComputerAction::LeftClickDrag {
                 start_coordinate,
                 coordinate,
-            } => self.drag(*start_coordinate, *coordinate).await,
-            ComputerAction::MouseMove { coordinate } => self.move_to(*coordinate, 0).await,
+                text,
+            } => {
+                let mask = modifier_mask(&parse_modifiers(text.as_deref().unwrap_or(""))?);
+                self.drag(*start_coordinate, *coordinate, mask).await
+            }
+            ComputerAction::LeftMouseDown => {
+                let [x, y] = self.cursor;
+                self.mouse(json!({
+                    "type": "mousePressed", "x": x, "y": y,
+                    "button": "left", "buttons": 1, "clickCount": 1
+                }))
+                .await?;
+                self.button_held = true;
+                Ok(())
+            }
+            ComputerAction::LeftMouseUp => {
+                let [x, y] = self.cursor;
+                self.mouse(json!({
+                    "type": "mouseReleased", "x": x, "y": y,
+                    "button": "left", "buttons": 0, "clickCount": 1
+                }))
+                .await?;
+                self.button_held = false;
+                Ok(())
+            }
+            ComputerAction::HoldKey { text, duration } => self.hold(text, *duration).await,
+            ComputerAction::MouseMove { coordinate } => {
+                self.move_to(*coordinate, self.held_buttons()).await
+            }
             ComputerAction::Scroll {
                 coordinate,
                 scroll_direction,
@@ -161,6 +221,44 @@ impl CdpDisplay {
             // Clicks returned above.
             _ => Ok(()),
         }
+    }
+
+    /// Capture `region` of the viewport enlarged to fit the display, through
+    /// the screenshot clip's own scale, so no image library is needed.
+    pub async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        let [x0, y0, x1, y1] = region;
+        // The clip is in page coordinates; the region is in the viewport.
+        let metrics = self
+            .session
+            .send_command("Page.getLayoutMetrics", json!({}))
+            .await?;
+        let offset = |key: &str| {
+            metrics
+                .pointer(&format!("/cssVisualViewport/{key}"))
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+        };
+        let shot = self
+            .session
+            .send_command(
+                "Page.captureScreenshot",
+                json!({
+                    "format": "png",
+                    "clip": {
+                        "x": offset("pageX") + f64::from(x0),
+                        "y": offset("pageY") + f64::from(y0),
+                        "width": x1 - x0,
+                        "height": y1 - y0,
+                        "scale": zoom_factor(region, self.display),
+                    }
+                }),
+            )
+            .await?;
+        let data = shot
+            .get("data")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "the browser returned no image".to_string())?;
+        png_base64_image(data.to_string())
     }
 
     /// Capture the viewport as PNG.
@@ -213,22 +311,57 @@ impl CdpDisplay {
         Ok(())
     }
 
-    async fn drag(&mut self, from: [u32; 2], to: [u32; 2]) -> Result<(), String> {
+    async fn drag(&mut self, from: [u32; 2], to: [u32; 2], modifiers: u8) -> Result<(), String> {
         self.move_to(from, 0).await?;
         self.mouse(json!({
             "type": "mousePressed", "x": from[0], "y": from[1],
-            "button": "left", "buttons": 1, "clickCount": 1
+            "button": "left", "buttons": 1, "clickCount": 1, "modifiers": modifiers
         }))
         .await?;
         // A midpoint gives drag handlers a move event between press and release.
         let mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-        self.move_to(mid, 1).await?;
-        self.move_to(to, 1).await?;
+        for point in [mid, to] {
+            self.mouse(json!({
+                "type": "mouseMoved", "x": point[0], "y": point[1],
+                "buttons": 1, "modifiers": modifiers
+            }))
+            .await?;
+            self.cursor = point;
+        }
         self.mouse(json!({
             "type": "mouseReleased", "x": to[0], "y": to[1],
-            "button": "left", "buttons": 0, "clickCount": 1
+            "button": "left", "buttons": 0, "clickCount": 1, "modifiers": modifiers
         }))
         .await
+    }
+
+    /// Hold a key or combo down for `duration` seconds, then release it.
+    async fn hold(&mut self, combo: &str, duration: f64) -> Result<(), String> {
+        let combo = parse_key_combo(combo)?;
+        let mask = modifier_mask(&combo.modifiers);
+        let mut keys: Vec<CdpKey> = combo.modifiers.iter().map(|m| modifier_key(*m)).collect();
+        keys.push(cdp_key(&combo.key));
+        let mut pressed = 0;
+        let mut failure = None;
+        for key in &keys {
+            match self.key_event("keyDown", key, mask, None).await {
+                Ok(()) => pressed += 1,
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+        }
+        if failure.is_none() {
+            tokio::time::sleep(Duration::from_secs_f64(duration)).await;
+        }
+        // Released in reverse even after a failure, so no key stays down.
+        for key in keys[..pressed].iter().rev() {
+            if let Err(e) = self.key_event("keyUp", key, 0, None).await {
+                failure.get_or_insert(e);
+            }
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     async fn scroll(
@@ -400,7 +533,7 @@ fn cdp_key(name: &str) -> CdpKey {
 // ============================================================================
 
 /// URL policy shared by `navigate` and the post-action guard.
-fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
+pub(crate) fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
     if is_local_browser_url(url) {
         return None;
     }
@@ -413,7 +546,7 @@ fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
 
 /// Pages the guard leaves alone: blank pages and in-browser documents that
 /// never reach the network.
-fn is_local_page(url: &str) -> bool {
+pub(crate) fn is_local_page(url: &str) -> bool {
     is_local_browser_url(url)
 }
 
@@ -448,10 +581,13 @@ impl ComputerBackend for BrowserlessComputerBackend {
                     .map_err(ToolExecutionResult::tool_error)?
             }
         };
-        let cursor = load_cursor(context).await;
+        let (cursor, button_held) = load_cursor(context).await;
         match CdpDisplay::attach(session, display, cursor).await {
-            Ok(display) => Ok(Box::new(BrowserlessComputerSession {
-                display,
+            Ok(mut display) => Ok(Box::new(BrowserlessComputerSession {
+                display: {
+                    display.set_button_held(button_held);
+                    display
+                },
                 context: context.clone(),
             })),
             Err((session, e)) => {
@@ -497,9 +633,17 @@ impl ComputerSession for BrowserlessComputerSession {
         self.display.screenshot().await
     }
 
+    async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        self.display.zoom(region).await
+    }
+
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        Ok(self.display.cursor())
+    }
+
     async fn release(self: Box<Self>) {
         let Self { display, context } = *self;
-        save_cursor(&context, display.cursor()).await;
+        save_cursor(&context, display.cursor(), display.button_held()).await;
         let mut session = display.into_session();
         match session.reconnect(DEFAULT_RECONNECT_TIMEOUT_MS).await {
             Ok(endpoint) => {
@@ -516,26 +660,37 @@ impl ComputerSession for BrowserlessComputerSession {
     }
 }
 
-async fn load_cursor(context: &ToolContext) -> [u32; 2] {
+/// The stored cursor (`"x,y"`, plus `",down"` while `left_mouse_down` holds
+/// the button) and whether the button is held.
+async fn load_cursor(context: &ToolContext) -> ([u32; 2], bool) {
     let Some(storage) = context.storage_store.as_ref() else {
-        return [0, 0];
+        return ([0, 0], false);
     };
     storage
         .get_value(context.session_id, CURSOR_KEY)
         .await
         .ok()
         .flatten()
-        .and_then(|value| {
-            let (x, y) = value.split_once(',')?;
-            Some([x.parse().ok()?, y.parse().ok()?])
-        })
-        .unwrap_or([0, 0])
+        .and_then(|value| parse_cursor(&value))
+        .unwrap_or(([0, 0], false))
 }
 
-async fn save_cursor(context: &ToolContext, [x, y]: [u32; 2]) {
+pub(crate) fn parse_cursor(value: &str) -> Option<([u32; 2], bool)> {
+    let mut parts = value.split(',');
+    let x = parts.next()?.parse().ok()?;
+    let y = parts.next()?.parse().ok()?;
+    Some(([x, y], parts.next() == Some("down")))
+}
+
+async fn save_cursor(context: &ToolContext, [x, y]: [u32; 2], button_held: bool) {
     if let Some(storage) = context.storage_store.as_ref() {
+        let value = if button_held {
+            format!("{x},{y},down")
+        } else {
+            format!("{x},{y}")
+        };
         let _ = storage
-            .set_value(context.session_id, CURSOR_KEY, &format!("{x},{y}"))
+            .set_value(context.session_id, CURSOR_KEY, &value)
             .await;
     }
 }

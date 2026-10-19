@@ -6,7 +6,7 @@
 //! - ToolCallRequestedData event
 //! - Session tools propagation
 //!
-//! No database required.
+//! Serialization cases need no database. HTTP cases use the private PostgreSQL fixture.
 //!
 //! Run with: cargo test -p everruns-server --test domain client_side_tools_test::
 use crate::test_harness;
@@ -22,8 +22,9 @@ use everruns_contracts::error::{AgentLoopError, Result as TurnResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::builtins::normalize_ask_user_arguments;
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnTicket};
-use everruns_server::records::{Agent, Session};
-use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::sessions::record::Session;
+use everruns_server::storage::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
 use serde_json::json;
 use test_harness::TestServer;
 
@@ -53,7 +54,8 @@ fn test_agent_with_client_side_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -94,7 +96,8 @@ fn test_agent_with_mixed_tools_serialization() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -131,7 +134,8 @@ fn test_agent_with_no_tools_omits_field() {
         "updated_at": "2025-01-01T00:00:00Z"
     });
 
-    let agent: everruns_server::records::Agent = serde_json::from_value(agent_json).unwrap();
+    let agent: everruns_server::domains::agents::record::Agent =
+        serde_json::from_value(agent_json).unwrap();
     assert_eq!(
         agent.harness_id.to_string(),
         "harness_00000000000000000000000000000000"
@@ -395,7 +399,7 @@ impl FastCompletingRunner {
         db.update_session(
             1,
             session_id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some(self.completed_status.to_string()),
                 ..Default::default()
             },
@@ -696,7 +700,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .update_session(
             1,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -706,7 +710,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .expect("session exists");
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -714,7 +718,7 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
             data: json!({
                 "tool_calls": [{
                     "id": format!("call_{suffix}"),
-                    "name": "ask_user",
+                    "name": "render_client",
                     "arguments": {}
                 }]
             }),
@@ -724,6 +728,119 @@ async fn create_waiting_client_tool_session(server: &TestServer, suffix: &str) -
         .await
         .expect("emit pending client tool call");
     session
+}
+
+#[tokio::test]
+async fn shared_command_validates_a_batch_atomically_and_parks_partial_results() {
+    let (resume_tx, mut resume_rx) = tokio::sync::mpsc::unbounded_channel();
+    let server = TestServer::in_memory_with_runner(Arc::new(RecordingRunner {
+        resumed_sessions: resume_tx,
+    }))
+    .await;
+    let session = create_waiting_client_tool_session(&server, "partial").await;
+    server
+        .db
+        .create_event(everruns_server::storage::CreateEventRow {
+            session_id: session.id,
+            event_type: "tool.call_requested".into(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({"tool_calls":[
+                {"id":"a","name":"render_client","arguments":{}},
+                {"id":"b","name":"render_client","arguments":{}}
+            ]}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    let path = format!("/v1/sessions/{}/tool-results", session.id);
+    server.post(&path, json!({"tool_results":[{"tool_call_id":"a","result":1},{"tool_call_id":"unknown","result":2}]}))
+        .await.assert_status(StatusCode::BAD_REQUEST);
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".into()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(
+        completions.is_empty(),
+        "a rejected batch must not record its valid member"
+    );
+    let first = server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"a","result":1}]}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(first["status"], "waiting_for_tool_results");
+    assert_eq!(
+        server
+            .db
+            .get_session(1, session.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        "waiting_for_tool_results"
+    );
+    assert!(matches!(
+        resume_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    // Already completed calls cannot be accepted again under a fresh command.
+    server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"a","result":99}]}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .post(
+            &path,
+            json!({"tool_results":[{"tool_call_id":"b","result":2}]}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(1), resume_rx.recv())
+            .await
+            .unwrap(),
+        Some(session.id)
+    );
+    assert!(matches!(
+        resume_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+    ));
+    let completions = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["tool.completed".into()],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(completions.len(), 2);
+    assert!(
+        completions
+            .iter()
+            .all(|event| event.data["tool_name"] == "render_client")
+    );
 }
 
 async fn abandon_message_resolution(server: &TestServer, session_id: SessionId) {
@@ -821,7 +938,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
         .update_session(
             1,
             session.id,
-            everruns_server::storage::models::UpdateSession {
+            everruns_server::storage::UpdateSession {
                 status: Some("waiting_for_tool_results".to_string()),
                 ..Default::default()
             },
@@ -844,7 +961,7 @@ async fn omitted_ask_user_question_ids_resume_through_tool_results() {
     assert_eq!(normalized["questions"][0]["id"], "question_1");
     server
         .db
-        .create_event(everruns_server::storage::models::CreateEventRow {
+        .create_event(everruns_server::storage::CreateEventRow {
             session_id: session.id,
             event_type: "tool.call_requested".to_string(),
             ts: chrono::Utc::now(),
@@ -939,7 +1056,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
             .update_session(
                 1,
                 session.id,
-                everruns_server::storage::models::UpdateSession {
+                everruns_server::storage::UpdateSession {
                     status: Some("waiting_for_tool_results".to_string()),
                     ..Default::default()
                 },
@@ -950,7 +1067,7 @@ async fn user_message_cancels_pending_client_tool_and_resumes_existing_turn() {
         let tool_call_id = format!("call_{tool_name}");
         server
             .db
-            .create_event(everruns_server::storage::models::CreateEventRow {
+            .create_event(everruns_server::storage::CreateEventRow {
                 session_id: session.id,
                 event_type: "tool.call_requested".to_string(),
                 ts: chrono::Utc::now(),

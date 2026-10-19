@@ -55,7 +55,7 @@ graph TB
 
 ### Event Delivery
 
-Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which follows the same enum dispatch pattern as `StorageBackend`:
+Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/live_updates/event_delivery.rs`), which picks a transport at startup:
 
 - **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
 - **NATS JetStream** (production): Per-session subjects with short-term retention for replay
@@ -105,19 +105,18 @@ Production event routing therefore prefers:
    - `contracts/` → `everruns-contracts` - Portable provider and capability contracts: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `core/src/engine/` - Pure turn state machine plus shared Input/Reason/Act execution, enabled by `engine`
    - `capabilities/` → `everruns-capabilities` - Hosted capability implementations and orchestration
-   - `server/src/records/` - Control-plane persistence/API records
+   - `server/src/domains/<domain>/record.rs` - Control-plane persistence/API records, one per owning domain; `server/src/records/` keeps the cross-domain ones
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `core/src/host/` - Opt-in neutral host implementation and session services; concrete integrations are composed by `everruns::batteries`
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
-   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
+   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Sprites lives in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
-4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
+4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/
    - See [knowledge/ui/documentation.md](../ui/documentation.md) for detailed specification
 
 ### Project Structure
@@ -140,13 +139,11 @@ everruns/
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── db/               # Database utilities: embedded SQLite, UpdateField
 │   ├── durable/          # Generic durable execution engine
-│   ├── durable-engine/   # Durable turn backend over durable
 │   └── drivers/          # Consolidated official LLM drivers and standalone simulator
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
 │   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
-│   ├── e2b/              # E2B cloud sandbox (inventory plugin)
-│   └── deno/             # Deno sandbox (inventory plugin)
+│   └── e2b/              # E2B cloud sandbox (inventory plugin)
 ├── docs/                 # Documentation content (symlinked to apps/docs)
 ├── knowledge/            # OKF design and product knowledge
 │   └── test-cases/       # Manual test cases
@@ -167,7 +164,6 @@ graph TD
     drivers[drivers/*]
     protocol[internal-protocol]
     durable[durable]
-    durableEngine[durable-engine]
     worker[worker]
     server["server (control plane)"]
 
@@ -184,11 +180,8 @@ graph TD
     framework --> provider
     framework -.->|opt-in hosted composition| platform
     drivers --> provider
-    durableEngine --> durable
-    durableEngine --> host
-    framework -.->|opt-in durable feature| durableEngine
     worker --> host
-    worker --> durableEngine
+    worker --> durable
     worker --> protocol
     worker --> platform
     server --> host
@@ -236,65 +229,52 @@ process should use `everruns-core` (`host` feature).
 - engine-owned Input/Reason/Act algorithms composed by the host
 
 `everruns-worker` provides the first-party adapter bridge from worker backends
-into that host contract via `WorkerRuntimeHost`, so both the immediate and
-durable paths reuse the same engine phase wiring.
+into that host contract via `WorkerRuntimeHost`, so a worker's session actors
+run turns on the same engine phase wiring as an in-process session.
 
 See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runtime contract.
 
-### Integration Catalog
+### Hosted Integration Composition
 
-`crates/integrations-catalog` is the one place that names every integration
-crate composed into the hosted product. Each integration crate publishes its
-contributions as plain consts — `CAPABILITY_PLUGINS` (`IntegrationPlugin`) and
-`CONNECTOR_PLUGINS` (`ConnectorPlugin`) — and `CATALOG` lists one
-`CatalogEntry` per crate. Server and worker both compose from
-`oss_capability_registry_for_grade` / `register_connectors`.
+`everruns-capabilities::integrations_catalog` names each hosted integration
+exactly once in `CATALOG`. Integration crates publish their capability and
+connector contributions as consts; the catalog composes those contributions
+with portable builtins and hosted capabilities. Server and worker enable the
+`hosted-integration-catalog` feature and use the same registry and feature gates.
 
-The catalog sits above `everruns-capabilities` because integration crates depend on
-platform for the connector and sandbox contracts, so platform cannot name them.
-`hosted_capability_registry_for_grade` therefore excludes integrations; only the
-catalog's composition has the full set. Registration order is builtins →
-integrations → hosted capabilities, so a hosted capability still wins a
-canonical-id collision.
+This module lives in `everruns-capabilities` because integrations implement
+neutral contracts from `everruns-contracts`; the earlier dependency on platform
+that forced the catalog into a separate crate is gone. The portable
+`hosted_capability_registry_for_grade` remains integration-free. Hosted
+composition registers builtins → integrations → hosted capabilities, so a
+hosted capability still wins a canonical-id collision.
 
-Adding a new integration crate requires:
-1. Create the crate under `integrations/`, publishing its plugin consts. New
-   vendors may instead be a feature-gated module of `crates/integrations`
-   (`everruns-integrations`), which folds integrations the way
-   `everruns-drivers` folds drivers; its entry is named
-   `everruns-integrations::<module>` (Modal is the first).
-2. Add it as a dependency of `crates/integrations-catalog`.
-3. Add a `CatalogEntry` to `CATALOG`.
+The retired `everruns-integrations-catalog` package published its final
+deprecated forwarding release at 0.45.0. Its source is removed in 0.46;
+previously published versions remain usable. The canonical API lives on
+`everruns-capabilities`.
 
-`scripts/lib/check-integration-catalog.sh` (pre-push + CI) fails if a crate
-publishes plugin consts without a catalog entry, if capability or connector
-plugins go back to `inventory::submit!`, or if a binary force-links an
-integration crate.
+Adding an integration requires publishing its plugin consts, enabling the
+required integration feature in `hosted-integration-catalog`, and adding a
+`CatalogEntry` to `CATALOG`. A feature module in `everruns-integrations` is
+named as `everruns-integrations::<module>`.
 
-Decision: registration used to happen through `inventory::submit!`, with
-`extern crate` lines in `crates/server/src/lib.rs` and
-`crates/worker/src/lib.rs` forcing each crate to link so its linker-section
-submissions survived. That made a registry's contents a linker side effect —
-a forgotten line dropped an integration with no compile error, the list was
-maintained in four places, and the registry a binary built depended on what it
-happened to link, so platform's own tests saw a different set than production.
-Naming the catalog costs one entry per integration, gets the compiler to check
-that the named crate and its consts exist, and makes linkage a consequence of a
-real reference.
+`scripts/lib/check-integration-catalog.sh` (pre-push + CI) rejects plugin
+publishers missing from `CATALOG`, use of `inventory::submit!` for capability
+or connector plugins, and binaries that force-link integration crates. This
+explicit list avoids linker-dependent registries that silently differed
+between server, worker, and tests. `SessionSandboxProviderPlugin` and the
+CLI/MCP `CommandDescriptor` catalog still use `inventory`; those are separate
+registries.
 
-Embedders that want a different set start from `CATALOG`, filter or extend it,
-and register the result — or bypass the presets entirely by constructing
-`HostComposition` directly.
-
-`SessionSandboxProviderPlugin` and the CLI/MCP `CommandDescriptor` catalog still
-use `inventory`; both are unaffected, because every catalog entry references its
-crate by path and so keeps it linked.
+Embedders that want a different set can filter or extend `CATALOG` and register
+the result, or construct `HostComposition` directly.
 
 ### Server Entrypoint
 
 The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers and embedders to compose their own binary with custom auth, routes, event listeners, background tasks, and a custom `HostComposition`.
 
-See `crates/server/src/app_builder.rs` for `ServerAppBuilder`, composable builder with `auth()`, `host_composition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
+See `crates/server/src/app_builder/mod.rs` for `ServerAppBuilder`, composable builder with `auth()`, `host_composition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
 
 The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/worker/src/app_builder.rs`, which also accepts `host_composition()`.
 
@@ -336,8 +316,8 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 ### Execution Layer
 
-1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `DurableRunner` implements it ([Execution Backends](../framework/execution-backends.md))
-2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
+1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `ActorTurnBackend` implements it ([Execution Backends](../framework/execution-backends.md))
+2. **Sessions as actors**: a worker leases a runnable session and runs its whole turn; the session event log is the only turn state ([Durable Execution Engine](../operations/durable-execution-engine.md#session-actors-turn-execution)). Queued activities that are not turns run on the PostgreSQL-backed durable task queue
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
 
@@ -354,16 +334,18 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Individual operations for messages, files, providers
 
 2. **gRPC Client Adapters** (in worker crate):
-   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, task, and budget effects via gRPC
-   - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, platform, and scheduling effects via gRPC
+   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, and budget effects via gRPC
+   - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, and platform effects via gRPC
+   - `internal_commands` - Stores served by internal domain commands over `ExecuteCommand` (session schedules, the session resource registry, the tool-side leased resource store, session key/value storage and secrets, the session task registry, the connection and MCP credential resolver), shared with the in-process worker; see [Internal worker commands](domains.md#internal-worker-commands). Image and file byte RPCs (create/get image artifact, image and file resolution) stay gRPC by design: they carry bytes up to 100 MiB
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-core` (`host` feature) host execution
-   - `GrpcDurableStore` - Implements durable workflow operations via gRPC
+   - `GrpcDurableStore` - Implements the worker's task-queue operations via gRPC
 
-3. **Durable Execution gRPC Operations**:
-   - `ClaimDurableTasks` - Workers poll for pending tasks
+3. **Session actor and task-queue gRPC operations**:
+   - `LeaseActors` / `RenewActorLease` / `ReleaseActor` - Lease runnable sessions, keep the lease, hand it back with the input consumed
+   - `ReadActorJournal` - Read the session log tail a turn resumes from
+   - `ClaimDurableTasks` - Workers poll for pending non-turn tasks
    - `CompleteDurableTask` / `FailDurableTask` - Report task outcome
    - `HeartbeatDurableTask` - Liveness signal for long-running tasks
-   - `CreateDurableWorkflow` / `GetDurableWorkflowStatus` - Workflow lifecycle
 
 4. **Benefits**:
    - Workers don't need database credentials or encryption keys
@@ -385,19 +367,21 @@ sequenceDiagram
     participant EG as Egress Service
     participant LLM as LLM Provider
 
-    W->>CP: ClaimDurableTasks
-    CP->>DB: Claim pending task (SKIP LOCKED)
-    CP-->>W: Task with workflow_id
+    W->>CP: LeaseActors
+    CP->>DB: Lease runnable sessions (SKIP LOCKED, fence + 1)
+    CP-->>W: Session ids with fence and inbox cursor
+    W->>CP: ReadActorJournal(session_id)
+    CP-->>W: Log tail since the last turn.started
     W->>CP: GetTurnContext(session_id)
     CP-->>W: Agent + Session + Messages + Model
-    W->>CP: EmitEvent(turn.started)
+    W->>CP: EmitEvent(turn.started, fenced)
 
-    par Background Heartbeat
-        loop Every 10s while task runs
-            W->>CP: HeartbeatDurableTask
-            CP-->>W: OK / Cancel signal
+    par Lease renewal
+        loop Every third of the lease life while the turn runs
+            W->>CP: RenewActorLease
+            CP-->>W: OK / fence moved / cancel requested
         end
-    and Task Execution
+    and Turn Execution
         loop Reason-Act Loop
             W->>EG: Generate completion request
             EG->>LLM: Provider HTTP request
@@ -412,21 +396,21 @@ sequenceDiagram
         end
     end
 
-    W->>CP: EmitEvent(turn.completed)
-    W->>CP: CompleteDurableTask
-    CP->>DB: Mark task completed
+    W->>CP: EmitEvent(turn.completed, fenced)
+    W->>CP: ReleaseActor(consumed input)
+    CP->>DB: Advance the cursor, clear the lease
 ```
 
-**Note**: Workers send periodic heartbeats while executing tasks. If heartbeats stop (worker crash), the control-plane reclaims stale tasks after 30 seconds and re-queues them for another worker.
+**Note**: A worker renews its lease while a turn runs. If renewals stop (worker crash), the lease expires and another worker leases the session and resumes the turn from the log. Non-turn tasks on the durable queue heartbeat instead; the control plane reclaims a stale claim after 30 seconds and re-queues it.
 
 ### Task Worker Architecture
 
-The `TaskWorker` provides a unified worker implementation that works with any `WorkflowEventStore`: embedded PostgreSQL (DEV_MODE) or external PostgreSQL (production):
+The `TaskWorker` provides a unified worker implementation over any `TaskStore`: the server's PostgreSQL store in process (DEV_MODE) or the control plane's gRPC client (production):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         TaskWorker<S, A>                         │
-│  Generic over: S = WorkflowEventStore, A = WorkerAdapters       │
+│  Generic over: S = TaskStore, A = WorkerAdapters                │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────┐  │
 │  │ Configuration   │  │ Task Polling     │  │ Heartbeating  │  │
@@ -436,12 +420,11 @@ The `TaskWorker` provides a unified worker implementation that works with any `W
 │  └─────────────────┘  └──────────────────┘  └───────────────┘  │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │               Activity Execution                          │   │
-│  │  ┌──────────┐    ┌───────────┐    ┌─────────┐           │   │
-│  │  │  input   │ →  │  reason   │ ⟷  │   act   │           │   │
-│  │  │ activity │    │ activity  │    │ activity│           │   │
-│  │  └──────────┘    └───────────┘    └─────────┘           │   │
-│  └──────────────────────────────────────────────────────────┘   │
+│  ┌───────────────────────────┐  ┌───────────────────────────┐   │
+│  │ Session actor loop        │  │ Task queue loop           │   │
+│  │ lease → drive_turn        │  │ cleanup, task reaper,     │   │
+│  │ (input → reason ⟷ act)    │  │ scheduled invocations     │   │
+│  └───────────────────────────┘  └───────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -465,12 +448,12 @@ The `TaskWorker` provides a unified worker implementation that works with any `W
 | Mode | Store | Adapters | Use Case |
 |------|-------|----------|----------|
 | DEV_MODE | `PostgresWorkflowEventStore` (embedded PostgreSQL) | `DirectWorkerAdapters` | Local development |
-| Production | `PostgresWorkflowEventStore` | `GrpcWorkerAdapters` | External workers |
+| Production | `GrpcDurableStore` (gRPC to the control plane) | `GrpcWorkerAdapters` | External workers |
 
 **Adapter Parity Principle**: Both `DirectWorkerAdapters` and `GrpcWorkerAdapters` must implement every `WorkerAdapters` method. The trait enforces this at compile time: store accessors have no default implementations, so adding a new store requires updating both adapters or the build fails. Methods return `Arc<dyn T>` (non-optional) to guarantee the store is available in both backends. The only exception is `sqldb_store()` which returns `Option` with a default `None` until gRPC support is added (tracked in EVE-44).
 
 **Benefits of Unified Architecture**:
-- Single codebase for activity implementations (input, reason, act)
+- Single codebase for turn phases (input, reason, act) and queued activities
 - `everruns-core` (`engine` feature) owns the shared turn planner and phase algorithms, so in-process and gRPC-backed workers use the same reason/act continuation, event ordering, and tool-results pause/resume policy
 - Shared task scheduling logic
 - Easy to test with mock adapters
@@ -505,9 +488,9 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
 pure turn planner. There is no generic public `Atom` trait. `everruns-core` (`host` feature)
-retains state in `InProcessExecution`; `everruns-durable-engine` checkpoints the same
-`TurnExecution` state between steps on the generic `everruns-durable` engine, for
-the worker and for the facade's experimental durable backend. Hosts inject core/provider contracts and keep
+retains state in `InProcessExecution`; a platform worker drives the same
+`TurnExecution` with `drive_turn` under a session lease and resumes it by
+folding the session log. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:
@@ -597,7 +580,7 @@ just start-dev
 ```
 
 **DEV_MODE behavior:**
-- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/storage_init.rs`)
+- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/setup/storage_init.rs`)
 - Execution happens in-process (no separate worker)
 - gRPC server disabled (not needed without workers)
 - Migrations run at startup against the embedded database
@@ -632,7 +615,7 @@ Observability is decoupled from business logic through the `EventListener` trait
 **Key components**:
 - `EventListener` trait, Interface for observability backends
 - `OtelEventListener` (`crates/core/src/host/observability/otel.rs`), generates OTel spans from events
-- `EventService` (`server/src/services/event.rs`), Notifies listeners after event persistence
+- `EventService` (`server/src/services/event/mod.rs`), Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id
@@ -729,12 +712,13 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
    - Cross-cutting or internal-only modules, not a separate business-logic layer
    - Examples:
      - `EventService` - event persistence + delivery fanout
-     - `LlmResolverService` - model resolution with decrypted API keys
-     - `ModelSyncService` - provider model discovery / sync
+     - `ProviderResolverService` - model resolution with decrypted API keys
      - `CapabilityService` - capability registry/read helpers
-     - listeners and validators such as `UsageTrackingListener`, `scoped_mcp`, `capability_validation`
+   - Event listeners with no single owning domain (run summaries, turn latency,
+     coordination thread turns) live in `server/src/listeners/`; a listener one
+     domain owns stays with it (for example `domains::usage::UsageTrackingListener`)
 
-5. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
+5. **Transport Layer** (`server/src/api/`, `server/src/worker_link/grpc_service/mod.rs`):
    - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module

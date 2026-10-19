@@ -18,6 +18,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["agents", { includeArchived }] as const,
     detail: (agentId: string) => ["agent", agentId] as const,
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
+    activity: () => ["agents", "activity"] as const,
     mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
   },
 
@@ -25,6 +26,8 @@ export const queryKeys = {
     all: (agentId: string) => ["agent-channels", agentId] as const,
     list: (agentId: string) => ["agent-channels", agentId, "list"] as const,
     detail: (agentId: string, channelId: string) => ["agent-channels", agentId, channelId] as const,
+    keys: (agentId: string, channelId: string) =>
+      ["agent-channels", agentId, channelId, "keys"] as const,
   },
 
   agentTriggers: {
@@ -35,6 +38,7 @@ export const queryKeys = {
   },
 
   agentGithub: {
+    all: ["agent-github"] as const,
     status: (agentId: string) => ["agent-github", agentId, "status"] as const,
     repositories: (identityId: string) => ["agent-github", identityId, "repositories"] as const,
   },
@@ -63,8 +67,13 @@ export const queryKeys = {
   sessions: {
     all: () => ["sessions"] as const,
     scoped: (org?: string) => ["session", org] as const,
-    list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
-      ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
+    list: (
+      org?: string,
+      agentId?: string,
+      offset?: number,
+      limit?: number,
+      includeArchived = false,
+    ) => ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20, includeArchived] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     /**
      * The filtered operational list (EVE-853). `filters` is the serialized
@@ -85,6 +94,8 @@ export const queryKeys = {
       ["session", org, sessionId, "approval-audit"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
+    messageFeedback: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "message-feedback"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 
@@ -150,6 +161,7 @@ export const queryKeys = {
     list: () => ["capabilities"] as const,
     detail: (capabilityId: string) => ["capability", capabilityId] as const,
     available: () => ["capabilities", "available"] as const,
+    guardrailExamples: () => ["capabilities", "guardrail-examples"] as const,
   },
 
   declarativeCapabilities: {
@@ -181,6 +193,7 @@ export const queryKeys = {
     list: (includeArchived = false) => ["mcp-servers", { includeArchived }] as const,
     catalog: (org?: string) => ["mcp-servers", "catalog", org] as const,
     usage: (serverId: string) => ["mcp-server", serverId, "usage"] as const,
+    tools: (serverId: string) => ["mcp-server", serverId, "tools"] as const,
     detail: (serverId: string) => ["mcp-server", serverId] as const,
   },
 
@@ -190,6 +203,8 @@ export const queryKeys = {
     detail: (orgId: string) => ["organization", orgId] as const,
     members: (orgId: string) => ["organization", orgId, "members"] as const,
     invitations: (orgId: string) => ["organization", orgId, "invitations"] as const,
+    egressAllowlist: (orgId: string) => ["organization", orgId, "egress-allowlist"] as const,
+    everrunsGithubApp: (orgId: string) => ["organization", orgId, "everruns-github-app"] as const,
   },
 
   invitations: {
@@ -213,9 +228,17 @@ export const queryKeys = {
   userMcpServers: {
     all: ["user-mcp-servers"] as const,
     list: (org?: string, identityId = "me") => ["user-mcp-servers", org, identityId] as const,
+    tools: (org: string | undefined, identityId: string, serverId: string) =>
+      ["user-mcp-servers", org, identityId, "tools", serverId] as const,
   },
 
   // User preference (key/value) queries
+  // External AI clients approved to act as the person on /mcp (user-scoped)
+  connectedClients: {
+    all: ["connected-clients"] as const,
+    list: () => ["connected-clients"] as const,
+  },
+
   userPreferences: {
     all: ["user-preferences"] as const,
     list: () => ["user-preferences"] as const,
@@ -235,6 +258,10 @@ export const queryKeys = {
     list: (sessionId: string) => ["session-schedules", sessionId] as const,
     detail: (sessionId: string, scheduleId: string) =>
       ["session-schedule", sessionId, scheduleId] as const,
+  },
+
+  chatMcpServers: {
+    list: (sessionId: string) => ["chat-mcp-servers", sessionId] as const,
   },
 
   sessionResources: {

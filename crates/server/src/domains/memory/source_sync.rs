@@ -9,14 +9,14 @@ use tempfile::TempDir;
 use tokio::task;
 use uuid::Uuid;
 
-use crate::cluster_jobs::ClusterJob;
+use crate::background::cluster_jobs::ClusterJob;
 use crate::domains::git_fetch::{self, FetchRequest};
-use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
+use crate::domains::git_sources::{github_clone_url, github_read_access, safe_git_clone_error};
 use crate::domains::memory::types::{
     GitHubMemorySourceResponse, GitMemorySourceResponse, MemorySourceResponse,
 };
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateMemoryFileRow, MemoryRow};
+use crate::storage::{CreateMemoryFileRow, MemoryRow};
 
 const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
 const DEFAULT_MAX_FILES: usize = 5_000;
@@ -202,12 +202,20 @@ async fn snapshot_memory_source(
 
     let source = match source {
         MemorySourceResponse::Github(source) => {
+            let repository = github_clone_url(&source.repository)
+                .map_err(|message| anyhow!(message))?
+                .1;
             let mut resolved = ResolvedGitSource::from_github(source, None)?;
             // THREAT[TM-API-018]: GitHub tokens must not be persisted in memory source config.
-            // Mitigation: resolve the owner's short-lived connection token only at sync time.
+            // Mitigation: resolve the owner's short-lived connection token only at sync time,
+            // read-only and limited to the source repository (TM-GITHUB-006).
             let auth_token = match (connection_resolver, memory.resolved_owner_user_id) {
                 (Some(resolver), Some(user_id)) => resolver
-                    .get_connection_token_for_user(user_id, "github")
+                    .get_github_token_for_owner(
+                        memory.org_id,
+                        user_id,
+                        &github_read_access(&repository),
+                    )
                     .await
                     .map_err(|_| anyhow!("failed to resolve GitHub connection"))?,
                 _ => None,
@@ -489,8 +497,8 @@ fn env_usize(name: &str, default: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::CreateMemoryRow;
     use crate::storage::StorageBackend;
-    use crate::storage::models::CreateMemoryRow;
     use everruns_contracts::typed_id::MemoryId;
     use everruns_core::DEFAULT_ORG_ID;
 

@@ -139,7 +139,7 @@ surrounding canvas, never re-derive ring coordinates by bounding box.
 #### Writing mechanics
 
 Prose should read as written by a person, not a model. Applies to public docs
-(docs.everruns.com), `knowledge/`, `README`s, and UI copy.
+(everruns.com/docs), `knowledge/`, `README`s, and UI copy.
 
 1. **No em-dashes (`—`).** Use a comma, colon, semicolon, parentheses, or two
    sentences. Pick the punctuation that fits the clause. (Hyphens in compound
@@ -152,6 +152,15 @@ Prose should read as written by a person, not a model. Applies to public docs
    interface or extension point, a feature is enabled not "unlocked". Keep real
    terms of art where they carry precise meaning, and reword the metaphor
    everywhere else.
+
+#### Feature announcement copy
+
+Feature announcements, release cards, social images, and demo titles name the
+feature directly. Use a headline such as **"PACT & Poppy support"**.
+
+Do not invent slogans or aspirational taglines such as "Your agent. Your
+permission." The feature name is the headline; supporting copy, when needed,
+states concrete behavior or how to use it.
 
 ### Design Principles
 
@@ -218,7 +227,7 @@ refinement does not change the public site's palette.
 - Footer: Charcoal background, Silver text
 - Accents: Gold for highlights, Navy for links
 
-#### Documentation (docs.everruns.com)
+#### Documentation (everruns.com/docs)
 
 - Light theme: White/Smoke backgrounds, Navy links
 - Dark theme: Navy background, Gold accents

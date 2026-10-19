@@ -7,7 +7,7 @@
  * in both standalone and in-chat context.
  */
 
-import { Bot } from "lucide-react";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 
@@ -26,7 +26,7 @@ function ChatContextMock({ children }: { children: React.ReactNode }) {
       {/* Agent response area */}
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center border border-border bg-primary text-primary-foreground">
-          <Bot className="h-3 w-3" />
+          <AgentIcon className="h-3 w-3" />
         </div>
         <div className="px-3 py-2 min-w-[120px] border-l-2 border-l-primary bg-card">
           {children}

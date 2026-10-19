@@ -31,5 +31,6 @@ pub async fn caller_for_user(db: &StorageBackend, org_id: i64, user_id: Uuid) ->
             .unwrap_or(OrgRole::Member),
         is_platform_user: platform_user_from_roles(&roles),
         is_internal: false,
+        read_only: false,
     })
 }

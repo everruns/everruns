@@ -6,13 +6,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::TurnId;
 use everruns_core::events::EventData;
 use everruns_core::host::{
     EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit, EventReadRequest,
     TurnResult,
 };
-use everruns_core::turn::TurnStopReason;
 use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole};
 
 use super::Turn;
@@ -138,6 +138,7 @@ async fn accepts_multimodal_input() {
     let session = InMemoryEngine::new().create(agent.clone());
     // A rich, multi-part InputMessage goes through unchanged.
     let message = InputMessage {
+        external_actor: None,
         role: RuntimeMessageRole::User,
         content: vec![
             ContentPart::text("describe"),

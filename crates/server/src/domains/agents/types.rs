@@ -1,17 +1,19 @@
 // Agents domain types — canonical definitions for request/response shapes.
 //
-// Storage row types are re-exported from `storage::models` so domain code
+// Storage row types are re-exported from `crate::storage` so domain code
 // has a single import path.
 
+use crate::domains::agents::record::AgentStatus;
+use crate::domains::sandbox_templates::record::SandboxPolicy;
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{AgentStatus, SandboxPolicy};
 use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId};
+use everruns_core::conversation::Communication;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-pub use crate::storage::models::{AgentRow, CreateAgentRow, UpdateAgent};
+pub use crate::storage::{AgentRow, CreateAgentRow, UpdateAgent};
 
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
@@ -51,7 +53,7 @@ pub struct CreateAgentRequest {
     /// Conversation starters for a fresh Platform Chat thread. Win over the
     /// harness starters when non-empty. `icon` reuses the harness icon set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub starters: Vec<crate::records::ConversationStarter>,
+    pub starters: Vec<crate::domains::harnesses::record::ConversationStarter>,
     /// The system prompt that defines the agent's behavior and capabilities.
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
@@ -116,6 +118,17 @@ pub struct CreateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response (sent as `max_tokens`).
+    /// Omit to use the provider default. Must be at least 1; clamped to the
+    /// model's output limit when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 4096, minimum = 1)]
+    pub max_output_tokens: Option<u32>,
+    /// How the agent talks to people. `direct` (default): its replies are
+    /// what it writes. `explicit`: what it writes is private working notes,
+    /// and people see only the messages it sends with `send_message`.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -150,10 +163,11 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "Answers account questions in seconds.")]
     pub short_description: Option<Option<String>>,
-    /// Conversation starters; omit to leave unchanged, send empty to clear.
-    /// `icon` reuses the harness icon name set.
+    /// Conversation starters as `[{"text": "..."}]`; omit to keep, `[]` to clear.
+    /// An optional `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub starters: Option<Vec<crate::records::ConversationStarter>>,
+    #[schema(example = json!([{"text": "Who does the dishes today?"}]))]
+    pub starters: Option<Vec<crate::domains::harnesses::record::ConversationStarter>>,
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]
@@ -230,6 +244,15 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
+    /// Ceiling on output tokens per model response (sent as `max_tokens`).
+    /// Omit to leave unchanged; `null` clears it back to the provider default.
+    #[serde(default, with = "crate::domains::change_history::update_field")]
+    #[schema(value_type = Option<u32>, example = 4096, minimum = 1)]
+    pub max_output_tokens: crate::storage::UpdateField<u32>,
+    /// How the agent talks to people: `direct` or `explicit`. Omit to leave
+    /// unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub communication: Option<Communication>,
 }
 
 /// Request to preview the final agent shape with capabilities applied
@@ -326,7 +349,7 @@ pub struct ImportAgentQuery {
     pub format: Option<String>,
 }
 
-// See `crate::api::sessions::filter_or_reject_client_side_tools` for the
+// See `crate::domains::sessions::types::filter_or_reject_client_side_tools` for the
 // trust-boundary rationale behind the deprecation window. Both deserializers
 // here delegate to that helper so session and agent tool-list policies stay
 // in lockstep.
@@ -335,7 +358,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
-    crate::api::sessions::filter_or_reject_client_side_tools(tools)
+    crate::domains::sessions::types::filter_or_reject_client_side_tools(tools)
         .map_err(serde::de::Error::custom)
 }
 
@@ -357,8 +380,9 @@ where
             // deprecation window should be treated as "do not change
             // tools" instead of silently clearing them.
             let was_empty = tools.is_empty();
-            let filtered = crate::api::sessions::filter_or_reject_client_side_tools(tools)
-                .map_err(serde::de::Error::custom)?;
+            let filtered =
+                crate::domains::sessions::types::filter_or_reject_client_side_tools(tools)
+                    .map_err(serde::de::Error::custom)?;
             if filtered.is_empty() && !was_empty {
                 // Every entry was non-client_side and got dropped. The
                 // structured warning has already been emitted; treat the

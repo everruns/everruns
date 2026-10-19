@@ -31,9 +31,9 @@ Verify that a personal access token created through the UI grants access to all 
 
 1. Navigate to the login page and sign in
 2. Navigate to Settings > Personal access tokens
-3. Verify the "Full account access" warning banner is visible and states tokens are tied to your user account (not an organization)
+3. Verify the page says tokens are tied to your user account, not to an organization
 4. Click "Create token"
-5. Enter name `user-scoped-token`, keep the default `90 days` expiration
+5. Enter name `user-scoped-token`, keep **Full access** and the default `90 days` expiration; inspect the dialog's account-wide access description
 6. Click "Create token"
 7. Copy the full token (starts with `evr_pat_`) from the "Personal access token created" dialog
 8. Click "Done"
@@ -49,9 +49,13 @@ Verify that a personal access token created through the UI grants access to all 
 
 ## Expected Result
 
-- Step 3: Warning banner says tokens are tied to your user account and grant access to all organizations
+- Steps 3–5: Page and dialog explain user-scoped access; Full access is selected by default
 - Step 5: `90 days` is selected by default in the expiration presets
 - Steps 10-11: Both agents created successfully (same token, different orgs)
 - Step 12: Only org A's agent appears
 - Step 13: Only org B's agent appears
-- Step 14: Returns 400 "Multiple organizations available. Specify the target organization via the X-Org-Id header."
+- Step 14 (no org cookie or header): Returns 400 "Multiple organizations available. Specify the target organization via the X-Org-Id header."
+
+## Cleanup
+
+Revoke the disposable token and remove the two test agents.

@@ -21,7 +21,6 @@ import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
 import { WebMcpProvider } from "@/providers/webmcp-provider";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useZeroOrgRedirect } from "@/components/onboarding/use-zero-org-redirect";
 import {
   isOnboardingRoute,
@@ -44,7 +43,6 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     authUnavailable,
   } = useAuth();
   const { isLoading: orgLoading } = useOrg();
-  const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
 
   // Authenticated users with zero orgs are redirected to onboarding. Reuses the
@@ -144,11 +142,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     </div>
   );
 
-  const content = notificationsEnabled ? (
-    <NotificationsProvider>{appChrome}</NotificationsProvider>
-  ) : (
-    appChrome
-  );
+  const content = <NotificationsProvider>{appChrome}</NotificationsProvider>;
 
   return (
     <WebMcpProvider>

@@ -16,13 +16,18 @@ import {
   writeFileToolCall,
   writeFileToolResult,
 } from "@/app/dev/_fixtures/tool-showcase-fixtures";
+import { fallbackDetails } from "@/app/dev/_fixtures/web-search-fixtures";
 import { BashToolCallCard } from "@/components/chat/bash-tool-call-card";
 import { GroupedActivityCard } from "@/components/chat/grouped-activity-card";
 import { ReadFileToolCallCard } from "@/components/chat/read-file-tool-call-card";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
+import { WebSearchRow } from "@/components/chat/web-search-details";
 import { WriteFileToolCallCard } from "@/components/chat/write-file-tool-call-card";
+import { parseWebSearchDetails } from "@/lib/web-search";
+
+const webSearchDetails = parseWebSearchDetails(fallbackDetails);
 
 export default function ToolActivityDevPage() {
   return (
@@ -168,6 +173,18 @@ export default function ToolActivityDevPage() {
             completedHeadline="Ran Daytona sandbox checks"
             rows={timelineRows}
           />
+        </section>
+
+        <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Web search</h2>
+            <p className="text-sm text-muted-foreground">
+              The &quot;Searched&quot; row for a web_search call that fell back: model provider
+              search skipped, Brave Search rate limited, free search answered.
+            </p>
+          </div>
+
+          {webSearchDetails && <WebSearchRow details={webSearchDetails} durationMs={1300} />}
         </section>
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">

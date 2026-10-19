@@ -38,6 +38,7 @@ fn base_profile() -> ModelProfile {
         supported_parameters: Vec::new(),
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: None,
     }
 }
@@ -146,7 +147,7 @@ fn merge_preserves_hardcoded_verbosity() {
 
 #[test]
 fn extract_discovered_profile_from_metadata() {
-    use crate::storage::models::ModelWithProviderRow;
+    use crate::storage::ModelWithProviderRow;
     use chrono::Utc;
 
     let profile = base_profile();
@@ -181,7 +182,7 @@ fn extract_discovered_profile_from_metadata() {
 
 #[test]
 fn extract_discovered_profile_returns_none_without_metadata() {
-    use crate::storage::models::ModelWithProviderRow;
+    use crate::storage::ModelWithProviderRow;
     use chrono::Utc;
 
     let row = ModelWithProviderRow {

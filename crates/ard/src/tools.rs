@@ -431,8 +431,20 @@ impl Tool for AttachResourceTool {
             target,
         };
 
-        // Persist the attachment; turn-context assembly folds it into the
-        // session config layer on the next turn.
+        // An MCP target joins the session through the general session MCP
+        // server record, the same one a chat-only user server writes; the
+        // turn-context fold reads only that record for MCP. Written first, so
+        // a failure leaves no `ard_attach:` record claiming an attachment.
+        if let Some(record) = attachment.session_mcp_server()
+            && let Err(e) =
+                everruns_core::put_session_mcp_server(storage.as_ref(), context.session_id, &record)
+                    .await
+        {
+            return ToolExecutionResult::internal_error(e);
+        }
+
+        // Persist the attachment (idempotency, the attachment cap,
+        // list_attached_resources, and the external-agent fold).
         let serialized = match serde_json::to_string(&attachment) {
             Ok(s) => s,
             Err(e) => return ToolExecutionResult::internal_error_msg(e.to_string()),

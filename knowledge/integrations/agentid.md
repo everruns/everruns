@@ -44,8 +44,8 @@ can never write `agentid` bindings.
 
 An agent with no token of its own signs in through its browser, the same way a
 person uses "Sign in with Google". Source:
-[`crates/server/src/api/agentid_login.rs`](../../crates/server/src/api/agentid_login.rs),
-[`crates/server/src/storage/agentid.rs`](../../crates/server/src/storage/agentid.rs).
+[`crates/server/src/api/agentid_login/mod.rs`](../../crates/server/src/api/agentid_login/mod.rs),
+[`crates/server/src/storage/agentid/mod.rs`](../../crates/server/src/storage/agentid/mod.rs).
 
 - **Deployment client.** One registered AgentID client per deployment, from
   `AGENTID_CLIENT_ID` and `AGENTID_CLIENT_SECRET`; the redirect URI is
@@ -102,5 +102,5 @@ and `instructions`. Source:
   session's network policy. No mail send or read.
 - **Validation.** Saving the connection checks format only (key, inbox as an
   address) and makes no AgentMail call; a wrong key surfaces on first use.
-- **Rollout.** Capability and connector sit behind the `agentid` feature flag
-  at the `adoption` grade.
+- **Rollout.** No feature flag: an agent signs in only after someone adds the
+  capability and an AgentMail connection, which is already the opt-in.

@@ -180,6 +180,13 @@ pub trait ChatDriver: Send + Sync {
         None
     }
 
+    /// Expected maximum idle interval for this request's stream. Hosts use
+    /// this in place of their generic default, but explicit host deadlines
+    /// always take precedence. Long-decode models may think between hops.
+    fn stream_stall_timeout(&self, _config: &LlmCallConfig) -> Option<std::time::Duration> {
+        None
+    }
+
     /// Whether this driver can express the request-level `parallel_tool_calls`
     /// preference on the wire for `model`.
     ///
@@ -321,6 +328,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn effective_context_window(&self, model: &str) -> Option<usize> {
         (**self).effective_context_window(model)
+    }
+
+    fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
+        (**self).stream_stall_timeout(config)
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -725,6 +736,10 @@ impl ChatDriver for CredentialGateDriver {
         self.inner.effective_context_window(model)
     }
 
+    fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
+        self.inner.stream_stall_timeout(config)
+    }
+
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.inner.supports_parallel_tool_calls(model)
     }
@@ -853,6 +868,10 @@ impl ChatDriver for RequestOptionsDriver {
 
     fn effective_context_window(&self, model: &str) -> Option<usize> {
         self.inner.effective_context_window(model)
+    }
+
+    fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
+        self.inner.stream_stall_timeout(&self.apply(config))
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -1291,6 +1310,19 @@ impl DriverRegistry {
             crate::Provider::from_driver(config.provider.clone(), factory(&config).into())
                 .with_driver_id(config.provider_type.clone()),
         )
+    }
+
+    /// Create the realtime (speech-to-speech) driver of a provider, with the
+    /// endpoint its calls go to. Fails when the provider has no realtime
+    /// service.
+    pub fn create_realtime_driver(
+        &self,
+        config: &ProviderConfig,
+    ) -> Result<(
+        crate::voice::SharedRealtimeDriver,
+        crate::runtime_provider::ProviderEndpoint,
+    )> {
+        self.create_provider(config)?.realtime()
     }
 
     /// Create an embeddings driver based on configuration.

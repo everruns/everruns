@@ -30,7 +30,7 @@ Verify that an MCP server can be created with custom HTTP headers for authentica
 
 ## Steps
 
-1. Navigate to Settings > MCP Servers
+1. Navigate to Settings > Organization > MCP catalog
 2. Click "Add MCP Server" button
 3. Enter name: `headers-mcp-server`
 4. Enter URL: `https://headers.mcp.com/v1/mcp`

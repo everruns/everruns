@@ -13,6 +13,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`output.message.started`](#outputmessagestarted) | Assistant message started. |
 | [`output.message.delta`](#outputmessagedelta) | Streaming chunk of assistant text. |
 | [`output.message.completed`](#outputmessagecompleted) | Assistant message finished and persisted. |
+| [`conversation.message`](#conversationmessage) | An agent that uses explicit communication sent a message with `send_message`. |
 | `output.message.replaced` | Clients discard streamed text for the turn and show a replacement; the next `output.message.completed` carries it. |
 | [`turn.started`](#turnstarted) | Turn began. |
 | [`turn.completed`](#turncompleted) | Turn finished successfully. |
@@ -35,6 +36,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `tool.call_requested` | A client-side tool call is waiting for a result from the client. |
 | `tool.call_repaired` | A malformed tool call was repaired, or repair was attempted, by the `tool_call_repair` capability. |
 | `tool.hosted_call` | A provider-executed (hosted) tool call changed state. |
+| `tool.nested_call` | A tool a shell script called through `tools` ([Tools in Shell](/capabilities/tools-in-shell/)) finished, was refused, or stopped the script for approval. Carries the parent `bash` call id. |
 | `transcript.repaired` | The conversation transcript was repaired before a provider request. |
 | `capability.usage` | Usage of a capability by the agent. |
 | [`llm.generation`](#llmgeneration) | One LLM call: model, usage, and timing. |
@@ -47,7 +49,9 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`sandbox.recovered`](#sandboxrecovered) | Managed Sandbox compute was replaced and its durable workspace restored. |
 | [`environment.instance_lost`](#sandboxinstance_lost) | Legacy compatibility name for `sandbox.instance_lost`. |
 | [`environment.recovered`](#sandboxrecovered) | Legacy compatibility name for `sandbox.recovered`. |
-| `schedule.triggered` | A schedule fired. |
+| `timer.set` | The session set a timer, such as a schedule. |
+| `timer.fired` | A timer's occurrence was delivered to the session. |
+| `timer.cancelled` | A timer will not fire again. |
 | `task.created` | Session task created. |
 | `task.updated` | Session task changed. |
 | `task.message.sent` | Message sent to a session task. |
@@ -68,6 +72,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `voice.output_transcript.completed` | Assistant's speech transcript finished. |
 | `voice.session.ended` | Voice session ended. |
 | `voice.session.failed` | Voice session failed. |
+| `voice.output.interrupted` | The caller talked over a spoken answer; carries what was heard and what was dropped. |
 
 ## Input Events
 
@@ -112,7 +117,7 @@ Events](#reasoning-events)) and its own channel.
   "type": "output.message.started",
   "data": {
     "turn_id": "turn_...",
-    "model": "gpt-5.2"
+    "model": "gpt-6.1-sol"
   }
 }
 ```
@@ -171,6 +176,44 @@ content parts inside `message.content`, in the order the provider emitted them.
 }
 ```
 
+### conversation.message
+
+Emitted when an agent that uses
+[explicit communication](/features/explicit-communication/) sends a message
+with the `send_message` tool. For these agents this event, not
+`output.message.completed`, carries what the agent said: their assistant text
+is recorded as `output.message.completed` with `message.phase: "commentary"`
+and is working notes, not a reply.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message_id` | string | Identifier of the sent message |
+| `text` | string | The message as the agent wrote it, in Markdown |
+| `tool_call_id` | string | The `send_message` call that sent it |
+| `delivery` | object? | Present only when an external platform accepted the message (for example a Slack thread) |
+| `delivery.platform` | string | Destination platform, such as `slack` |
+| `delivery.channel` | string | Platform channel or conversation identifier |
+| `delivery.message_ref` | string | Platform message identifier |
+
+When the conversation is the session itself (web chat, API, A2A, AG-UI, MCP,
+FCP), `delivery` is absent and this event is the delivery.
+
+```json
+{
+  "type": "conversation.message",
+  "data": {
+    "message_id": "message_...",
+    "text": "The report is ready. Revenue grew 12% quarter over quarter.",
+    "tool_call_id": "call_abc123",
+    "delivery": {
+      "platform": "slack",
+      "channel": "C0123456789",
+      "message_ref": "1712345678.000200"
+    }
+  }
+}
+```
+
 ## Turn Lifecycle Events
 
 ### turn.started
@@ -210,6 +253,7 @@ Emitted when a turn completes successfully.
 | `time_to_first_token_ms` | integer? | First-token latency |
 | `tool_call_count` | integer? | Completed tool-call count |
 | `llm_call_count` | integer? | LLM generation count |
+| `issue_count` | integer? | Failed tool calls the turn recovered from. The turn still succeeded; see [Issues and errors](#issues-and-errors) |
 | `status` | string? | Optional completion status |
 | `stop_reason` | string? | How the final model call ended (`stop`, `length`, `content_filter`, ...) |
 
@@ -229,6 +273,7 @@ Emitted when a turn completes successfully.
     "time_to_first_token_ms": 120,
     "tool_call_count": 2,
     "llm_call_count": 3,
+    "issue_count": 0,
     "status": "completed",
     "stop_reason": "stop"
   }
@@ -237,7 +282,7 @@ Emitted when a turn completes successfully.
 
 ### turn.failed
 
-Emitted when a turn fails with an error.
+Emitted when a turn fails with an error. A failed turn is always an error: the work stopped.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -376,7 +421,7 @@ events or on any API surface.
   "data": {
     "turn_id": "turn_...",
     "provider": "openai",
-    "model": "gpt-5.2",
+    "model": "gpt-6.1-sol",
     "item_id": "rs_68a1f...",
     "summary": ["Checking the build logs before answering."],
     "token_count": 412
@@ -405,7 +450,7 @@ Emitted when LLM inference begins.
   "data": {
     "agent_id": "agent_...",
     "metadata": {
-      "model": "gpt-5.2"
+      "model": "gpt-6.1-sol"
     }
   }
 }
@@ -470,7 +515,7 @@ Emitted when tool execution batch completes.
 |-------|------|-------------|
 | `completed` | boolean | All tools completed |
 | `success_count` | integer | Successful tool calls |
-| `error_count` | integer | Failed tool calls |
+| `error_count` | integer | Failed tool calls. Each is an issue the turn carries on from, not a turn error |
 | `duration_ms` | integer? | Total duration |
 
 ```json
@@ -518,6 +563,7 @@ Emitted when individual tool execution completes.
 | `status` | string | "success", "error", "timeout", "cancelled" |
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
+| `severity` | string? | `issue` when the call failed; absent on success. See [Issues and errors](#issues-and-errors) |
 | `duration_ms` | integer? | Duration |
 | `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`, and credential-looking text inside other values (bearer tokens, common provider API keys, URL user info) is replaced with `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
 | `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
@@ -535,6 +581,15 @@ Emitted when individual tool execution completes.
   }
 }
 ```
+
+### Issues and errors
+
+A failure is either an **issue** or an **error**, and the event says which:
+
+- **Issue**: the work recovered. A failed tool call goes back to the model as a result and the turn carries on. Failed `tool.completed` events carry `"severity": "issue"`, and `turn.completed` counts them in `issue_count`. Show issues as warnings.
+- **Error**: the work stopped. `turn.failed` and a session task in the `failed` state are errors. Reserve error styling for these.
+
+Do not infer severity from `success: false` alone. Failed `tool.completed` events recorded before `severity` existed omit it; read them as issues.
 
 ## LLM Events
 
@@ -570,7 +625,7 @@ dropped calls.
       "tool_calls": []
     },
     "metadata": {
-      "model": "gpt-5.2",
+      "model": "gpt-6.1-sol",
       "provider": "openai",
       "usage": {"input_tokens": 100, "output_tokens": 50},
       "duration_ms": 1200,
@@ -719,7 +774,7 @@ Information about the model used.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Model name (e.g., "gpt-5.2") |
+| `model` | string | Model name (e.g., "gpt-6.1-sol") |
 | `model_id` | string? | Internal model ID |
 | `provider_id` | string? | Internal provider ID |
 

@@ -14,19 +14,16 @@
 // Design: knowledge/execution/change-reasons-and-manager-context.md.
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod command_tests;
 pub mod commands;
 pub mod context;
 #[cfg(test)]
-#[path = "context_tests.rs"]
 mod context_tests;
 pub mod intent;
 pub mod registry;
 pub mod rest;
 pub mod revisions;
 #[cfg(test)]
-#[path = "revisions_tests.rs"]
 mod revisions_tests;
 pub mod snapshot;
 
@@ -94,12 +91,12 @@ fn missing_agent_reason(
     {
         return Err(CommandError::bad_request(message)
             .with_code(REASON_REQUIRED)
-            .with_action(crate::api::common::AllowedAction::new("retry").with_hint(
+            .with_action(crate::common_dto::AllowedAction::new("retry").with_hint(
                 "Retry the same command with --reason \"<what the user asked for>\".",
             )));
     }
     metrics::counter!(
-        crate::api::prometheus::names::ENTITY_CHANGES_WITHOUT_REASON,
+        crate::metrics_names::ENTITY_CHANGES_WITHOUT_REASON,
         "entity_kind" => kind.as_str(),
     )
     .increment(1);
@@ -319,7 +316,7 @@ impl PendingChange {
                         command,
                         "entity history: the declared subject id is missing from the command"
                     );
-                    metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
+                    metrics::counter!(crate::metrics_names::ENTITY_HISTORY_WRITE_FAILURES)
                         .increment(1);
                     return Ok(());
                 }
@@ -333,8 +330,7 @@ impl PendingChange {
             }
             if let Err(error) = ctx.db.record_entity_change(row).await {
                 tracing::error!(command, atomic, error = %error, "entity history write failed");
-                metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
-                    .increment(1);
+                metrics::counter!(crate::metrics_names::ENTITY_HISTORY_WRITE_FAILURES).increment(1);
                 if atomic {
                     return Err(CommandError::internal(error.context(
                         "entity history write failed; the change was rolled back",
@@ -404,7 +400,7 @@ impl PendingChange {
 /// string `"<cleared>"`, and `Unchanged` writes `null`, which
 /// `changed_fields` skips.
 pub mod update_field {
-    pub use crate::api::common::deserialize_nullable_update_field as deserialize;
+    pub use crate::common_dto::deserialize_nullable_update_field as deserialize;
 
     pub fn serialize<T, S>(
         field: &crate::storage::UpdateField<T>,

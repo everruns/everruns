@@ -34,6 +34,7 @@ pub use execution::configured_max_tool_concurrency;
 mod machine;
 pub mod native_async;
 mod phase_effects;
+pub(crate) mod rate_limit_auto_retry;
 #[cfg(test)]
 mod test_fixtures;
 mod turn;
@@ -67,6 +68,7 @@ pub(crate) mod tool_call_integrity {
 }
 
 pub use execution::capability_usage_records;
+pub use execution::model_wait;
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
     InputAtom, InputAtomInput, InputAtomResult, NativeExecutionCounts, OutputHardLimitHook,

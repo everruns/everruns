@@ -13,8 +13,8 @@ use axum::http::StatusCode;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
-use everruns_server::records::Session;
-use everruns_server::storage::models::{UpsertSessionKeyValue, UpsertSessionSecret};
+use everruns_server::domains::sessions::record::Session;
+use everruns_server::storage::{UpsertSessionKeyValue, UpsertSessionSecret};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -126,6 +126,7 @@ async fn session_storage_http_routes_honor_the_session_view_policy() {
             session_id: session.id,
             name: SECRET_NAME.to_string(),
             value_encrypted: b"ciphertext".to_vec(),
+            binding: None,
         })
         .await
         .expect("seed user secret");
@@ -135,6 +136,7 @@ async fn session_storage_http_routes_honor_the_session_view_policy() {
             session_id: session.id,
             name: INTERNAL_SECRET.to_string(),
             value_encrypted: b"sandbox".to_vec(),
+            binding: None,
         })
         .await
         .expect("seed internal secret");

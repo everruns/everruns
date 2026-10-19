@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::agent::Agent;
-use crate::channel::Channel;
+use crate::channels::Channel;
 use crate::config::AppConfig;
 use crate::registry::{
     AgentRegistration, AppInfoRegistration, AssetRegistration, ChannelRegistration,
@@ -56,7 +56,9 @@ pub(crate) struct AgentEntry {
 pub(crate) struct ChannelEntry {
     pub name: &'static str,
     pub source: &'static str,
-    pub channel: Arc<dyn Channel>,
+    /// The agent answering on it; the default agent when `None`.
+    pub agent: Option<&'static str>,
+    pub channel: Channel,
 }
 
 /// A discovered schedule with its parsed cron.
@@ -82,6 +84,7 @@ pub(crate) struct Skill {
 }
 
 pub(crate) struct AppInner {
+    pub declared_secrets: std::collections::BTreeSet<&'static str>,
     pub name: String,
     pub version: String,
     pub config: AppConfig,
@@ -138,18 +141,6 @@ impl App {
             .find(|agent| agent.default)
             .or_else(|| (top.len() == 1).then(|| &top[0]))
             .copied()
-    }
-
-    pub(crate) fn channel(&self, name: &str) -> Option<&ChannelEntry> {
-        self.inner.channels.iter().find(|entry| entry.name == name)
-    }
-
-    pub(crate) fn asset(&self, path: &str) -> Option<&'static AssetRegistration> {
-        self.inner
-            .assets
-            .iter()
-            .copied()
-            .find(|asset| asset.path == path)
     }
 
     /// Tools an agent gets: its filter, or every discovered tool.
@@ -246,6 +237,7 @@ impl AppBuilder {
         }
 
         let mut app = AppInner {
+            declared_secrets: Default::default(),
             name,
             version,
             config,
@@ -261,7 +253,8 @@ impl AppBuilder {
             errors,
         };
         if self.discover {
-            discover(&mut app);
+            let ((), secrets) = crate::connection::capture_secrets(|| discover(&mut app));
+            app.declared_secrets = secrets;
         }
         for (source, spec) in self.packages {
             match spec {
@@ -399,10 +392,44 @@ fn discover(app: &mut AppInner) {
             registration.source,
             "channels",
         );
+        // Channels and agents share `/v1/channels/{name}`.
+        if app
+            .agents
+            .iter()
+            .any(|agent| !agent.sub && agent.name == registration.name)
+        {
+            app.errors.push(format!(
+                "channel `{}` has the name of an agent; both are served at /v1/channels/{{name}}, rename one",
+                registration.name
+            ));
+        }
+        match registration.agent {
+            Some(agent)
+                if !app
+                    .agents
+                    .iter()
+                    .any(|entry| !entry.sub && entry.name == agent) =>
+            {
+                app.errors.push(format!(
+                    "channel `{}` names agent `{agent}`, which is not a top-level agent",
+                    registration.name
+                ));
+            }
+            None if app.agents.iter().filter(|entry| !entry.sub).count() > 1
+                && !app.agents.iter().any(|entry| entry.default) =>
+            {
+                app.errors.push(format!(
+                    "channel `{}` names no agent and the app has no default; use #[channel(agent = \"…\")]",
+                    registration.name
+                ));
+            }
+            _ => {}
+        }
         app.channels.push(ChannelEntry {
             name: registration.name,
             source: registration.source,
-            channel: Arc::from((registration.build)()),
+            agent: registration.agent,
+            channel: (registration.build)(),
         });
     }
 
@@ -485,14 +512,13 @@ fn discover(app: &mut AppInner) {
     app.evals = evals;
 }
 
-/// Five-field cron gains a seconds field; six or seven fields pass through.
+/// Five-field cron is standard cron (weekdays 0-6 from Sunday) and goes
+/// through the platform's own conversion, so an app schedule and the hosted
+/// cron entry the manifest creates from it fire on the same days. Six or seven
+/// fields are the `cron` crate's form and pass through.
 pub(crate) fn parse_cron(expr: &str) -> Result<cron::Schedule, cron::error::Error> {
-    let fields = expr.split_whitespace().count();
-    let expr = if fields == 5 {
-        format!("0 {expr}")
-    } else {
-        expr.to_string()
-    };
+    let expr = everruns_contracts::runtime::session_schedule::standard_cron_to_crate_form(expr)
+        .unwrap_or_else(|| expr.to_string());
     cron::Schedule::from_str(&expr)
 }
 
@@ -575,6 +601,30 @@ mod tests {
         assert!(schedule.upcoming(chrono::Utc).next().is_some());
         assert!(parse_cron("0 0 9 * * MON").is_ok());
         assert!(parse_cron("every monday").is_err());
+    }
+
+    /// EVE-1260: a 5-field cron counts weekdays 0-6 from Sunday, as the
+    /// platform's schedules do, not the `cron` crate's 1-7.
+    #[test]
+    fn five_field_cron_weekdays_count_from_sunday_zero() {
+        use chrono::Datelike;
+        let weekdays = |expr: &str| {
+            let schedule = parse_cron(expr).unwrap();
+            let mut days: Vec<_> = schedule
+                .upcoming(chrono::Utc)
+                .take(14)
+                .map(|at| at.weekday())
+                .collect();
+            days.sort_by_key(|day| day.num_days_from_monday());
+            days.dedup();
+            days
+        };
+        use chrono::Weekday::{Fri, Mon, Sun, Thu, Tue, Wed};
+        assert_eq!(weekdays("0 9 * * 1-5"), vec![Mon, Tue, Wed, Thu, Fri]);
+        assert_eq!(weekdays("0 18 * * 0"), vec![Sun]);
+        assert_eq!(weekdays("0 18 * * 7"), vec![Sun]);
+        // Six- and seven-field crons keep the `cron` crate's numbering.
+        assert_eq!(weekdays("0 0 9 * * 2-6 *"), vec![Mon, Tue, Wed, Thu, Fri]);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 // frozen App archival reads) passes it through `redact_channel_for_response`,
 // so write-only secrets never leave the server.
 
-use crate::records::{AgentChannel, ChannelType};
+use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
 use serde_json::{Value, json};
 
 fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
@@ -80,12 +80,6 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
-        ChannelType::ApiEndpoint => {
-            // The api_key_hash is a secret-equivalent: anyone who can submit a
-            // key whose SHA-256 matches it authenticates. Never surface it on
-            // read; the non-secret api_key_prefix stays for display.
-            map.remove("api_key_hash");
-        }
         ChannelType::PublicChat => {
             if map.remove("token").is_some() {
                 map.insert("token_configured".to_string(), Value::Bool(true));
@@ -104,7 +98,18 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 }
             }
         }
-        ChannelType::Schedule => {}
+        // Agent keys live in their own table. The customer identity methods
+        // may hold an introspection client secret, redacted like channel auth.
+        ChannelType::Api => {
+            if let Some(methods) = map.get_mut("auth_methods").and_then(Value::as_array_mut) {
+                for method in methods.iter_mut() {
+                    let mut wrapped = json!({ "auth": method.take() });
+                    redact_inline_channel_auth(&mut wrapped);
+                    *method = wrapped["auth"].take();
+                }
+            }
+        }
+        ChannelType::Schedule | ChannelType::Voice | ChannelType::Poppy => {}
     }
 }
 

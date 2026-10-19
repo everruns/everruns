@@ -1,6 +1,8 @@
 //! Constructing sessions: from scratch, from an app, from a trigger, from a blueprint.
 
 use super::*;
+use crate::domains::harnesses::record::HarnessExecution;
+use crate::domains::sandbox_templates::record::SandboxTargetKind;
 
 impl SessionService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
@@ -192,10 +194,13 @@ impl SessionService {
         source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
-        if req.workspace_id.is_some() && !req.initial_files.is_empty() {
+        // Every ingress path lands here, so the retired attach is refused at the
+        // creation boundary too, not only by the `CreateSession` command.
+        if req.workspace_id.is_some() {
             return Err(BadRequestError::new(
-                "initial_files cannot be applied to an existing file tree; review and update files through the Files API",
-            ).into());
+                crate::domains::sessions::types::WORKSPACE_ATTACH_RETIRED,
+            )
+            .into());
         }
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
@@ -290,58 +295,38 @@ impl SessionService {
             .as_ref()
             .and_then(|agent| agent.environments.clone())
             .and_then(|value| serde_json::from_value(value).ok());
-        let harness_fixes_bashkit = crate::domains::harnesses::queries::inherits_from_name(
-            &self.db,
-            org_id,
-            harness.id,
-            "bashkit-worker",
-        )
-        .await?;
+        let execution =
+            crate::domains::harnesses::queries::execution_rule(&self.db, org_id, harness.id)
+                .await?;
+        let harness_fixes_bashkit = execution == HarnessExecution::FixedBashkit;
         let harness_requires_execution = effective_harness.capabilities.iter().any(|capability| {
             matches!(
                 capability.capability_id(),
                 "bashkit_shell" | "session_sandbox" | "container_sandbox"
             )
         });
-        let managed_bashkit = if harness_fixes_bashkit
-            || (agent_sandbox_policy.is_none()
+        // A harness with a shell but no chosen sandbox keeps the managed
+        // Bashkit default. Sandbox Worker never takes that default: it needs
+        // a full sandbox, and falling back would hide a missing policy.
+        let use_managed_bashkit = harness_fixes_bashkit
+            || (execution == HarnessExecution::Unbound
+                && agent_sandbox_policy.is_none()
                 && req.sandbox.is_none()
-                && harness_requires_execution)
-        {
-            Some(
-                self.db
-                    .ensure_managed_bashkit_sandbox_template(org_id)
-                    .await?,
+                && harness_requires_execution);
+        if harness_fixes_bashkit && (agent_sandbox_policy.is_some() || req.sandbox.is_some()) {
+            return Err(BadRequestError::new(
+                "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
             )
-        } else {
-            None
-        };
-        let mut resolved_sandbox = if harness_fixes_bashkit {
-            if agent_sandbox_policy.is_some() || req.sandbox.is_some() {
-                return Err(BadRequestError::new(
-                    "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
-                )
-                .into());
-            }
+            .into());
+        }
+        let mut resolved_sandbox = if use_managed_bashkit {
+            let managed_bashkit = self
+                .db
+                .ensure_managed_bashkit_sandbox_template(org_id)
+                .await?;
             Some(
                 crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
-                    managed_bashkit
-                        .as_ref()
-                        .expect("managed Sandbox Template loaded"),
-                )
-                .map_err(BadRequestError::new)?,
-            )
-        } else if agent_sandbox_policy.is_none()
-            && req.sandbox.is_none()
-            && harness_requires_execution
-        {
-            // Preserve today's Worker behavior while making the primary
-            // Sandbox explicit and recoverable in Session state.
-            Some(
-                crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
-                    managed_bashkit
-                        .as_ref()
-                        .expect("managed Sandbox Template loaded"),
+                    &managed_bashkit,
                 )
                 .map_err(BadRequestError::new)?,
             )
@@ -352,6 +337,16 @@ impl SessionService {
             )
             .map_err(BadRequestError::new)?
         };
+        if execution == HarnessExecution::FullSandbox
+            && resolved_sandbox
+                .as_ref()
+                .is_none_or(|sandbox| sandbox.spec.target.kind == SandboxTargetKind::Vfs)
+        {
+            return Err(BadRequestError::new(
+                "Sandbox Worker needs a full sandbox; set the Agent sandbox_policy to a container or managed Sandbox Template, or use Bashkit Worker",
+            )
+            .into());
+        }
 
         let virtual_user_id = if let Some(identity_id) = req.virtual_user_id {
             let identity = self
@@ -372,9 +367,27 @@ impl SessionService {
         // binding; neither may fall back to a different account.
         if let Some(sandbox) = resolved_sandbox.as_mut() {
             use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
+            let provider = sandbox.spec.target.provider.clone().unwrap_or_default();
             let credential = &mut sandbox.spec.target.credential;
             match credential.source {
                 SessionSandboxCredentialSource::None => {}
+                SessionSandboxCredentialSource::SessionUser if caller.user_id.is_none() => {
+                    // Trigger and channel ingress start Sessions without a
+                    // person. Rebind to the organization's sole account for the
+                    // provider and pin it, so the snapshot names the account
+                    // that actually pays.
+                    let accounts = self.db.list_organization_connections(org_id).await?;
+                    let account =
+                        crate::domains::sandbox_templates::resolution::sole_organization_account(
+                            &provider,
+                            accounts,
+                            |account| account.provider.as_str(),
+                        )
+                        .map_err(BadRequestError::new)?;
+                    credential.source = SessionSandboxCredentialSource::Organization;
+                    credential.connection_id = Some(account.id);
+                    credential.virtual_user_id = Some(account.virtual_user_id.uuid());
+                }
                 SessionSandboxCredentialSource::SessionUser => {
                     let user_id = caller.user_id.ok_or_else(|| {
                         BadRequestError::new(
@@ -427,22 +440,32 @@ impl SessionService {
             }
         }
 
-        // Resolve model_id: session > agent > harness
-        let model_id = self
-            .validate_model_id(org_id, req.model_id)
-            .await?
-            .or_else(|| {
-                // Try agent's default_model_id first, then fall back to harness's default_model_id.
-                agent
-                    .as_ref()
-                    .and_then(|a| a.default_model_id)
-                    .or(effective_harness.default_model_id)
-            });
+        // Store only an explicitly requested model. Turns resolve the rest
+        // (agent, then harness, then org default) when they run, so changing
+        // the agent's default model reaches sessions that already exist.
+        let model_id = self.validate_model_id(org_id, req.model_id).await?;
 
         let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
+        crate::domains::capabilities::validation::validate_caller_sandbox_capabilities(
+            &req.capabilities,
+        )?;
+        // Agent-cap lookup failures propagate (sandbox auto-start treats them
+        // as fatal), unlike the best-effort `resolve_session_capability_configs`
+        // used by the advisory delete path.
+        let agent_capabilities = if let Some(agent_id) = agent_id {
+            self.db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let session_capabilities =
             crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
-                &sanitize_session_capabilities(req.capabilities),
+                &req.capabilities,
+                &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
                 resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
 
@@ -460,7 +483,7 @@ impl SessionService {
         .await?;
 
         // Validate session-level capability refs before persisting.
-        crate::domains::capabilities::validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_resolved_capability_refs(
             &self.db,
             org_id,
             &session_capabilities,
@@ -525,47 +548,10 @@ impl SessionService {
             }
         };
 
-        // Optional attach to an existing shared workspace. When absent, the
-        // storage layer auto-creates a default 1:1 workspace (see
-        // knowledge/runtime-resources/workspace.md, "Default Workspace per Session").
-        let workspace_id = match req.workspace_id {
-            Some(public_id) => {
-                let workspace = self
-                    .db
-                    .get_workspace(org_id, public_id)
-                    .await?
-                    .ok_or_else(|| ResourceNotFoundError::new("Workspace"))?;
-                if workspace.status != "active" {
-                    return Err(BadRequestError::new(format!(
-                        "Workspace {public_id} is {} and cannot accept new sessions",
-                        workspace.status
-                    ))
-                    .into());
-                }
-                // The session's rendered workspace_id is derived from the
-                // internal id, so it only round-trips when id.hex == public_id
-                // suffix. New workspaces pin this at creation, but a workspace
-                // created before that invariant (random internal PK) would make
-                // the session report a workspace_id that 404s against the
-                // workspace API. Reject it with actionable guidance rather than
-                // silently misrendering.
-                if everruns_contracts::typed_id::WorkspaceId::from_uuid(workspace.id).to_string()
-                    != workspace.public_id
-                {
-                    return Err(BadRequestError::new(format!(
-                        "Workspace {public_id} predates the id/public-id invariant \
-                         and cannot be attached; recreate it via POST /v1/workspaces"
-                    ))
-                    .into());
-                }
-                Some(workspace.id)
-            }
-            None => None,
-        };
-
         let requested_goal = req.goal.clone();
         let forked_from_session_id = req.forked_from_session_id;
         let seed = req.seed;
+        let fork_up_to_sequence = req.fork_up_to_sequence;
 
         let input = CreateSessionRow {
             org_id,
@@ -600,7 +586,8 @@ impl SessionService {
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
             budget_root_session_id: req.budget_root_session_id,
-            workspace_id,
+            // Always a fresh default workspace (see `WORKSPACE_ATTACH_RETIRED`).
+            workspace_id: None,
         };
         let row = self.db.create_session(input).await?;
         if let Some(sandbox) = &resolved_sandbox {
@@ -635,21 +622,17 @@ impl SessionService {
         let scoped_memory = ScopedMemoryContext {
             agent_id,
             harness_id: Some(harness_id),
-            // User memory is private to the resolved user. Do not materialize it
-            // into caller-attached shared workspaces because workspace files are
-            // currently workspace-wide rather than participant-local.
-            user_id: if workspace_id.is_none() && !self.db.is_playground_session(session.id).await?
-            {
-                resolved_owner_user_id
-            } else {
+            // User memory is private to the resolved user; Playground sessions
+            // run as someone else's preview and never receive it.
+            user_id: if self.db.is_playground_session(session.id).await? {
                 None
+            } else {
+                resolved_owner_user_id
             },
         };
 
         // Apply capability mounts (harness + agent + session capabilities) and
-        // address the session's working tree. Key by workspace_id
-        // (not session id) so an attached shared workspace receives mounts; for
-        // the default 1:1 session these are equal.
+        // address the session's working tree, keyed by workspace id.
         self.apply_capability_mounts(
             org_id,
             harness_id.uuid(),
@@ -660,35 +643,19 @@ impl SessionService {
         )
         .await?;
 
-        // Agent/harness files seed a new lineage once. Attaching a session must
-        // never reset an existing tree to the agent's starting snapshot.
-        if workspace_id.is_none() {
-            self.apply_initial_files(
-                org_id,
-                harness_id.uuid(),
-                agent_id.map(|a| a.uuid()),
-                &req.initial_files,
-                session.workspace_id.uuid(),
-            )
-            .await?;
-        }
+        // Agent/harness files seed the session's fresh workspace.
+        self.apply_initial_files(
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|a| a.uuid()),
+            &req.initial_files,
+            session.workspace_id.uuid(),
+        )
+        .await?;
 
         // Effective capability list (harness + agent + session), resolved once
         // and shared by sandbox auto-start and the session_start hook so the
-        // merge rule lives in exactly one place per call. Agent-cap lookup
-        // failures propagate here (sandbox auto-start treats them as fatal),
-        // unlike the best-effort `resolve_session_capability_configs` used by
-        // the advisory delete path.
-        let agent_capabilities = if let Some(agent_id) = agent_id {
-            self.db
-                .get_agent_capabilities(agent_id.uuid())
-                .await?
-                .into_iter()
-                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
+        // merge rule lives in exactly one place per call.
         let effective_capabilities = merge_capabilities(
             &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
             &session_capabilities,
@@ -727,6 +694,7 @@ impl SessionService {
                 session.id,
                 session.workspace_id.uuid(),
                 seed,
+                fork_up_to_sequence,
                 &mut session,
             )
             .await?;
@@ -836,6 +804,7 @@ impl SessionService {
         Ok(session)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn apply_session_seed(
         &self,
         org_id: i64,
@@ -843,6 +812,7 @@ impl SessionService {
         child_session_id: SessionId,
         child_workspace_id: Uuid,
         seed: SessionSeedMode,
+        fork_up_to_sequence: Option<i32>,
         child: &mut Session,
     ) -> Result<()> {
         let source = self
@@ -852,7 +822,7 @@ impl SessionService {
             .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
         let fork_sequence = if seed == SessionSeedMode::Fork {
             Some(
-                self.copy_session_events(source_session_id, child_session_id)
+                self.copy_session_events(source_session_id, child_session_id, fork_up_to_sequence)
                     .await?,
             )
             .flatten()
@@ -866,6 +836,9 @@ impl SessionService {
         }
         if seed == SessionSeedMode::Fork {
             self.copy_session_storage(source_session_id, child_session_id)
+                .await?;
+            self.db
+                .copy_session_databases(source_session_id, child_session_id)
                 .await?;
             if let Some(fork_sequence) = fork_sequence {
                 self.db
@@ -897,7 +870,7 @@ impl SessionService {
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
 
-        crate::services::model_catalog::require_chat(model.provider_metadata.as_ref())?;
+        crate::domains::models::catalog::require_chat(model.provider_metadata.as_ref())?;
         Ok(Some(model_id))
     }
 }

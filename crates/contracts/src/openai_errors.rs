@@ -9,13 +9,13 @@
 /// OpenAI can also return 403 with `"model_not_found"` for tier-gated models — these must
 /// be classified as model_unavailable rather than provider_misconfigured.
 /// Also handles Gemini/OpenAI-compatible endpoints with similar patterns.
-pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
+pub fn is_openai_model_not_found(status: http::StatusCode, error_text: &str) -> bool {
     let error_lower = error_text.to_lowercase();
 
     // OpenAI can return 404, 400, or 403 (tier-gated access) for nonexistent/inaccessible models
-    if status == reqwest::StatusCode::NOT_FOUND
-        || status == reqwest::StatusCode::BAD_REQUEST
-        || status == reqwest::StatusCode::FORBIDDEN
+    if status == http::StatusCode::NOT_FOUND
+        || status == http::StatusCode::BAD_REQUEST
+        || status == http::StatusCode::FORBIDDEN
     {
         // OpenAI: {"error":{"code":"model_not_found","message":"The model 'x' does not exist"}}
         if error_lower.contains("model_not_found") {
@@ -26,12 +26,12 @@ pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) 
     // Mistral gates models by plan with a 403 whose type is `tier_not_allowed`
     // ("This model is not available in your subscription tier"). Like OpenAI's
     // tier-gated 403 above, the key is fine and the model is out of reach.
-    if status == reqwest::StatusCode::FORBIDDEN && error_lower.contains("tier_not_allowed") {
+    if status == http::StatusCode::FORBIDDEN && error_lower.contains("tier_not_allowed") {
         return true;
     }
 
     // 404 with generic model-not-found patterns
-    if status == reqwest::StatusCode::NOT_FOUND {
+    if status == http::StatusCode::NOT_FOUND {
         if error_lower.contains("does not exist") {
             return true;
         }
@@ -49,11 +49,11 @@ pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) 
 /// - 429 with "Request too large", or a token limit smaller than the request
 /// - 400 with "context_length_exceeded" code
 /// - Any message about maximum context length being exceeded
-pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
+pub fn is_openai_request_too_large(status: http::StatusCode, error_text: &str) -> bool {
     let error_lower = error_text.to_lowercase();
 
     // HTTP 429 with token-related errors
-    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+    if status == http::StatusCode::TOO_MANY_REQUESTS {
         // "Request too large for gpt-4" pattern
         if error_lower.contains("request too large") {
             return true;
@@ -72,7 +72,7 @@ pub fn is_openai_request_too_large(status: reqwest::StatusCode, error_text: &str
     }
 
     // HTTP 400 with context length errors
-    if status == reqwest::StatusCode::BAD_REQUEST {
+    if status == http::StatusCode::BAD_REQUEST {
         // "context_length_exceeded" error code
         if error_lower.contains("context_length_exceeded") {
             return true;
@@ -168,7 +168,7 @@ mod tests {
             (413, "input is too long", true),
         ] {
             assert_eq!(
-                is_openai_request_too_large(reqwest::StatusCode::from_u16(status).unwrap(), body),
+                is_openai_request_too_large(http::StatusCode::from_u16(status).unwrap(), body),
                 expected,
                 "{status}: {body}"
             );
@@ -223,7 +223,7 @@ mod tests {
             (404, "MODEL NOT FOUND", true),
         ] {
             assert_eq!(
-                is_openai_model_not_found(reqwest::StatusCode::from_u16(status).unwrap(), body),
+                is_openai_model_not_found(http::StatusCode::from_u16(status).unwrap(), body),
                 expected,
                 "{status}: {body}"
             );

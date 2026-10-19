@@ -79,7 +79,7 @@ stored individually rather than unpacked on demand, so activation and VFS mounti
 extraction at runtime.
 
 Fields and types: [`Skill` and `SkillFileEntry`](../../crates/contracts/src/runtime/skill.rs). Persistence:
-`skills` and `skill_files` in [`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql).
+`skills` and `skill_files` in [`crates/server/migrations/legacy/001_base_schema.sql`](../../crates/server/migrations/legacy/001_base_schema.sql).
 
 Two source types exist: `markdown` (a pasted SKILL.md, instructions only) and `archive` (a ZIP
 holding the full skill directory with scripts, references, and assets). Statuses come from
@@ -225,7 +225,7 @@ The mount's `capability_id` is set to the contributing capability's ID so the VF
 ## Database Schema
 
 `skills` and `skill_files` are defined in
-[`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql).
+[`crates/server/migrations/legacy/001_base_schema.sql`](../../crates/server/migrations/legacy/001_base_schema.sql).
 Two shapes carry design intent worth stating here: skills are unique per `(org_id, name)` so
 capability IDs cannot collide across tenants, and archive files are rows rather than a blob to unpack,
 because every activation mounts them into the session VFS.

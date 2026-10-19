@@ -24,7 +24,7 @@ Verify that the MCP catalog counts active agents once and shows their names befo
 
 ## Steps
 
-1. Navigate to Registries > MCP.
+1. Navigate to Settings > Organization > MCP catalog.
 2. Find the preset in the Catalog surface.
 3. Review the Used by value and its tooltip.
 4. Click Archive for the preset.

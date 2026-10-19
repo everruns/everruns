@@ -30,25 +30,28 @@ mod context;
 mod apps;
 mod caching;
 pub(crate) mod cards;
-mod discovery;
+pub(crate) mod discovery;
 pub mod elicitation;
 mod events;
+mod files;
 mod form_elicitation;
 mod resources;
+mod scope;
+mod skills;
 mod tasks;
 mod tool_registry;
 
 use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner;
 use crate::domains::budgets::BudgetService;
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
+use crate::domains::organizations::record::validate_org_public_id;
 use crate::domains::reporting::ReportingService;
-use crate::domains::session_files::WorkspaceFileService;
-use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::SessionService;
-use crate::records::validate_org_public_id;
+use crate::domains::{session_files::WorkspaceFileService, session_sandbox::SessionSandboxService};
 use crate::services::{CapabilityService, EventService};
 use crate::storage::StorageBackend;
 use axum::{
@@ -71,10 +74,9 @@ use std::sync::Arc;
 
 use super::common::impl_auth_state;
 
-pub(crate) mod catalog;
-pub(crate) mod cli_tree;
-mod command_line;
-pub(crate) mod positional;
+// The command catalog is transport-neutral and lives in
+// `crate::services::command_catalog`; re-exported here for the MCP transport.
+pub(crate) use crate::services::command_catalog::{catalog, cli_tree};
 // ============================================================================
 // JSON-RPC 2.0 types
 // ============================================================================
@@ -147,23 +149,24 @@ pub const MCP_SERVER_NAME: &str = "everruns";
 pub const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
 const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
+const MCP_PROTOCOL_VERSION_2025_11: &str = "2025-11-25";
 const MCP_PROTOCOL_VERSION_LATEST: &str = "2026-07-28";
 // Newest first — negotiation and the "supported" error message both rely on
 // this ordering reading high-to-low.
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     MCP_PROTOCOL_VERSION_LATEST,
+    MCP_PROTOCOL_VERSION_2025_11,
     MCP_PROTOCOL_VERSION_2025_06,
     MCP_PROTOCOL_VERSION_FALLBACK,
 ];
 
-/// The richer tool shape introduced in MCP 2025-06-18 — `title`,
-/// `outputSchema`, `structuredContent`, and entity-card tools — applies to
-/// that version and every later one (2026-07-28 is a superset). Only the
-/// 2025-03-26 fallback omits it.
+/// The richer tool shape introduced in MCP 2025-06-18 — `title`, `outputSchema`,
+/// `structuredContent`, and entity-card tools — applies to that version and every later one
+/// (2025-11-25 and 2026-07-28 are supersets). Only the 2025-03-26 fallback omits it.
 pub(crate) fn supports_rich_tool_shape(protocol_version: &str) -> bool {
     matches!(
         protocol_version,
-        MCP_PROTOCOL_VERSION_2025_06 | MCP_PROTOCOL_VERSION_LATEST
+        MCP_PROTOCOL_VERSION_2025_06 | MCP_PROTOCOL_VERSION_2025_11 | MCP_PROTOCOL_VERSION_LATEST
     )
 }
 
@@ -205,6 +208,8 @@ fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
     // and decides whether to proceed.
     if requested > MCP_PROTOCOL_VERSION_LATEST {
         MCP_PROTOCOL_VERSION_LATEST
+    } else if requested > MCP_PROTOCOL_VERSION_2025_11 {
+        MCP_PROTOCOL_VERSION_2025_11
     } else if requested > MCP_PROTOCOL_VERSION_2025_06 {
         MCP_PROTOCOL_VERSION_2025_06
     } else {
@@ -325,12 +330,17 @@ pub struct AppState {
     pub fallback_base_harness_name: Option<String>,
     pub fallback_default_harness_name: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
-    /// System utility LLM for sanctioned internal analysis commands.
+    /// System utility LLM and decisions for sanctioned internal commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Agent health check service, so the
-    /// health-check commands work over MCP, not just HTTP.
+    pub decisions: Arc<dyn everruns_core::DecisionsService>,
+    /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
-    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// The channel host Slack runs on, for schedule triggers fired by hand
+    /// that run in a channel conversation.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    /// OAuth catalog preset connection check (`api::user_connections`).
+    pub mcp_oauth_checker: Option<context::SharedMcpOAuthChecker>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -348,7 +358,11 @@ pub struct AppState {
     /// elicit, since an elicitation with no reachable URL is worse than no tool.
     pub elicitation_base_url: Option<String>,
     /// Outbound MCP Events (EVE-1121). `None` leaves `events/*` undefined.
-    pub mcp_events: Option<Arc<crate::services::mcp_events::McpEventsService>>,
+    pub mcp_events: Option<Arc<crate::domains::mcp_servers::events::McpEventsService>>,
+    /// Provider-domain services; `None` leaves `sync_provider_models` unavailable.
+    pub provider_services: Option<ProviderServices>,
+    /// Downloads files sent by URL with `agent_run` / `session_send_message`.
+    pub egress: Arc<dyn everruns_core::EgressService>,
 }
 
 impl AppState {
@@ -358,9 +372,8 @@ impl AppState {
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
-        notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        built_in_harnesses: &[crate::domains::harnesses::record::BuiltInHarnessDefinition],
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
@@ -374,11 +387,11 @@ impl AppState {
             message_service: Arc::new(MessageService::new(
                 db.clone(),
                 runner.clone(),
-                notifications_enabled,
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
+            egress: host_composition.egress_service(),
             session_sandbox_service: None,
             capability_service,
             // Hosted connector catalog (EVE-879): defaults to the OSS
@@ -393,38 +406,29 @@ impl AppState {
             org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
-            fallback_base_harness_name: crate::records::harness_for_role(
+            fallback_base_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
-                crate::records::BuiltInHarnessRole::Base,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Base,
             )
             .map(|h| h.name.clone()),
-            fallback_default_harness_name: crate::records::harness_for_role(
+            fallback_default_harness_name: crate::domains::harnesses::record::harness_for_role(
                 built_in_harnesses,
-                crate::records::BuiltInHarnessRole::Default,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
             sqldb_store,
             utility_llm_service: host_composition.utility_llm_service(),
+            decisions: host_composition.decisions(),
             slack_provisioner: None,
+            channels: None,
+            mcp_oauth_checker: None,
             health_check_service: None,
             resource_metadata_url: None,
             mcp_resource: None,
             elicitation_base_url: None,
             mcp_events: None,
+            provider_services: None,
         }
-    }
-
-    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
-        self.resource_metadata_url = Some(url.into());
-        self
-    }
-
-    pub fn with_connector_registry(
-        mut self,
-        registry: everruns_contracts::connector::ConnectorRegistry,
-    ) -> Self {
-        self.connector_registry = registry;
-        self
     }
 
     pub fn with_org_rate_limiter(
@@ -445,14 +449,6 @@ impl AppState {
     /// Public root that URL mode elicitation pages are built from.
     pub fn with_elicitation_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.elicitation_base_url = Some(base_url.into());
-        self
-    }
-
-    pub fn with_mcp_events(
-        mut self,
-        service: Arc<crate::services::mcp_events::McpEventsService>,
-    ) -> Self {
-        self.mcp_events = Some(service);
         self
     }
 
@@ -491,8 +487,7 @@ impl_auth_state!(AppState);
 // JWT or cookie. `McpResolvedOrg` then resolves org context from that user
 // without going back through `validate_token`, so the audience split is intact.
 
-use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
+use axum::{extract::FromRequestParts, http::request::Parts};
 
 /// Authenticated caller for the `/mcp` endpoint (MCP-scoped validation).
 pub struct McpAuthUser(pub AuthUser);
@@ -661,29 +656,31 @@ async fn handle_mcp(
         );
     }
 
-    // Result metadata (`resultType` and, where the result is cacheable, `ttlMs`
-    // / `cacheScope`) is attached here rather than inside each handler: the
-    // policy is per-method and per-era, and the handlers have many success
-    // paths. See `caching` for the TTL and scope rationale.
+    // Result metadata (`resultType` and, where cacheable, `ttlMs` / `cacheScope`)
+    // follows method/protocol boundaries; resource reads select scope in
+    // their wrapper across all success paths. See `caching`.
     let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
+    let root = state.elicitation_base_url.as_deref();
+    if let Some(denied) = scope::request_denial(&req, negotiated_version, &auth_user) {
+        return Json(denied).into_response();
+    }
     let response = match req.method.as_str() {
-        "initialize" => discovery::handle_initialize(req.id, req.params),
+        "initialize" => discovery::handle_initialize(req.id, req.params, root),
         // MCP 2026-07-28 replaces `initialize` with a stateless discovery call.
         // ChatGPT reads extension and events capabilities from it.
         "server/discover" => {
-            discovery::handle_server_discover(req.id, events::enabled(&org, &state))
+            discovery::handle_server_discover(req.id, events::enabled(&org, &state), root)
         }
         "tools/list" => {
-            let mut response = handle_tools_list(req.id, negotiated_version);
+            let mut response =
+                scope::handle_tools_list(req.id, negotiated_version, auth_user.pat_scope);
             if let Some(result) = response.result.as_mut() {
                 caching::mark_cacheable(
                     result,
                     negotiated_version,
                     caching::TOOLS_LIST_TTL_MS,
-                    // The catalog is static per protocol version — identical
-                    // for every caller — so it is safe to share across
-                    // authorization contexts.
-                    caching::CacheScope::Public,
+                    // Public for the full catalog, static per protocol version.
+                    scope::tools_list_cache_scope(auth_user.pat_scope),
                 );
             }
             response
@@ -717,20 +714,31 @@ async fn handle_mcp(
             }
             response
         }
-        "resources/read" => {
-            let mut response =
-                resources::handle_resources_read(req.id, req.params, &org, &state).await;
+        "resources/templates/list" => {
+            let mut response = resources::handle_resource_templates_list(req.id);
             if let Some(result) = response.result.as_mut() {
                 caching::mark_cacheable(
                     result,
                     negotiated_version,
-                    caching::RESOURCES_READ_TTL_MS,
-                    // Payloads are org-scoped; a shared cache keyed on the URI
-                    // alone would serve one org's data to another.
-                    caching::CacheScope::Private,
+                    caching::RESOURCES_LIST_TTL_MS,
+                    // Static template catalog, same for every caller.
+                    caching::CacheScope::Public,
                 );
             }
             response
+        }
+        "resources/read" => {
+            resources::handle_resources_read(req.id, req.params, &org, &state, negotiated_version)
+                .await
+        }
+        "skills/list" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_list(req.id, req.params)
+        }
+        "skills/get" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_get(req.id, req.params)
+        }
+        "resources/directory/read" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
+            skills::handle_directory_read(req.id, req.params)
         }
         // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
         // sessions; these methods delegate to the same session logic the
@@ -767,28 +775,6 @@ async fn handle_mcp(
 // ============================================================================
 // Protocol handlers
 // ============================================================================
-
-fn handle_tools_list(id: Option<Value>, protocol_version: &str) -> JsonRpcResponse {
-    JsonRpcResponse::success(id, json!({ "tools": tool_definitions(protocol_version) }))
-}
-
-fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
-    let mut ctx = Ctx::new(
-        Caller::from(org),
-        state.db.clone(),
-        state.capability_service.clone(),
-        state.encryption.clone(),
-        state.auth.permission_resolver.clone(),
-    )
-    .with_feature_flags(org.feature_flags.clone())
-    .with_org_rate_limiter(state.org_rate_limiter.clone())
-    .with_slack_provisioner(state.slack_provisioner.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
-    if let Some(service) = &state.health_check_service {
-        ctx = ctx.with_health_check_service(service.clone());
-    }
-    ctx
-}
 
 fn resource_error(resource: &str, e: CommandError) -> String {
     match e.kind {
@@ -863,6 +849,7 @@ async fn handle_tools_call(
     // A parked `ask_user` question set is served to a capable client as a form
     // mode elicitation, and answered on the retry. See `form_elicitation`.
     if tool_name == "session_get_status"
+        && scope::may_write(auth_user.pat_scope) // Answering resumes the session.
         && let Some(response) = form_elicitation::ask_user_form_elicitation(
             &id,
             &params,
@@ -1130,8 +1117,6 @@ async fn resolve_org_by_id(
             format!("Organization not found or you are not a member: {org_public_id}")
         })?;
 
-    let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
-
     let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_row.org_id,
@@ -1145,9 +1130,10 @@ async fn resolve_org_by_id(
         public_id: org_row.public_id.clone(),
         name: org_row.name.clone(),
         user_id: Some(auth_user.id),
-        role,
+        role: org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         is_platform_user: auth_user.is_platform_user,
         feature_flags,
+        read_only: crate::auth::pat_scope::PatScope::restricts_writes(auth_user.pat_scope),
     })
 }
 
@@ -1302,13 +1288,8 @@ async fn tool_agent_run(
     };
 
     // Send first message via catalog handler
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     let mut result = json!({
@@ -1344,13 +1325,8 @@ async fn tool_session_send_message(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let msg_params = json!({
-        "session_id": session_id,
-        "message": {
-            "role": "user",
-            "content": [{"type": "text", "text": message_text}]
-        }
-    });
+    let message = files::user_message(message_text, args, org, state).await?;
+    let msg_params = json!({ "session_id": session_id, "message": message });
     let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     // Fetch session to get current status (create_message returns message, not session)
@@ -1421,20 +1397,10 @@ async fn tool_session_get_status(
     // Extract latest output from events
     let empty = vec![];
     let events_arr = events.unwrap_or(&empty);
-    let latest_output = events_arr
-        .iter()
-        .rev()
-        .find(|e| e.get("event_type").and_then(|v| v.as_str()) == Some("output.message.completed"))
-        .and_then(|e| e.get("data"))
-        .and_then(|d| d.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_array())
-        .and_then(|parts| {
-            parts
-                .iter()
-                .find(|p| p.get("type").and_then(|t| t.as_str()) == Some("text"))
-                .and_then(|p| p.get("text").and_then(|t| t.as_str()))
-        });
+    // What the agent last said, never its commentary.
+    let latest_output = events_arr.iter().rev().find_map(|e| {
+        everruns_core::conversation::said_in_event(e.get("event_type")?.as_str()?, e.get("data")?)
+    });
 
     let last_event_id = events_arr
         .last()
@@ -1507,8 +1473,8 @@ async fn tool_discover(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Discover,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Discover,
         args,
         catalog_context(org, state),
     )
@@ -1520,8 +1486,8 @@ async fn tool_discover(
 // ============================================================================
 
 async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Query,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Query,
         args,
         catalog_context(org, state),
     )
@@ -1529,8 +1495,8 @@ async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result
 }
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    crate::services::platform_command_surface::invoke(
-        crate::services::platform_command_surface::Operation::Execute,
+    crate::worker_link::platform_command_surface::invoke(
+        crate::worker_link::platform_command_surface::Operation::Execute,
         args,
         catalog_context(org, state),
     )
@@ -1550,12 +1516,13 @@ pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::C
     }
 }
 
-pub(crate) use context::domain_context;
+pub use crate::domains::providers::ProviderServices;
+pub(crate) use context::{domain_context, mcp_ctx};
 
 #[cfg(test)]
 mod org_override_scope_tests {
     use super::*;
-    use crate::records::OrgMembership;
+    use crate::domains::organizations::record::OrgMembership;
     use uuid::Uuid;
 
     fn test_auth_user(auth_method: AuthMethod) -> AuthUser {
@@ -1572,6 +1539,7 @@ mod org_override_scope_tests {
                 name: "Default".to_string(),
                 role: OrgRole::Member,
             }],
+            pat_scope: None,
         }
     }
 
@@ -1584,6 +1552,7 @@ mod org_override_scope_tests {
             role: OrgRole::Member,
             is_platform_user: false,
             feature_flags: crate::records::FeatureFlags::default(),
+            read_only: false,
         }
     }
 
@@ -1763,13 +1732,12 @@ mod resources_read_policy_tests {
 
     fn test_caller() -> Caller {
         Caller {
-            org_id: 1,
-            org_public_id: "org_test".to_string(),
             user_id: None,
             // Member-level, so role rules don't accidentally pass in isolation.
             role: OrgRole::Member,
             is_platform_user: false,
             is_internal: false,
+            ..Caller::internal(1)
         }
     }
 
@@ -1881,202 +1849,4 @@ mod resources_read_policy_tests {
 }
 
 #[cfg(test)]
-mod protocol_version_tests {
-    use super::*;
-
-    #[test]
-    fn negotiate_echoes_each_supported_version() {
-        assert_eq!(
-            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_LATEST)),
-            MCP_PROTOCOL_VERSION_LATEST
-        );
-        assert_eq!(
-            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_2025_06)),
-            MCP_PROTOCOL_VERSION_2025_06
-        );
-        assert_eq!(
-            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_FALLBACK)),
-            MCP_PROTOCOL_VERSION_FALLBACK
-        );
-    }
-
-    #[test]
-    fn negotiate_missing_version_falls_back() {
-        assert_eq!(
-            negotiate_protocol_version(None),
-            MCP_PROTOCOL_VERSION_FALLBACK
-        );
-    }
-
-    #[test]
-    fn negotiate_future_version_offers_latest() {
-        // A client newer than us gets our latest and decides what to do.
-        assert_eq!(
-            negotiate_protocol_version(Some("2099-01-01")),
-            MCP_PROTOCOL_VERSION_LATEST
-        );
-    }
-
-    #[test]
-    fn negotiate_in_between_version_picks_highest_supported_below() {
-        // Between 2025-06-18 and 2026-07-28 → 2025-06-18.
-        assert_eq!(
-            negotiate_protocol_version(Some("2025-12-01")),
-            MCP_PROTOCOL_VERSION_2025_06
-        );
-        // Below the floor → fallback.
-        assert_eq!(
-            negotiate_protocol_version(Some("2024-01-01")),
-            MCP_PROTOCOL_VERSION_FALLBACK
-        );
-    }
-
-    #[test]
-    fn header_accepts_supported_versions() {
-        for version in SUPPORTED_PROTOCOL_VERSIONS {
-            let mut headers = HeaderMap::new();
-            headers.insert("MCP-Protocol-Version", version.parse().unwrap());
-            assert_eq!(protocol_version_from_headers(&headers), Ok(*version));
-        }
-    }
-
-    #[test]
-    fn header_missing_falls_back() {
-        let headers = HeaderMap::new();
-        assert_eq!(
-            protocol_version_from_headers(&headers),
-            Ok(MCP_PROTOCOL_VERSION_FALLBACK)
-        );
-    }
-
-    #[test]
-    fn header_unsupported_version_is_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.insert("MCP-Protocol-Version", "2099-01-01".parse().unwrap());
-        let err = protocol_version_from_headers(&headers).expect_err("must reject");
-        assert!(err.contains("Unsupported"));
-        assert!(err.contains(MCP_PROTOCOL_VERSION_LATEST));
-    }
-
-    #[test]
-    fn rich_tool_shape_gated_by_version() {
-        assert!(supports_rich_tool_shape(MCP_PROTOCOL_VERSION_LATEST));
-        assert!(supports_rich_tool_shape(MCP_PROTOCOL_VERSION_2025_06));
-        assert!(!supports_rich_tool_shape(MCP_PROTOCOL_VERSION_FALLBACK));
-    }
-
-    #[test]
-    fn card_tools_present_for_2026_absent_for_fallback() {
-        let names = |version| {
-            tool_definitions(version)
-                .into_iter()
-                .map(|t| t.name)
-                .collect::<Vec<_>>()
-        };
-        assert!(names(MCP_PROTOCOL_VERSION_LATEST).contains(&"agent_get_card".to_string()));
-        assert!(names(MCP_PROTOCOL_VERSION_2025_06).contains(&"agent_get_card".to_string()));
-        assert!(!names(MCP_PROTOCOL_VERSION_FALLBACK).contains(&"agent_get_card".to_string()));
-    }
-
-    #[test]
-    fn client_info_parsed_from_meta() {
-        let params = json!({
-            "_meta": {
-                "io.modelcontextprotocol/clientInfo": { "name": "my-app", "version": "1.2.3" }
-            }
-        });
-        assert_eq!(
-            client_info_from_params(&params),
-            Some(("my-app".to_string(), "1.2.3".to_string()))
-        );
-    }
-
-    #[test]
-    fn client_info_defaults_missing_fields() {
-        let params = json!({
-            "_meta": { "io.modelcontextprotocol/clientInfo": {} }
-        });
-        assert_eq!(
-            client_info_from_params(&params),
-            Some(("unknown".to_string(), "unknown".to_string()))
-        );
-    }
-
-    #[test]
-    fn client_info_absent_returns_none() {
-        assert_eq!(client_info_from_params(&json!({})), None);
-    }
-
-    fn req(method: &str, params: Value) -> JsonRpcRequest {
-        JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(json!(1)),
-            method: method.to_string(),
-            params,
-        }
-    }
-
-    #[test]
-    fn routing_headers_absent_is_ok() {
-        let headers = HeaderMap::new();
-        assert!(validate_routing_headers(&headers, &req("tools/list", json!({}))).is_ok());
-    }
-
-    #[test]
-    fn routing_headers_matching_is_ok() {
-        let mut headers = HeaderMap::new();
-        headers.insert("Mcp-Method", "tools/call".parse().unwrap());
-        headers.insert("Mcp-Name", "agent_run".parse().unwrap());
-        let request = req("tools/call", json!({ "name": "agent_run" }));
-        assert!(validate_routing_headers(&headers, &request).is_ok());
-    }
-
-    #[test]
-    fn duplicate_routing_header_method_is_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.append("Mcp-Method", "tools/call".parse().unwrap());
-        headers.append("Mcp-Method", "tools/list".parse().unwrap());
-        let request = req("tools/call", json!({ "name": "agent_run" }));
-        let err = validate_routing_headers(&headers, &request)
-            .expect_err("duplicate method header must reject");
-        assert!(err.contains("Duplicate Mcp-Method"));
-    }
-
-    #[test]
-    fn duplicate_routing_header_name_is_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.append("Mcp-Name", "agent_run".parse().unwrap());
-        headers.append("Mcp-Name", "session_get_status".parse().unwrap());
-        let request = req("tools/call", json!({ "name": "agent_run" }));
-        let err = validate_routing_headers(&headers, &request)
-            .expect_err("duplicate name header must reject");
-        assert!(err.contains("Duplicate Mcp-Name"));
-    }
-
-    #[test]
-    fn routing_header_method_mismatch_is_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.insert("Mcp-Method", "tools/list".parse().unwrap());
-        let err = validate_routing_headers(&headers, &req("tools/call", json!({})))
-            .expect_err("mismatch must reject");
-        assert!(err.contains("Mcp-Method"));
-    }
-
-    #[test]
-    fn routing_header_name_mismatch_is_rejected() {
-        let mut headers = HeaderMap::new();
-        headers.insert("Mcp-Name", "discover".parse().unwrap());
-        let request = req("tools/call", json!({ "name": "agent_run" }));
-        let err =
-            validate_routing_headers(&headers, &request).expect_err("name mismatch must reject");
-        assert!(err.contains("Mcp-Name"));
-    }
-
-    #[test]
-    fn routing_header_name_ignored_for_non_tools_call() {
-        // `Mcp-Name` only cross-checks against `tools/call` bodies.
-        let mut headers = HeaderMap::new();
-        headers.insert("Mcp-Name", "anything".parse().unwrap());
-        assert!(validate_routing_headers(&headers, &req("tools/list", json!({}))).is_ok());
-    }
-}
+mod protocol_version_tests;

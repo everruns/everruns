@@ -293,7 +293,7 @@ During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 min
 
 ### Shell profile sourcing in exec
 
-Daytona sessions use a bare (non-login) shell. Unlike E2B and Deno, which spawn `bash -l -c` per command and get automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
+Daytona sessions use a bare (non-login) shell. Unlike E2B, which spawns `bash -l -c` per command and gets automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
 
 Three fixes were considered:
 
@@ -342,12 +342,12 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 `crates/integrations/src/daytona/` → `everruns-integrations`
 
 External integration crate. It publishes plugin consts and is named in
-`crates/integrations-catalog`.
+`everruns-capabilities::integrations_catalog`.
 
-**Catalog entry required**: `crates/integrations-catalog` must carry a `CatalogEntry` for
+**Catalog entry required**: `everruns-capabilities::integrations_catalog` must carry a `CatalogEntry` for
 this crate, otherwise its capabilities and connectors never register.
 `scripts/lib/check-integration-catalog.sh` enforces this. See
-[architecture.md](../../knowledge/foundations/architecture.md#integration-catalog).
+[architecture.md](../../knowledge/foundations/architecture.md#hosted-integration-composition).
 
 | File | Purpose |
 |------|---------|
@@ -371,6 +371,19 @@ Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workfl
 - **Icon**: `cloud`
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
+
+## Desktop computer use (experimental)
+
+The module also contributes `computer_use_daytona` (flag `daytona_computer_use`),
+which backs the provider-neutral `computer` tool with the desktop of a
+session-owned sandbox from Daytona's default image. See `computer.rs` and
+`knowledge/execution/computer-use.md`.
+
+- **Display**: sized at create time by `VNC_RESOLUTION`; started through
+  `/computeruse/start`; a sandbox of another size is replaced.
+- **Actions**: one JSON request per input to `/computeruse/mouse/*` and
+  `/computeruse/keyboard/*`; no `exec`, no shell.
+- **Frames**: `/computeruse/screenshot`, PNG checked against the display size.
 
 ## Seeded Agent: Daytona Coder
 

@@ -81,7 +81,11 @@ while IFS= read -r manifest; do
   package="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' "$manifest" | head -1)"
   [ -n "$package" ] || continue
 
-  invocations="$(grep -E -- "cargo test .*-p[[:space:]]+${package}([[:space:]]|$)" <<<"$workflows" || true)"
+  invocations="$(
+    grep -E -- "cargo test .*-p[[:space:]]+${package}([[:space:]]|$)" <<<"$workflows" || true
+    # Standalone reference workspaces are reached by manifest, not root -p.
+    grep -F -- "--manifest-path ${manifest#"$PROJECT_ROOT"/}" <<<"$workflows" | grep 'cargo test' || true
+  )"
 
   # A library-only driver (e.g. Bedrock) must not disappear from coverage just
   # because it has no tests/ directory. Named integration/doc runs don't run it.

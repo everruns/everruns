@@ -12,9 +12,9 @@
 //   redirect straight to /chats). The Done subline is conditional — it only
 //   claims a provider is connected when one actually exists; a skip shows a
 //   gentle nudge instead. The user proceeds from Done into a real first action,
-//   and that action is the Platform Chat thread: onboarding ends in a
-//   conversation that can do the next steps (create an agent, add a provider)
-//   for the user, not on an empty form. The thread is ensured here because the
+//   with a provider, that action is the Platform Chat thread. A skipped provider
+//   stays actionable through Models → Providers. Both states offer external
+//   coding-agent connection for setup and management. The thread is ensured here because the
 //   onboarding surfaces render without the sidebar that ensures it everywhere
 //   else.
 
@@ -33,6 +33,7 @@ import {
   MessageCircle,
   Users,
   BookOpen,
+  SquareTerminal,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
+import { CodingAgentConnectAction } from "@/components/layout/mcp-connect-button";
 import { useOnboardingArc } from "@/components/onboarding/onboarding-arc-context";
 import type { ApiError } from "@/lib/api/client";
 import type { DriverId } from "@/lib/api/types";
@@ -109,7 +111,7 @@ const MORE_PROVIDERS = ["Gemini", "Azure OpenAI", "Bedrock"];
 const MORE_PROVIDERS_EXTRA = 5; // openrouter, openai_completions, mai, fireworks, meta (mistral is flag-gated)
 
 // Docs base used elsewhere in the app (see capabilities page).
-const DOCS_URL = "https://docs.everruns.com";
+const DOCS_URL = "https://everruns.com/docs";
 
 function getProviderName(providerType: SetupProviderType): string {
   switch (providerType) {
@@ -376,29 +378,54 @@ export default function OrgSetupPage() {
                 </>
               ) : (
                 <>
-                  {org?.name ?? "Your workspace"} is ready. You can add a model provider anytime
-                  from Settings &mdash; then spin up your first agent.
+                  {org?.name ?? "Your workspace"} is ready. Add a model provider to run agents,
+                  including Platform Chat. You can connect your coding agent for setup and
+                  management now.
                 </>
               )}
             </p>
 
-            {/* Land in the chat. Falls back to the Chats list while the thread
-                is still being created — it is pinned at the top there. */}
+            {/* A skipped provider must remain actionable before the first run. */}
             <Link
-              href={platformChatThread ? `/chats/${platformChatThread.id}` : "/chats"}
+              href={
+                providerConnected
+                  ? platformChatThread
+                    ? `/chats/${platformChatThread.id}`
+                    : "/chats"
+                  : "/models/providers"
+              }
               className="mt-6 flex items-center gap-3.5 bg-primary px-5 py-4 text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center border border-accent/50 bg-accent/[0.15] text-accent">
-                <MessageCircle className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
+                {providerConnected ? (
+                  <MessageCircle className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
+                ) : (
+                  <Plus className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
+                )}
               </span>
               <span className="flex-1">
-                <span className="block text-[15px] font-semibold">Open Platform Chat</span>
+                <span className="block text-[15px] font-semibold">
+                  {providerConnected ? "Open Platform Chat" : "Add a model provider"}
+                </span>
                 <span className="block text-xs text-primary-foreground/60">
-                  Ask it to create your first agent, or just start talking
+                  {providerConnected
+                    ? "Ask it to create your first agent, or just start talking"
+                    : "Connect a provider to start running agents"}
                 </span>
               </span>
               <ArrowRight className="icon-sharp h-[18px] w-[18px] text-accent" strokeWidth={2} />
             </Link>
+
+            <CodingAgentConnectAction className="mt-3 flex w-full items-center gap-3.5 border px-5 py-4 text-left text-foreground transition-colors hover:bg-muted focus-visible:outline-ring">
+              <SquareTerminal className="size-5 shrink-0 text-muted-foreground" />
+              <span className="flex-1">
+                <span className="block text-sm font-semibold">Connect your coding agent</span>
+                <span className="block text-xs text-muted-foreground">
+                  Use Everruns from Claude Code, Codex, Cursor, or Gemini CLI
+                </span>
+              </span>
+              <ArrowRight className="size-4 shrink-0" />
+            </CodingAgentConnectAction>
 
             <div className="mt-3.5 flex gap-2.5">
               <Link
@@ -597,7 +624,7 @@ export default function OrgSetupPage() {
 
                   {/* Breadth strip: the two featured cards must not read as
                       the whole catalog. Informational only — the full picker
-                      lives in Settings → Providers after setup. */}
+                      lives in Models → Providers after setup. */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground">Also supported</span>
                     {MORE_PROVIDERS.map((name) => (

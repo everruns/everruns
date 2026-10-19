@@ -9,7 +9,119 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
-## 0.42 (planned)
+## 0.49
+
+### Custom task registries honor recovery guards
+
+`SessionTaskUpdate` adds `expected_recovery`. Code constructing updates with
+`..Default::default()` needs no change; complete struct literals add
+`expected_recovery: None`.
+
+A custom `SessionTaskRegistry::update` must compare a supplied guard against the
+persisted task under the same lock or transaction as the write. On a mismatch,
+return `Ok(None)` before applying the update. Returning the unchanged task as a
+successful update would let a stale recoverer publish a completion notification.
+The local SQLite and server PostgreSQL registries enforce this contract.
+
+
+### MCP calls take an idempotency key
+
+`McpClient::call`, `McpClient::call_as_tool_result` and
+`McpTransport::call_tool` take a new last argument, the call's idempotency
+key, which goes in the request's `_meta` as `io.everruns/idempotency-key`.
+Pass `None` to send none. A custom `McpTransport` adds the parameter; a tool
+reads the current call's key from `ToolContext::idempotency_key`.
+
+```diff
+-client.call(&connection, "search", args).await?;
++client.call(&connection, "search", args, None).await?;
+```
+
+## 0.48
+
+### Durable turns option removed
+
+The experimental `durable` feature of the `everruns` crate and
+`everruns::durable::Backend` are removed, with no replacement flag. Every
+`Engine` session now runs as an actor that holds the session's lease while a
+turn runs, and durability comes from the session's event log: with
+`LocalConfig` a turn a restart cut off resumes from the log. Drop
+`durable` from the crate's features and the `.backend(durable::Backend::...)`
+call from `Engine::builder()`. See [Sessions](/framework/sessions/#one-process-runs-a-session-at-a-time).
+
+```toml
+# Before
+everruns = { version = "0.47", features = ["durable"] }
+# After
+everruns = { version = "0.48", features = ["local"] }
+```
+
+### Durable crates
+
+- `everruns-durable` no longer has a `workflows` feature: `Workflow`,
+  `Activity`, `WorkflowExecutor`, timers and child workflows are removed. The
+  task queue, event log, schedules, retries, dead letter queue and circuit
+  breakers stay. Remove `features = ["workflows"]`.
+- `everruns-durable-engine` is retired with no new home. Its published
+  versions remain usable.
+
+### Harness tree
+
+The built-in harnesses form a tree by use case instead of one chain. Base
+now carries the system essentials, Conversation and Worker both build on it,
+and Bashkit Worker builds on Worker. See [Harnesses](/features/harnesses/).
+
+- `Harness::worker()` no longer includes a shell. It is the worker kit
+  (files, project instructions, skills, long context, budgeting, subagents,
+  tasks) with no compute. Use `Harness::bashkit_worker()` for the previous
+  files-and-bash behavior.
+- `Harness::worker_base()` is deprecated and returns `Harness::bashkit_worker()`.
+- `Harness::base()` is no longer empty: it adds compaction, error disclosure,
+  tool-call repair, loop detection and parallel tool calls. Build a custom
+  harness with `Harness::builder` for an empty foundation.
+- Agent packages may name `bashkit-worker`; `worker-base` still loads and
+  binds Bashkit Worker.
+
+Hosted organizations are migrated once on upgrade. The old Worker included a
+shell, so everything bound to it moves to the worker that matches its compute:
+
+- Agents with a container or managed Agent sandbox policy move to Sandbox
+  Worker and keep their policy.
+- Every other Agent, the org default, custom child harnesses, triggers and
+  sessions move to Bashkit Worker. A Bashkit-only Agent sandbox policy is
+  cleared because Bashkit Worker fixes it.
+- Existing sessions keep the compute they started with.
+- `worker-base` stays as a deprecated row with its old capabilities, so
+  custom harnesses that name it keep working.
+
+## 0.46
+
+### Integration-catalog package retired
+
+`everruns-integrations-catalog` published its final deprecated forwarding
+release at 0.45.0. Its source is removed from the workspace and there is no
+0.46.0 release of that package. When upgrading platform dependencies to 0.46,
+use `everruns-capabilities::integrations_catalog` with
+`hosted-integration-catalog`, as described below. Hosted registration and
+integration features are preserved; previously published shim versions remain
+usable and are not yanked.
+
+## 0.45
+
+### Hosted integration registration moves into capabilities
+
+Replace the `everruns-integrations-catalog` dependency with
+`everruns-capabilities` and enable its `hosted-integration-catalog` feature.
+Change imports from `everruns_integrations_catalog::` to
+`everruns_capabilities::integrations_catalog::`. The public registration API,
+integration set, registration order, and deployment-grade feature gates are
+preserved. The old package shipped its deprecated forwarding release at 0.45.0 before
+source retirement in 0.46. Its published versions remain usable.
+
+Framework applications using `everruns` and its selected integration features
+need no changes. The hosted integration set remains opt-in.
+
+## 0.42
 
 ### SQLite connections move to `everruns::sqlite`
 
@@ -22,7 +134,7 @@ facade, so the `local` feature no longer compiles the durable engine.
 `everruns_durable::UpdateField` still names `UpdateField`; the
 `everruns_durable::update_field` module is no longer public.
 
-## 0.41 (planned)
+## 0.41
 
 ### Embedded SQLite ownership
 
@@ -42,7 +154,7 @@ The five forwarding packages `everruns-engine`, `everruns-host`,
 after their single deprecated 0.40 release. Keep the canonical core imports and
 feature selections described below; published deprecated versions remain usable.
 
-## 0.40 (planned)
+## 0.40
 
 ### Consolidated execution modules
 
@@ -115,7 +227,7 @@ with `everruns_contracts::`, `everruns_capability::` with
 
 ### Harness levels
 
-`Harness::base()`, `Harness::conversation()`, `Harness::worker_base()` and `Harness::worker()` share the same capability definitions as the hosted harnesses. `Harness::generic()` is deprecated; it keeps its previous capabilities instead of silently switching to Worker.
+`Harness::base()`, `Harness::conversation()`, `Harness::worker()` and `Harness::bashkit_worker()` share the same capability definitions as the hosted harnesses. `Harness::generic()` is deprecated; it keeps its previous capabilities instead of silently switching to Worker.
 
 Choose the smallest foundation and add agent-specific capabilities. Enable the required host integrations separately. Existing `engine.create(agent)` behavior is unchanged when no harness is bound.
 

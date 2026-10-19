@@ -15,11 +15,12 @@ The [getting-started architecture](/explanation/architecture/) page describes th
 |-----------|------|----------|--------------|
 | Reverse proxy | TLS termination and route fan-out for `/api`, `/mcp`, `/.well-known/*`, UI | Yes (or equivalent ingress) | 443 |
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
-| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes | – (outbound only) |
+| Worker pool | Stateless executors of the agentic loop: each leases a session and runs its whole turn | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
 | NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
 | Management UI | Operator interface for agent and provider configuration | Optional | – (served by proxy) |
+| Tenant egress proxy | Gives tenant outbound traffic its own address, per-org limits and usage counts | Optional | 4750 (proxy), 4751 (health) |
 
 Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write goes through the control plane's gRPC service on port 9001. This is what lets workers run with no database credentials, no encryption keys, and no awareness of the data tier.
 
@@ -30,7 +31,7 @@ PostgreSQL is the single source of truth for everything Everruns persists. There
 What lives in PostgreSQL:
 
 - Agents, sessions, messages, and durable events
-- The durable task queue used by the worker tier (claimed via `SKIP LOCKED`)
+- The session leases workers run turns under, and the durable task queue for background work (both claimed via `SKIP LOCKED`)
 - Encrypted LLM provider credentials, MCP server registrations, capability config
 - Per-session virtual filesystems, knowledge bases, and the event log used for SSE replay
 
@@ -96,6 +97,46 @@ A reverse proxy (or platform ingress that enforces the same routes) is mandatory
 
 TLS terminates at the proxy. Worker gRPC traffic stays on the private network, never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`examples/docker-compose-full.yaml`](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml) for working configurations.
 
+## Outbound traffic
+
+The control plane and workers both make outbound calls, and Everruns splits them in two:
+
+- **Platform traffic** is what the deployment itself owns: LLM providers, the utility model, system email, sandbox provider APIs. It always leaves directly, from the deployment's own address.
+- **Tenant traffic** is what an agent, a capability, an MCP server or an integration chooses: web fetches, tool calls to third-party APIs, remote MCP servers. Every such request goes through one boundary, the egress service, which applies the policy below and writes an audit line with its org, session and decision (`everruns::egress::audit` log target).
+
+### Egress policy
+
+`EVERRUNS_EGRESS_POLICY` decides which public hosts tenant traffic may reach:
+
+| Mode | Behavior |
+|------|----------|
+| `open` (default) | Any public host. |
+| `curated-writes` | GET and HEAD reach any public host; writes, MCP and integration traffic need the built-in allowlist. |
+| `curated-all` | Every request needs the allowlist. |
+
+In both curated modes a built-in deny list is checked first, URLs are capped at 2048 characters and IP-literal hosts are refused. An organization can be granted extra hosts or open egress for its own traffic; see [Network Access Control](/advanced/network-access/). Private, loopback and cloud metadata addresses are refused in every mode, with DNS pinned so a lookup cannot be swapped between the check and the connection.
+
+### Tenant egress proxy
+
+Set `EVERRUNS_EGRESS_PROXY_URL` and `EVERRUNS_EGRESS_PROXY_SECRET` on the control plane and workers, and tenant traffic leaves through `everruns-egress-proxy` instead of directly. Platform traffic never uses it. You get two things:
+
+- **Its own outbound address.** Give the proxy host a separate public IP. If a tenant's traffic gets that address blocked somewhere, model calls, email and billing keep working, and the address can be replaced without touching the rest of the deployment.
+- **Per-org limits and usage.** Each request carries a five-minute token, signed with the shared secret, that names its org and session. The proxy verifies the token, resolves the destination again and refuses non-public addresses and SMTP ports, applies per-org caps, and counts bytes and requests per org and session each minute.
+
+The binary ships in the server image. Limits are off unless you set them, and usage goes to the log (`everruns::egress::usage` target). A control endpoint (`EGRESS_PROXY_CONTROL_URL`) can supply limits per org and receive usage instead. A proxy URL with a missing or short secret fails closed: tenant requests error rather than leave directly. Variables: [Tenant egress proxy](/sre/environment-variables/#tenant-egress-proxy).
+
+```bash
+# Proxy host
+EVERRUNS_EGRESS_PROXY_SECRET=<32+ random bytes>
+EGRESS_PROXY_ORG_RPM=600              # optional caps
+EGRESS_PROXY_ORG_BYTES_PER_DAY=5000000000
+everruns-egress-proxy
+
+# Control plane and workers
+EVERRUNS_EGRESS_PROXY_URL=http://egress-proxy:4750
+EVERRUNS_EGRESS_PROXY_SECRET=<same value>
+```
+
 ## Development modes
 
 The same binaries collapse into smaller deployments for local work:
@@ -112,7 +153,7 @@ Multiple control-plane instances can run behind a load balancer with no session 
 |---------|---------------------|
 | Database connections | `EXPECTED_INSTANCES=N` divides the pool so `pool × instances ≤ 80% of PG_MAX_CONNECTIONS` |
 | SSE delivery | `LISTEN/NOTIFY` or NATS subjects fan out to every instance; reconnects are idempotent |
-| Task claiming | `SKIP LOCKED` on the durable task queue partitions work naturally |
+| Turn and task claiming | `SKIP LOCKED` on session leases and the durable task queue partitions work naturally; a session's fenced lease keeps one worker on it |
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |
 | Rate limits | Valkey-backed sliding-window counters are shared; in-memory falls back to per-instance |
 
@@ -122,5 +163,6 @@ Workers do not require coordination, add as many as you need, in as many regions
 
 - [Architecture (Getting Started)](/explanation/architecture/), the logical model
 - [Environment Variables](/sre/environment-variables/), every knob and its default
+- [Network Access Control](/advanced/network-access/), per-agent and per-org outbound rules
 - [Docker Compose](/getting-started/docker-compose/), a production-shaped local setup
 - [Custom backends](/framework/custom-backends/), low-level execution-host composition

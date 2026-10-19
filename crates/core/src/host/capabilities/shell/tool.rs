@@ -598,6 +598,7 @@ impl BackgroundExecutableTool for BashTool {
                 total: None,
                 unit: Some("ms".to_string()),
                 label: Some("runtime".to_string()),
+                ..Default::default()
             })
             .await;
         Ok(BackgroundOutcome {

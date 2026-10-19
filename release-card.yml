@@ -1,13 +1,22 @@
-version: 0.42.0
-date: 2026-10-06
+version: 0.48.0
+date: 2026-10-13
 headline:
-  - 40 crates.
-  - Every capability.
+  - Agents in Slack,
+  - Stable Agent API.
 summary:
-  - Vendor integrations move behind feature flags.
-  - Deno and Sprites remain experimental.
-  - 18 deprecated package shims ship.
+  - Durable actors replace the workflow model.
+  - Web search tools with citations.
+  - Agents in Slack take DMs and files.
 highlights:
-  - title: Integration crate consolidation
-    description: Maintained vendors share one crate; Deno and Sprites stay experimental.
-    source: "#4251"
+  - title: Durable actor model
+    description: Sessions run as durable actors instead of workflows and survive worker failures.
+    source: "#4629"
+  - title: Stable Agent API
+    description: "Call one agent from code with a key: stream replies, answer questions, approve tools."
+    source: "#4527"
+  - title: Web search tools
+    description: One web_search tool on Brave, Parallel, Cloudflare or native search, with citations.
+    source: "#4551"
+  - title: Agents in Slack
+    description: One-click Slack apps answer DMs, receive files and post scheduled turns.
+    source: "#4597"

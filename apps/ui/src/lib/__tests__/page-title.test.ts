@@ -32,4 +32,11 @@ describe("formatPageTitle", () => {
   it("uses a middle dot separator with single spaces", () => {
     expect(TITLE_SEPARATOR).toBe(" · ");
   });
+
+  it("drops a segment that repeats the one before it", () => {
+    expect(formatPageTitle("Chat", "Chat")).toBe(`Chat${TITLE_SEPARATOR}${APP_NAME}`);
+    expect(formatPageTitle("Standup", "Chat")).toBe(
+      `Standup${TITLE_SEPARATOR}Chat${TITLE_SEPARATOR}${APP_NAME}`,
+    );
+  });
 });

@@ -11,8 +11,10 @@ import {
   type ReactNode,
 } from "react";
 import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } from "@/hooks";
-import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
-import { useMutation } from "@tanstack/react-query";
+import { cancelTurn } from "@/lib/api/sessions";
+import { sendChatMessage } from "@/lib/api/messages";
+import { useChatSends, type ChatSends } from "@/hooks/use-chat-sends";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { isChatThread } from "@/lib/chat-threads";
 import { useOrg } from "@/providers/org-provider";
@@ -39,6 +41,7 @@ import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
+import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 /** Accumulated streamed output for a single tool call */
@@ -88,6 +91,8 @@ export interface SessionContextValue {
   streamingMessageId: string | null;
   /** Current iteration number within the active turn (1-based) */
   streamingIteration: number | null;
+  /** Phase of the assistant message currently streaming, when the provider sent one. */
+  streamingPhase: "commentary" | "final_answer" | null;
   // Message sending
   sendMessage: UseMutationResult<
     Message,
@@ -98,8 +103,10 @@ export interface SessionContextValue {
       controls?: Controls;
       addressedParticipantId?: string | null;
     },
-    { optimisticId: string; content: string }
+    unknown
   >;
+  /** Sends from Enter until the event stream carries them (turn status rows). */
+  chatSends: ChatSends;
   // Turn cancellation
   cancelCurrentTurn: UseMutationResult<void, Error, void, unknown>;
   // Pagination (load older events on scroll up)
@@ -128,6 +135,8 @@ interface SessionProviderProps {
   sessionId: string;
   /** Adopted work threads must be reopened before browser-agent mutations too. */
   readOnlyWhenArchived?: boolean;
+  /** Opt out of continuous external updates only for client-driven sessions. */
+  followIdle?: boolean;
   draftAgent?: Agent;
   draftModel?: ModelWithProvider;
   children: ReactNode;
@@ -140,12 +149,14 @@ export function SessionProvider({
   draftAgent,
   draftModel,
   readOnlyWhenArchived = false,
+  followIdle = true,
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
   const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
+  const queryClient = useQueryClient();
 
   // Fetch session first to get agent_id
   const { data: session, isLoading: sessionLoading } = useSession(sessionId);
@@ -169,57 +180,10 @@ export function SessionProvider({
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [streamingIteration, setStreamingIteration] = useState<number | null>(null);
+  const [streamingPhase, setStreamingPhase] = useState<"commentary" | "final_answer" | null>(null);
 
-  // Optimistic events - shown immediately before SSE confirms
-  const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
   // THREAT[TM-WEB-017]: reject concurrent non-idempotent browser-agent mutations.
   const webMcpActionPendingRef = useRef(false);
-
-  // Custom sendMessage mutation with optimistic UI
-  const sendMessage = useMutation({
-    mutationFn: ({
-      sessionId,
-      content,
-      controls,
-      addressedParticipantId,
-    }: {
-      sessionId: string;
-      content: string;
-      controls?: Controls;
-      addressedParticipantId?: string | null;
-    }) => sendUserMessage(sessionId, content, controls, addressedParticipantId),
-    onMutate: async ({ sessionId, content }) => {
-      // Create optimistic event immediately
-      const optimisticId = `optimistic-${Date.now()}`;
-      const optimisticEvent: Event = {
-        id: optimisticId,
-        type: "input.message",
-        ts: new Date().toISOString(),
-        session_id: sessionId,
-        context: {},
-        data: {
-          message: {
-            id: optimisticId,
-            session_id: sessionId,
-            sequence: -1, // Will be replaced by real sequence
-            role: "user" as const,
-            content: [{ type: "text" as const, text: content }],
-            tool_call_id: null,
-            created_at: new Date().toISOString(),
-          },
-        },
-      };
-      setOptimisticEvents((prev) => [...prev, optimisticEvent]);
-      return { optimisticId, content };
-    },
-    // Don't remove optimistic event on success - wait for SSE to deliver real event
-    onError: (_error, _variables, context) => {
-      // Only remove optimistic event on error
-      if (context?.optimisticId) {
-        setOptimisticEvents((prev) => prev.filter((e) => e.id !== context.optimisticId));
-      }
-    },
-  });
 
   // Cancel turn mutation
   const cancelCurrentTurn = useMutation({
@@ -249,7 +213,35 @@ export function SessionProvider({
     loadingOlder: loadingOlderEvents,
     loadOlderEvents,
     totalNonDeltaCount,
-  } = useEvents(sessionId);
+  } = useEvents(sessionId, { followIdle });
+
+  const cancelTurnRequest = useCallback(() => cancelTurn(sessionId), [sessionId]);
+  const sendChat = useCallback(
+    (input: Parameters<typeof sendChatMessage>[1], signal: AbortSignal) =>
+      sendChatMessage(sessionId, input, { signal }),
+    [sessionId],
+  );
+  const chatSends = useChatSends({
+    sessionId,
+    events,
+    send: sendChat,
+    cancel: cancelTurnRequest,
+  });
+
+  // Programmatic sends (A2UI actions, browser agents) go through the same
+  // pending-send path as the composer, so they get a status row too.
+  const sendMessage = useMutation({
+    mutationFn: ({
+      content,
+      controls,
+      addressedParticipantId,
+    }: {
+      sessionId: string;
+      content: string;
+      controls?: Controls;
+      addressedParticipantId?: string | null;
+    }) => chatSends.submit({ text: content, controls, addressedParticipantId }),
+  });
 
   // Update local status from SSE events (session.activated, session.idled)
   useEffect(() => {
@@ -271,6 +263,7 @@ export function SessionProvider({
         setStreamingText(null);
         setStreamingTurnId(null);
         setStreamingMessageId(null);
+        setStreamingPhase(null);
         break;
       }
       if (event.type === "turn.cancelled") {
@@ -280,6 +273,7 @@ export function SessionProvider({
         setStreamingText(null);
         setStreamingTurnId(null);
         setStreamingMessageId(null);
+        setStreamingPhase(null);
         break;
       }
       if (event.type === "turn.failed") {
@@ -290,6 +284,7 @@ export function SessionProvider({
         setStreamingTurnId(null);
         setStreamingMessageId(null);
         setStreamingIteration(null);
+        setStreamingPhase(null);
         setLocalStatus("idle");
         break;
       }
@@ -305,17 +300,18 @@ export function SessionProvider({
     setStreamingTurnId(streaming.turnId);
     setStreamingMessageId(streaming.messageId);
     setStreamingIteration(streaming.iteration);
+    setStreamingPhase(streaming.phase);
   }, [events]);
 
-  // Reset local status, optimistic events, and streaming state when session changes
+  // Reset local status and streaming state when session changes
   useEffect(() => {
     setLocalStatus(null);
-    setOptimisticEvents([]);
     setIsThinking(false);
     setStreamingText(null);
     setStreamingTurnId(null);
     setStreamingMessageId(null);
     setStreamingIteration(null);
+    setStreamingPhase(null);
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
@@ -429,39 +425,14 @@ export function SessionProvider({
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
   const [verbosity, setVerbosity] = useState<Verbosity | "">("");
 
-  // Clean up optimistic events when real events arrive from SSE
-  useEffect(() => {
-    if (!events || events.length === 0 || optimisticEvents.length === 0) return;
-
-    // Get text content from real user messages
-    const realUserMessages = events
-      .filter((e) => e.type === "input.message")
-      .map((e) => {
-        const data = getEventData(e, "input.message");
-        return getTextFromContent(data?.message?.content || []);
-      });
-
-    // Remove optimistic events that have matching real events
-    const optimisticToRemove = optimisticEvents.filter((optEvent) => {
-      const data = getEventData(optEvent, "input.message");
-      const optText = getTextFromContent(data?.message?.content || []);
-      return realUserMessages.includes(optText);
-    });
-
-    if (optimisticToRemove.length > 0) {
-      setOptimisticEvents((prev) =>
-        prev.filter((e) => !optimisticToRemove.some((r) => r.id === e.id)),
-      );
-    }
-  }, [events, optimisticEvents]);
-
-  // Filter chat-relevant events and merge with optimistic events
+  // Filter chat-relevant events
   const chatEvents = useMemo(() => {
     const realChatEvents = events
       ? events.filter(
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
+            e.type === "conversation.message" ||
             e.type === "turn.failed" ||
             e.type === "reason.completed" ||
             e.type === "reason.item" ||
@@ -476,57 +447,16 @@ export function SessionProvider({
         )
       : [];
 
-    // Get text content from real user messages for deduplication
-    const realUserTexts = new Set(
-      realChatEvents
-        .filter((e) => e.type === "input.message")
-        .map((e) => {
-          const data = getEventData(e, "input.message");
-          return getTextFromContent(data?.message?.content || []);
-        }),
-    );
-
-    // Filter out optimistic events that already have a real counterpart
-    const pendingOptimisticEvents = optimisticEvents.filter((optEvent) => {
-      if (optEvent.type !== "input.message") return true;
-      const data = getEventData(optEvent, "input.message");
-      const optText = getTextFromContent(data?.message?.content || []);
-      return !realUserTexts.has(optText);
-    });
-
-    const merged = [...realChatEvents, ...pendingOptimisticEvents];
     // Sort by sequence to guarantee correct chronological order regardless of
-    // SSE arrival order. Only optimistic events use sequence -1, and they
-    // should appear at the end (they represent the latest user message).
-    // Events missing a sequence fall back to timestamp ordering.
-    merged.sort((a, b) => {
-      const seqA = a.sequence;
-      const seqB = b.sequence;
-      const isOptimisticA = seqA === -1;
-      const isOptimisticB = seqB === -1;
-      const hasSeqA = seqA != null && seqA !== -1;
-      const hasSeqB = seqB != null && seqB !== -1;
-
-      // Optimistic events always sort to the end
-      if (isOptimisticA !== isOptimisticB) {
-        return isOptimisticA ? 1 : -1;
-      }
-
-      // Both have real sequences — sort numerically
-      if (hasSeqA && hasSeqB && seqA !== seqB) {
-        return seqA - seqB;
-      }
-
-      // One has a sequence and the other doesn't — sequenced first
-      if (hasSeqA !== hasSeqB) {
-        return hasSeqA ? -1 : 1;
-      }
-
-      // Same sequence, both missing, or both optimistic — compare by timestamp
+    // SSE arrival order. Events missing a sequence fall back to timestamp order.
+    return realChatEvents.sort((a, b) => {
+      const hasSeqA = a.sequence != null && a.sequence >= 0;
+      const hasSeqB = b.sequence != null && b.sequence >= 0;
+      if (hasSeqA && hasSeqB && a.sequence !== b.sequence) return a.sequence! - b.sequence!;
+      if (hasSeqA !== hasSeqB) return hasSeqA ? -1 : 1;
       return a.ts.localeCompare(b.ts);
     });
-    return merged;
-  }, [events, optimisticEvents]);
+  }, [events]);
 
   // Build tool result lookup by tool_call_id
   const toolResultsMap = useMemo(() => {
@@ -707,6 +637,16 @@ export function SessionProvider({
     [],
   );
 
+  const latestTerminalId = events?.findLast((event) =>
+    ["turn.completed", "turn.failed", "turn.cancelled"].includes(event.type),
+  )?.id;
+  // Refresh the authoritative outcome on terminal events; worker clocks need
+  // not agree with database timestamps, so do not infer freshness from time.
+  useEffect(() => {
+    if (latestTerminalId)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.sessions.detail(org, sessionId) });
+  }, [latestTerminalId, org, sessionId, queryClient]);
+
   const value: SessionContextValue = {
     agentId,
     sessionId,
@@ -739,7 +679,9 @@ export function SessionProvider({
     streamingTurnId,
     streamingMessageId,
     streamingIteration,
+    streamingPhase,
     sendMessage,
+    chatSends,
     cancelCurrentTurn,
     hasMoreEvents,
     loadingOlderEvents,

@@ -1,46 +1,26 @@
 //! Call a model directly — no agent, no session, no history.
 //!
-//! Offline (no API key):
+//! Requires OPENAI_API_KEY:
 //! ```text
-//! cargo run -p everruns --example direct_llm
-//! ```
-//! OpenAI (requires OPENAI_API_KEY and API credits):
-//! ```text
-//! cargo run -p everruns --features openai --example direct_llm -- --live
+//! cargo run -p everruns --features openai --example direct_llm
 //! ```
 //! An optional positional argument replaces the prompt.
 
-use everruns::{LlmSimConfig, LlmStreamEvent, Model};
+use everruns::{LlmStreamEvent, Model, OpenAI};
 use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1).peekable();
-    let live = args.peek().is_some_and(|arg| arg == "--live");
-    if live {
-        args.next();
-    }
+    let mut args = std::env::args().skip(1);
     let prompt = args
         .next()
         .unwrap_or_else(|| "Name the three primary colors.".into());
     if args.next().is_some() || prompt.trim().is_empty() {
-        return Err("Usage: direct_llm [--live] [PROMPT]".into());
+        return Err("Usage: direct_llm [PROMPT]".into());
     }
 
-    let model = if live {
-        #[cfg(feature = "openai")]
-        {
-            println!("OpenAI gpt-5.6-terra over HTTP.\n");
-            Model::new("gpt-5.6-terra", everruns::OpenAI::from_env()?)
-        }
-        #[cfg(not(feature = "openai"))]
-        {
-            return Err("Live mode requires: cargo run -p everruns --features openai --example direct_llm -- --live".into());
-        }
-    } else {
-        println!("Offline simulator: echoes the prompt; no model inference.\n");
-        Model::simulated_with_config(LlmSimConfig::echo())
-    };
+    println!("OpenAI gpt-6.1-sol over HTTP.\n");
+    let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
 
     // One prompt, one answer. This is the whole API for the common case.
     println!("> {prompt}");

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import ProviderDetailPage from "@/app/(main)/settings/providers/[providerId]/page";
+import ProviderDetailPage from "@/app/(main)/models/providers/[providerId]/page";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -22,7 +22,7 @@ jest.mock("next/link", () => ({
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
-  usePathname: () => "/settings/providers/provider-1",
+  usePathname: () => "/models/providers/provider-1",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -118,6 +118,21 @@ describe("ProviderDetailPage", () => {
       "href",
       "/models?provider=provider-1",
     );
+  });
+
+  it("does not show a ChatGPT Plan provider through a saved detail URL", async () => {
+    mockUseProvider.mockReturnValue({
+      data: { ...mockProvider, provider_type: "chatgpt" },
+      isLoading: false,
+      error: null,
+    });
+    await act(async () => {
+      render(<ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />, {
+        wrapper,
+      });
+    });
+    expect(screen.getByText("Provider not found")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("OpenAI Production")).not.toBeInTheDocument();
   });
 
   it("saves provider name changes", async () => {

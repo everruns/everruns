@@ -16,6 +16,14 @@ name = "reencrypt-secrets"
 path = "src/bin/reencrypt_secrets.rs"
 
 [[bin]]
+name = "everruns-migrate"
+path = "src/bin/migrate.rs"
+
+[[bin]]
+name = "everruns-egress-proxy"
+path = "src/bin/egress_proxy.rs"
+
+[[bin]]
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
@@ -26,13 +34,15 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-capabilities/lua"]
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github"] }
+everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
 
 mimalloc.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 tokio.workspace = true
+httparse.workspace = true
 tokio-stream.workspace = true
+tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -51,6 +61,7 @@ sqlx.workspace = true
 const_format.workspace = true
 sqlx-core.workspace = true
 chrono.workspace = true
+chrono-tz = "0.10"
 dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
@@ -79,9 +90,10 @@ metrics.workspace = true
 cron = "0.17"
 inventory.workspace = true
 everruns-server-macros = { path = "../server-macros" }
-everruns-pg-embedded = { path = "../pg-embedded" }
+libc = "0.2"
+postgresql_embedded = { version = "0.21", default-features = false, features = ["tokio", "zonky", "tls-rustls-aws-lc-rs"] }
 moka.workspace = true
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
 tempfile.workspace = true
@@ -96,20 +108,20 @@ aws-lc-rs = "1"
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
-bashkit = { version = "0.18.1", default-features = false, features = ["scripted_tool", "jq", "tzdata", "aws-lc-rs"] }
+bashkit = { version = "0.19.0", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
+bashkit-scripted-tool = { version = "0.19.0", default-features = false, features = ["jq"] }
 
 everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-capabilities = { path = "../capabilities", features = ["openapi", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox", "poppy-client"] }
 # Observability exporters are enabled through everruns-host below; core retains
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
-everruns-integrations-catalog.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
-everruns-worker = { path = "../worker" }  # DurableRunner, worker adapters, in-process worker
+everruns-worker = { path = "../worker" }  # worker adapters, in-process worker
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-durable.workspace = true  # For durable execution gRPC service
@@ -121,9 +133,12 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "channel-auth", "channels", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
+everruns-llmsim.workspace = true
+# The OpenAI provider for the gated real-model Poppy test.
+everruns = { workspace = true, default-features = false, features = ["utility-llm", "openai"] }
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

@@ -18,6 +18,8 @@
 //!   `[sandbox] kind = "microvm"` adapter ([`ServerBuilder::microvm`]). Apps
 //!   do not change: the same `serve.toml` gets bashkit under `dev` and the
 //!   real machine under the target.
+//! - Auth ([`ServerBuilder::auth`]) guards the router a target merges. A
+//!   target that calls [`Server::ag_ui`] directly owns that request's auth.
 //! - Experimental, like the rest of serve.
 
 use std::path::PathBuf;
@@ -27,6 +29,7 @@ use anyhow::{anyhow, bail};
 use axum::Router;
 
 use crate::app::{App, Mode};
+use crate::auth::{API_KEYS_ENV, Auth, AuthMethod, ChannelAuthVerifier, api_keys_from_env_value};
 use crate::host::Host;
 
 /// What a hosting target supplies for `[sandbox] kind = "microvm"`: it adds
@@ -37,13 +40,47 @@ pub type MicroVm = Arc<dyn Fn(everruns::AgentBuilder) -> everruns::AgentBuilder 
 /// Builder for [`Server`].
 #[must_use]
 pub struct ServerBuilder {
+    environment_factory: Option<Arc<dyn everruns::hosting::EnvironmentFactory>>,
+    environment_ref: Option<String>,
+    engine: Option<everruns::Engine>,
     app: App,
     mode: Mode,
     data_dir: Option<PathBuf>,
     microvm: Option<MicroVm>,
+    auth: Vec<AuthMethod>,
+    auth_verifier: Option<ChannelAuthVerifier>,
 }
 
 impl ServerBuilder {
+    /// Reopen an explicitly provisioned Environment without changing the Agent
+    /// application. The reference pins its trusted service configuration.
+    pub fn host_environment_factory(
+        mut self,
+        reference: impl Into<String>,
+        factory: impl everruns::hosting::EnvironmentFactory,
+    ) -> Self {
+        self.environment_ref = Some(reference.into());
+        self.environment_factory = Some(Arc::new(factory));
+        self
+    }
+    /// Bind every Agent's explicitly configured host workspace under a retained
+    /// Environment reference. Changing its configuration requires a new key.
+    pub fn host_environment(mut self, reference: impl Into<String>) -> Self {
+        self.environment_ref = Some(reference.into());
+        self
+    }
+    /// Select coherent Engine session hosting. Admission and canonical state
+    /// belong to this profile; the serve catalog remains a projection.
+    pub fn hosting(mut self, profile: impl everruns::hosting::SessionHosting) -> Self {
+        self.engine = Some(everruns::Engine::builder().hosting(profile).build());
+        self
+    }
+    /// Use an application-owned Engine and its coherent session hosting profile.
+    pub fn engine(mut self, engine: everruns::Engine) -> Self {
+        self.engine = Some(engine);
+        self
+    }
+
     /// Persist under `dir`. Without it everything stays in memory.
     pub fn data_dir(mut self, dir: impl Into<PathBuf>) -> Self {
         self.data_dir = Some(dir.into());
@@ -59,14 +96,35 @@ impl ServerBuilder {
         self
     }
 
+    /// Require a credential on every agent route: static keys, OIDC or
+    /// OAuth 2.0 introspection. Adds to the methods in `serve.toml`'s
+    /// `[auth]` and `SERVE_API_KEYS`; with none at all the API stays open.
+    /// See [`crate::auth`].
+    pub fn auth(mut self, methods: impl IntoIterator<Item = AuthMethod>) -> Self {
+        self.auth.extend(methods);
+        self
+    }
+
+    /// Check tokens with `verifier` instead of a fresh one, for example one
+    /// primed with an identity provider's keys in tests.
+    pub fn auth_verifier(mut self, verifier: ChannelAuthVerifier) -> Self {
+        self.auth_verifier = Some(verifier);
+        self
+    }
+
     /// Boot. Fails when the mode is [`Mode::Start`] and a declared secret is
     /// unset, or when an agent does not resolve.
     pub fn build(self) -> crate::Result<Server> {
         let Self {
+            environment_factory,
+            environment_ref,
+            engine,
             app,
             mode,
             data_dir,
             microvm,
+            auth,
+            auth_verifier,
         } = self;
         if !app.errors().is_empty() {
             bail!(
@@ -75,18 +133,76 @@ impl ServerBuilder {
                 app.errors().join("; ")
             );
         }
+        if engine
+            .as_ref()
+            .is_some_and(everruns::Engine::has_session_hosting)
+        {
+            if !app.inner.channels.is_empty() {
+                bail!(
+                    "this session hosting profile requires a separately configured durable channel inbox/outbox; channel delivery cannot use the local catalog"
+                );
+            }
+            if !app.inner.schedules.is_empty() {
+                bail!(
+                    "this session hosting profile requires an independent durable schedule service"
+                );
+            }
+            if app.inner.agents.iter().any(|agent| agent.sub) {
+                bail!(
+                    "this session hosting profile does not yet supply Engine-owned child session activation"
+                );
+            }
+        }
         let missing = missing_secrets(&app);
         if mode == Mode::Start && !missing.is_empty() {
             bail!("missing secrets: {}", missing.join(", "));
         }
-        let host = Host::new(app.clone(), mode, data_dir)?;
+        let mut methods = auth;
+        methods.extend(app.inner.config.auth.methods());
+        if let Ok(value) = std::env::var(API_KEYS_ENV) {
+            methods.extend(api_keys_from_env_value(&value));
+        }
+        let auth = Auth::new(methods, auth_verifier)?;
+        let native_authority = if engine.is_none() {
+            data_dir
+                .as_ref()
+                .map(|dir| -> crate::Result<_> {
+                    std::fs::create_dir_all(dir)?;
+                    Ok(everruns::hosting::SqliteHosting::open(
+                        dir.join("sessions.db"),
+                    )?)
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        let engine = engine.unwrap_or_else(|| match &native_authority {
+            Some(authority) => everruns::Engine::builder()
+                .hosting(authority.clone())
+                .build(),
+            None => everruns::Engine::new(),
+        });
+        let host = Host::with_engine(app.clone(), mode, data_dir, engine)?;
+        if let Some(authority) = native_authority {
+            host.set_native_authority(authority);
+        }
         if let Some(microvm) = microvm {
             host.set_microvm(microvm);
         }
+        if let Some(auth) = auth {
+            host.set_auth(auth);
+        }
+        if let Some(reference) = environment_ref {
+            host.set_environment_ref(reference);
+        }
+        if let Some(factory) = environment_factory {
+            host.set_environment_factory(factory);
+        }
         // Resolve every agent once so a bad model or tool schema fails at boot.
         for agent in &app.inner.agents {
-            host.build_agent(agent, None, false)?;
+            host.register_agent(agent)?;
         }
+        host.start_authority_supervisor();
         Ok(Server { host })
     }
 }
@@ -101,10 +217,15 @@ impl Server {
     /// Start building a server for `app` in `mode`.
     pub fn builder(app: App, mode: Mode) -> ServerBuilder {
         ServerBuilder {
+            environment_factory: None,
+            environment_ref: None,
+            engine: None,
             app,
             mode,
             data_dir: None,
             microvm: None,
+            auth: Vec::new(),
+            auth_verifier: None,
         }
     }
 
@@ -134,9 +255,16 @@ impl Server {
         &self.host.build_id
     }
 
+    /// The Framework Engine used by the ordinary session HTTP API. Native
+    /// hosting adapters pass this same Engine to authenticated activation.
+    pub fn engine(&self) -> everruns::Engine {
+        self.host.engine.clone()
+    }
+
     /// serve's `/v1` wire API (plus `/health`), to merge into a target's
     /// router.
     pub fn router(&self) -> Router {
+        self.host.start_authority_supervisor();
         crate::server::router(self.host.clone())
     }
 
@@ -158,6 +286,21 @@ impl Server {
     /// Run the app's `#[schedule]`s in-process, as `dev` and `start` do.
     pub fn spawn_schedules(&self) {
         crate::scheduler::spawn(&self.host);
+    }
+
+    /// Resume, in the background, the turns a restart cut off: calls that
+    /// are safe to run again run again, the rest are recorded as
+    /// interrupted, and each turn carries on. `dev` and `start` call it at
+    /// boot.
+    pub fn resume_interrupted(&self) {
+        self.host.spawn_resume_interrupted();
+    }
+
+    /// Finish channel replies a restart cut off: each turn a channel started
+    /// and had not delivered is followed again and its reply delivered.
+    /// Returns how many were picked up. `dev` and `start` call it at boot.
+    pub async fn recover_channels(&self) -> crate::Result<usize> {
+        Ok(self.host.channels().recover().await?)
     }
 
     /// One AG-UI run of `agent` from a raw `RunAgentInput` JSON body: the

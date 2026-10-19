@@ -1,4 +1,4 @@
-use crate::api::channel_ingress::row_to_ingress;
+use crate::domains::agent_channels::ingress::row_to_ingress;
 use crate::storage::{EncryptionService, StorageBackend};
 use std::sync::Arc;
 use uuid::Uuid;

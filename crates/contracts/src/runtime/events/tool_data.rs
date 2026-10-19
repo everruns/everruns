@@ -210,7 +210,9 @@ pub struct ActCompletedData {
     /// Number of successful tool calls
     pub success_count: u32,
 
-    /// Number of failed tool calls
+    /// Number of failed tool calls. Each failure went back to the model as a
+    /// tool result, so these are issues (severity `issue`), not turn errors;
+    /// the field keeps its historical name.
     pub error_count: u32,
 
     /// Duration of the act phase in milliseconds
@@ -236,6 +238,12 @@ pub struct ToolStartedData {
     /// Human-readable narration for timeline rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
+    /// How many times the call may safely run, from its tool's definition;
+    /// `None` when the tool is unknown. A host stores the `tool.started` of
+    /// an `AtMostOnce` call before the tool runs, so a log without it proves
+    /// the call never ran and resume may run it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_effect_class: Option<crate::tool_types::SideEffectClass>,
 }
 
 /// Data for tool.completed event
@@ -265,6 +273,14 @@ pub struct ToolCompletedData {
 
     /// Status: "success", "error", "timeout", "cancelled"
     pub status: String,
+
+    /// Severity of a failed call; absent when `success` is true. A failed
+    /// tool call is returned to the model, which carries on, so it is an
+    /// `issue`. Whether the turn itself failed is reported by `turn.failed`.
+    /// Events recorded before this field existed omit it; read a failure
+    /// without it as an `issue`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity: Option<FailureSeverity>,
 
     /// Result content (for successful calls)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -308,6 +324,12 @@ pub struct ToolCompletedData {
     /// a credential, so a `user_or_service` attachment's fallback is visible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
+
+    /// Details for people reading the run (chat details view, Session
+    /// Trace) that the model never saw. Web search puts the provider that
+    /// answered, every attempt and the raw provider responses here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 impl ToolCompletedData {
@@ -325,6 +347,7 @@ impl ToolCompletedData {
             display_name: None,
             success: true,
             status: "success".to_string(),
+            severity: None,
             result: Some(result),
             error: None,
             duration_ms,
@@ -334,6 +357,7 @@ impl ToolCompletedData {
             executed_arguments: None,
             executed_arguments_truncated: false,
             acted_as: None,
+            details: None,
         }
     }
 
@@ -352,6 +376,7 @@ impl ToolCompletedData {
             display_name: None,
             success: false,
             status,
+            severity: Some(FailureSeverity::Issue),
             result: None,
             error: Some(error),
             duration_ms,
@@ -361,6 +386,7 @@ impl ToolCompletedData {
             executed_arguments: None,
             executed_arguments_truncated: false,
             acted_as: None,
+            details: None,
         }
     }
 
@@ -414,6 +440,12 @@ impl ToolCompletedData {
     }
 
     /// Record which account an MCP tool call ran as.
+    /// Attach the tool's people-only details.
+    pub fn with_details(mut self, details: Option<serde_json::Value>) -> Self {
+        self.details = details;
+        self
+    }
+
     pub fn with_acted_as(
         mut self,
         acted_as: Option<crate::runtime::mcp_server::McpServerActsAs>,
@@ -585,6 +617,44 @@ pub struct HostedToolCallData {
     /// Short detail once known, e.g. the search query.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+}
+
+/// Data for the `tool.nested_call` event (Tools in Shell).
+///
+/// A shell script called one of the agent's tools through the `tools` command,
+/// inside the `bash` call named by `parent_tool_call_id`. Informational: the
+/// model did not make this call, so there is no matching `tool.started` /
+/// `tool.completed` or tool-result message; the `bash` result carries what the
+/// script printed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolNestedCallData {
+    /// The `bash` tool call the script ran in.
+    pub parent_tool_call_id: String,
+
+    /// This call's id: unique within the parent call.
+    pub call_id: String,
+
+    /// Registry name of the tool that was called, e.g. `mcp_github__list_pulls`.
+    pub tool_name: String,
+
+    /// How the script spelled it, e.g. `github list-pulls`.
+    pub command: String,
+
+    /// `completed`, `failed`, `needs_approval` (the script stopped here and a
+    /// person is asked), or `refused` (a pre-tool hook blocked the call).
+    pub status: String,
+
+    /// The call's input, shortened for display.
+    pub input_preview: String,
+
+    /// What went wrong, for `failed` and `refused`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+
+    /// Wall-clock time the tool ran, in milliseconds; absent when it did not run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// Data for tool.call_requested event

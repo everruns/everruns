@@ -9,7 +9,7 @@ use super::{
     UnarchiveSession,
 };
 use crate::domains::common::{Command, Ctx};
-use crate::records::SessionSource;
+use crate::domains::sessions::record::SessionSource;
 use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_contracts::typed_id::AgentId;
 use everruns_contracts::typed_id::{HarnessId, PrincipalId, SessionId};
@@ -29,6 +29,7 @@ fn ctx_for(db: Arc<StorageBackend>, user_id: Option<Uuid>) -> Ctx {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: user_id.is_none(),
+            read_only: false,
         },
         db,
         capability_service,
@@ -52,7 +53,7 @@ struct Seed {
 async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
     let db = Arc::new(StorageBackend::test_database());
     for org_id in orgs {
-        crate::org_init::initialize_org_harnesses(&db, *org_id)
+        crate::setup::org_init::initialize_org_harnesses(&db, *org_id)
             .await
             .expect("initialize built-in harnesses");
     }
@@ -64,7 +65,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         if db.get_user(user).await.unwrap().is_none() {
             db.create_user_with_id(
                 user,
-                crate::storage::models::CreateUserRow {
+                crate::storage::CreateUserRow {
                     email: format!("{user}@example.com"),
                     name: "User".into(),
                     avatar_url: None,
@@ -82,7 +83,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
         db.add_organization_member(DEFAULT_ORG_ID, user, "member")
             .await
             .unwrap();
-        crate::services::PrincipalService::new(db.clone())
+        crate::domains::users::PrincipalService::new(db.clone())
             .ensure_default_virtual_user_principal(DEFAULT_ORG_ID, user)
             .await
             .unwrap()
@@ -166,7 +167,7 @@ async fn titles(ctx: &Ctx, filters: SessionFilterArgs) -> Vec<String> {
     .collect()
 }
 
-fn bucket(buckets: &[crate::api::sessions::SessionFacetCount], value: &str) -> u64 {
+fn bucket(buckets: &[crate::domains::sessions::types::SessionFacetCount], value: &str) -> u64 {
     buckets
         .iter()
         .find(|b| b.value == value)
@@ -356,6 +357,8 @@ async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

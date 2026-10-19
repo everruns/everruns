@@ -53,17 +53,17 @@ operations. Dropping Framework handles never invokes destructive cleanup. The
 public local implementation uses Git worktrees, removes a worktree only for an
 explicit destroy, and retains its Git branch.
 
-Workspaces are addressable entities (`wsp_<32-hex>`). Sessions attach to a
-Workspace; multiple sessions may attach to the same Workspace (for shared
-working state) or each session may own its own Workspace (the default,
-matching legacy behavior).
+Workspaces are addressable entities (`wsp_<32-hex>`). Every session owns exactly
+one workspace, created with the session. Sessions cannot attach to an existing
+workspace, and standalone workspaces cannot be created (see "Attach retired"
+below). Sessions attached to a shared workspace before that change keep it.
 
 ## Model
 
 Workspace is the **session tier** of the memory model:
 
-* **Workspace** (this spec), named, durable working area. One or more
-  sessions attach to a Workspace. Files are workspace-scoped.
+* **Workspace** (this spec), named, durable working area owned by one
+  session. Files are workspace-scoped.
 * **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped, named, durable shared
   store. Mounted into a Workspace via the `memory` capability at session
   creation, RO by default.
@@ -91,35 +91,34 @@ Workspaces follow the standard building-block lifecycle from
 A Workspace is hard-deleted only after all attached sessions are
 removed; otherwise `DELETE` archives the row.
 
-## Default Workspace per Session
+## One Workspace per Session
 
-For backward compatibility, a session created without an explicit
-`workspace_id` auto-creates a **default Workspace** named after the session
-(`session-<session-id-suffix>`) whose primary key equals the session id (the
-equality invariant), and attaches the session to it.
+A session's workspace is created with it, named after the session
+(`session-<session-id-suffix>`), and its primary key equals the session id (the
+equality invariant). File access is keyed by the session's `workspace_id`: the
+agent's `file_system` / `virtual_bash` tools (a [`WorkspaceScopedFileSystem`]
+decorator pins tool I/O to the workspace), system-prompt file reads,
+initial-file seeding and capability mounts, and the legacy
+`/v1/sessions/{session_id}/fs/*` alias. For a session's own workspace these all
+reduce to the session id. Keying by `workspace_id` still matters for the legacy
+shared workspaces below.
 
-Power users who want to share working state across sessions pre-create a
-Workspace via the API and pass its `workspace_id` (the `wsp_<32-hex>` public id)
-to `CreateSession`. The attach target is validated at create time: an unknown
-or `deleted` target returns `404` (the lookup excludes `deleted` rows), an
-`archived` target `400`, and a target the caller lacks `WORKSPACE_MANAGE` for
-`403`. When attached, no default workspace is created and the session's
-`workspace_id` points at the shared workspace. A workspace created before the
-`id.hex == public_id` invariant (legacy random internal PK) is also rejected
-`400`, since the session would otherwise report a non-round-tripping
-`workspace_id`.
+### Attach retired
 
-File access re-keys by the session's `workspace_id`, not its id, so a shared
-workspace is addressed consistently everywhere: the agent's `file_system` /
-`virtual_bash` tools (a [`WorkspaceScopedFileSystem`] decorator pins tool I/O to
-the workspace), system-prompt file reads, initial-file seeding and capability
-mounts, and the legacy `/v1/sessions/{session_id}/fs/*` alias. For the default
-1:1 session these all reduce to the session id, so the re-keying is a
-transparent pass-through.
+`CreateSession` used to accept a `workspace_id` to attach a session to an
+existing workspace, and `POST /v1/workspaces` created standalone ones for that
+purpose. Both are removed. The only gate was the org-wide `WORKSPACE_MANAGE`
+permission, so a new session on any agent could be pointed at another session's
+workspace (whose id is derivable from the session id) and read or write its
+files. Multi-agent shared working state was never developed beyond that, and
+will come back, if at all, as a designed scope model rather than this attach.
 
-This preserves the legacy 1:1 session→files invariant for clients that
-don't yet think about Workspaces, while exposing the multi-session-share
-model to API clients that opt into it.
+A request that still sends `workspace_id` is refused with `400` at the creation
+boundary (`SessionService::create`), not silently ignored, so a caller relying
+on shared files learns it no longer works. Sessions attached before the change
+keep their shared workspace, and the protections for them stay: writes through
+the session alias require `WORKSPACE_MANAGE`, and `/memory/user` is never mounted
+into a workspace another session shares.
 
 ## Data Model
 
@@ -166,7 +165,6 @@ preserved verbatim.
 REST endpoints:
 
 * `GET    /v1/workspaces`
-* `POST   /v1/workspaces`
 * `GET    /v1/workspaces/{workspace_id}`
 * `PATCH  /v1/workspaces/{workspace_id}`
 * `DELETE /v1/workspaces/{workspace_id}`, archive / delete per lifecycle
@@ -208,14 +206,17 @@ session IDs do not need to change.
 **Rationale:** Path-based URLs are intuitive. GET reads, POST creates, PUT updates, DELETE removes. Action routes use the reserved `_/` prefix.
 
 ### Decision 3: Workspace Ownership Model
-**Chosen:** Sessions attach to a Workspace; a default Workspace is
-auto-created on session creation when not specified. Multiple sessions
-may attach to the same Workspace.
+**Chosen:** One workspace per session, created with it. Attaching a session to
+an existing workspace is retired (2026-10-12).
 **Alternatives considered:**
-- Strict 1:1 with no sharing, rejected: blocks shared working state.
-- Explicit-only attach (no defaults), rejected: breaks existing clients.
-**Rationale:** Defaulting preserves legacy ergonomics while opening the
-multi-session sharing story for API clients.
+- Attach any active org workspace behind `WORKSPACE_MANAGE` (the previous
+  model), rejected: the org-wide permission is the only gate, so an admin could
+  point a new session on any agent at another session's files.
+- Attach behind per-workspace owners and agent allow-lists, deferred: no
+  product flow needed shared workspaces, so the access model was not worth
+  building ahead of a real design for shared state.
+**Rationale:** Smallest surface with no gap left. Shared state between sessions
+belongs in a designed scope model, not in an attach shortcut.
 
 ### Decision 4: Text/Binary Encoding
 **Chosen:** Automatic detection with base64 encoding for binary
@@ -284,7 +285,7 @@ internally.
 
 ### Database Schema
 
-See `crates/server/migrations/056_workspaces.sql` for the schema.
+See `crates/server/migrations/legacy/056_workspaces.sql` for the schema.
 
 ### UI Integration
 
@@ -302,7 +303,7 @@ workspace-scoping is follow-up work.
 
 - `session_git_objects`, session-scoped content-addressable store
 - `session_git_refs`, session-scoped refdb
-- See `crates/server/migrations/008_v0.8.7.sql` for DDL
+- See `crates/server/migrations/legacy/008_v0.8.7.sql` for DDL
 
 ### API Endpoints
 
@@ -318,12 +319,10 @@ All under `/v1/sessions/{session_id}/git/`. Unchanged.
 - **Per-workspace quotas in DB**: enforce `WORKSPACE_FILE_MAX_BYTES` via a
   DB trigger as defense in depth?
 
-## Starting files and attachment
+## Starting files
 
-Agent and Harness files seed only a newly-created file lineage. Attaching a
-Session to an existing Workspace preserves current contents and rejects
-request-level starting files before creating the Session. Agent updates do not
-rewrite existing files. The UI labels the current tree Files; runtime working
+Agent and Harness files seed a session's workspace once, when it is created.
+Agent updates do not rewrite existing files. The UI labels the current tree Files; runtime working
 directory prefixes remain host details. See the
 [creation boundary](../../crates/server/src/domains/sessions/service/create.rs)
 and [portable path contract](agent-packages.md).

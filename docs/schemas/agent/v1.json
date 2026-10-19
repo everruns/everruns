@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
-  "id": "https://docs.everruns.com/schemas/agent/v1.json",
+  "id": "https://everruns.com/docs/schemas/agent/v1.json",
   "title": "Everruns agent.toml v1",
   "description": "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   "$ref": "#/definitions/Manifest",
@@ -28,6 +28,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "Communication": {
+      "type": "string",
+      "description": "How an agent talks to the people in its conversations. The agent owns this\nsetting; every surface (web chat, API, Slack, A2A, AG-UI, MCP) honors it.",
+      "enum": [
+        "direct",
+        "explicit"
+      ]
     },
     "ConversationStarter": {
       "type": "object",
@@ -155,6 +163,17 @@
           },
           "maxProperties": 32
         },
+        "communication": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/Communication",
+              "description": "How the agent talks: `direct` (its text is the reply) or `explicit`\n(its text is working notes; it talks through `send_message`).\nOmission means `direct`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "description": {
           "type": [
             "string",
@@ -210,6 +229,16 @@
           "description": "Optional tool-loop iteration limit. Omission keeps the host default.",
           "minimum": 1,
           "maximum": 1000
+        },
+        "max_output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "description": "Ceiling on output tokens per model response. Omission keeps the provider default.",
+          "minimum": 1,
+          "maximum": 2147483647
         },
         "mcpServers": {
           "type": "object",
@@ -394,6 +423,14 @@
       ],
       "example": "http"
     },
+    "McpToolLabel": {
+      "type": "string",
+      "description": "A person's saved risk label for one MCP tool.\n\nDecision (2026-10-10): a person's label always wins over the tool's own\nannotations, because a remote server describes itself and a person who\nowns the integration knows better. `read_only` also clears `open_world`,\nsince tool approval treats an outward-reaching tool like a destructive one;\nwithout that a read-only MCP tool would still ask every time.",
+      "enum": [
+        "read_only",
+        "changes"
+      ]
+    },
     "NetworkAccessList": {
       "type": "object",
       "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
@@ -545,6 +582,16 @@
         "tool_discovery": {
           "type": "boolean",
           "description": "Whether to discover tool definitions live from this server."
+        },
+        "tool_labels": {
+          "type": "object",
+          "description": "Risk labels for this server's tools, by the tool's own name:\n`read_only` never asks for approval in the normal mode, `changes`\nalways asks. They win over the tool's annotations and over a catalog\npreset's saved labels. Honored on harness, agent and person-owned\nservers; dropped from session-scoped servers.",
+          "additionalProperties": {
+            "$ref": "#/definitions/McpToolLabel"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
         },
         "type": {
           "$ref": "#/definitions/McpServerTransportType",
@@ -733,6 +780,13 @@
               "type": "null"
             }
           ]
+        },
+        "stays_direct": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly."
         },
         "supports_background": {
           "type": [

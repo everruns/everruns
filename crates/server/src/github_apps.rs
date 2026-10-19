@@ -26,15 +26,28 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::github_installation_token::InstallationToken;
 use crate::storage::EncryptionService;
+
+/// Connection provider an agent App's installation is stored under.
+pub const GITHUB_PROVIDER: &str = "github";
+/// Connection type of an agent App's installation.
+pub const GITHUB_APP_CONNECTION_TYPE: &str = "github_app";
+/// Connection type of a shared Everruns App installation an org admin linked,
+/// on the org's link row and on every agent row that chose it (D3).
+pub const EVERRUNS_APP_CONNECTION_TYPE: &str = "everruns_app";
 
 /// How long a started connect flow stays valid.
 const SETUP_STATE_TTL_SECONDS: i64 = 60 * 60;
 
 /// Permissions every agent App requests. Contents and metadata are read-only;
-/// pull requests and issues are writable so the agent can comment.
+/// pull requests and issues are writable so the agent can comment. Actions and
+/// checks are read-only so CI results can trigger the agent
+/// (knowledge/runtime-resources/proactive-agents.md, D1).
 pub fn default_permissions() -> Value {
     json!({
+        "actions": "read",
+        "checks": "read",
         "contents": "read",
         "metadata": "read",
         "pull_requests": "write",
@@ -43,7 +56,57 @@ pub fn default_permissions() -> Value {
 }
 
 /// Webhook events every agent App subscribes to.
-pub const DEFAULT_EVENTS: &[&str] = &["pull_request", "issue_comment", "issues"];
+pub const DEFAULT_EVENTS: &[&str] = &[
+    "pull_request",
+    "issue_comment",
+    "issues",
+    "workflow_run",
+    "check_suite",
+];
+
+/// `name:level` pairs, sorted and comma-joined, as stored in a GitHub App
+/// connection's `scopes`. `None` when the installation grants nothing.
+pub fn scopes_from_permissions(permissions: &Value) -> Option<String> {
+    permissions
+        .as_object()
+        .map(|permissions| {
+            let mut scopes: Vec<String> = permissions
+                .iter()
+                .map(|(name, level)| format!("{name}:{}", level.as_str().unwrap_or("?")))
+                .collect();
+            scopes.sort();
+            scopes.join(",")
+        })
+        .filter(|scopes| !scopes.is_empty())
+}
+
+/// Permissions an installation lacks compared with what new Apps request, as
+/// `name:level`. An App created before a permission was added keeps its old
+/// set until its owner updates it on GitHub and the installation accepts.
+pub fn missing_permissions(scopes: Option<&str>) -> Vec<String> {
+    let granted: std::collections::HashMap<&str, &str> = scopes
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|scope| scope.trim().split_once(':'))
+        .collect();
+    let rank = |level: &str| match level {
+        "write" | "admin" => 2,
+        "read" => 1,
+        _ => 0,
+    };
+    let mut missing: Vec<String> = default_permissions()
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, level)| {
+            let wanted = level.as_str().unwrap_or("read");
+            let have = granted.get(name.as_str()).copied().unwrap_or("");
+            (rank(have) < rank(wanted)).then(|| format!("{name}:{wanted}"))
+        })
+        .collect();
+    missing.sort();
+    missing
+}
 
 /// GitHub endpoints. Overridable for GitHub Enterprise and for tests.
 #[derive(Clone, Debug)]
@@ -142,28 +205,80 @@ pub fn is_publicly_reachable(base_url: &str) -> bool {
     }
 }
 
-/// A default App name: GitHub requires globally unique names of at most 34
-/// characters, so the agent name is shortened and given a random suffix. The
-/// user can still rename it on GitHub's confirmation page.
-pub fn default_app_name(agent_name: &str) -> String {
-    let base: String = agent_name
+/// GitHub's limit on App names.
+const MAX_APP_NAME_LEN: usize = 34;
+/// Room the random suffix takes: a dash and six characters.
+const APP_NAME_SUFFIX_LEN: usize = 7;
+
+/// The agent name as a GitHub App name: ASCII letters, digits and single
+/// dashes, at most 34 characters. `agent` when nothing usable is left.
+pub fn app_name_base(agent_name: &str) -> String {
+    let base = agent_name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { ' ' })
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join("-")
-        .trim_matches('-')
         .chars()
-        .take(24)
-        .collect();
-    let base = if base.is_empty() {
+        .take(MAX_APP_NAME_LEN)
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if base.is_empty() {
         "agent".to_string()
     } else {
         base
-    };
+    }
+}
+
+/// `base` shortened to leave room for a random 6-character suffix, which
+/// makes it unique.
+pub fn suffixed_app_name(base: &str) -> String {
+    let stem = base
+        .chars()
+        .take(MAX_APP_NAME_LEN - APP_NAME_SUFFIX_LEN)
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
     let suffix = &Uuid::new_v4().simple().to_string()[..6];
-    format!("{base}-{suffix}")
+    format!("{stem}-{suffix}")
+}
+
+/// The name a new agent App is created with (D2 in
+/// knowledge/integrations/github-model.md): the agent name, shortened to
+/// GitHub's 34 characters, with a random suffix only when the plain slug is
+/// taken. The user can still rename it on GitHub's confirmation page.
+///
+/// Decision: GitHub has no "is this name free" API, so the probe is the public
+/// `GET /apps/{slug}`. A private App answers 404 to everyone but its owner, so
+/// a clash with one goes unseen here; GitHub's confirmation page reports it.
+/// A failed probe takes the suffix rather than sending a name that may clash.
+pub async fn default_app_name(api: &GitHubAppApi, agent_name: &str) -> String {
+    let base = app_name_base(agent_name);
+    // A sanitised name's slug is the name lowercased.
+    match api.app_slug_taken(&base.to_ascii_lowercase()).await {
+        Ok(false) => base,
+        Ok(true) => suffixed_app_name(&base),
+        Err(err) => {
+            tracing::debug!(error = %err, "GitHub App name probe failed; adding a suffix");
+            suffixed_app_name(&base)
+        }
+    }
+}
+
+/// The App's settings page on GitHub, where its logo is uploaded. User-owned
+/// and organization-owned Apps live under different paths.
+pub fn app_settings_url(web_url: &str, slug: &str, owner_org: Option<&str>) -> String {
+    let web = web_url.trim_end_matches('/');
+    let slug = urlencoding::encode(slug);
+    match owner_org {
+        Some(org) => format!(
+            "{web}/organizations/{}/settings/apps/{slug}",
+            urlencoding::encode(org)
+        ),
+        None => format!("{web}/settings/apps/{slug}"),
+    }
 }
 
 /// Where the browser posts the manifest: a personal account or an org.
@@ -265,6 +380,10 @@ pub struct ManifestConversion {
 pub struct GitHubAccount {
     pub id: i64,
     pub login: String,
+    /// `User` or `Organization`. Recorded on connections so the agent page
+    /// can tell organizations apart when suggesting where an App lives.
+    #[serde(default, rename = "type")]
+    pub account_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -292,6 +411,29 @@ pub struct Repository {
 pub struct AppCredentials {
     pub app_id: i64,
     pub private_key_pem: String,
+}
+
+/// What an installation token is limited to. Empty fields leave that side
+/// unlimited (everything the installation holds).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenScope {
+    /// Repository names (without the owner) under the installation's account.
+    pub repositories: Vec<String>,
+    /// Permission name to level.
+    pub permissions: std::collections::BTreeMap<String, String>,
+}
+
+impl TokenScope {
+    fn body(&self) -> Value {
+        let mut body = json!({});
+        if !self.repositories.is_empty() {
+            body["repositories"] = json!(self.repositories);
+        }
+        if !self.permissions.is_empty() {
+            body["permissions"] = json!(self.permissions);
+        }
+        body
+    }
 }
 
 /// Thin GitHub REST client for App operations.
@@ -324,6 +466,24 @@ impl GitHubAppApi {
             .request(method, self.api(path))
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
+    }
+
+    /// Whether a public App already uses `slug`. Unauthenticated: 200 is
+    /// taken, 404 is free (or a private App's), anything else is an error.
+    pub async fn app_slug_taken(&self, slug: &str) -> Result<bool> {
+        let response = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/apps/{}", urlencoding::encode(slug)),
+            )
+            .send()
+            .await
+            .context("GitHub App lookup request failed")?;
+        match response.status() {
+            status if status.is_success() => Ok(true),
+            reqwest::StatusCode::NOT_FOUND => Ok(false),
+            status => bail!("GitHub returned {status} looking up an App"),
+        }
     }
 
     /// Exchange the one-time manifest code for the new App's credentials.
@@ -377,16 +537,37 @@ impl GitHubAppApi {
         read_json(response, "reading installation").await
     }
 
-    /// Mint a one-hour installation access token.
+    /// Mint a one-hour installation access token with everything the
+    /// installation was granted.
     pub async fn mint_installation_token(
         &self,
         credentials: &AppCredentials,
         installation_id: i64,
     ) -> Result<String> {
-        #[derive(Deserialize)]
-        struct Token {
-            token: String,
-        }
+        self.mint_scoped_installation_token(credentials, installation_id, &TokenScope::default())
+            .await
+    }
+
+    /// Mint a one-hour installation access token limited to `scope`. GitHub
+    /// refuses (422) a scope that asks for more than the installation holds.
+    pub async fn mint_scoped_installation_token(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
+    ) -> Result<String> {
+        Ok(self
+            .mint_scoped_installation_credential(credentials, installation_id, scope)
+            .await?
+            .token)
+    }
+
+    pub(crate) async fn mint_scoped_installation_credential(
+        &self,
+        credentials: &AppCredentials,
+        installation_id: i64,
+        scope: &TokenScope,
+    ) -> Result<InstallationToken> {
         let jwt = Self::app_jwt(credentials)?;
         let response = self
             .request(
@@ -394,11 +575,11 @@ impl GitHubAppApi {
                 &format!("/app/installations/{installation_id}/access_tokens"),
             )
             .bearer_auth(jwt)
+            .json(&scope.body())
             .send()
             .await
             .context("GitHub installation token request failed")?;
-        let token: Token = read_json(response, "minting installation token").await?;
-        Ok(token.token)
+        read_json(response, "minting installation token").await
     }
 
     /// Repositories an installation can access (up to 300).
@@ -455,6 +636,62 @@ impl GitHubAppApi {
     }
 }
 
+/// What connecting and disconnecting an agent App needs: the GitHub client and
+/// the public URLs GitHub sends the App's hooks and the browser to.
+///
+/// Every command context carries one. The defaults come from the environment;
+/// the REST and MCP states replace the URLs with their auth config's, so a
+/// manifest names the same URLs whichever surface built it.
+#[derive(Clone)]
+pub struct GitHubAppContext {
+    pub api: GitHubAppApi,
+    /// Public base URL of this API, as GitHub must call it.
+    pub api_base_url: String,
+    /// Public UI origin; where the browser returns when a flow ends.
+    pub frontend_url: String,
+    /// Slug of the deployment's shared Everruns App (`GITHUB_APP_SLUG`), when
+    /// one is configured. An agent acting as it shows up as `<slug>[bot]`.
+    pub shared_app_slug: Option<String>,
+}
+
+impl GitHubAppContext {
+    /// The process-wide default, so contexts share one HTTP client.
+    pub fn from_env() -> Self {
+        static DEFAULT: std::sync::LazyLock<GitHubAppContext> =
+            std::sync::LazyLock::new(|| GitHubAppContext {
+                api: GitHubAppApi::new(GitHubEndpoints::from_env()),
+                api_base_url: crate::auth::AuthConfig::api_base_url_from_env(),
+                frontend_url: crate::auth::AuthConfig::frontend_url_from_env(),
+                shared_app_slug: None,
+            });
+        DEFAULT.clone()
+    }
+
+    /// The same client with the public URLs and shared App of one auth config.
+    pub fn with_auth_config(mut self, config: &crate::auth::AuthConfig) -> Self {
+        self.api_base_url = config.base_url.clone();
+        self.frontend_url = config.frontend_url.clone();
+        self.shared_app_slug = config
+            .github_connection
+            .as_ref()
+            .map(|shared| shared.app_slug.clone())
+            .filter(|slug| !slug.is_empty());
+        self
+    }
+}
+
+/// Decrypt an App's private key for one GitHub call.
+pub fn app_credentials(
+    encryption: Option<&EncryptionService>,
+    app: &crate::storage::GitHubAppRow,
+) -> Result<AppCredentials> {
+    let encryption = encryption.context("encryption not configured")?;
+    Ok(AppCredentials {
+        app_id: app.app_id,
+        private_key_pem: encryption.decrypt_to_string(&app.private_key_encrypted)?,
+    })
+}
+
 async fn read_json<T: serde::de::DeserializeOwned>(
     response: reqwest::Response,
     action: &str,
@@ -475,6 +712,37 @@ async fn read_json<T: serde::de::DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_permissions_compares_levels_with_new_apps() {
+        let all =
+            "actions:read,checks:read,contents:read,issues:write,metadata:read,pull_requests:write";
+        assert!(missing_permissions(Some(all)).is_empty());
+        // An App created before CI triggers.
+        assert_eq!(
+            missing_permissions(Some(
+                "contents:read,issues:write,metadata:read,pull_requests:write"
+            )),
+            vec!["actions:read", "checks:read"]
+        );
+        // Write covers read; read does not cover write.
+        assert_eq!(
+            missing_permissions(Some(
+                "actions:write,checks:read,contents:write,issues:read,metadata:read,pull_requests:write"
+            )),
+            vec!["issues:write"]
+        );
+        assert_eq!(missing_permissions(None).len(), 6);
+    }
+
+    #[test]
+    fn scopes_are_sorted_name_level_pairs() {
+        assert_eq!(
+            scopes_from_permissions(&json!({"metadata": "read", "actions": "read"})).as_deref(),
+            Some("actions:read,metadata:read")
+        );
+        assert_eq!(scopes_from_permissions(&json!({})), None);
+    }
+
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -542,13 +810,71 @@ mod tests {
     }
 
     #[test]
-    fn default_name_is_short_unique_and_github_safe() {
-        let name = default_app_name("My PR Summarizer (prod)!");
-        assert!(name.len() <= 34, "{name}");
-        assert!(name.starts_with("My-PR-Summarizer-prod"), "{name}");
-        assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
-        assert_ne!(default_app_name("x"), default_app_name("x"));
-        assert!(default_app_name("!!!").starts_with("agent-"));
+    fn app_names_are_short_and_github_safe() {
+        assert_eq!(
+            app_name_base("My PR Summarizer (prod)!"),
+            "My-PR-Summarizer-prod"
+        );
+        assert_eq!(app_name_base("!!!"), "agent");
+        let long = app_name_base("A very long agent name that GitHub would refuse outright");
+        assert!(long.len() <= 34, "{long}");
+        assert!(!long.ends_with('-'), "{long}");
+        let suffixed = suffixed_app_name(&long);
+        assert!(suffixed.len() <= 34, "{suffixed}");
+        assert!(
+            suffixed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        );
+        assert_ne!(suffixed_app_name("x"), suffixed_app_name("x"));
+    }
+
+    #[test]
+    fn settings_url_follows_the_owner() {
+        assert_eq!(
+            app_settings_url("https://github.com/", "pr-bot", None),
+            "https://github.com/settings/apps/pr-bot"
+        );
+        assert_eq!(
+            app_settings_url("https://github.com", "pr-bot", Some("acme")),
+            "https://github.com/organizations/acme/settings/apps/pr-bot"
+        );
+    }
+
+    /// The name chosen for "PR Summarizer" when GitHub answers the slug probe
+    /// with `status`.
+    async fn name_with_probe(status: u16) -> String {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/apps/pr-summarizer"))
+            .respond_with(ResponseTemplate::new(status))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: server.uri(),
+            web_url: "https://github.com".to_string(),
+        });
+        default_app_name(&api, "PR Summarizer").await
+    }
+
+    #[tokio::test]
+    async fn a_free_name_is_the_agent_name() {
+        assert_eq!(name_with_probe(404).await, "PR-Summarizer");
+    }
+
+    #[tokio::test]
+    async fn a_taken_name_gets_a_suffix() {
+        let name = name_with_probe(200).await;
+        assert!(name.starts_with("PR-Summarizer-"), "{name}");
+        assert_eq!(name.len(), "PR-Summarizer-".len() + 6, "{name}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_probe_gets_a_suffix() {
+        let name = name_with_probe(503).await;
+        assert!(name.starts_with("PR-Summarizer-"), "{name}");
+        assert_eq!(name.len(), "PR-Summarizer-".len() + 6, "{name}");
     }
 
     #[test]

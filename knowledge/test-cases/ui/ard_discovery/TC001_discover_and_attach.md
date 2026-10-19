@@ -52,10 +52,10 @@ reflects the attachment.
 
 ## Notes
 
-- ARD answers "which MCP server / A2A agent should even be attached?" — the layer above `tool_search`, which only defers schemas for already-attached tools. The newly attached MCP tools therefore only become visible on the turn **after** `attach_resource`, once turn-context assembly folds the attachment into a session-scoped `mcpServers` record.
+- ARD answers "which MCP server / A2A agent should even be attached?" — the layer above `tool_search`, which only defers schemas for already-attached tools. The newly attached MCP tools therefore only become visible on the turn **after** `attach_resource`, once turn-context assembly folds the attachment's session MCP server record (`session_mcp:<name>`, the record chat-only `user_mcp` servers also use) into the session's `mcpServers`. This holds on the in-process worker too, not only the hosted one.
 - All registry-returned text is untrusted external data; the agent should treat discovery results as data, not instructions.
 - `attach_resource` is idempotent per URN: re-attaching the same URN does not create a duplicate `session_resources` entry of kind `ard_attachment`.
-- The ARD KV prefixes (`ard_attach:` / `ard_disco:`) are reserved and not writable through the user-facing `kv_store` tool.
+- The ARD and session MCP server KV prefixes (`ard_attach:` / `ard_disco:` / `session_mcp:`) are reserved and not writable through the user-facing `kv_store` tool.
 
 ## Expected Result
 

@@ -230,6 +230,51 @@ async fn a_throttled_call_is_retried() {
 }
 
 #[tokio::test]
+async fn an_exhausted_quota_is_classified_and_not_retried() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            // The body the live API sent on 2026-10-13 with no credits left.
+            "error": {
+                "message": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+                "type": "insufficient_quota",
+                "param": null,
+                "code": "credit_balance_exhausted"
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
+    let AgentLoopError::Llm(error) = driver(&server).evaluate(request).await.unwrap_err() else {
+        panic!("expected an LLM error");
+    };
+    assert_eq!(error.kind, LlmErrorKind::QuotaExhausted);
+    assert_eq!(error.status, Some(429));
+    assert_eq!(error.code.as_deref(), Some("credit_balance_exhausted"));
+}
+
+#[tokio::test]
+async fn persistent_throttling_reads_as_rate_limited() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            "error": {"message": "Rate limit reached", "type": "requests", "code": "rate_limit_exceeded"}
+        })))
+        .expect(3)
+        .mount(&server)
+        .await;
+
+    let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
+    let AgentLoopError::Llm(error) = driver(&server).evaluate(request).await.unwrap_err() else {
+        panic!("expected an LLM error");
+    };
+    assert_eq!(error.kind, LlmErrorKind::RateLimited);
+    assert_eq!(error.code.as_deref(), Some("rate_limit_exceeded"));
+}
+
+#[tokio::test]
 async fn error_envelopes_surface_the_message_without_the_key() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

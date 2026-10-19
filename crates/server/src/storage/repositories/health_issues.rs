@@ -10,7 +10,7 @@ impl Database {
         org_id: i64,
         user_id: Uuid,
     ) -> Result<u32> {
-        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM notifications n JOIN health_issues h ON n.target_id = h.id::text AND n.org_id=h.org_id JOIN agent_channels ae ON ae.id=h.channel_id JOIN agents a ON a.id=ae.agent_id WHERE n.org_id=$1 AND n.user_id=$2 AND n.kind='health.issue' AND n.viewed_at IS NULL AND a.status='active' AND ae.enabled AND ae.status<>'disabled' AND h.status <> 'inapplicable'")
+        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM notifications n JOIN health_issues h ON n.target_id = h.id::text AND n.org_id=h.org_id LEFT JOIN agent_channels ae ON ae.id=h.channel_id LEFT JOIN agents a ON a.id=ae.agent_id WHERE n.org_id=$1 AND n.user_id=$2 AND n.kind='health.issue' AND n.viewed_at IS NULL AND (h.channel_id IS NULL OR (a.status='active' AND ae.enabled AND ae.status<>'disabled')) AND h.status <> 'inapplicable'")
             .bind(org_id).bind(user_id).fetch_one(&self.pool).await?;
         Ok(count as u32)
     }
@@ -31,7 +31,7 @@ impl Database {
              SELECT $1, ae.id, 'slack.permissions', $4, $5, $6, $3, $7
              FROM agent_channels ae JOIN agents a ON a.id = ae.agent_id
              WHERE ae.id = $2 AND a.org_id = $1 AND ae.updated_at = $3
-             ON CONFLICT (org_id, channel_id, code) DO UPDATE SET
+             ON CONFLICT (org_id, channel_id, code) WHERE channel_id IS NOT NULL DO UPDATE SET
                 episode_id = CASE WHEN health_issues.status IN ('resolved', 'inapplicable')
                     AND EXCLUDED.status IN ('open', 'needs_check') THEN uuidv7()
                     ELSE health_issues.episode_id END,
@@ -63,6 +63,80 @@ impl Database {
         Ok(())
     }
 
+    /// Record an organization-level issue (no channel). Same episode rules as
+    /// [`Self::observe_health_issue`]: reopening a resolved issue starts a new
+    /// episode, so members are announced again. `resolved_copy` retitles the
+    /// current episode's announcements when it resolves.
+    pub async fn observe_org_health_issue(
+        &self,
+        org_id: i64,
+        code: &str,
+        status: &str,
+        checked_at: DateTime<Utc>,
+        resolved_copy: (&str, &str),
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        let changed = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+            "INSERT INTO health_issues (org_id, code, status, last_checked_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (org_id, code) WHERE channel_id IS NULL DO UPDATE SET
+                episode_id = CASE WHEN health_issues.status IN ('resolved', 'inapplicable')
+                    AND EXCLUDED.status IN ('open', 'needs_check') THEN uuidv7()
+                    ELSE health_issues.episode_id END,
+                first_detected_at = CASE WHEN health_issues.status IN ('resolved', 'inapplicable')
+                    AND EXCLUDED.status IN ('open', 'needs_check') THEN EXCLUDED.last_checked_at
+                    ELSE health_issues.first_detected_at END,
+                status = EXCLUDED.status,
+                last_checked_at = EXCLUDED.last_checked_at
+             -- Repeated reports of a still-open issue refresh it at most once a
+             -- minute, so a burst of refused messages costs no row writes.
+             WHERE health_issues.last_checked_at <= EXCLUDED.last_checked_at
+               AND NOT (health_issues.status = 'open' AND EXCLUDED.status = 'open'
+                    AND health_issues.last_checked_at > EXCLUDED.last_checked_at - INTERVAL '1 minute')
+             RETURNING id, episode_id, status",
+        )
+        .bind(org_id)
+        .bind(code)
+        .bind(status)
+        .bind(checked_at)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some((id, episode, status)) = changed
+            && status == "resolved"
+        {
+            sqlx::query("UPDATE notifications SET title=$4, body=$5, viewed_at=COALESCE(viewed_at,NOW()),payload=payload || jsonb_build_object('status',$6::text) WHERE org_id=$1 AND kind='health.issue' AND target_id=$2 AND dedupe_key=$3 AND payload->>'status' IS DISTINCT FROM $6")
+                .bind(org_id).bind(id.to_string()).bind(format!("health:{id}:{episode}"))
+                .bind(resolved_copy.0).bind(resolved_copy.1).bind(status)
+                .execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Organizations with an open organization-level issue of `code`.
+    pub async fn orgs_with_open_org_health_issue(&self, code: &str) -> Result<Vec<i64>> {
+        sqlx::query_scalar(
+            "SELECT org_id FROM health_issues
+             WHERE channel_id IS NULL AND code = $1 AND status IN ('open', 'needs_check')",
+        )
+        .bind(code)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    /// Sessions of the organization with a turn executing, the number the
+    /// active-turn cap is checked against.
+    pub async fn count_org_active_turns(&self, org_id: i64) -> Result<i64> {
+        sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
     pub async fn list_health_issues(
         &self,
         org_id: i64,
@@ -70,16 +144,16 @@ impl Database {
         limit: i64,
         channel_public_id: Option<&str>,
     ) -> Result<Vec<HealthIssueRow>> {
-        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h JOIN agent_channels ae ON ae.id = h.channel_id JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1
-            AND ($4::text IS NULL OR ae.public_id = $4) AND h.status IN ('open', 'needs_check') AND ae.enabled
-            AND ae.status <> 'disabled' AND a.status = 'active'
+        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1
+            AND ($4::text IS NULL OR ae.public_id = $4) AND h.status IN ('open', 'needs_check')
+            AND (h.channel_id IS NULL OR (ae.enabled AND ae.status <> 'disabled' AND a.status = 'active'))
             ORDER BY h.first_detected_at DESC, h.id DESC OFFSET $2 LIMIT $3")
             .bind(org_id).bind(offset).bind(limit).bind(channel_public_id).fetch_all(&self.pool).await.map_err(Into::into)
     }
 
     pub async fn get_health_issue(&self, org_id: i64, id: Uuid) -> Result<Option<HealthIssueRow>> {
-        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h JOIN agent_channels ae ON ae.id = h.channel_id JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1 AND h.id = $2
-            AND a.status = 'active'")
+        sqlx::query_as("SELECT h.*, ae.public_id AS channel_public_id, a.public_id AS agent_public_id, COALESCE(a.display_name, a.name) AS agent_name FROM health_issues h LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id WHERE h.org_id = $1 AND h.id = $2
+            AND (h.channel_id IS NULL OR a.status = 'active')")
             .bind(org_id).bind(id).fetch_optional(&self.pool).await.map_err(Into::into)
     }
 
@@ -90,9 +164,9 @@ impl Database {
     ) -> Result<i64> {
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM health_issues h
-            JOIN agent_channels ae ON ae.id = h.channel_id JOIN agents a ON a.id = ae.agent_id
+            LEFT JOIN agent_channels ae ON ae.id = h.channel_id LEFT JOIN agents a ON a.id = ae.agent_id
             WHERE h.org_id = $1 AND ($2::text IS NULL OR ae.public_id = $2) AND h.status IN ('open', 'needs_check')
-            AND ae.enabled AND ae.status <> 'disabled' AND a.status = 'active'",
+            AND (h.channel_id IS NULL OR (ae.enabled AND ae.status <> 'disabled' AND a.status = 'active'))",
         )
         .bind(org_id)
         .bind(channel_public_id)

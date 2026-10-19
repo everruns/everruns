@@ -11,6 +11,9 @@
 use crate::api::sse::SseConnectionTracker;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+pub use crate::domains::messages::types::{
+    CreateMessageRequest, InputMessage, Message, MessageRole,
+};
 use crate::domains::messages::{
     CreateMessage, ExportSessionMessages, ListMessages, SessionExportFormat, queries as q,
 };
@@ -23,16 +26,16 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::{MessageId, SessionId, SessionParticipantId};
-use everruns_contracts::{ExecutionPhase, PhaseSource};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use std::time::{Duration, Instant};
 
+use super::command_http::CommandRouterExt;
 use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::dispatch::impl_dispatchable;
 use everruns_core::host::TurnBackend;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use everruns_core::Caller;
@@ -50,103 +53,6 @@ pub use everruns_core::{
 // ============================================
 // Message API Contracts
 // ============================================
-
-/// Message role (API layer)
-///
-/// Simplified to only user and agent messages.
-/// Tool results are conveyed via `tool.completed` events.
-/// System messages are internal and not exposed via API.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MessageRole {
-    /// User message (input from the user)
-    User,
-    /// Agent message (response from the AI agent)
-    Agent,
-}
-
-impl std::fmt::Display for MessageRole {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MessageRole::User => write!(f, "user"),
-            MessageRole::Agent => write!(f, "agent"),
-        }
-    }
-}
-
-impl From<&str> for MessageRole {
-    fn from(s: &str) -> Self {
-        match s {
-            // Map both "agent" and legacy "assistant" to Agent role
-            "agent" | "assistant" => MessageRole::Agent,
-            _ => MessageRole::User,
-        }
-    }
-}
-
-/// Message - primary conversation data (API response)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Message {
-    /// Unique message ID (format: message_{32-hex})
-    #[schema(value_type = String, example = "message_01933b5a00007000800000000000001")]
-    pub id: MessageId,
-    /// Session ID this message belongs to (format: session_{32-hex})
-    #[schema(value_type = String, example = "session_01933b5a00007000800000000000001")]
-    pub session_id: SessionId,
-    pub sequence: i32,
-    pub role: MessageRole,
-    /// Array of content parts.
-    ///
-    /// Reasoning artifacts appear here as `reasoning` parts, in the order the
-    /// provider emitted them, with opaque replay state (signatures, encrypted
-    /// payloads) stripped.
-    pub content: Vec<ContentPart>,
-    /// Execution phase for agent messages: whether this is intermediate
-    /// `commentary` or the turn's `final_answer`. Absent on user messages.
-    ///
-    /// Without this a client cannot tell an intermediate message from the
-    /// answer, which is the single question most consumers of a session need
-    /// answered.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phase: Option<ExecutionPhase>,
-    /// Whether `phase` was reported by the provider or inferred by the runtime
-    /// from tool-call presence.
-    ///
-    /// `derived` is a weak signal: it means only "this message called tools",
-    /// so a text-only preamble is reported as `final_answer`. Clients needing a
-    /// dependable classification should treat `derived` accordingly.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub phase_source: Option<PhaseSource>,
-    /// Runtime controls (model, reasoning, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub controls: Option<Controls>,
-    /// Message-level metadata (locale, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
-    /// External actor identity (for messages from external channels like Slack)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub external_actor: Option<everruns_core::ExternalActor>,
-    /// Timestamp when this resource was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-}
-
-/// Input message for creating a user message
-///
-/// Only user messages can be created via the API.
-/// Agent messages are created internally by the workflow.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[schema(example = json!({"role": "user", "content": [{"type": "text", "text": "Why is the build failing on main?"}]}))]
-pub struct InputMessage {
-    /// Message role (always "user" for API-created messages)
-    #[serde(default = "default_user_role")]
-    pub role: MessageRole,
-    /// Array of content parts (text and image only)
-    pub content: Vec<InputContentPart>,
-}
-
-fn default_user_role() -> MessageRole {
-    MessageRole::User
-}
 
 /// Query options for `POST /v1/sessions/{session_id}/messages`.
 ///
@@ -201,54 +107,6 @@ pub enum CreateMessageResult {
     Waited(TurnWaitResponse),
 }
 
-/// Request to create a message
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateMessageRequest {
-    /// The message to create. Example shape is defined on `InputMessage`.
-    pub message: InputMessage,
-    /// Optional active agent participant to address for this turn. When omitted,
-    /// the session host remains the responder.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(
-        value_type = Option<String>,
-        example = "part_01933b5a00007000800000000000001"
-    )]
-    pub addressed_participant_id: Option<SessionParticipantId>,
-    /// Runtime controls (model, reasoning, etc.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub controls: Option<Controls>,
-    /// Request-level metadata. Arbitrary key/value pairs persisted with the message
-    /// for downstream filtering and analytics. Not interpreted by the agent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = json!({"source": "slack", "thread_ts": "1715000000.123456"}))]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
-    /// Tags for the message. Free-form labels used for grouping and filtering.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = json!(["bug-report", "from-slack"]))]
-    pub tags: Option<Vec<String>>,
-    /// External actor identity (for messages from external channels like Slack)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub external_actor: Option<everruns_core::ExternalActor>,
-}
-
-#[cfg(test)]
-impl CreateMessageRequest {
-    /// Create a user message with text (for tests)
-    pub fn user(text: impl Into<String>) -> Self {
-        Self {
-            message: InputMessage {
-                role: MessageRole::User,
-                content: vec![InputContentPart::text(text)],
-            },
-            addressed_participant_id: None,
-            controls: None,
-            metadata: None,
-            tags: None,
-            external_actor: None,
-        }
-    }
-}
-
 // ============================================
 // App State and Routes
 // ============================================
@@ -278,8 +136,7 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
-        notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
@@ -289,12 +146,7 @@ impl AppState {
                 db.clone(),
                 event_delivery.clone(),
             )),
-            message_service: Arc::new(MessageService::new(
-                db,
-                runner,
-                notifications_enabled,
-                event_delivery,
-            )),
+            message_service: Arc::new(MessageService::new(db, runner, event_delivery)),
             auth,
             sse_tracker,
             atif_export_max_bytes: crate::atif::ATIF_EXPORT_MAX_BYTES,
@@ -323,6 +175,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create message routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
@@ -335,6 +188,8 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/export",
             get(export_session_jsonl),
         )
+        .command::<crate::domains::messages::feedback::SetMessageFeedback>()
+        .command::<crate::domains::messages::feedback::ListMessageFeedback>()
         .with_state(state)
 }
 
@@ -447,6 +302,7 @@ pub async fn create_message(
         tags: req.tags,
         external_actor: req.external_actor,
         request_id,
+        client_message_id: req.client_message_id,
     }
     .run(&ctx)
     .await?;
@@ -554,6 +410,8 @@ pub struct ExportSessionQuery {
     pub cursor: Option<String>,
 }
 
+/// Export session messages as JSONL or ATIF
+///
 /// Export session messages as a JSONL file (default) or as an ATIF trajectory
 ///
 /// Default (`format=jsonl`): all materialized messages (user, agent) as
@@ -595,7 +453,7 @@ pub async fn export_session_jsonl(
     // Opt-in segmented ATIF export: a recoverable, byte-bounded chain of
     // standalone ATIF documents for sessions that would 413 as one document.
     // Each segment is bounded to `atif_export_max_bytes` by the builder, so this
-    // path never 413s (a single giant step is returned alone; see atif.rs).
+    // path never 413s (a single giant step is returned alone; see atif/mod.rs).
     if query.format == SessionExportFormat::Atif && query.segmented {
         return segmented_atif_response(&state, &org, session_id, query.cursor).await;
     }
@@ -709,10 +567,6 @@ async fn segmented_atif_response(
     )
         .into_response())
 }
-
-// ============================================
-// Tests
-// ============================================
 
 #[cfg(test)]
 mod tests {

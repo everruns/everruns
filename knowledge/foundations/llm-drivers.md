@@ -142,6 +142,15 @@ headers. Drivers own protocol request construction, streaming parse logic,
 retry decision, and error mapping. Shared clients disable redirects and
 pin DNS only after private-range validation.
 
+The shared Chat Completions and Responses protocols and OpenAI/OpenRouter chat
+wrappers also accept host-injected HTTP. This allows wasm32 hosts to supply
+fetch without copying provider behavior. Injection is a trusted host boundary:
+the adapter sees auth and must enforce deployment endpoint/DNS policy, refuse
+redirects, bound network waits and cancel dropped requests/readers. The native
+default retains its hardened client. See the
+[WASM kernel decision](../framework/wasm-kernel.md) and
+[transport contract](../../crates/contracts/src/http_transport.rs).
+
 ### Message Types
 
 1. **Message**: Provider-agnostic message format
@@ -177,10 +186,15 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 Current provider mappings:
 
 - **OpenAI Responses API**: derives a deterministic cache routing key from stable cache-family inputs. On GPT-5.6 and Astra, auto mode uses implicit caching; opt-in explicit strategy caches the developer-instruction prefix and leaves the conversation suffix unwritten. Explicit mode uses full transcript replay to avoid duplicating developer instructions through stateful continuation. Without developer instructions, explicit mode creates no breakpoint. Older models and non-native gateways retain their existing behavior. The [wire implementation](../../crates/contracts/src/openresponses_protocol/mod.rs) owns exact options and breakpoint placement; [OpenAI's cache contract](https://developers.openai.com/api/docs/guides/prompt-caching) owns API semantics.
-- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped
+- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Trailing content the caller marks volatile (`volatile_suffix_len`) and mid-conversation system messages are skipped. The explicit strategy drops the two message breakpoints, so only the stable prefix (tools, system) is written. Retention `1h` adds `ttl: "1h"` to every breakpoint in one pass after the request is built (`driver_cache.rs`); a uniform TTL keeps Anthropic's longer-before-shorter ordering rule trivially satisfied. The 1 hour share of cache writes (`usage.cache_creation.ephemeral_1h_input_tokens`) is reported as `cache_creation_1h_tokens` and priced at 2x input instead of the profile's 5 minute `cache_write` rate
 - **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
+- **Bedrock Converse**: caches nothing without `cachePoint` blocks and rejects them on models that cannot cache, so only Claude and Nova get them ([`bedrock/cache.rs`](../../crates/drivers/drivers/src/bedrock/cache.rs)). Placement mirrors Anthropic: system, tools (Claude only, Nova does not cache tools), and the two latest messages, dropped under explicit. Retention `1h` sets the point TTL on Claude only. Usage reports cache reads and writes, with the 1 hour share from `cacheDetails`
+- **OpenRouter**: Claude models get a top-level `cache_control` (Anthropic automatic caching, TTL from retention) under the auto strategy; explicit sends nothing because automatic caching cannot leave the conversation out. Other vendors keep their implicit caching
+- **Mistral**: the shared Chat Completions driver sends a `prompt_cache_key` hashed from the cache family and model when caching is on (`with_prompt_cache_key`); off for other OpenAI-compatible hosts, which may reject unknown fields
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
+
+Provider caches match an exact request prefix, so a driver that reorders tools or rewrites an earlier message turns every call into a silent miss. [`prompt_prefix_wire.rs`](../../crates/drivers/drivers/tests/prompt_prefix_wire.rs) pins, per driver, that two consecutive calls of one conversation differ only by entries appended to the conversation array (cache markers aside).
 
 ### Cache Accounting and OpenAI Compatibility
 
@@ -270,9 +284,9 @@ request was rejected: ordinary agent caps sit below the effort-sized room, so ev
 Source:
 `crates/drivers/drivers/src/anthropic/effort.rs`.
 
-**Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/drivers/src/anthropic/driver_layout.rs`.
+**Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, Haiku 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/drivers/src/anthropic/driver_layout.rs`.
 
-**Always-thinking Claude models**: on families where thinking cannot be disabled (Opus 5.5, Sonnet 5.5, Fable 5.x)
+**Always-thinking Claude models**: on families that always think (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.x)
 the driver always sends an explicit effort. No caller effort sends the profile default, and an explicit
 `none` sends `low`, the closest level the API accepts. Requests that end on an assistant turn (prefill)
 are rejected with a configuration error before any network call on every adaptive-thinking family,
@@ -306,7 +320,7 @@ replay state (signature / encrypted payload), and identity (provider, item id,
 bound tool call). Only readable text is ever rendered or published; replay state
 is carried verbatim and never leaves the driver boundary.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, and Sonnet 5.5/5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/drivers/src/anthropic/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/contracts/src/model_profile_data/profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, Haiku 5.5, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5.x, Opus 5.5/5/4.8/4.7, Sonnet 5.5/5, and Haiku 5.5 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/drivers/src/anthropic/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/contracts/src/model_profile_data/profiles.rs`.
 
 #### Stream Events
 
@@ -395,6 +409,16 @@ With a journal, dropping the stream no longer cancels the response: the drop may
 
 Remaining gaps: a worker that dies after OpenAI accepted the POST but before `response.created` was saved still re-posts; a response abandoned by a turn that then fails without retrying runs to completion unread; and in the native-async path the coordinator holds the turn lease, so the journal is unavailable there and the call keeps the in-process behaviour.
 
+### Strict tool argument round-trip
+
+OpenAI strict schemas encode omitted optional properties as required nullable
+values. The shared protocol drivers reverse those introduced null placeholders
+before emitting executable tool calls, so the canonical call, fingerprint and
+approval all bind the same original tool arguments. Required nulls, explicit
+nullable values, unknown properties, non-strict schemas and ambiguous union
+branches retain their values for authoritative validation. Both streamed and
+non-streamed Chat Completions and streamed Responses use the same inverse.
+
 ### WebSocket Transport (OpenAI Responses)
 
 The Open Responses driver can stream a call over OpenAI's Responses WebSocket mode instead of SSE, keeping one socket open across the turns of a tool loop. It is opt-in (the `openai/websocket` driver option, or `OpenAIChatDriver::with_websocket_transport`), offered by the OpenAI driver for `api.openai.com` only, never used for background-mode calls, and falls back to SSE whenever the socket fails before the first response event. The wire contract, commit point and reuse rules are in [OpenAI Responses WebSocket Transport](openai-responses-websocket.md).
@@ -416,8 +440,12 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `reasoning_tokens`: Reasoning tokens billed *inside* `completion_tokens`, not
   additive to them, when the provider reports the breakdown
 - `request_body`: The driver's serialized request body, only when the call set
-  `LlmCallConfig::capture_request`. See TM-LLM-039: it carries the whole prompt,
-  so it is off by default and never enabled on a caller's behalf
+  `LlmCallConfig::capture_request`. Off by default for library callers. The
+  runtime's reason step turns it on and stores the body on `llm.generation`, so
+  the session trace can show what the provider was sent; see TM-LLM-039.
+  Captured by the OpenAI Chat Completions, Open Responses (OpenAI, OpenRouter
+  and the other Responses drivers), Anthropic and Gemini drivers; others leave
+  it `None`
 
 ### Turn Collection and Per-Call Limits
 
@@ -439,6 +467,13 @@ The contract that matters:
   first-event timeout, accumulated-byte cap). Unbounded by default so no driver
   changes behavior; `limit_stream` applies the same bounds for callers that
   consume events themselves. See TM-DOS-039.
+
+The provider protocol owns its expected idle interval: long reasoning or
+continuation can legitimately go quiet longer than a generic chat watchdog
+allows. A driver may recommend a request-specific stall timeout through the
+[driver contract](../../crates/contracts/src/driver_registry.rs). The reason
+phase uses that recommendation only when the host has not set its own deadline;
+explicit host policy always takes precedence.
 
 ### Realtime Voice Driver
 
@@ -516,7 +551,11 @@ specific decision.
 Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
 exponential with jitter, honors reasonable provider retry hints, and lower
 driver layers report consumed retries so the reason loop cannot multiply the
-budget. A retry is permitted only before assistant output commits. Act phases
+budget. A retry is permitted only before assistant output commits: a tool
+call commits it, answer text alone does not. A stream that breaks after text is
+retried under the same message id, announced by a repeated
+`output.message.started`, and its `accumulated` starts over; once the
+budget is spent the text so far is kept as the answer. Act phases
 and completed tool results remain outside the retry boundary, preserving
 exactly-once side effects and provider-visible tool-call/output pairing.
 
@@ -1145,7 +1184,7 @@ sign tenant calls with the platform's own AWS identity.
 ### Path 1, Server-Side Tenant Path
 
 All API key resolution for tenant/org-scoped execution flows through
-`crates/server/src/services/provider_resolver.rs`. The contract is **fail-closed**:
+`crates/server/src/services/provider_resolver/mod.rs`. The contract is **fail-closed**:
 
 1. If the provider has an encrypted key in the database and the encryption service
    is available, decrypt and return it. If decryption fails the call returns `Err`
@@ -1314,7 +1353,7 @@ Rules:
 
 This invariant is verified by the unit tests `resolve_provider_api_key_env_key_set_does_not_leak`
 and `resolve_provider_credentials_env_key_set_does_not_leak` in
-`crates/server/src/services/provider_resolver.rs`. The complementary rule, that
+`crates/server/src/services/provider_resolver/mod.rs`. The complementary rule, that
 drivers never read env, is anchored by `EnvCredentialProvider` being the sole
 env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 

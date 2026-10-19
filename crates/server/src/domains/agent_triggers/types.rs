@@ -1,17 +1,18 @@
 // Agent-triggers domain types — request shapes for the HTTP/MCP surface.
 //
-// Storage row types are re-exported from `storage::models`. The stored `config`
+// Storage row types are re-exported from `crate::storage`. The stored `config`
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 
-use crate::records::{AgentTriggerType, TriggerEventFilter};
+use crate::domains::agent_triggers::record::{AgentTriggerType, TriggerEventFilter};
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::saved_scripts::ScriptRun;
 use everruns_core::channel::SessionBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-pub use crate::storage::models::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
+pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
 
 /// One recent durable execution of an agent schedule trigger.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -51,6 +52,22 @@ pub struct CreateAgentTriggerRequest {
     /// Message content or `{{template}}` sent when the trigger fires.
     #[schema(example = "Run the daily digest")]
     pub message: String,
+    /// Schedule and webhook only: a saved script the trigger runs instead of
+    /// asking the model. The run is recorded under `message`.
+    #[serde(default)]
+    pub script: Option<ScriptRun>,
+    /// Schedule only: the agent's channel whose conversation each run speaks
+    /// in, instead of a session of the trigger's own. Needs
+    /// `target_binding_key`.
+    #[serde(default)]
+    #[schema(example = "appchan_01933b5a000070008000000000000001")]
+    pub target_channel_id: Option<String>,
+    /// Schedule only: the conversation on `target_channel_id`, keyed the way
+    /// the channel binds sessions: `slack:user:{user_id}` (a direct message)
+    /// or `slack:channel:{channel_id}` (top-level posts).
+    #[serde(default)]
+    #[schema(example = "slack:user:U0123ABCD")]
+    pub target_binding_key: Option<String>,
     /// Shared secret for webhook triggers.
     #[serde(default)]
     pub token: Option<String>,
@@ -119,6 +136,19 @@ pub struct UpdateAgentTriggerRequest {
     #[serde(default)]
     #[schema(example = "Run the daily digest")]
     pub message: Option<String>,
+    /// Replacement saved script. An empty script name removes it, so the
+    /// trigger asks the model again.
+    #[serde(default)]
+    pub script: Option<ScriptRun>,
+    /// Replacement target channel. An empty string removes the target, so
+    /// runs use a session of the trigger's own again.
+    #[serde(default)]
+    #[schema(example = "appchan_01933b5a000070008000000000000001")]
+    pub target_channel_id: Option<String>,
+    /// Replacement target conversation; given with `target_channel_id`.
+    #[serde(default)]
+    #[schema(example = "slack:user:U0123ABCD")]
+    pub target_binding_key: Option<String>,
     /// Replacement webhook token.
     #[serde(default)]
     pub token: Option<String>,

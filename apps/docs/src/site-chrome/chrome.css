@@ -1,0 +1,646 @@
+/*
+ * Everruns site chrome: the header and footer every everruns.com page shares,
+ * the landing site and the docs at /docs alike.
+ *
+ * Decision: the docs are a separate build (everruns/everruns apps/docs) served
+ * on the same origin, so the shared chrome is published as plain files rather
+ * than an Astro component: this stylesheet and src/scripts/site-chrome.js,
+ * served as /site-chrome/chrome.css and /site-chrome/chrome.js, plus the
+ * rendered markup at /site-chrome/header/ and /site-chrome/footer/, which the
+ * docs build embeds (src/pages/site-chrome/). Every class is prefixed `er-` so
+ * it cannot collide with the docs theme, and the tokens are set on the chrome
+ * itself so it renders the same without this site's global.css. Class names are a contract with
+ * the docs build: rename one only together with it.
+ */
+.er-chrome {
+  --color-obsidian: #0a0a0a;
+  --color-charcoal: #1a1a1a;
+  --color-slate: #404040;
+  --color-silver: #a0a0a0;
+  --color-smoke: #f5f5f5;
+  --color-white: #ffffff;
+  --color-navy: #0a1636;
+  --color-gold: #d4a43a;
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 2rem;
+  --space-xl: 4rem;
+  --max-width: 1200px;
+  --header-height: 64px;
+  /* Muted text: Slate's muted-foreground. */
+  --color-muted: #737373;
+  font-family:
+    'Geist Variable',
+    'Geist',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-obsidian);
+}
+
+.er-chrome *,
+.er-chrome *::before,
+.er-chrome *::after {
+  box-sizing: border-box;
+}
+
+/* Landing's global.css colors links navy; the chrome sets it itself so the
+   docs, which have their own link color, render it the same. */
+.er-chrome a {
+  color: var(--color-navy);
+  text-decoration: none;
+}
+
+.er-chrome ul {
+  margin: 0;
+  padding: 0;
+}
+
+.er-chrome p {
+  margin: 0;
+}
+
+/* The docs set --er-chrome-gutter to their 24px column gutter. */
+.er-container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 var(--er-chrome-gutter, var(--space-md));
+}
+
+/* Header */
+.er-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: var(--header-height);
+  background: var(--color-white);
+  border-bottom: 1px solid transparent;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.er-header.er-h-scrolled {
+  border-color: var(--color-smoke);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.er-h-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.er-h-logo-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.er-h-logo-link:hover {
+  text-decoration: none;
+}
+
+.er-h-logo {
+  width: 26px;
+  height: 26px;
+}
+
+.er-h-logo-text {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-obsidian);
+}
+
+.er-h-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-xs);
+  color: var(--color-obsidian);
+}
+
+.er-h-menu-toggle .er-h-icon-close {
+  display: none;
+}
+
+.er-h-menu-toggle[aria-expanded='true'] .er-h-icon-menu {
+  display: none;
+}
+
+.er-h-menu-toggle[aria-expanded='true'] .er-h-icon-close {
+  display: block;
+}
+
+.er-h-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: 15px;
+}
+
+/* Three groups across the bar: logo, the nav links, then the utility group
+   (social icons + app CTA). `space-between` on .er-h-header-inner supplies the
+   two gaps. DOM order is logo, actions, nav so the mobile toggle and the CTA
+   sit together on the right; flex order restores logo, nav, utilities on
+   desktop. */
+.er-h-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  order: 3;
+}
+
+.er-h-header-social {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.er-h-logo-link {
+  order: 1;
+}
+
+.er-h-nav {
+  order: 2;
+}
+
+/* Primary entry point to the hosted app (app.everruns.com). Scoped under
+   .er-chrome so it outranks the chrome-wide `.er-chrome a` link color; a bare
+   class loses to it and renders navy text on the dark button. */
+.er-chrome .er-h-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  background: #0a0a0a;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.er-chrome .er-h-nav-cta:hover {
+  opacity: 0.9;
+  text-decoration: none;
+}
+
+/* Products dropdown */
+.er-h-nav-dropdown {
+  position: relative;
+}
+
+.er-h-nav-dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--header-height);
+}
+
+.er-h-caret {
+  transition: transform 0.2s;
+}
+
+.er-h-nav-dropdown:hover .er-h-caret,
+.er-h-nav-dropdown:focus-within .er-h-caret {
+  transform: rotate(180deg);
+}
+
+.er-h-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: none;
+  grid-template-columns: repeat(2, minmax(210px, 1fr));
+  gap: var(--space-md) var(--space-xl);
+  background: var(--color-white);
+  border: 1px solid var(--color-smoke);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  padding: var(--space-lg);
+  z-index: 200;
+}
+
+.er-h-nav-dropdown:hover .er-h-dropdown-panel,
+.er-h-nav-dropdown:focus-within .er-h-dropdown-panel {
+  display: grid;
+}
+
+.er-h-dropdown-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.er-h-dropdown-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-silver);
+  margin-bottom: 0.4rem;
+}
+
+.er-h-dropdown-panel a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.3rem 0;
+  text-decoration: none;
+}
+
+.er-h-dropdown-name {
+  color: var(--color-obsidian);
+  font-weight: 500;
+}
+
+.er-h-dropdown-summary {
+  font-size: 0.8rem;
+  color: var(--color-silver);
+  line-height: 1.3;
+}
+
+.er-h-dropdown-panel a:hover {
+  text-decoration: none;
+}
+
+.er-h-dropdown-panel a:hover .er-h-dropdown-name {
+  color: var(--color-navy);
+}
+
+.er-h-dropdown-all {
+  grid-column: 1 / -1;
+  padding-top: var(--space-sm) !important;
+  border-top: 1px solid var(--color-smoke);
+  color: var(--color-navy) !important;
+  font-weight: 500 !important;
+}
+
+.er-h-nav a {
+  color: var(--color-muted);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.er-h-nav a:hover {
+  color: var(--color-obsidian);
+  text-decoration: none;
+}
+
+/* The section the page belongs to (Header.astro sets aria-current; the docs
+   mark Docs). */
+.er-chrome .er-h-nav > a[aria-current],
+.er-chrome .er-h-nav-dropdown-toggle[aria-current] {
+  color: var(--color-obsidian);
+  font-weight: 600;
+}
+
+.er-chrome .er-h-social-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-obsidian);
+}
+
+.er-h-social-link svg {
+  transition: transform 0.2s;
+}
+
+.er-h-social-link:hover svg {
+  transform: scale(1.1);
+}
+
+@media (max-width: 768px) {
+  .er-h-menu-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .er-h-nav {
+    display: none;
+    position: absolute;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--color-white);
+    border-bottom: 1px solid var(--color-smoke);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    padding: var(--space-md);
+    gap: 0;
+  }
+
+  /* Products dropdown becomes an inline, always-open submenu on mobile */
+  .er-h-nav-dropdown-toggle {
+    height: auto;
+    padding: var(--space-sm) var(--space-md);
+    justify-content: space-between;
+  }
+
+  .er-h-caret {
+    display: none;
+  }
+
+  .er-h-dropdown-panel {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    min-width: 0;
+    padding: 0 0 var(--space-sm) var(--space-lg);
+    border: none;
+    box-shadow: none;
+  }
+
+  .er-h-dropdown-panel a {
+    padding: var(--space-xs) var(--space-md);
+  }
+
+  .er-h-nav.er-h-open {
+    display: flex;
+  }
+
+  .er-h-nav a {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  /* The bar only has room for the CTA and the toggle; the same links are
+     in the footer. */
+  .er-h-header-social {
+    display: none;
+  }
+
+  .er-chrome .er-h-nav-cta {
+    padding: 7px 12px;
+    font-size: 14px;
+  }
+}
+/* Footer: dark in both themes. */
+.er-footer {
+  background: var(--color-charcoal);
+  color: hsl(0 0% 62%);
+  padding: 72px 0 40px;
+}
+
+.er-f-footer-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+}
+
+@media (min-width: 960px) {
+  .er-f-footer-top {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr);
+  }
+}
+
+.er-f-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 340px;
+}
+
+.er-f-logo-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.er-f-logo-link:hover {
+  text-decoration: none;
+}
+
+.er-f-logo {
+  width: 24px;
+  height: 24px;
+  filter: invert(1);
+}
+
+.er-chrome .er-f-logo-text {
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: #fff;
+}
+
+.er-f-tagline {
+  font-size: 14px;
+}
+
+/* Newsletter signup, posting to /api/subscribe (src/pages/api/subscribe.ts).
+   It works as a plain form post; site-chrome.js upgrades it to an in-place
+   request with an inline status line. */
+.er-f-subscribe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.er-f-subscribe-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.er-f-subscribe-hint {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.er-f-subscribe-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.er-f-subscribe-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.er-f-subscribe-input::placeholder {
+  color: hsl(0 0% 50%);
+}
+
+.er-f-subscribe-input:focus {
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px hsl(43 60% 53% / 0.5);
+}
+
+.er-f-subscribe-button {
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #0a0a0a;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.er-f-subscribe-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.er-f-subscribe-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px hsl(43 60% 53% / 0.5);
+}
+
+.er-f-subscribe-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.er-f-subscribe-honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.er-f-subscribe-status {
+  font-size: 14px;
+}
+
+.er-f-subscribe-status:empty {
+  display: none;
+}
+
+.er-f-subscribe-status.is-error {
+  color: var(--color-gold);
+}
+
+.er-f-footer-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 40px 24px;
+}
+
+.er-f-footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.er-f-column-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.er-f-footer-column ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  line-height: 1.45;
+}
+
+.er-chrome .er-f-footer-column a {
+  font-size: 14px;
+  line-height: 1.45;
+  color: hsl(0 0% 78%);
+  transition: color 0.2s;
+}
+
+.er-chrome .er-f-footer-column a:hover {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.er-f-footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+}
+
+.er-f-footer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.er-f-ukraine {
+  color: hsl(0 0% 88%);
+}
+
+.er-f-heart {
+  display: inline-block;
+}
+
+.er-f-social-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.er-chrome .er-f-social-link {
+  display: inline-flex;
+  align-items: center;
+  color: hsl(0 0% 70%);
+}
+
+.er-chrome .er-f-social-link:hover {
+  color: #fff;
+}
+
+.er-f-social-link svg {
+  width: 18px;
+  height: 18px;
+}
+
+/*
+ * Dark theme, used only where the page sets data-theme="dark" (the docs theme
+ * switch). The landing site is light-only and never sets it. Only the header
+ * changes; the footer is dark in both themes.
+ */
+[data-theme='dark'] .er-header {
+  --color-white: #0a0a0a;
+  --color-smoke: #2a2a2a;
+  --color-obsidian: #fafafa;
+  --color-navy: #d4dcf5;
+  --color-muted: #a6a6a6;
+}
+
+[data-theme='dark'] .er-h-logo {
+  filter: invert(1);
+}

@@ -22,7 +22,7 @@ End-to-end load testing framework for the Everruns API. Measures throughput, lat
 ## Non-Goals
 
 1. LLM provider benchmarking (llmsim isolates server performance)
-2. Client-side performance (SDK overhead is negligible)
+2. Application-client optimization (the load generator must still avoid skewing server measurements)
 3. Infrastructure provisioning (assumes running server)
 
 ## Metrics
@@ -39,10 +39,9 @@ For the public AG-UI ingress path (`POST /v1/apps/{app_id}/ag-ui`), the
 handler emits a structured log event `phase = "ag_ui.ingress_complete"` after
 finishing its synchronous work (validation, app/channel resolution, session
 resolution, history seed, event subscription, and the synchronous part of
-message creation) and just before it returns the SSE stream. The durable
-turn workflow itself is scheduled by `MessageService::create` via a detached
-`tokio::spawn`, so this event marks the end of the handler's work, not a
-guaranteed enqueue point for the workflow.
+message creation) and just before it returns the SSE stream. Message creation
+marks the session actor runnable in the transaction that stores the input, so
+when this event fires the turn is already leasable by a worker.
 
 Fields:
 
@@ -57,9 +56,8 @@ Fields:
 
 `ag_ui_handler_ms` is the AG-UI side of the pre-LLM latency budget. The
 durable runtime side is captured by `reason_duration_ms` on
-`reason.completed` and by the worker activity logs (`Turn workflow started`,
-`Executing input_activity`, `Executing reason_activity`, `ReasonAtom:
-starting LLM call`). Operators correlate by `session_id` to compute the full
+`reason.completed`, by the `input.message` to `turn.started` gap (pickup), and
+by the worker's `ReasonAtom: starting LLM call` log line. Operators correlate by `session_id` to compute the full
 pre-LLM budget without grepping unstructured timestamps.
 
 Target proposal for warm AG-UI turns with no tools/capabilities:
@@ -87,6 +85,10 @@ Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after c
    e. Measures latency from POST /messages to `session.idled` received
 5. Collect latency, throughput, and error metrics
 6. Optionally save checkpoint with full metadata
+
+Local proxy stress runs require Caddy 2.11.4 or newer to preserve unread POST
+bodies across failed connection attempts. Local setup upgrades older binaries;
+stack startup rejects unsupported versions.
 
 ## Configuration
 
@@ -264,6 +266,101 @@ Load tests use the `llmsim-latency` seed model by default (override with `MODEL_
 - **TBT (Time Between Tokens)**: Sampled from `LatencyProfile::fast()` between each streamed word
 
 This measures end-to-end server performance under conditions closer to real LLM usage, where streaming responses arrive over time rather than instantly. The llmsim driver detects the `-latency` suffix in the model name and enables latency simulation automatically.
+
+Three llmsim seed models answer different questions:
+
+| Model | Shape of a turn | Use it for |
+|---|---|---|
+| `llmsim-default` | one instant LLM call, one-line answer | platform overhead per turn, with nothing else in the way |
+| `llmsim-latency` | one LLM call, near-instant streaming | the streaming path without real waiting |
+| `llmsim-realistic` | production-like timing (about 0.9 s to first token, about 65 tokens a second), 0 to 2 tool rounds per message and a 120 to 320 token answer | capacity: how many concurrent conversations the platform holds while turns stream and call tools |
+
+`llmsim-realistic` calls `bash` (an `echo`), or `write_file` when the agent has no `bash`, so the tool phase runs without side effects; an agent with neither tool just answers. Its plan cycles by user-message count, so runs are reproducible. A model family after the marker (`llmsim-realistic-haiku`, `llmsim-realistic-gpt-5`) swaps in llmsim's timing for that family. The driver code is the source of truth for the exact plan (`crates/drivers/llmsim/src/model_names.rs`).
+
+A scenario marker (`[[llmsim:<name>]]` in the user message, see below) overrides the model's own behavior for that message, so any of these models can play any scenario.
+
+Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
+
+## Load Testing a Hosted Deployment, and Baselines
+
+The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears.
+
+1. **`turn_latency` bench (local).** Statements per turn is the number to compare between commits. It is stable run to run, unlike wall time.
+2. **Local stack under a driver.** A release build of the agent dev stack, driven by many concurrent sessions over the public API with `scripts/load-test.py`. An instant llmsim model with no marker measures platform overhead; scenario markers measure capacity under realistic turns. This shows where queueing starts (worker slots, the per-IP API limit) before touching production.
+3. **The hosted deployment.** A dedicated load-testing organization with its own llmsim provider and one model, an API key scoped to that org, and the same driver from one machine. Ramp session creation, because session creation is rate limited per org and the API is rate limited per IP (about 20 requests a second from one machine). Correlate with server `turn latency` log lines (pickup, phase gap, overhead) to see where time goes.
+
+Turn shape comes from llmsim scenarios: each user message carries a `[[llmsim:<name>]]` marker, and the llmsim driver plays that scenario's steps (tool rounds, long answers, reasoning, slow first tokens, a 429, a dropped stream), counting the step from the conversation so concurrent sessions need no shared state. The driver sends a weighted mix per message. Built-in scenarios live in `crates/drivers/llmsim/scenarios/`; the engine is described in llmsim's own knowledge (`simulation/scenarios.md`). The older `-realistic` and `-ttft-{ms}` model names still work, but a marker needs no model setup per shape and the 2026-10-08 baselines below predate it, so compare like with like.
+
+The Python driver's default tool workload is `file-research`: it seeds a small
+research document in each session's VFS before timing, then lists, reads and
+stats that document over three tool rounds (four calls, including two in
+parallel). This gives successful, offline tool execution without choosing
+arbitrary tools that need domain-specific inputs or external services. The
+older `research-3-tools` scenario still selects arbitrary read tools; use it
+only with an offered tool set whose generated placeholder arguments are valid.
+Changing the tool mix changes the workload, so keep both mix and revision with
+results rather than comparing the two as equivalent baselines.
+
+The driver checks the model's provider is llmsim before creating work, waits
+for a successful SSE response before sending messages, reports p50/p95/p99
+and mean for full-turn, first-delta and POST latency, and exits unsuccessfully
+for incomplete turns. First-delta includes reasoning; server `first_token_ms`
+can instead refer to the first answer token. Save both measurements. Audit
+persisted tool outcomes as well as turn completion: scripted answers can finish
+after failed tools. Durable task counters do not include session-actor turn
+throughput. Use [Execution Monitoring](monitoring.md) for actor populations and
+ownership, and correlate worker turn logs with terminal-turn logs for exact
+per-worker turn counts.
+
+The local Caddy upstream uses IPv4 loopback to match the agent stack. A
+1,000-request burst against an IPv4-only API reproduced 502s through a
+dual-stack `localhost` upstream and none through explicit `127.0.0.1`. Keep
+the proxy in the tested path; bypassing it would hide this failure.
+Stronger bursts can still reset IPv4 connection attempts when the local TCP
+accept queue fills. The API proxy allows bounded connection-establishment
+retries. It excludes POST round-trip retries, because an upstream may have
+accepted a message before losing its response; those retries could duplicate
+work. The connection-retry fixture checks both cases.
+
+The Python driver bounds the number of sessions sharing an HTTP connection
+pool. One pool with thousands of persistent SSE connections can stall the
+generator's event loop while assigning requests, inflating client latency and
+pausing an in-process collector. A local read-only burst reproduced a 13.8 s
+event-loop pause with a shared pool and under 0.9 s with bounded pools. Keep
+sample timestamps and the maximum gap with results; zero collection errors
+alone does not prove regular sampling.
+
+Baselines to start from (numbers, not targets):
+
+| Layer | Date, version | Result |
+|---|---|---|
+| `turn_latency`, dev profile | 2026-10-10, main after #4471 | 205 statements per turn at 1 session, 186 at 8 (from 246 and 218 before #4465) |
+| Local stack, instant model | 2026-10-08, 0.44.0 | overhead p50 53 ms at 1 session, 103 ms at 10, 244 ms at 25; about 25 turns/s cap on 4 cores |
+| Local stack, realistic model | 2026-10-08, 0.44.0 | 100 sessions: queueing for worker slots added about 5 s before first token at 50 slots; it disappeared at 300 slots (since #4444 a turn frees its slot while waiting on the model) |
+| Hosted, instant model | 2026-10-08, 0.44.0 | turn p50 0.48 s at 10 sessions, 0.89 s at 25, 1.86 s at 50 (includes about 0.15 s network round trip) |
+| Hosted, 0.9 s first token | 2026-10-08, 0.44.0 | turn p50 1.55 s at 25 sessions, 2.13 s at 50, 4.44 s at 100; at 100, worker slots added about 3 s of waiting |
+| Chaos harness, 200 sessions, low-memory release build | 2026-10-12, actor cutover | pickup p50/p95 102/604 ms without kills and 94/496 ms with them (1.3 s/3.2 s while the per-org lease cap held work back; main 53/462 ms); recovery 21 s after a worker kill, 20 s after a server kill; about 475 statements per turn |
+
+Known gaps in the method: a single driver machine hits the per-IP limit early, and a few long idle SSE streams were cut on the client or edge side during the hosted run, so the driver reconnects with `since_id` like the UI does.
+
+## Chaos Harness
+
+`scripts/chaos/` (Python 3 stdlib, `just chaos`) answers a question the benches above do not: are turns still correct when processes die under load? It runs a multi-process topology from release binaries against already running PostgreSQL, NATS with JetStream, and Valkey (`PORT_PREFIX=433`), drives it only through the public HTTP API, SIGKILLs processes on a schedule, and then asserts over the persisted event log.
+
+- **Topology.** Two API servers and three gRPC workers (`DEV_MODE=false`, `AUTH_MODE=none`), workers spread round robin over the servers' gRPC ports. JetStream is required: without it each server falls back to in-process event delivery, a session's SSE stream on one server misses the events the other server persists, and the approval driver never sees the request it must answer, so that session stays parked and reads as a lost turn. The harness refuses to start unless every server reports `nats` event delivery, and fails the run if a restarted server comes back without it. Each process logs to its own file in the run directory, with a marker line at every start and kill. Provider keys are stripped from the environment, so only llmsim can answer.
+- **Load.** N sessions (default 200) round robin over both servers, in a fixed mix: plain turns, tool turns (llmsim scenario markers), a second message sent mid-turn (steering), tool approvals (`tool_approval` capability in protective mode), and cancels followed by a new message. Each message carries a `client_message_id`, so a retry after a killed server is deduplicated by the server.
+- **Chaos.** `--chaos "kill:worker-0@15,restart:worker-0@21,kill:server-1@35,restart:server-1@41"` by default; `--no-chaos` runs the same load with no kills.
+- **Assertions.** Every user message gets exactly one completed turn, or a cancelled one when it was cancelled. No turn has two terminal events, and no events follow a terminal event, apart from session lifecycle events and the cancel note. No duplicate assistant output, and every steered message is read by a later reason step. Every session ends idle. No session runs on two workers at once: on the step engine this is checked from worker task spans; on the actor runtime it is checked from `session_actors` lease samples (fence order, takeovers before expiry) and from per-worker activity spans in the logs. The run prints PASS or FAIL with counts and offending session ids, and exits non-zero on FAIL.
+
+  Actor completion and release debug records are part of this oracle: they distinguish
+  separate activations and voluntary handoffs between database samples. The default log
+  filter covers both worker fleet discovery and the shared core session actor driver;
+  custom `--rust-log` filters must retain these records.
+- **Metrics.** Turns per second, end-to-end latency p50/p95/p99 per session kind, pickup latency, recovery time per kill (when the last turn open at the kill ended), and PostgreSQL statements per terminal turn (`pg_stat_statements`, when it is preloaded).
+
+- **CI.** [`chaos.yml`](../../.github/workflows/chaos.yml) runs it at 60 sessions with the kill schedule on pull requests that touch the server, worker, core or internal protocol crates (or the harness), and on demand. It builds release binaries with the low-memory settings (no LTO, 16 codegen units, no debug info) under its own cache key and gates only on the assertions; latency and statement counts go to the job summary, since shared runners are too noisy to gate on them.
+
+The harness reads `session_actors` and the `durable_workflow_instances` session mapping directly; everything else goes through the API. Run artifacts (`result.json`, `runs.json`, per-process logs) stay in the run directory for evidence.
 
 ## Related Testing Specs
 

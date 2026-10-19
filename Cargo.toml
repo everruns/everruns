@@ -7,7 +7,6 @@ members = [
     "crates/everruns",
     "crates/macros",
     "crates/server-macros",
-    "crates/pg-embedded",
     "crates/core",
     "crates/test-support",
     "crates/capabilities",
@@ -22,9 +21,7 @@ members = [
     "crates/cli",
     "crates/cli-contract",
     "crates/durable",
-    "crates/durable-engine",
     "crates/ard",
-    "crates/integrations-catalog",
     # Integrations, one feature module per vendor (everruns-integrations).
     "crates/integrations",
     "crates/integrations-experimental",
@@ -45,6 +42,8 @@ members = [
     "examples/bashkit-repo-agent",
     "examples/host-shell-agent",
     "examples/foreman-agent",
+    "examples/coordinator-agent",
+    "examples/poppy-personal-agent",
     "examples/demo-support",
     "examples/serve/a2a",
     "examples/serve/ag-ui",
@@ -53,9 +52,13 @@ members = [
     "examples/serve/celld",
     "examples/serve/hello",
     "examples/serve/revenue-analyst",
+    "examples/serve/voice",
 ]
 
 exclude = [
+    # Independently resolved, source-only hosting reference.
+    "crates/durable-object",
+    "vendor/postgresql_archive",
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
@@ -64,6 +67,7 @@ exclude = [
     "evals/platform-capability",
     "evals/generic",
     "evals/guardrail-calibration",
+    "evals/web-search-providers",
     # Fixture repository materialized by the bashkit-repo-agent example; it is a
     # standalone Cargo workspace, not a member of this one.
     "examples/bashkit-repo-agent/src/resources/sample-repo",
@@ -78,7 +82,7 @@ exclude = [
 # `[workspace.dependencies]` pins below spell it out literally and move with it
 # (`scripts/sync-publish-pin-versions.py --write`). Rationale and the failure
 # modes this removes: knowledge/project/release-process.md.
-version = "0.43.0"
+version = "0.48.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -167,7 +171,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-client"] }
+opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"
 
 # OpenAPI documentation (used by export-openapi binary for spec generation)
@@ -212,6 +216,7 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
+httparse = "1.10"
 # No TLS backend: network access goes through domains/git_fetch.rs on the
 # workspace rustls client, so libgit2 is only an object store and pack indexer.
 # This is what keeps OpenSSL (and the builder image's perl/make) out of the tree.
@@ -232,30 +237,26 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = "0.2.0"
-everruns-core = { path = "crates/core", version = "0.43.0", default-features = false }
-# No workspace crate runs the generic workflow executor: they drive the task
-# queue directly. Its `workflows` feature stays off here; crates.io users get it
-# by default.
-everruns-durable = { path = "crates/durable", version = "0.43.0", default-features = false }
-everruns-durable-engine = { path = "crates/durable-engine", version = "0.43.0" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.43.0", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.43.0", default-features = false }
-everruns-capabilities = { path = "crates/capabilities", version = "0.43.0", default-features = false }
-everruns-contracts = { path = "crates/contracts", version = "0.43.0", default-features = false }
-everruns-ard = { path = "crates/ard", version = "0.43.0" }
-everruns-drivers = { path = "crates/drivers/drivers", version = "0.43.0", default-features = false }
-everruns-integrations = { path = "crates/integrations", version = "0.43.0", default-features = false }
-everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.43.0", default-features = false }
-everruns = { path = "crates/everruns", version = "0.43.0", default-features = false }
-everruns-macros = { path = "crates/macros", version = "0.43.0" }
-everruns-serve = { path = "crates/serve", version = "0.43.0" }
-everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.43.0" }
-everruns-serve-celld = { path = "crates/serve-celld", version = "0.43.0" }
-everruns-serve-build = { path = "crates/serve-build", version = "0.43.0" }
-everruns-serve-macros = { path = "crates/serve-macros", version = "0.43.0" }
-everruns-integrations-catalog = { path = "crates/integrations-catalog", version = "0.43.0" }
-everruns-cli-contract = { path = "crates/cli-contract", version = "0.43.0" }
+everruns-sdk = "0.3.0"
+everruns-core = { path = "crates/core", version = "0.48.0", default-features = false }
+everruns-durable = { path = "crates/durable", version = "0.48.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.48.0", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.48.0", default-features = false }
+everruns-capabilities = { path = "crates/capabilities", version = "0.48.0", default-features = false }
+everruns-contracts = { path = "crates/contracts", version = "0.48.0", default-features = false }
+everruns-ard = { path = "crates/ard", version = "0.48.0" }
+everruns-drivers = { path = "crates/drivers/drivers", version = "0.48.0", default-features = false }
+everruns-integrations = { path = "crates/integrations", version = "0.48.0", default-features = false }
+everruns-integrations-experimental = { path = "crates/integrations-experimental", version = "0.48.0", default-features = false }
+everruns = { path = "crates/everruns", version = "0.48.0", default-features = false }
+everruns-macros = { path = "crates/macros", version = "0.48.0" }
+everruns-serve = { path = "crates/serve", version = "0.48.0" }
+everruns-serve-agentcore = { path = "crates/serve-agentcore", version = "0.48.0" }
+everruns-serve-celld = { path = "crates/serve-celld" }
+everruns-durable-object = { path = "crates/durable-object" }
+everruns-serve-build = { path = "crates/serve-build", version = "0.48.0" }
+everruns-serve-macros = { path = "crates/serve-macros", version = "0.48.0" }
+everruns-cli-contract = { path = "crates/cli-contract", version = "0.48.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.4" }
@@ -365,3 +366,7 @@ codegen-units = 256
 # must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false
+
+# Upstream archive0.21 still selects vulnerable ZIP8; see vendor patch provenance.
+[patch.crates-io]
+postgresql_archive = { path = "vendor/postgresql_archive" }

@@ -13,7 +13,7 @@ use everruns::{Agent, Engine, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 let session = Engine::new().create(agent);
 let mut events = session.events();
@@ -21,7 +21,7 @@ let mut events = session.events();
 let pending = session.send("Start.").await?;
 while let Some(event) = events.recv().await? {
     println!("{}", event.event_type());
-    if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+    if event.kind.is_terminal() {
         break;
     }
 }
@@ -135,7 +135,7 @@ use everruns::prelude::*;
 let agent = Agent::builder()
     .instructions("Answer concisely.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-5.6-terra")
+    .model("gpt-6.1-sol")
     .build()?;
 let engine = Engine::new();
 let mut session = engine.create(agent);
@@ -206,7 +206,10 @@ Live `output.message.delta` envelopes omit the redundant `data.accumulated`
 prefix on both surfaces; retaining every growing prefix in a slow subscriber's
 buffer would use quadratic memory. Concatenate the typed `TextDelta::delta`
 values to reconstruct streamed text, or use the subsequent
-`output.message.completed` event for the complete message.
+`output.message.completed` event for the complete message. When a provider
+stream breaks after some text, the runtime retries it under the same message
+id and sends `OutputStarted` for that id again first: drop the text collected
+for the message and start over.
 
 Model-generation accounting — model, provider, token counts, cost, and duration
 — is promoted onto `SessionEventKind::ModelGeneration`, so tracking spend never

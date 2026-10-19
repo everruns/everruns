@@ -8,85 +8,90 @@ use everruns_contracts::{
     error::{AgentLoopError, Result},
     native_async::NativeAsyncCheckpoint,
 };
-use std::{
-    fs::{self, File, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
-    sync::Mutex,
-};
-
-pub struct FileNativeAsyncJournal {
-    directory: PathBuf,
-    // Held for the entire coordinator lifetime. OS locks release on process death.
-    _owner: File,
-    writer: Mutex<()>,
-}
-
-impl FileNativeAsyncJournal {
-    pub fn open(directory: impl AsRef<Path>) -> Result<Self> {
-        let directory = directory.as_ref().to_path_buf();
-        fs::create_dir_all(&directory).map_err(store_error)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
-                .map_err(store_error)?;
-        }
-        let owner = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(directory.join("owner.lock"))
-            .map_err(store_error)?;
-        owner.try_lock().map_err(|_| {
-            AgentLoopError::store("native async journal already has an execution owner")
-        })?;
-        Ok(Self {
-            directory,
-            _owner: owner,
-            writer: Mutex::new(()),
-        })
-    }
-}
-
 fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
     AgentLoopError::store(format!("native async journal: {error}"))
 }
+#[cfg(feature = "host")]
+mod file_journal {
+    use super::*;
+    use std::{
+        fs::{self, File, OpenOptions},
+        io::Write,
+        path::{Path, PathBuf},
+        sync::Mutex,
+    };
 
-#[async_trait]
-impl NativeAsyncJournal for FileNativeAsyncJournal {
-    async fn load(&self) -> Result<NativeAsyncCheckpoint> {
-        let _guard = self.writer.lock().map_err(store_error)?;
-        match fs::read(self.directory.join("checkpoint.json")) {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(store_error),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(NativeAsyncCheckpoint::default())
+    pub struct FileNativeAsyncJournal {
+        directory: PathBuf,
+        // Held for the entire coordinator lifetime. OS locks release on process death.
+        _owner: File,
+        writer: Mutex<()>,
+    }
+
+    impl FileNativeAsyncJournal {
+        pub fn open(directory: impl AsRef<Path>) -> Result<Self> {
+            let directory = directory.as_ref().to_path_buf();
+            fs::create_dir_all(&directory).map_err(store_error)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+                    .map_err(store_error)?;
             }
-            Err(error) => Err(store_error(error)),
+            let owner = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(directory.join("owner.lock"))
+                .map_err(store_error)?;
+            owner.try_lock().map_err(|_| {
+                AgentLoopError::store("native async journal already has an execution owner")
+            })?;
+            Ok(Self {
+                directory,
+                _owner: owner,
+                writer: Mutex::new(()),
+            })
         }
     }
-    async fn save(&self, checkpoint: &NativeAsyncCheckpoint) -> Result<()> {
-        let _guard = self.writer.lock().map_err(store_error)?;
-        let data = serde_json::to_vec(checkpoint).map_err(store_error)?;
-        let temporary = self.directory.join("checkpoint.next");
-        let mut options = OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+
+    #[async_trait]
+    impl NativeAsyncJournal for FileNativeAsyncJournal {
+        async fn load(&self) -> Result<NativeAsyncCheckpoint> {
+            let _guard = self.writer.lock().map_err(store_error)?;
+            match fs::read(self.directory.join("checkpoint.json")) {
+                Ok(bytes) => serde_json::from_slice(&bytes).map_err(store_error),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(NativeAsyncCheckpoint::default())
+                }
+                Err(error) => Err(store_error(error)),
+            }
         }
-        let mut file = options.open(&temporary).map_err(store_error)?;
-        file.write_all(&data).map_err(store_error)?;
-        file.sync_all().map_err(store_error)?;
-        fs::rename(temporary, self.directory.join("checkpoint.json")).map_err(store_error)?;
-        File::open(&self.directory)
-            .and_then(|directory| directory.sync_all())
-            .map_err(store_error)?;
-        Ok(())
+        async fn save(&self, checkpoint: &NativeAsyncCheckpoint) -> Result<()> {
+            let _guard = self.writer.lock().map_err(store_error)?;
+            let data = serde_json::to_vec(checkpoint).map_err(store_error)?;
+            let temporary = self.directory.join("checkpoint.next");
+            let mut options = OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&temporary).map_err(store_error)?;
+            file.write_all(&data).map_err(store_error)?;
+            file.sync_all().map_err(store_error)?;
+            fs::rename(temporary, self.directory.join("checkpoint.json")).map_err(store_error)?;
+            File::open(&self.directory)
+                .and_then(|directory| directory.sync_all())
+                .map_err(store_error)?;
+            Ok(())
+        }
     }
 }
+#[cfg(feature = "host")]
+pub use file_journal::FileNativeAsyncJournal;
 
 /// Shared durable journal acquired through a host's database or gRPC store.
 /// A dropped worker loses ownership after the database lease expires.
@@ -165,8 +170,9 @@ impl<A: crate::host::RuntimeHostAdapter> crate::engine::native_async::NativeAsyn
                 "native coordinator cannot execute approval-gated or client-side tools",
             ));
         }
-        // web_fetch also supports an optional file-saving mode despite its
-        // read-only hint. Keep that mode on the ordinary synchronous path.
+        // web_fetch also supports an optional file-saving mode and raw API
+        // requests (POST etc.) despite its read-only hint. Keep both on the
+        // ordinary synchronous path.
         let saves_file = if let everruns_contracts::native_async::NativeToolCall::Function {
             name,
             arguments,
@@ -177,15 +183,21 @@ impl<A: crate::host::RuntimeHostAdapter> crate::engine::native_async::NativeAsyn
                 && serde_json::from_str::<serde_json::Value>(arguments)
                     .ok()
                     .is_some_and(|args| {
-                        args.get("save_to_file")
-                            .is_some_and(|value| !value.is_null() && value != false)
+                        let saves = args
+                            .get("save_to_file")
+                            .is_some_and(|value| !value.is_null() && value != false);
+                        let method = args.get("method").and_then(|m| m.as_str());
+                        saves
+                            || method.is_some_and(|m| {
+                                !m.eq_ignore_ascii_case("GET") && !m.eq_ignore_ascii_case("HEAD")
+                            })
                     })
         } else {
             false
         };
         if saves_file {
             return Err(AgentLoopError::config(
-                "native lookup execution excludes file-saving mode",
+                "native lookup execution excludes file-saving and raw request modes",
             ));
         }
         Ok(crate::engine::native_async::NativeCallPolicy {
@@ -553,12 +565,11 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
         };
         tokio::pin!(cancelled);
         let maintain_lease = async {
-            let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
             loop {
-                heartbeat.tick().await;
                 if let Err(error) = lease_heartbeat.heartbeat().await {
                     break error;
                 }
+                everruns_contracts::rt::sleep(std::time::Duration::from_secs(10)).await;
             }
         };
         tokio::select! {
@@ -579,6 +590,8 @@ pub(crate) async fn execute_reason<A: crate::host::RuntimeHostAdapter>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "host")]
+    use std::fs;
     #[test]
     fn recovery_restores_usage_and_final_outcome_without_another_response() {
         use crate::engine::ReasonResult;

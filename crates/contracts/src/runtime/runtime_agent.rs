@@ -21,6 +21,7 @@ use crate::runtime::capabilities::{
 use crate::runtime::config_layer::AgentConfigOverlay;
 use std::collections::HashMap;
 
+use crate::runtime::conversation::Communication;
 use crate::runtime::driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::runtime::harness_definition::HarnessDefinition;
 use crate::runtime::model_profiles::get_model_profile;
@@ -89,6 +90,12 @@ pub struct RuntimeAgent {
     /// cached system prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation_context: Option<String>,
+
+    /// How the agent talks. In `Explicit` mode assistant text is recorded as
+    /// working notes and people see only what `send_message` sends; see
+    /// [`crate::runtime::conversation`].
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
 }
 
 /// Default maximum iterations per turn (500).
@@ -114,14 +121,18 @@ impl RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            communication: Communication::Direct,
         }
     }
 }
 
+/// System prompt used when no harness, agent or session layer supplies one.
+pub const FALLBACK_SYSTEM_PROMPT: &str = "You are a helpful assistant.";
+
 impl Default for RuntimeAgent {
     fn default() -> Self {
         Self {
-            system_prompt: "You are a helpful assistant.".to_string(),
+            system_prompt: FALLBACK_SYSTEM_PROMPT.to_string(),
             model: "gpt-5.2".to_string(),
             tools: Vec::new(),
             max_iterations: default_max_iterations(),
@@ -133,6 +144,7 @@ impl Default for RuntimeAgent {
             network_access: None,
             parallel_tool_calls: None,
             conversation_context: None,
+            communication: Communication::Direct,
         }
     }
 }
@@ -181,9 +193,15 @@ impl RuntimeAgentBuilder {
     ) -> Self {
         let mut builder = Self::new();
 
-        // Always set system prompt (even to empty) so an intentionally empty
-        // merged prompt clears the builder default instead of leaving it.
-        builder = builder.system_prompt(layer.system_prompt.unwrap_or_default());
+        // The merged prompt replaces the builder default. Only when no layer
+        // (harness, agent, session) supplies one does the generic fallback
+        // apply: it must never be prepended to a prompt someone wrote.
+        builder = builder.system_prompt(
+            layer
+                .system_prompt
+                .filter(|prompt| !prompt.trim().is_empty())
+                .unwrap_or_else(|| FALLBACK_SYSTEM_PROMPT.to_string()),
+        );
 
         // Resolve merged capabilities (once, on the effective set)
         builder = builder
@@ -209,6 +227,14 @@ impl RuntimeAgentBuilder {
         // when unset, the capability-derived preference (if any) stands.
         if let Some(explicit) = layer.parallel_tool_calls {
             builder = builder.parallel_tool_calls(Some(explicit));
+        }
+
+        if let Some(tokens) = layer.max_output_tokens {
+            builder = builder.max_tokens(tokens);
+        }
+
+        if let Some(communication) = layer.communication {
+            builder = builder.communication(communication);
         }
 
         builder
@@ -262,7 +288,7 @@ impl RuntimeAgentBuilder {
             builder = builder.tools(agent.tools.clone());
         }
 
-        builder
+        builder.communication(agent.communication)
     }
 
     /// Apply capabilities to this builder.
@@ -434,6 +460,13 @@ impl RuntimeAgentBuilder {
         self
     }
 
+    /// Set how the agent talks. `Explicit` adds `send_message` and `no_reply`
+    /// and their instructions when the agent is built.
+    pub fn communication(mut self, communication: Communication) -> Self {
+        self.runtime_agent.communication = communication;
+        self
+    }
+
     /// Set temperature
     pub fn temperature(mut self, temp: f32) -> Self {
         self.runtime_agent.temperature = Some(temp);
@@ -470,6 +503,11 @@ impl RuntimeAgentBuilder {
     /// `auto_tool_search`) is added to the agent or harness. This method does NOT
     /// auto-enable it.
     pub fn build(mut self) -> RuntimeAgent {
+        if self.runtime_agent.communication.is_explicit() {
+            self.runtime_agent =
+                crate::runtime::conversation::apply_explicit_communication(self.runtime_agent);
+        }
+
         // Deduplicate tools by name (last wins). Tools are collected additively
         // from harness, agent, MCP servers, session capabilities, and client-side
         // tools — duplicates can occur when the same tool is registered by
@@ -590,9 +628,7 @@ mod tests {
         }
 
         fn tools(&self) -> Vec<Box<dyn crate::runtime::Tool>> {
-            vec![Box::new(
-                crate::runtime::channel_messaging::ChannelPostMessageTool,
-            )]
+            vec![Box::new(crate::runtime::conversation::SendMessageTool)]
         }
     }
 
@@ -642,10 +678,8 @@ mod tests {
     }
 
     fn progress_definition() -> ToolDefinition {
-        crate::runtime::Tool::to_definition(
-            &crate::runtime::channel_messaging::ChannelPostMessageTool,
-        )
-        .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+        crate::runtime::Tool::to_definition(&crate::runtime::conversation::SendMessageTool)
+            .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
     }
 
     fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {
@@ -927,6 +961,7 @@ mod tests {
         for model in ["gpt-5.4", "gemini-3-pro", "custom-model"] {
             for enabled in [false, true] {
                 let config = PromptCacheConfig {
+                    retention: Default::default(),
                     enabled,
                     strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                     gemini_cached_content: Some("cachedContents/review-fixture".into()),
@@ -974,6 +1009,7 @@ mod tests {
         }
         fn prompt_cache_config(&self, config: &serde_json::Value) -> Option<PromptCacheConfig> {
             Some(PromptCacheConfig {
+                retention: Default::default(),
                 enabled: config["cache_enabled"].as_bool().unwrap(),
                 strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: config["cache"].as_str().map(str::to_owned),
@@ -1019,6 +1055,7 @@ mod tests {
                 max_iterations: Some(0),
                 network_access: Some(policy.clone()),
                 parallel_tool_calls: explicit_parallel,
+                max_output_tokens: Some(3000),
                 ..Default::default()
             };
             let agent = RuntimeAgentBuilder::from_overlay(layer, &registry, &test_ctx())
@@ -1033,6 +1070,7 @@ mod tests {
             assert_eq!(agent.max_iterations, 0);
             assert_eq!(agent.network_access, Some(policy));
             assert_eq!(agent.parallel_tool_calls, Some(expected_parallel));
+            assert_eq!(agent.max_tokens, Some(3000));
             assert_eq!(
                 serde_json::to_value(agent.tool_search.unwrap()).unwrap(),
                 serde_json::json!({"enabled":true,"threshold":37})
@@ -1040,6 +1078,7 @@ mod tests {
             assert_eq!(
                 agent.prompt_cache,
                 Some(PromptCacheConfig {
+                    retention: Default::default(),
                     enabled: false,
                     strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
                     gemini_cached_content: Some("cachedContents/configured".into())
@@ -1099,8 +1138,28 @@ mod tests {
         );
     }
     #[tokio::test]
-    async fn empty_overlay_clears_default_prompt_without_enabling_preferences() {
-        for prompt in [None, Some(String::new())] {
+    async fn agent_prompt_is_not_prefixed_by_the_fallback() {
+        // A harness without its own prompt (every built-in level) must not
+        // put the generic persona line ahead of the agent's prompt.
+        let harness = HarnessDefinition::default();
+        let agent = AgentDefinition::new(AgentId::new(), "reviewer", "You review pull requests.");
+        let runtime = RuntimeAgentBuilder::from_overlay(
+            AgentConfigOverlay::fold([
+                AgentConfigOverlay::from(&harness),
+                AgentConfigOverlay::from(&agent),
+            ]),
+            &fixture_registry(),
+            &test_ctx(),
+        )
+        .await
+        .build();
+        assert_eq!(runtime.system_prompt, "You review pull requests.");
+        assert!(!runtime.system_prompt.contains(FALLBACK_SYSTEM_PROMPT));
+    }
+
+    #[tokio::test]
+    async fn empty_overlay_uses_fallback_prompt_without_enabling_preferences() {
+        for prompt in [None, Some(String::new()), Some("  \n".into())] {
             let agent = RuntimeAgentBuilder::from_overlay(
                 AgentConfigOverlay {
                     system_prompt: prompt,
@@ -1111,7 +1170,7 @@ mod tests {
             )
             .await
             .build();
-            assert_eq!(agent.system_prompt, "");
+            assert_eq!(agent.system_prompt, FALLBACK_SYSTEM_PROMPT);
             assert!(agent.tools.is_empty());
             assert_eq!(agent.max_iterations, 500);
             assert!(agent.tool_search.is_none());

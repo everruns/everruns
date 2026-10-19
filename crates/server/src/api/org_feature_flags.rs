@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::domains::organizations::record::validate_org_public_id;
 use crate::records::FeatureFlagMap;
-use crate::records::validate_org_public_id;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -193,6 +193,8 @@ pub async fn update_org_feature_flags(
     Ok(Json(flags.to_map()))
 }
 
+/// List every feature flag for the operator console
+///
 /// GET /v1/orgs/{org}/feature-flags/platform — every flag, including the
 /// platform-managed ones, for the operator console.
 ///

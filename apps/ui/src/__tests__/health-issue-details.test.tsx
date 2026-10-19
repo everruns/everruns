@@ -107,3 +107,26 @@ test("outdated recovery evidence can be checked without claiming the issue is op
   expect(check).toHaveBeenCalledWith(issue.id);
   expect(screen.queryByRole("button", { name: "Remind me tomorrow" })).not.toBeInTheDocument();
 });
+
+test("organization issue has no Slack repair and does not load a channel", () => {
+  const { getAgentChannel } = jest.requireMock("@/lib/api/agent-channels");
+  mount({
+    ...issue,
+    code: "org.active_turn_limit",
+    agent_id: null,
+    agent_name: null,
+    channel_id: null,
+    missing_scopes: [],
+    error_code: null,
+    title: "Active turn limit reached",
+    body: "New messages are refused while this organization has 1000 turns running at once.",
+  });
+  expect(screen.getByText("Organization")).toBeInTheDocument();
+  expect(screen.queryByText(/Review and approve the permissions in Slack/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Open integration settings" })).not.toBeInTheDocument();
+  expect(getAgentChannel).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  expect(check).toHaveBeenCalledWith(issue.id);
+  fireEvent.click(screen.getByRole("button", { name: "Remind me tomorrow" }));
+  expect(snooze).toHaveBeenCalledWith(issue.id);
+});

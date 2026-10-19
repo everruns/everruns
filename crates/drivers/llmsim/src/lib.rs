@@ -17,11 +17,20 @@
 //! use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 //!
 //! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
-//! # let _ = driver;
 //! ```
 
+mod demo_scripts;
+mod model_names;
+pub mod realtime;
+mod scenarios;
+
+pub use demo_scripts::{
+    auditor_demo_script, guarded_bash_demo_script, monitor_demo_script, session_tasks_demo_script,
+};
+pub use scenarios::builtin_scenario_names;
 #[cfg(feature = "host")]
 mod runtime_ext;
+pub mod speech;
 
 #[cfg(feature = "host")]
 pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
@@ -31,6 +40,8 @@ use futures::StreamExt;
 use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+type SessionSequenceCounters =
+    std::collections::HashMap<String, (Arc<AtomicUsize>, Arc<AtomicUsize>)>;
 
 use everruns_contracts::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
@@ -451,6 +462,10 @@ pub struct LlmSimDriver {
     response_counter: Arc<AtomicUsize>,
     /// Counter for sequence-based tool calls
     tool_call_counter: Arc<AtomicUsize>,
+    /// Attempt counts for scenario steps that fail first
+    scenario_attempts: scenarios::Attempts,
+    // Registered Agents share one driver; sequence state belongs to each session.
+    session_counters: Arc<std::sync::Mutex<SessionSequenceCounters>>,
 }
 
 struct GeneratedTurn {
@@ -466,6 +481,8 @@ impl LlmSimDriver {
             config,
             response_counter: Arc::new(AtomicUsize::new(0)),
             tool_call_counter: Arc::new(AtomicUsize::new(0)),
+            scenario_attempts: scenarios::Attempts::default(),
+            session_counters: Arc::default(),
         }
     }
 
@@ -475,7 +492,7 @@ impl LlmSimDriver {
     }
 
     /// Generate response text based on configuration
-    fn generate_response(&self, messages: &[Message]) -> String {
+    fn generate_response(&self, messages: &[Message], counter: &AtomicUsize) -> String {
         match &self.config.response {
             ResponseConfig::Fixed(text) => text.clone(),
 
@@ -500,7 +517,7 @@ impl LlmSimDriver {
                 if responses.is_empty() {
                     return String::new();
                 }
-                let idx = self.response_counter.fetch_add(1, Ordering::SeqCst);
+                let idx = counter.fetch_add(1, Ordering::SeqCst);
                 responses[idx % responses.len()].clone()
             }
 
@@ -516,7 +533,7 @@ impl LlmSimDriver {
     }
 
     /// Get tool calls based on configuration
-    fn get_tool_calls(&self, messages: &[Message]) -> Option<Vec<ToolCall>> {
+    fn get_tool_calls(&self, messages: &[Message], counter: &AtomicUsize) -> Option<Vec<ToolCall>> {
         match &self.config.tool_calls {
             None => None,
 
@@ -532,7 +549,7 @@ impl LlmSimDriver {
                 if sequences.is_empty() {
                     return None;
                 }
-                let idx = self.tool_call_counter.fetch_add(1, Ordering::SeqCst);
+                let idx = counter.fetch_add(1, Ordering::SeqCst);
                 let calls = &sequences[idx % sequences.len()];
                 if calls.is_empty() {
                     None
@@ -568,18 +585,23 @@ impl LlmSimDriver {
         }
     }
 
-    fn generate_turn(&self, messages: &[Message]) -> Result<GeneratedTurn> {
+    fn generate_turn(
+        &self,
+        messages: &[Message],
+        response: &AtomicUsize,
+        tools: &AtomicUsize,
+    ) -> Result<GeneratedTurn> {
         if let ResponseConfig::Scripted {
             turns,
             on_exhausted,
         } = &self.config.response
         {
-            return self.generate_scripted_turn(turns, *on_exhausted);
+            return self.generate_scripted_turn(turns, *on_exhausted, response);
         }
 
         Ok(GeneratedTurn {
-            text: self.generate_response(messages),
-            tool_calls: self.get_tool_calls(messages),
+            text: self.generate_response(messages, response),
+            tool_calls: self.get_tool_calls(messages, tools),
             stream_stall: false,
         })
     }
@@ -588,6 +610,7 @@ impl LlmSimDriver {
         &self,
         turns: &[SimTurn],
         on_exhausted: OnExhausted,
+        counter: &AtomicUsize,
     ) -> Result<GeneratedTurn> {
         if turns.is_empty() {
             return Err(AgentLoopError::config(
@@ -595,7 +618,7 @@ impl LlmSimDriver {
             ));
         }
 
-        let turn_index = self.response_counter.fetch_add(1, Ordering::SeqCst);
+        let turn_index = counter.fetch_add(1, Ordering::SeqCst);
         let turn = if turn_index < turns.len() {
             turns[turn_index].clone()
         } else {
@@ -646,7 +669,7 @@ impl LlmSimDriver {
                 };
                 SimMessage {
                     role,
-                    content: Some(m.content_as_text()),
+                    content: Some(m.content_as_text().into()),
                     name: None,
                     tool_calls: None,
                     tool_call_id: m.tool_call_id.clone(),
@@ -672,15 +695,16 @@ impl LlmSimDriver {
             tool_choice: None,
             seed: None,
             response_format: None,
+            reasoning_effort: None,
         }
     }
 
-    /// Resolve latency profile for a request.
-    /// Model names containing "-latency" enable realistic streaming simulation
-    /// via LatencyProfile::fast(). The config flag `simulate_latency` also enables it.
-    /// Returns LatencyProfile::instant() when neither is set.
+    /// Latency for a request: `-realistic` names (see [`model_names`]), else
+    /// `fast()` for `-latency` names or `simulate_latency`, else `instant()`.
     fn resolve_latency_profile(&self, model_name: &str) -> LatencyProfile {
-        if self.config.simulate_latency || model_name.contains("-latency") {
+        if let Some(profile) = model_names::realistic_latency(model_name) {
+            profile
+        } else if self.config.simulate_latency || model_name.contains("-latency") {
             LatencyProfile::fast()
         } else {
             LatencyProfile::instant()
@@ -729,12 +753,45 @@ impl ChatDriver for LlmSimDriver {
         let delay = self
             .config
             .response_delay
-            .or_else(|| parse_ttft_from_model_name(&config.model));
+            .or_else(|| model_names::ttft(&config.model));
         if let Some(delay) = delay {
             tokio::time::sleep(delay).await;
         }
 
-        let generated_turn = self.generate_turn(&messages)?;
+        // A scenario marker in the user message (or an `llmsim-scenario-*`
+        // model) takes over the whole call, pacing included.
+        if let Some(played) = scenarios::play(
+            &messages,
+            &config.tools,
+            &config.model,
+            self.resolve_latency_profile(&config.model),
+            &self.scenario_attempts,
+        ) {
+            return played;
+        }
+
+        let counters = if let Some(session) = config.metadata.get("session_id") {
+            let mut sessions = self
+                .session_counters
+                .lock()
+                .map_err(|_| AgentLoopError::config("simulator session counters unavailable"))?;
+            if sessions.len() >= 100_000 && !sessions.contains_key(session) {
+                return Err(AgentLoopError::config("simulator session capacity reached"));
+            }
+            sessions
+                .entry(session.clone())
+                .or_insert_with(|| (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0))))
+                .clone()
+        } else {
+            (
+                self.response_counter.clone(),
+                self.tool_call_counter.clone(),
+            )
+        };
+        let generated_turn = model_names::realistic_turn(self, &messages, config).map_or_else(
+            || self.generate_turn(&messages, &counters.0, &counters.1),
+            Ok,
+        )?;
         if generated_turn.stream_stall {
             return Ok(Box::pin(futures::stream::pending()));
         }
@@ -756,6 +813,7 @@ impl ChatDriver for LlmSimDriver {
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
+            completion_tokens_details: None,
         };
 
         let chunk_stream = TokenStreamBuilder::new(&model_name, &response_text)
@@ -884,12 +942,11 @@ pub const LLMSIM_REASONING_TEXT: &str = "llmsim deliberating about the request";
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
+    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
         // Default driver - tests can create custom drivers directly.
         Box::new(LlmSimDriver::default_driver()) as BoxedChatDriver
     });
-    descriptor.display_name = "LLM Simulator".into();
-    registry.register_descriptor_or_replace(descriptor);
+    registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
 /// Register the LlmSim driver with a custom configuration. Useful for
@@ -902,32 +959,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// shared across invocations.
 pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
     let driver = LlmSimDriver::new(config);
-    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
+    let descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
         Box::new(driver.clone()) as BoxedChatDriver
     });
-    descriptor.display_name = "LLM Simulator".into();
-    registry.register_descriptor_or_replace(descriptor);
-}
-
-/// Parse TTFT (time to first token) delay from model name if it contains "-ttft-{ms}" pattern.
-/// For example: "llmsim-ttft-2000" returns Some(Duration::from_millis(2000))
-///
-/// This allows tests to opt-in to response delays by using specific model names,
-/// which is useful for testing cancellation of active turns.
-fn parse_ttft_from_model_name(model_name: &str) -> Option<std::time::Duration> {
-    if let Some(idx) = model_name.find("-ttft-") {
-        let after_ttft = &model_name[idx + 6..]; // skip "-ttft-"
-        let ms_str: String = after_ttft
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        if let Ok(ms) = ms_str.parse::<u64>()
-            && ms > 0
-        {
-            return Some(std::time::Duration::from_millis(ms));
-        }
-    }
-    None
+    registry.register_descriptor_or_replace(realtime::with_simulated_realtime(descriptor));
 }
 
 /// Create a LlmSim driver with custom configuration
@@ -950,835 +985,8 @@ pub fn create_chat_driver(config: LlmSimConfig) -> BoxedChatDriver {
 }
 
 // ============================================================================
-// Pre-baked demo scripts
-// ============================================================================
-
-/// Scripted multi-turn config that drives the Cloud Cost & Security Auditor
-/// example agent through a small, deterministic AWS audit using only the
-/// `fake_aws` capability's tools. Useful for the `user_hooks` end-to-end
-/// demo (and any operator who wants to exercise the auditor without an LLM
-/// API key).
-///
-/// Sequence of assistant turns:
-///   1. Call `aws_list_ec2_instances`.
-///   2. Call `aws_list_s3_buckets`.
-///   3. Write a short audit summary as plain text.
-///
-/// After turn 3 the script repeats the final turn, matching the default
-/// `OnExhausted::RepeatLast` behavior.
-pub fn auditor_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Starting the audit. Listing EC2 instances first.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "aws_list_ec2_instances".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_ec2".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "EC2 inventory captured. Listing S3 buckets next.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "aws_list_s3_buckets".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_s3".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Audit complete: inventoried EC2 instances and S3 buckets. \
-             See /workspace/.audit.log for the per-tool-call audit trail \
-             written by the post_tool_use hook bundle."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario that exercises the `pre_tool_use` block path. The
-/// scripted agent first issues a destructive `bash` call (`rm -rf /`)
-/// followed by a benign one (`ls -la`). When combined with a `pre_tool_use`
-/// hook bundle that denies `rm -rf` patterns, the first tool call gets
-/// blocked (the tool is not invoked) and the second succeeds — the agent
-/// observes the difference in tool results.
-///
-/// Used by `LLMSIM_DEMO=guarded` to demonstrate `pre_tool_use` without an
-/// LLM API key.
-pub fn guarded_bash_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Step 1: attempting a destructive command.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "bash".to_string(),
-                arguments: serde_json::json!({ "commands": "rm -rf /" }),
-                id: Some("call_demo_rm".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "Step 2: trying a safe command.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "bash".to_string(),
-                arguments: serde_json::json!({ "commands": "ls -la /workspace" }),
-                id: Some("call_demo_ls".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Guarded-bash demo complete. The first tool call should be \
-             blocked by the pre_tool_use hook; the second should succeed."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario that exercises the session task registry end-to-end
-/// without an LLM API key. The scripted agent starts a background bash run
-/// via `spawn_background` (which creates a `background_tool` session task),
-/// then inspects the registry with `list_tasks`.
-///
-/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `bashkit_shell`
-/// and `session_tasks` capabilities.
-pub fn session_tasks_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Kicking off a background bash run.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "spawn_background".to_string(),
-                arguments: serde_json::json!({
-                    "tool": "bash",
-                    "args": { "commands": "echo task demo start; echo task demo done" },
-                    "title": "Demo background run",
-                    "signal_on_completion": false,
-                }),
-                id: Some("call_demo_spawn".to_string()),
-            }],
-        },
-        SimTurn::Mixed {
-            text: "Checking the session task registry.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "list_tasks".to_string(),
-                arguments: serde_json::json!({}),
-                id: Some("call_demo_list".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Session tasks demo complete: a background run was started and \
-             tracked as a session task. Inspect it via \
-             GET /v1/sessions/{session_id}/tasks."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-/// Scripted scenario for the monitor task kind: spawns a recurring scheduled
-/// monitor (cron fires at second 0 every minute) so the session scheduler
-/// creates the schedule and a linked `monitor` task. Used by
-/// `LLMSIM_DEMO=monitor` for end-to-end verification without an LLM API key.
-pub fn monitor_demo_script() -> LlmSimConfig {
-    let turns = vec![
-        SimTurn::Mixed {
-            text: "Setting up a recurring monitor.".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "spawn_background".to_string(),
-                arguments: serde_json::json!({
-                    "tool": "bash",
-                    "args": { "commands": "echo monitor check" },
-                    "title": "Demo monitor",
-                    "signal_on_completion": false,
-                    "schedule": { "cron_expression": "0 * * * * * *", "timezone": "UTC" },
-                }),
-                id: Some("call_demo_monitor".to_string()),
-            }],
-        },
-        SimTurn::Assistant(
-            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
-                .to_string(),
-        ),
-    ];
-    LlmSimConfig::scripted(turns)
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use futures::StreamExt;
-
-    impl LlmSimDriver {
-        async fn chat_completion(
-            &self,
-            messages: Vec<Message>,
-            config: &LlmCallConfig,
-        ) -> Result<everruns_contracts::driver_registry::LlmResponse> {
-            ChatDriver::chat_completion(
-                self,
-                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
-                messages,
-                config,
-            )
-            .await
-        }
-
-        async fn chat_completion_stream(
-            &self,
-            messages: Vec<Message>,
-            config: &LlmCallConfig,
-        ) -> Result<LlmResponseStream> {
-            ChatDriver::chat_completion_stream(
-                self,
-                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
-                messages,
-                config,
-            )
-            .await
-        }
-    }
-
-    #[test]
-    fn auditor_demo_script_calls_ec2_then_s3_then_summarises() {
-        let config = auditor_demo_script();
-        let turns = match &config.response {
-            ResponseConfig::Scripted { turns, .. } => turns,
-            other => panic!("expected Scripted, got {other:?}"),
-        };
-        assert_eq!(turns.len(), 3, "script has three turns");
-        match &turns[0] {
-            SimTurn::Mixed { tool_calls, .. } => {
-                assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].name, "aws_list_ec2_instances");
-            }
-            other => panic!("turn 0 should be Mixed, got {other:?}"),
-        }
-        match &turns[1] {
-            SimTurn::Mixed { tool_calls, .. } => {
-                assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].name, "aws_list_s3_buckets");
-            }
-            other => panic!("turn 1 should be Mixed, got {other:?}"),
-        }
-        match &turns[2] {
-            SimTurn::Assistant(text) => {
-                assert!(
-                    text.contains("/workspace/.audit.log"),
-                    "summary mentions the audit log: {text:?}"
-                );
-            }
-            other => panic!("turn 2 should be Assistant, got {other:?}"),
-        }
-    }
-
-    fn make_config() -> LlmCallConfig {
-        LlmCallConfig::new("test-model")
-    }
-
-    fn user_message(content: &str) -> Message {
-        Message::text(MessageRole::User, content)
-    }
-
-    fn system_message(content: &str) -> Message {
-        Message::text(MessageRole::System, content)
-    }
-
-    #[tokio::test]
-    async fn test_fixed_response() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello, world!"));
-        let messages = vec![user_message("Hi there")];
-
-        let response = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap();
-
-        assert_eq!(response.text, "Hello, world!");
-        assert!(response.tool_calls.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_echo_response() {
-        let driver = LlmSimDriver::new(LlmSimConfig::echo());
-        let messages = vec![
-            system_message("You are a helpful assistant"),
-            user_message("What is 2+2?"),
-        ];
-
-        let response = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap();
-
-        assert_eq!(response.text, "Echo: What is 2+2?");
-    }
-
-    #[tokio::test]
-    async fn test_sequence_response() {
-        let driver = LlmSimDriver::new(LlmSimConfig::sequence(vec![
-            "First".to_string(),
-            "Second".to_string(),
-            "Third".to_string(),
-        ]));
-
-        let messages = vec![user_message("test")];
-
-        // First call
-        let r1 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert_eq!(r1.text, "First");
-
-        // Second call
-        let r2 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert_eq!(r2.text, "Second");
-
-        // Third call
-        let r3 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert_eq!(r3.text, "Third");
-
-        // Fourth call - cycles back to first
-        let r4 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert_eq!(r4.text, "First");
-    }
-
-    #[tokio::test]
-    async fn test_lorem_response() {
-        let driver = LlmSimDriver::new(LlmSimConfig::lorem(50));
-        let messages = vec![user_message("Generate text")];
-
-        let response = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap();
-
-        // Lorem response should have content
-        assert!(!response.text.is_empty());
-        // Should have multiple words
-        assert!(response.text.split_whitespace().count() > 5);
-    }
-
-    #[tokio::test]
-    async fn test_fixed_tool_calls() {
-        let tool_call = ToolCall {
-            id: "call_123".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "NYC"}),
-        };
-
-        let driver = LlmSimDriver::new(
-            LlmSimConfig::fixed("Let me check the weather.")
-                .with_tool_calls(vec![tool_call.clone()]),
-        );
-
-        let messages = vec![user_message("What's the weather?")];
-        let response = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap();
-
-        assert_eq!(response.text, "Let me check the weather.");
-        let calls = response.tool_calls.expect("Expected tool calls");
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].name, "get_weather");
-        assert_eq!(calls[0].id, "call_123");
-    }
-
-    #[tokio::test]
-    async fn test_tool_call_sequence() {
-        let call1 = ToolCall {
-            id: "call_1".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({"q": "rust"}),
-        };
-        let call2 = ToolCall {
-            id: "call_2".to_string(),
-            name: "fetch".to_string(),
-            arguments: serde_json::json!({"url": "https://example.com"}),
-        };
-
-        let driver = LlmSimDriver::new(
-            LlmSimConfig::fixed("Processing...").with_tool_call_sequence(vec![
-                vec![call1.clone()],
-                vec![call2.clone()],
-                vec![],
-            ]),
-        );
-
-        let messages = vec![user_message("test")];
-
-        // First call - should get search
-        let r1 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        let calls1 = r1.tool_calls.expect("Expected tool calls");
-        assert_eq!(calls1[0].name, "search");
-
-        // Second call - should get fetch
-        let r2 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        let calls2 = r2.tool_calls.expect("Expected tool calls");
-        assert_eq!(calls2[0].name, "fetch");
-
-        // Third call - no tool calls
-        let r3 = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert!(r3.tool_calls.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_scripted_multi_turn_tool_call_agent_sequence() {
-        let driver = LlmSimDriver::new(
-            LlmSimConfig::scripted(vec![
-                SimTurn::ToolCalls(vec![SimToolCall {
-                    name: "bash".to_string(),
-                    arguments: serde_json::json!({"command": "echo hello > /tmp/x.txt"}),
-                    id: None,
-                }]),
-                SimTurn::ToolCalls(vec![SimToolCall {
-                    name: "bash".to_string(),
-                    arguments: serde_json::json!({"command": "sed -i s/hello/world/ /tmp/x.txt"}),
-                    id: None,
-                }]),
-                SimTurn::Assistant("done".to_string()),
-            ])
-            .with_on_exhausted(OnExhausted::Error),
-        );
-
-        let messages = vec![user_message("create /tmp/x.txt then change hello to world")];
-
-        let first = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        let first_calls = first.tool_calls.expect("first turn should call bash");
-        assert_eq!(first.text, "");
-        assert_eq!(first_calls[0].name, "bash");
-        assert_eq!(first_calls[0].id, "call_llmsim_0_0");
-
-        let second = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        let second_calls = second.tool_calls.expect("second turn should call bash");
-        assert_eq!(second_calls[0].name, "bash");
-        assert_eq!(second_calls[0].id, "call_llmsim_1_0");
-
-        let final_response = driver
-            .chat_completion(messages.clone(), &make_config())
-            .await
-            .unwrap();
-        assert_eq!(final_response.text, "done");
-        assert!(final_response.tool_calls.is_none());
-
-        let exhausted = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap_err();
-        assert!(matches!(exhausted, AgentLoopError::Configuration(_)));
-    }
-
-    #[tokio::test]
-    async fn test_scripted_mixed_turn_streams_text_and_tool_calls() {
-        let driver = LlmSimDriver::new(LlmSimConfig::scripted(vec![SimTurn::Mixed {
-            text: "Let me check".to_string(),
-            tool_calls: vec![SimToolCall {
-                name: "search".to_string(),
-                arguments: serde_json::json!({"q": "rust"}),
-                id: Some("call_search".to_string()),
-            }],
-        }]));
-
-        let mut stream = driver
-            .chat_completion_stream(vec![user_message("find rust")], &make_config())
-            .await
-            .unwrap();
-
-        let mut text_parts = Vec::new();
-        let mut tool_calls = None;
-        while let Some(event) = stream.next().await {
-            match event.unwrap() {
-                LlmStreamEvent::TextDelta(text) => text_parts.push(text),
-                LlmStreamEvent::ToolCalls(calls) => tool_calls = Some(calls),
-                LlmStreamEvent::Done(_) => {}
-                _ => {}
-            }
-        }
-
-        assert!(!text_parts.is_empty(), "scripted text should stream");
-        assert_eq!(text_parts.join(""), "Let me check");
-        let calls = tool_calls.expect("mixed turn should emit tool calls");
-        assert_eq!(calls[0].id, "call_search");
-        assert_eq!(calls[0].name, "search");
-    }
-
-    #[tokio::test]
-    async fn test_scripted_on_exhausted_modes() {
-        let repeat = LlmSimDriver::new(LlmSimConfig::scripted(vec![
-            SimTurn::Assistant("one".to_string()),
-            SimTurn::Assistant("two".to_string()),
-        ]));
-        let messages = vec![user_message("test")];
-        assert_eq!(
-            repeat
-                .chat_completion(messages.clone(), &make_config())
-                .await
-                .unwrap()
-                .text,
-            "one"
-        );
-        assert_eq!(
-            repeat
-                .chat_completion(messages.clone(), &make_config())
-                .await
-                .unwrap()
-                .text,
-            "two"
-        );
-        assert_eq!(
-            repeat
-                .chat_completion(messages.clone(), &make_config())
-                .await
-                .unwrap()
-                .text,
-            "two"
-        );
-
-        let looping = LlmSimDriver::new(
-            LlmSimConfig::scripted(vec![
-                SimTurn::Assistant("a".to_string()),
-                SimTurn::Assistant("b".to_string()),
-            ])
-            .with_on_exhausted(OnExhausted::Loop),
-        );
-        assert_eq!(
-            looping
-                .chat_completion(messages.clone(), &make_config())
-                .await
-                .unwrap()
-                .text,
-            "a"
-        );
-        assert_eq!(
-            looping
-                .chat_completion(messages.clone(), &make_config())
-                .await
-                .unwrap()
-                .text,
-            "b"
-        );
-        assert_eq!(
-            looping
-                .chat_completion(messages, &make_config())
-                .await
-                .unwrap()
-                .text,
-            "a"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_scripted_error_turn() {
-        let driver = LlmSimDriver::new(LlmSimConfig::scripted(vec![SimTurn::Error(
-            SimError::RateLimit,
-        )]));
-
-        let err = driver
-            .chat_completion(vec![user_message("test")], &make_config())
-            .await
-            .unwrap_err();
-
-        assert!(err.is_rate_limited());
-    }
-
-    #[tokio::test]
-    async fn test_conditional_tool_calls() {
-        let weather_call = ToolCall {
-            id: "call_w".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({}),
-        };
-        let search_call = ToolCall {
-            id: "call_s".to_string(),
-            name: "search".to_string(),
-            arguments: serde_json::json!({}),
-        };
-
-        let config = LlmSimConfig {
-            response: ResponseConfig::Fixed("Response".to_string()),
-            tool_calls: Some(ToolCallConfig::Conditional {
-                patterns: vec![
-                    ToolCallPattern::new("weather", vec![weather_call]),
-                    ToolCallPattern::new("search", vec![search_call]),
-                ],
-            }),
-            simulate_latency: false,
-            model_name: "test".to_string(),
-            response_delay: None,
-            response_id: None,
-            effort_capture: None,
-            message_capture: None,
-        };
-
-        let driver = LlmSimDriver::new(config);
-
-        // Weather query - should trigger weather tool
-        let r1 = driver
-            .chat_completion(vec![user_message("What's the weather?")], &make_config())
-            .await
-            .unwrap();
-        let calls1 = r1.tool_calls.expect("Expected weather tool");
-        assert_eq!(calls1[0].name, "get_weather");
-
-        // Search query - should trigger search tool
-        let r2 = driver
-            .chat_completion(vec![user_message("search for rust")], &make_config())
-            .await
-            .unwrap();
-        let calls2 = r2.tool_calls.expect("Expected search tool");
-        assert_eq!(calls2[0].name, "search");
-
-        // No matching pattern - no tool calls
-        let r3 = driver
-            .chat_completion(vec![user_message("hello world")], &make_config())
-            .await
-            .unwrap();
-        assert!(r3.tool_calls.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_streaming() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world test"));
-        let messages = vec![user_message("test")];
-
-        let mut stream = driver
-            .chat_completion_stream(messages, &make_config())
-            .await
-            .unwrap();
-
-        let mut text_parts = Vec::new();
-        let mut got_done = false;
-
-        while let Some(event) = stream.next().await {
-            match event.unwrap() {
-                LlmStreamEvent::TextDelta(text) => text_parts.push(text),
-                LlmStreamEvent::Done(meta) => {
-                    got_done = true;
-                    assert!(meta.total_tokens.is_some());
-                    assert!(meta.model.is_some());
-                }
-                _ => {}
-            }
-        }
-
-        assert!(got_done);
-        // llmsim's TokenStream handles chunking; verify full text is correct
-        assert!(!text_parts.is_empty());
-        assert_eq!(text_parts.join(""), "Hello world test");
-    }
-
-    #[tokio::test]
-    async fn test_metadata() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hi").with_model("custom-model"));
-        let messages = vec![user_message("test")];
-
-        let mut config = make_config();
-        config.model = "request-model".to_string();
-
-        let response = driver.chat_completion(messages, &config).await.unwrap();
-
-        assert_eq!(response.metadata.model, Some("request-model".to_string()));
-        assert!(response.metadata.prompt_tokens.is_some());
-        assert!(response.metadata.completion_tokens.is_some());
-    }
-
-    #[tokio::test]
-    async fn test_register_driver() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-
-        assert!(registry.has_driver(&DriverId::LlmSim));
-
-        // Creating a driver should work (with any API key since it's simulated)
-        let config = everruns_contracts::driver_registry::ProviderConfig::new(DriverId::LlmSim)
-            .with_api_key("fake-key");
-        let driver = registry.create_chat_driver(&config);
-        assert!(driver.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_empty_response() {
-        let config = LlmSimConfig {
-            response: ResponseConfig::Empty,
-            tool_calls: None,
-            simulate_latency: false,
-            model_name: "test".to_string(),
-            response_delay: None,
-            response_id: None,
-            effort_capture: None,
-            message_capture: None,
-        };
-
-        let driver = LlmSimDriver::new(config);
-        let messages = vec![user_message("test")];
-
-        let response = driver
-            .chat_completion(messages, &make_config())
-            .await
-            .unwrap();
-
-        assert!(response.text.is_empty());
-    }
-
-    #[test]
-    fn test_driver_debug() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
-        let debug = format!("{:?}", driver);
-
-        assert!(debug.contains("LlmSimDriver"));
-        assert!(debug.contains("simulate_latency"));
-    }
-
-    #[test]
-    fn test_default_config() {
-        let config = LlmSimConfig::default();
-        assert!(matches!(config.response, ResponseConfig::Fixed(_)));
-        assert!(config.tool_calls.is_none());
-        assert!(!config.simulate_latency);
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let tool_call = ToolCall {
-            id: "call_1".to_string(),
-            name: "get_weather".to_string(),
-            arguments: serde_json::json!({"city": "NYC"}),
-        };
-
-        let config = LlmSimConfig::fixed("Result")
-            .with_tool_calls(vec![tool_call.clone()])
-            .with_latency()
-            .with_model("gpt-4")
-            .with_response_delay(std::time::Duration::from_secs(2));
-
-        assert!(config.tool_calls.is_some());
-        assert!(config.simulate_latency);
-        assert_eq!(config.model_name, "gpt-4");
-        assert_eq!(
-            config.response_delay,
-            Some(std::time::Duration::from_secs(2))
-        );
-    }
-
-    #[test]
-    fn test_parse_ttft_from_model_name() {
-        use super::parse_ttft_from_model_name;
-
-        // Valid patterns
-        assert_eq!(
-            parse_ttft_from_model_name("llmsim-ttft-2000"),
-            Some(std::time::Duration::from_millis(2000))
-        );
-        assert_eq!(
-            parse_ttft_from_model_name("test-ttft-500-extra"),
-            Some(std::time::Duration::from_millis(500))
-        );
-
-        // No TTFT patterns
-        assert_eq!(parse_ttft_from_model_name("llmsim-model"), None);
-        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-0"), None);
-        assert_eq!(parse_ttft_from_model_name("llmsim-ttft-abc"), None);
-    }
-
-    #[test]
-    fn test_resolve_latency_profile_from_model_name() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("test"));
-
-        // "-latency" in model name -> fast profile (non-instant)
-        let profile = driver.resolve_latency_profile("llmsim-latency");
-        assert!(profile.sample_ttft().as_nanos() > 0);
-
-        // default model name -> instant profile
-        let profile = driver.resolve_latency_profile("llmsim-default");
-        assert_eq!(profile.sample_ttft().as_nanos(), 0);
-
-        // config flag also enables fast profile
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
-        let profile = driver.resolve_latency_profile("llmsim-default");
-        assert!(profile.sample_ttft().as_nanos() > 0);
-    }
-
-    #[tokio::test]
-    async fn test_latency_streaming_from_model_name() {
-        // Default driver (simulate_latency=false) but model name triggers latency
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
-        let messages = vec![user_message("test")];
-
-        let mut config = make_config();
-        config.model = "llmsim-latency".to_string();
-
-        let start = std::time::Instant::now();
-        let mut stream = driver
-            .chat_completion_stream(messages, &config)
-            .await
-            .unwrap();
-
-        let mut text_parts = Vec::new();
-        let mut got_done = false;
-
-        while let Some(event) = stream.next().await {
-            match event.unwrap() {
-                LlmStreamEvent::TextDelta(text) => text_parts.push(text),
-                LlmStreamEvent::Done(meta) => {
-                    got_done = true;
-                    assert_eq!(meta.model, Some("llmsim-latency".to_string()));
-                }
-                _ => {}
-            }
-        }
-
-        assert!(got_done);
-        assert_eq!(text_parts.join(""), "Hello world");
-        // With latency simulation, streaming should take non-zero time
-        // (TTFT + inter-token delays)
-        assert!(
-            start.elapsed().as_millis() > 0,
-            "latency simulation should introduce delays"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_no_latency_streaming_is_instant() {
-        let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
-        let messages = vec![user_message("test")];
-
-        let mut config = make_config();
-        config.model = "llmsim-default".to_string();
-
-        let start = std::time::Instant::now();
-        let response = driver.chat_completion(messages, &config).await.unwrap();
-        let elapsed = start.elapsed();
-
-        assert_eq!(response.text, "Hello world");
-        // Without latency, should complete nearly instantly (under 50ms)
-        assert!(
-            elapsed.as_millis() < 50,
-            "instant mode should have no delays, took {}ms",
-            elapsed.as_millis()
-        );
-    }
-}
+mod tests;

@@ -125,6 +125,12 @@ on or backdated by the generation's `duration_ms` otherwise, and so on. The
 listener therefore needs the global tracer provider that `init_telemetry`
 installs; without an OTLP endpoint it runs on the no-op tracer.
 
+Exporter totals convert the runtime's disjoint token buckets to cache-inclusive counts. Model-call and turn totals are separate aggregation views; dashboards must choose one. Capture-off failure spans retain classifications while gating raw status/exception text with other content.
+
+Tool lifecycle state is scoped by session, turn and execution because provider call identifiers need not be globally unique. Regression evidence lives beside the listener in `otel_regression_tests.rs`.
+
+The OTLP factory pins a blocking HTTP client for the SDK's thread-based batch processor, including when downstream feature unification enables async clients. A local collector test exercises event-to-OTLP delivery (`telemetry_transport_tests.rs`).
+
 ### Attributes
 
 The exact attribute set per span lives in `otel.rs`
@@ -234,7 +240,7 @@ message. Image bytes are never copied into telemetry (base64 images become a
 | `crates/core/src/host/observability/openinference.rs` | OpenInference vocabulary and flattened message builders |
 | `crates/core/src/host/observability/telemetry.rs` | OTLP exporter wiring, global tracer provider, tracing-subscriber layers, config, init |
 | `crates/core/src/telemetry.rs` | Gen-AI attribute names, provider mapping, `content` JSON builders, `error_type` |
-| `crates/server/src/app_builder.rs` | Listener registration |
+| `crates/server/src/app_builder/listeners.rs` | Listener registration |
 
 Ownership boundary: default core holds neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns_core::host::observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out behind an opt-in feature. The isolation guard keeps exporter crates out of default core and default Framework/provider dependency trees.
 

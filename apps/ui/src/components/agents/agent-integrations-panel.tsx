@@ -19,7 +19,7 @@ import { ChannelRow } from "@/components/agents/channels/channel-row";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
 import { type StatStripStats } from "@/components/apps/stat-strip";
 import { ChannelDetailsPanel } from "@/components/agents/integrations/channel-details-panel";
-import { AgentGitHubCard } from "@/components/agents/agent-github-card";
+import { AgentGitHubSection } from "@/components/agents/agent-github-card";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { BudgetPanel } from "@/components/budgets/budget-panel";
 import {
@@ -35,7 +35,6 @@ import type { Agent } from "@/lib/api/types";
 import type { AgentChannelRow } from "@/hooks/use-agent-channels";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function buildStats(
   channels: AgentChannelRow[],
@@ -55,8 +54,8 @@ function buildStats(
   let health: string;
   let healthSub: string;
   if (suspended) {
-    health = "Suspended";
-    healthSub = "Exposures are switched off for this agent";
+    health = "Disabled";
+    healthSub = "All channels are paused. Publish settings are kept.";
   } else if (channels.length === 0) {
     health = "Not exposed";
     healthSub = "No channels configured";
@@ -79,7 +78,14 @@ function buildStats(
   };
 }
 
-export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
+export function AgentIntegrationsPanel({
+  agent,
+  initialChannelId = null,
+}: {
+  agent: Agent;
+  /** Channel to open on arrival, from `?channel=`. */
+  initialChannelId?: string | null;
+}) {
   const { channels, isLoading } = useAgentChannels(agent.id);
   const { data: triggers = [] } = useAgentTriggers(agent.id);
   const { can: canAgent } = usePolicies("agents");
@@ -88,8 +94,14 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const resumeExposures = useResumeAgentExposures();
   const publishEndpoint = usePublishAgentChannel(agent.id);
   const triggerEndpoint = useTriggerAgentChannel(agent.id);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const budgetsEnabled = useFeatureFlag("channel_budgets");
+  const [expandedId, setExpandedId] = useState<string | null>(initialChannelId);
+  // A later visit with a different `?channel=` opens that row. Collapsing the
+  // current one does not fight the address until the id changes.
+  const [openedChannel, setOpenedChannel] = useState(initialChannelId);
+  if (initialChannelId && initialChannelId !== openedChannel) {
+    setOpenedChannel(initialChannelId);
+    setExpandedId(initialChannelId);
+  }
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
@@ -104,6 +116,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
 
   const doors = channels.filter(({ channel }) => !isTriggerChannel(channel));
   const scheduleEndpoints = channels.filter(({ channel }) => isTriggerChannel(channel));
+  const githubTriggerCount = triggers.filter((trigger) => trigger.trigger_type === "github").length;
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
@@ -188,7 +201,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                             canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
                           }
                         />
-                        {budgetsEnabled && canViewBudgets && (
+                        {canViewBudgets && (
                           <div className="border-t pt-4">
                             <BudgetPanel
                               subjectType="agent_channel"
@@ -215,8 +228,13 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
             )}
           </section>
 
+          <AgentGitHubSection
+            agentId={agent.id}
+            avatar={agent.avatar}
+            githubTriggerCount={githubTriggerCount}
+          />
+
           <AgentTriggersPanel agentId={agent.id}>
-            <AgentGitHubCard agentId={agent.id} />
             {scheduleEndpoints.length > 0 && (
               <div className="flex flex-col gap-2">
                 {scheduleEndpoints.map(({ channel }) => (
@@ -238,7 +256,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                     publishPending={publishEndpoint.isPending}
                     onRunNow={canManage ? () => triggerEndpoint.mutate(channel.id) : undefined}
                     usePanel={
-                      budgetsEnabled && canViewBudgets ? (
+                      canViewBudgets ? (
                         <BudgetPanel
                           subjectType="agent_channel"
                           subjectId={channel.id}
@@ -255,25 +273,25 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
         </PageMain>
 
         <PageRail>
-          <RailSection label="Exposure">
+          <RailSection label="All channels">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="exposures-suspended" className="text-sm font-medium">
-                Suspend all channels
+              <label htmlFor="channels-enabled" className="text-sm font-medium">
+                Enabled
               </label>
               <Switch
-                id="exposures-suspended"
-                checked={suspended}
-                onCheckedChange={(next) =>
-                  next ? suspendExposures.mutate(agent.id) : resumeExposures.mutate(agent.id)
+                id="channels-enabled"
+                checked={!suspended}
+                onCheckedChange={(enabled) =>
+                  enabled ? resumeExposures.mutate(agent.id) : suspendExposures.mutate(agent.id)
                 }
                 disabled={!canManage || suspendExposures.isPending || resumeExposures.isPending}
               />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              Temporarily pause all channels. Published settings are preserved.
+              Off pauses every channel on this agent. Publish on each channel stays as it is.
             </p>
           </RailSection>
-          {budgetsEnabled && canViewBudgets && (
+          {canViewBudgets && (
             <RailSection label="Agent budget">
               <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
             </RailSection>

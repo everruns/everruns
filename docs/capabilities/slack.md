@@ -4,7 +4,9 @@ description: Deploy an Everruns agent as a Slack bot through an Agent-owned chan
 appliesTo: [platform, cloud]
 ---
 
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M9 3.5L7 20.5M17 3.5l-2 17M4 8.5h16M3.2 15.5h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path fill="currentColor" d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>
+
+Start with [Build Agents for Slack](/integrations/slack/) for examples, a walkthrough, and setup. This page covers configuration and the Slack actions reference.
 
 Everruns connects an Agent to Slack in two parts:
 
@@ -41,6 +43,8 @@ Everruns connects the workspace as soon as you paste the token, rotates it immed
 
 The token can create and change any Slack app in that workspace, and your Slack workspace may require an administrator to generate it. An organization can connect more than one workspace.
 
+If your deployment has a Slack manager app (see [Slack Manager App](/sre/environment-variables/#slack-manager-app)), **Settings** > **Slack workspaces** shows **Connect with Slack** instead: approve Everruns in Slack, pick the workspace, and nothing is copied or pasted. **Use a configuration token instead** keeps the steps above available. Each Agent's app still asks for its own Slack approval when you add it.
+
 **Disconnecting a workspace** does not affect Agents already in it: each has its own Slack app and keeps working. Until you connect the workspace again, you cannot add Agents to it or update their Slack apps.
 
 ## Connect an Agent to Slack
@@ -52,7 +56,7 @@ The token can create and change any Slack app in that workspace, and your Slack 
 3. Select **Add channel**.
 4. Select **Slack**.
 5. If your organization has connected more than one Slack workspace, choose one.
-6. Choose the session strategy and reply mode. Leave the Slack credentials empty.
+6. Choose the session strategy. Leave the Slack credentials empty.
 7. Select **Save channel**.
 
 Everruns opens the channel editor after it saves the channel.
@@ -154,37 +158,41 @@ Session strategy in the pane is always `per_thread`. The configured strategy sti
 
 Replies in the agent pane render as the Agent produces them. Channel threads receive one finished message instead of token-by-token updates.
 
-## Reply Modes
+## How the Agent Replies
 
-Choose **Reply mode** in the endpoint's **Conversation behavior** settings:
+How the Agent talks in Slack is set on the Agent, not on the channel. See the
+Agent's **Communication** setting and [Explicit communication](/features/explicit-communication/).
 
-| Mode | What people see in Slack |
+| Agent communication | What people see in Slack |
 |---|---|
-| **Automatic replies** | Every assistant response is published. Replies stream in the agent pane. |
-| **Agent-controlled messages** | The agent chooses when to post updates, questions, and answers. Other assistant messages stay in Everruns. |
+| **Direct** (default) | Every assistant response is published. Replies stream in the agent pane. |
+| **Explicit** | The Agent posts only what it sends with `send_message`. Its other assistant text stays in Everruns as working notes. It can call `no_reply` to choose not to answer. |
 
-In agent-controlled mode, Everruns acknowledges each request with **On it.** The
-agent pane also shows a working status. Approval cards and task progress continue
-to appear independently of the agent's messages.
+With explicit communication, `send_message` posts into the thread that started
+the turn, as this channel's bot, at most once per call. The Agent cannot choose
+another channel or thread. Messages can be up to 12,000 characters of Markdown.
+Success means Slack accepted the post; the `conversation.message` event carries
+`platform`, `channel` and `message_ref`. For Slack, `message_ref` is the message
+timestamp: use it as `timestamp` with `slack_update_message` when the Slack
+actions capability is enabled. If delivery is uncertain, the error says so;
+the Agent should not resend blindly because the message may already be visible.
 
-Existing progress-only endpoints automatically use agent-controlled messages.
+A turn started by a session schedule (the Agent's `create_schedule`) has no
+Slack message of its own. Its `send_message` goes to the conversation of the
+session's latest Slack message: inline in a direct message, top-level in a
+`per_channel` channel, and in the thread for a `per_thread` session. A session
+that has never received a Slack message cannot post.
 
-### `channel_post_message`
+To run on a clock in a conversation from the start, before anyone has written,
+give a schedule trigger a Slack target instead: see
+[Run in a Slack conversation](/features/agent-triggers/#run-in-a-slack-conversation).
 
-This channel-neutral tool is supplied automatically in agent-controlled mode;
-it does not require enabling the Slack actions capability or adding credentials.
-
-Pass `text` containing the complete message, with Markdown formatting, up to
-12,000 characters. Everruns sends it into the conversation that triggered the
-turn, using this endpoint's bot. The agent cannot select another channel or thread.
-
-Success means Slack accepted the post. The result contains `platform`, `channel`,
-and `message_ref`. For Slack, `message_ref` is the message timestamp: use it as
-`timestamp` with `slack_update_message` when the Slack actions capability is enabled.
-
-The agent can use this tool for concise milestones, questions, and final answers;
-Everruns does not add a fixed status heading. If delivery is uncertain, the error
-says so. Avoid resending blindly because the message may already be visible.
+The agent pane shows a working status while the turn runs. Approval cards and
+task progress appear independently of the Agent's messages. If a turn ends
+without anything posted to the thread, or an explicit Agent's turn fails or is
+cancelled, Everruns posts one short status line with a link to the session. An
+explicit Agent that calls `no_reply` chose silence, so its thread gets no
+status line.
 
 ## Session Strategies
 
@@ -217,9 +225,9 @@ Use `per_thread` for most Slack bots.
 **Outbound path:**
 
 6. The Slack delivery dispatcher watches the turn.
-7. In automatic mode, the RuntimeAgent emits completed output messages and the dispatcher posts them.
-8. In agent-controlled mode, `channel_post_message` posts messages directly and returns delivery receipts.
-9. Automatic delivery retries transient failures with exponential backoff. Explicit posts return errors without retrying an uncertain send.
+7. For a Direct Agent, the RuntimeAgent emits completed output messages and the dispatcher posts them.
+8. For an Explicit Agent, `send_message` posts messages directly and returns delivery receipts.
+9. Automatic delivery retries transient failures with exponential backoff. `send_message` returns errors without retrying an uncertain send.
 10. The dispatcher unregisters when the turn completes, fails, or is cancelled.
 
 ## Troubleshooting

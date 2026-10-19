@@ -813,7 +813,58 @@ impl InputContentPart {
     }
 }
 
+/// Message metadata key naming where a user-role message came from when no
+/// person wrote it. Reserved: client-supplied metadata loses this key, so only
+/// the platform can set it.
+pub const MESSAGE_ORIGIN_METADATA_KEY: &str = "everruns_origin";
+/// Origin of a message the platform injects to wake a session about its tasks
+/// (a thread finished, asked a question, or sent an update).
+pub const MESSAGE_ORIGIN_TASK_WAKE: &str = "task_wake";
+
+/// Message metadata key holding the id a client minted for a message it sent.
+/// The platform sets it from the create request (never from client metadata)
+/// and uses it to make a retried send idempotent; clients use the echo to
+/// reconcile an optimistic message with the stored one.
+pub const CLIENT_MESSAGE_ID_METADATA_KEY: &str = "everruns_client_message_id";
+
+/// Metadata for a platform-injected task wake-up message.
+pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_json::Value> {
+    std::collections::HashMap::from([(
+        MESSAGE_ORIGIN_METADATA_KEY.to_string(),
+        serde_json::Value::String(MESSAGE_ORIGIN_TASK_WAKE.to_string()),
+    )])
+}
+
+/// Remove reserved platform keys from caller-supplied message metadata, so a
+/// client cannot make its own text look like a platform notice or start a
+/// script run that skips the model.
+pub fn strip_reserved_message_metadata(
+    metadata: &mut Option<std::collections::HashMap<String, serde_json::Value>>,
+) {
+    if let Some(map) = metadata.as_mut() {
+        map.remove(MESSAGE_ORIGIN_METADATA_KEY);
+        map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);
+        map.remove(super::saved_scripts::SCRIPT_RUN_METADATA_KEY);
+        if map.is_empty() {
+            *metadata = None;
+        }
+    }
+}
+
 impl RuntimeMessage {
+    /// Platform origin of a user-role message no person wrote, if any.
+    pub fn origin(&self) -> Option<&str> {
+        self.metadata
+            .as_ref()?
+            .get(MESSAGE_ORIGIN_METADATA_KEY)?
+            .as_str()
+    }
+
+    /// Whether the platform injected this message to report task activity.
+    pub fn is_task_wake(&self) -> bool {
+        self.origin() == Some(MESSAGE_ORIGIN_TASK_WAKE)
+    }
+
     /// Reasoning artifacts carried by this message, in emission order.
     pub fn reasoning_parts(&self) -> impl Iterator<Item = &ReasoningContentPart> {
         self.content.iter().filter_map(ContentPart::as_reasoning)
@@ -1220,7 +1271,15 @@ impl RuntimeMessage {
     }
 }
 
-/// Patch dangling tool calls by adding synthetic "cancelled" results.
+/// Result text for a tool call that has no result and may have run.
+///
+/// Never "cancelled": a call interrupted mid-flight (another message came in,
+/// a worker restarted) may have completed its side effect, and a model told it
+/// was cancelled repeats it. "Cancelled" is only for calls that provably never
+/// started.
+pub const UNKNOWN_TOOL_OUTCOME: &str = "outcome unknown - the turn was interrupted before this call reported back, so it may have completed; check its effect before repeating it, and do not repeat an action that changes something without checking or asking";
+
+/// Patch dangling tool calls by adding synthetic unknown-outcome results.
 ///
 /// This ensures every tool call has a corresponding tool result,
 /// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
@@ -1228,14 +1287,14 @@ impl RuntimeMessage {
 /// This is the simple, store-free patcher used by out-of-band completions
 /// (see `crate::runtime::command_host`). The main reason path uses the durable-store-aware
 /// the execution kernel's transcript-repair path instead (EVE-533),
-/// which can replay settled results rather than synthesizing cancellations.
+/// which can replay settled results rather than synthesizing unknown outcomes.
 pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMessage> {
     let mut result = Vec::new();
 
     for (i, msg) in messages.iter().enumerate() {
         result.push(msg.clone());
 
-        // After an assistant message with tool calls, add cancelled results for any missing ones
+        // After an assistant message with tool calls, add unknown-outcome results for any missing ones
         if msg.role == RuntimeMessageRole::Agent && msg.has_tool_calls() {
             for tc in msg.tool_calls() {
                 // Look for a matching tool result in ALL subsequent messages
@@ -1247,10 +1306,7 @@ pub fn patch_dangling_tool_calls(messages: &[RuntimeMessage]) -> Vec<RuntimeMess
                     result.push(RuntimeMessage::tool_result(
                         &tc.id,
                         None,
-                        Some(
-                            "cancelled - another message came in before it could be completed"
-                                .to_string(),
-                        ),
+                        Some(UNKNOWN_TOOL_OUTCOME.to_string()),
                     ));
                 }
             }

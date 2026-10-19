@@ -43,7 +43,7 @@ pub enum SessionsCommand {
         #[arg(long = "system-prompt")]
         system_prompt: Option<String>,
 
-        /// Session tag (repeatable)
+        /// Session tag. Repeat for each, or pass one JSON array of strings
         #[arg(long = "tag", short = 't')]
         tags: Vec<String>,
 
@@ -406,8 +406,9 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
     insert_opt_string(&mut body, "model_id", args.model_id);
     insert_opt_string(&mut body, "system_prompt", args.system_prompt);
 
-    if !args.tags.is_empty() {
-        body.insert("tags".to_string(), serde_json::json!(args.tags));
+    let tags = super::expand_json_string_list(args.tags);
+    if !tags.is_empty() {
+        body.insert("tags".to_string(), serde_json::json!(tags));
     }
     if !args.raw_capabilities.is_empty() {
         body.insert(
@@ -757,6 +758,11 @@ fn format_event_text(
                 }
             }
         }
+        "conversation.message" => {
+            if let Some(text) = data.get("text").and_then(|t| t.as_str()) {
+                println!("{text}");
+            }
+        }
         "output.message.delta" => {
             // OutputMessageDeltaData has delta: String (plain text chunk)
             if let Some(text) = data.get("delta").and_then(|d| d.as_str()) {
@@ -933,10 +939,12 @@ async fn export_raw(
         .send()
         .await
         .context("Failed to export session")?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Export session failed ({}): {}", status, body);
+    if !resp.status().is_success() {
+        return Err(
+            super::api::ApiError::from_response("Export session failed", resp)
+                .await
+                .into(),
+        );
     }
 
     resp.text()
@@ -1264,6 +1272,28 @@ mod tests {
             serde_json::json!(["internal.example.com"])
         );
         assert_eq!(body["max_iterations"], 8);
+    }
+
+    #[test]
+    fn a_json_array_session_tag_becomes_the_strings_inside_it() {
+        let body = build_create_session_body(CreateSessionArgs {
+            harness: None,
+            agent_id: None,
+            title: None,
+            locale: None,
+            model_id: None,
+            virtual_user_id: None,
+            system_prompt: None,
+            tags: vec![r#"["company", "ci"]"#.into()],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+        assert_eq!(body["tags"], serde_json::json!(["company", "ci"]));
     }
 
     #[test]

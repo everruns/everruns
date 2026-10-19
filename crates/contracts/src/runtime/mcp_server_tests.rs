@@ -377,6 +377,12 @@ fn error_codes_have_independent_wire_category_and_retry_contracts() {
             false,
         ),
         (
+            McpErrorCode::InsufficientScope,
+            "insufficient_scope",
+            McpErrorCategory::Auth,
+            false,
+        ),
+        (
             McpErrorCode::QuotaExceeded,
             "quota_exceeded",
             McpErrorCategory::Transient,
@@ -558,6 +564,12 @@ fn error_classifier_preserves_messages_and_routes_every_marker_and_prefix() {
         (
             "forbidden: principal lacks SESSION_WRITE",
             McpErrorCode::PermissionDenied,
+            McpErrorCategory::Auth,
+            false,
+        ),
+        (
+            "insufficient_scope: This personal access token is read-only",
+            McpErrorCode::InsufficientScope,
             McpErrorCategory::Auth,
             false,
         ),

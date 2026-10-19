@@ -110,7 +110,7 @@ pub enum AgentsCommand {
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Tags (repeatable)
+        /// Tag. Repeat for each, or pass one JSON array of strings
         #[arg(long, short)]
         tag: Vec<String>,
 
@@ -156,7 +156,7 @@ pub enum AgentsCommand {
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Tags (repeatable)
+        /// Tag. Repeat for each, or pass one JSON array of strings
         #[arg(long, short)]
         tag: Vec<String>,
 
@@ -434,8 +434,9 @@ async fn import_from_file(
 
     let status = resp.status();
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Import failed ({}): {}", status, body);
+        return Err(super::api::ApiError::from_response("Import failed", resp)
+            .await
+            .into());
     }
 
     let was_created = status == reqwest::StatusCode::CREATED;
@@ -1113,6 +1114,7 @@ fn agent_params(
         Some(h) => params["harness_name"] = h.into(),
         None => {}
     }
+    let tags = super::expand_json_string_list(tags);
     if !tags.is_empty() {
         params["tags"] = tags.into();
     }

@@ -6,12 +6,11 @@
 // registration site.
 
 use super::types::{
-    CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
-    workspace_response,
+    ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse, workspace_response,
 };
 use super::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::domains::common::*;
-use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
+use crate::storage::UpdateWorkspace;
 use everruns_contracts::typed_id::WorkspaceId;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -46,8 +45,10 @@ fn validate_status(status: &str) -> Result<(), CommandError> {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListWorkspaces {
+    /// Case-insensitive substring match on name or description.
     #[serde(default)]
     pub search: Option<String>,
+    /// Also return archived items.
     #[serde(default)]
     pub include_archived: Option<bool>,
 }
@@ -68,6 +69,7 @@ impl From<ListWorkspacesQuery> for ListWorkspaces {
     method = "GET",
     path = "/v1/workspaces",
     policy = WORKSPACE_VIEW,
+    cli = CliRoute::new(&["workspaces"], "list").with_examples(&[CliExample::new("Find a workspace by name when you do not know the id", "everruns workspaces list --search platform")]),
 )]
 impl Command for ListWorkspaces {
     type Output = Vec<WorkspaceResponse>;
@@ -90,67 +92,6 @@ impl Command for ListWorkspaces {
 }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct CreateWorkspace {
-    /// Human-readable workspace name. Must be unique per org.
-    pub name: String,
-    /// Optional human-readable description.
-    #[serde(default)]
-    pub description: Option<String>,
-}
-
-impl From<CreateWorkspaceRequest> for CreateWorkspace {
-    fn from(request: CreateWorkspaceRequest) -> Self {
-        Self {
-            name: request.name,
-            description: request.description,
-        }
-    }
-}
-
-#[command(
-    name = "create_workspace",
-    category = "workspaces",
-    description = "Create a new Workspace in the current organization.",
-    method = "POST",
-    path = "/v1/workspaces",
-    policy = WORKSPACE_MANAGE,
-)]
-impl Command for CreateWorkspace {
-    type Output = WorkspaceResponse;
-
-    fn output_schema() -> serde_json::Value {
-        output_schema_for::<WorkspaceResponse>()
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<WorkspaceResponse, CommandError> {
-        let name = validate_name(&self.name)?;
-        let public_id = WorkspaceId::new().to_string();
-        let row = ctx
-            .db
-            .create_workspace(
-                ctx.org_id(),
-                CreateWorkspaceRow {
-                    id: None,
-                    public_id,
-                    name,
-                    description: self.description,
-                    owner_principal_id: None,
-                    resolved_owner_user_id: None,
-                },
-            )
-            .await
-            .map_err(|e| {
-                if e.to_string().contains("already exists") {
-                    CommandError::conflict("Workspace name already exists")
-                } else {
-                    classify_anyhow(e)
-                }
-            })?;
-        Ok(workspace_response(row))
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetWorkspace {
     /// Workspace ID (wsp_<32-hex>).
     pub workspace_id: String,
@@ -163,6 +104,7 @@ pub struct GetWorkspace {
     method = "GET",
     path = "/v1/workspaces/{workspace_id}",
     policy = WORKSPACE_VIEW,
+    cli = CliRoute::new(&["workspaces"], "get").with_args(&[CliArg::new("workspace_id").at(1)]).with_examples(&[CliExample::new("Check a workspace's name and status", "everruns workspaces get wsp_01h9")]),
     positional = "workspace_id",
 )]
 impl Command for GetWorkspace {
@@ -198,6 +140,7 @@ pub struct UpdateWorkspaceCmd {
     method = "PATCH",
     path = "/v1/workspaces/{workspace_id}",
     policy = WORKSPACE_MANAGE,
+    cli = CliRoute::new(&["workspaces"], "update").with_examples(&[CliExample::new("Rename a workspace", "everruns workspaces update --workspace-id wsp_01h9 --name platform-core --reason 'Team renamed'")]),
 )]
 impl Command for UpdateWorkspaceCmd {
     type Output = WorkspaceResponse;
@@ -256,6 +199,7 @@ pub struct DeleteWorkspace {
     method = "DELETE",
     path = "/v1/workspaces/{workspace_id}",
     policy = WORKSPACE_MANAGE,
+    cli = CliRoute::new(&["workspaces"], "delete").with_args(&[CliArg::new("workspace_id").at(1)]).with_examples(&[CliExample::new("Archive a workspace that is no longer used", "everruns workspaces delete wsp_01h9 --reason 'Project finished'")]),
     positional = "workspace_id",
 )]
 impl Command for DeleteWorkspace {

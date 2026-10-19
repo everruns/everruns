@@ -93,16 +93,37 @@ function localizeRuntimeErrorBase(
       return formatMessage(locale, "runtime_error_request_too_large");
     case "provider_rate_limited": {
       const retryAfter = integerField(error.fields, "retry_after");
-      return retryAfter != null
-        ? formatMessage(locale, "runtime_error_provider_rate_limited_retry_after", {
-            retry_after: retryAfter,
-          })
-        : formatMessage(locale, "runtime_error_provider_rate_limited");
+      const inFlight = stringField(error.fields, "reason") === "in_flight_budget_exhausted";
+      if (retryAfter == null) {
+        return formatMessage(
+          locale,
+          inFlight
+            ? "runtime_error_provider_in_flight_limit"
+            : "runtime_error_provider_rate_limited",
+        );
+      }
+      const autoRetry = error.fields?.auto_retry === true;
+      const key = inFlight
+        ? autoRetry
+          ? "runtime_error_provider_in_flight_limit_auto_retry"
+          : "runtime_error_provider_in_flight_limit_retry_after"
+        : autoRetry
+          ? "runtime_error_provider_rate_limited_auto_retry"
+          : "runtime_error_provider_rate_limited_retry_after";
+      return formatMessage(locale, key, { retry_after: retryAfter });
     }
     case "provider_misconfigured":
       return formatMessage(locale, "runtime_error_provider_misconfigured");
-    case "provider_quota_exhausted":
-      return formatMessage(locale, "runtime_error_provider_quota_exhausted");
+    case "provider_quota_exhausted": {
+      const requested = integerField(error.fields, "requested_max_tokens");
+      const affordable = integerField(error.fields, "affordable_tokens");
+      return requested != null && affordable != null
+        ? formatMessage(locale, "runtime_error_provider_quota_exhausted_affordable", {
+            requested_max_tokens: requested,
+            affordable_tokens: affordable,
+          })
+        : formatMessage(locale, "runtime_error_provider_quota_exhausted");
+    }
     case "provider_attestation_required": {
       // The confirmation page is the whole point of this code — without it the
       // reader knows something is gated but not where to clear it — so fall

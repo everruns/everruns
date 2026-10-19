@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { Bot } from "lucide-react";
+import { AgentIcon } from "@/components/icons/facet-icons";
 import { cn } from "@/lib/utils";
 
 export function agentInitials(name: string): string {
@@ -40,7 +40,7 @@ export function AgentAvatar({
         className,
       )}
     >
-      {initials || <Bot className={size === "md" ? "size-4" : "size-3"} />}
+      {initials || <AgentIcon className={size === "md" ? "size-4" : "size-3"} />}
     </span>
   );
 }

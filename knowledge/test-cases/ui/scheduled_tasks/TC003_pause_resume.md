@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC003: Pause and Resume Schedule"
-description: "Verify that pausing a schedule prevents automatic triggers, and resuming restores normal scheduling."
+description: "Verify pausing prevents future automatic triggers, resuming restores them, and pause does not cancel executions already admitted."
 tags:
   - everruns
   - test-case
@@ -12,53 +12,32 @@ tags:
 
 ## Description
 
-Verify that pausing a schedule prevents automatic triggers, and resuming restores normal scheduling.
+Verify pausing prevents future automatic triggers, resuming restores them, and pause does not cancel executions already admitted.
 
 ## Preconditions
 
-- Schedule exists with a 1-minute cron expression
-- Schedule is currently enabled
+- Disposable once-per-minute schedule with a working harmless target and platform-user access.
+- Observe execution IDs and scheduled timestamps; allow for work already admitted before pause.
 
 ## Test Data
 
 | Field | Value |
-|-------|-------|
-| Schedule Name | test-pause-resume |
-| Cron Expression | * * * * * |
-| Target Type | workflow |
-| Workflow Type | echo |
+| --- | --- |
+| Cron | `0 * * * * * *` |
+| Observation windows | Two complete minute boundaries after each state change |
 
 ## Steps
 
-### Part A: Pause
-
-1. Create schedule "test-pause-resume" with cron "* * * * *" (every minute)
-2. Wait 1-2 minutes and verify automatic execution occurs
-3. Note the current execution count
-4. Click "Pause" button on the schedule
-5. Confirm in dialog
-6. Wait 2 minutes
-7. Check execution count
-
-### Part B: Resume
-
-8. Click "Resume" button on the schedule
-9. Confirm in dialog
-10. Wait 2 minutes
-11. Check execution count
+1. Observe one successful automatic execution and record its ID.
+2. Click Pause. Record the successful response time, then reload the detail.
+3. Observe two complete minute boundaries and inspect executions' scheduled timestamps.
+4. Click Resume, reload, and inspect the calculated next trigger.
+5. Observe two complete minute boundaries and verify new executions are admitted.
+6. Pause again and delete the disposable schedule after any admitted work settles.
 
 ## Expected Result
 
-### Part A: Pause
-
-- After clicking Pause, status changes to "Disabled" (gray badge)
-- Next Run column shows "-" instead of a time
-- No new executions appear during the 2-minute wait
-- Execution count remains the same as noted in step 3
-
-### Part B: Resume
-
-- After clicking Resume, status changes to "Enabled" (green badge)
-- Next Run column shows a time within 1 minute
-- New executions appear after waiting
-- Execution count increases by at least 1
+- Pause and Resume are direct mutations; no confirmation dialog is required.
+- Pause persists as Paused and the UI presents no active next trigger. No future automatic execution is admitted while paused.
+- Work admitted before the pause response may finish; do not misclassify that completion as a new trigger.
+- Resume persists as Active, computes the next trigger, and admits new work at due boundaries.

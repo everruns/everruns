@@ -4,7 +4,7 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::storage::models::{CreateAppRow, CreatePrincipalRow};
+use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;

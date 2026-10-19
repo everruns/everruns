@@ -1,5 +1,6 @@
 "use client";
 
+import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { useCallback, useState, useMemo } from "react";
 import {
   useCapabilities,
@@ -11,7 +12,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LinkButton } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
-import { ArrowRight, Plus, Shield, LayoutGrid, List as ListIcon } from "lucide-react";
+import { ArrowRight, Plus, LayoutGrid, List as ListIcon } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { HarnessCard, HarnessExampleCard } from "@/components/harnesses";
 import {
@@ -102,7 +103,7 @@ export default function HarnessesPageClient() {
       <PageBreadcrumb items={[{ label: "Harnesses" }]} />
 
       <PageMasthead
-        icon={<Shield />}
+        icon={<HarnessDomainIcon />}
         title="Harnesses"
         description="Shared runtime configuration — base prompt, capabilities, and policies sessions inherit."
         actions={
@@ -174,7 +175,7 @@ export default function HarnessesPageClient() {
           errorMessagePrefix="Failed to load harnesses"
           emptyState={
             <EmptyState
-              icon={<Shield />}
+              icon={<HarnessDomainIcon />}
               title={
                 search || statusTab !== "active"
                   ? "No harnesses match your filters."

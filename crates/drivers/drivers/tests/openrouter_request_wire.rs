@@ -560,3 +560,209 @@ async fn max_price_preset_reaches_provider_in_usd_per_million() {
     assert!(body.get("presets").is_none());
     assert!(body.get("capacity_strategy").is_none());
 }
+
+/// The Open Responses driver hands back the body it sent when asked, after
+/// OpenRouter's extension decorated it: the JSON the provider received.
+#[tokio::test]
+async fn captured_request_body_is_the_decorated_body_on_the_wire() {
+    for capture in [true, false] {
+        let server = MockServer::start().await;
+        let completed = json!({
+            "type": "response.completed",
+            "response": {"id": "resp_c", "status": "completed", "output": [],
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+        });
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("connection", "close")
+                    .set_body_raw(
+                        format!("event: response.completed\ndata: {completed}\n\n"),
+                        "text/event-stream",
+                    ),
+            )
+            .mount(&server)
+            .await;
+        let mut config = base_config("openai/gpt-6.1-sol");
+        config.capture_request = capture;
+
+        let response = provider(format!("{}/v1/responses", server.uri()))
+            .chat_completion(vec![Message::text(MessageRole::User, "hello")], &config)
+            .await
+            .expect("completion should succeed");
+
+        let requests = server.received_requests().await.unwrap();
+        let sent: serde_json::Value = requests.last().unwrap().body_json().unwrap();
+        assert_eq!(response.metadata.request_body, capture.then_some(sent));
+    }
+}
+
+// Native web search (`everruns/web_search`): the `web_search` function tool is
+// swapped for `openrouter:web_search` on the native engine only for models
+// OpenRouter runs their vendor's own search for, so OpenRouter's fallback
+// engine never answers in the search plan's place.
+
+fn native_search_config(
+    model: &str,
+    native: everruns_contracts::native_web_search::NativeWebSearch,
+) -> LlmCallConfig {
+    let mut config = base_config(model);
+    config.tools = vec![
+        everruns_contracts::ToolDefinition::function(
+            "web_search",
+            "Search the web",
+            json!({ "type": "object", "properties": { "query": { "type": "string" } } }),
+        ),
+        everruns_contracts::ToolDefinition::function(
+            "lookup",
+            "look something up",
+            json!({ "type": "object", "properties": {} }),
+        ),
+    ];
+    let (key, value) = native.to_driver_option();
+    config.driver_options.insert(key, value);
+    config
+}
+
+fn tool_types(body: &serde_json::Value) -> Vec<String> {
+    body["tools"]
+        .as_array()
+        .expect("tools array")
+        .iter()
+        .map(|tool| match tool["name"].as_str() {
+            Some(name) => format!("{}:{name}", tool["type"].as_str().unwrap_or_default()),
+            None => tool["type"].as_str().unwrap_or_default().to_string(),
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn native_search_sends_the_native_engine_instead_of_the_function_tool() {
+    use everruns_contracts::native_web_search::NativeWebSearch;
+    let native = NativeWebSearch {
+        provider: "auto".into(),
+        blocked_domains: vec!["pinterest.com".into()],
+        max_uses: Some(4),
+        ..Default::default()
+    };
+    let body =
+        capture_request_body(&native_search_config("anthropic/claude-opus-5-5", native)).await;
+
+    assert_eq!(
+        tool_types(&body),
+        ["function:lookup", "openrouter:web_search"]
+    );
+    assert_eq!(
+        body["tools"][1]["parameters"],
+        json!({ "engine": "native", "excluded_domains": ["pinterest.com"], "max_uses": 4 })
+    );
+    assert!(!body.to_string().contains("everruns/web_search"));
+}
+
+#[tokio::test]
+async fn native_search_keeps_the_function_tool_when_openrouter_would_fall_back() {
+    use everruns_contracts::native_web_search::NativeWebSearch;
+    let cases = [
+        // No native search: OpenRouter would answer with Exa.
+        ("mistralai/mistral-large", NativeWebSearch::default()),
+        ("openai/gpt-4o", NativeWebSearch::default()),
+        // OpenAI cannot exclude domains; Google takes no domain filters.
+        (
+            "openai/gpt-5.2",
+            NativeWebSearch {
+                blocked_domains: vec!["pinterest.com".into()],
+                ..Default::default()
+            },
+        ),
+        (
+            "google/gemini-3-pro",
+            NativeWebSearch {
+                allowed_domains: vec!["docs.rs".into()],
+                ..Default::default()
+            },
+        ),
+    ];
+    for (model, native) in cases {
+        let body = capture_request_body(&native_search_config(model, native)).await;
+        assert_eq!(
+            tool_types(&body),
+            ["function:web_search", "function:lookup"],
+            "{model}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn configured_openrouter_web_search_answers_for_native_search() {
+    let mut config = native_search_config("openai/gpt-5.2", Default::default());
+    insert_routing_option(
+        &mut config.driver_options,
+        &OpenRouterRoutingConfig {
+            server_tools: vec![OpenRouterServerTool::with_parameters(
+                OpenRouterServerToolKind::WebSearch,
+                json!({ "max_results": 3 }),
+            )],
+            ..Default::default()
+        },
+    );
+    let body = capture_request_body(&config).await;
+
+    // One web search entry: the agent's own OpenRouter Server Tools one.
+    assert_eq!(
+        tool_types(&body),
+        ["function:lookup", "openrouter:web_search"]
+    );
+    assert_eq!(body["tools"][1]["parameters"], json!({ "max_results": 3 }));
+}
+
+#[tokio::test]
+async fn no_native_request_leaves_the_function_tool_alone() {
+    let mut config = native_search_config("openai/gpt-5.2", Default::default());
+    config
+        .driver_options
+        .remove(everruns_contracts::native_web_search::NATIVE_WEB_SEARCH_OPTION);
+    let body = capture_request_body(&config).await;
+    assert_eq!(
+        tool_types(&body),
+        ["function:web_search", "function:lookup"]
+    );
+}
+
+#[tokio::test]
+async fn daily_quota_fails_without_short_retries() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            "error": {
+                "message": "Rate limit exceeded: free-models-per-day-high-balance.",
+                "code": 429,
+                "metadata": {
+                    "limit_source": "openrouter_free_tier_daily",
+                    "headers": {"X-RateLimit-Reset": "1791849600000"}
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+    let driver = provider(format!("{}/v1/responses", server.uri()));
+    let outcome = driver
+        .chat_completion_stream(
+            vec![Message::text(MessageRole::User, "hello")],
+            &base_config("example/model:free"),
+        )
+        .await;
+    let error = match outcome {
+        Err(error) => error,
+        Ok(_) => panic!("exhausted daily quota must fail"),
+    };
+    let requests = server.received_requests().await.expect("recorded requests");
+    assert_eq!(
+        requests.len(),
+        1,
+        "daily quota cannot recover in short backoff"
+    );
+    assert_eq!(
+        error.llm_error_kind(),
+        Some(everruns_contracts::LlmErrorKind::QuotaExhausted)
+    );
+}

@@ -43,12 +43,16 @@ left.
 |---|---|---|
 | `screenshot` | none | Capture the display |
 | `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | `coordinate` (optional `[x, y]`, defaults to the cursor), `text` (optional modifiers such as `shift` or `ctrl+shift`) | Click |
-| `left_click_drag` | `start_coordinate`, `coordinate` | Press, drag, and release |
+| `left_click_drag` | `start_coordinate`, `coordinate`, `text` (optional modifiers held during the drag) | Press, drag, and release |
+| `left_mouse_down`, `left_mouse_up` | none | Press or release the left button at the cursor, for drags that need several moves |
 | `mouse_move` | `coordinate` | Hover without clicking |
+| `cursor_position` | none | Report where the cursor is, as text |
 | `scroll` | `scroll_direction` (`up`, `down`, `left`, `right`), `scroll_amount` (wheel clicks, 1 to 50), optional `coordinate` | Scroll |
 | `type` | `text` | Type text at the keyboard focus |
 | `key` | `text` (a key or combo such as `Return`, `Tab`, `ctrl+a`), optional `repeat` | Press keys |
+| `hold_key` | `text` (a key or combo), `duration` (seconds, up to 30) | Hold keys down, then release them |
 | `wait` | `duration` (seconds, up to 30) | Pause |
+| `zoom` | `region` (`[x0, y0, x1, y1]`) | Return that part of the screen enlarged to the display size, to read small text |
 | `navigate` | `url` | Load a page |
 
 Example call:
@@ -110,7 +114,32 @@ the same configuration as `computer_use`.
 - The desktop has the E2B sandbox's network access, the same as
   `e2b_create_sandbox`. The session's network access list does not apply
   inside it.
-- `computer_use` and `computer_use_desktop` cannot be combined: both provide
-  the `computer` tool. Saving an agent, harness, or session with both, or
+- `computer_use`, `computer_use_desktop`, and `computer_use_daytona` cannot be
+  combined: each provides the `computer` tool. Saving an agent, harness, or session with both, or
   starting a session whose harness, agent, and session add up to both, fails
   with an error naming the two capabilities.
+
+## Daytona desktop display (experimental)
+
+The `computer_use_daytona` capability runs the same `computer` tool on a Linux
+desktop in a [Daytona](/capabilities/daytona/) sandbox. The sandbox comes from
+Daytona's default image, which ships the desktop, and is created at the
+configured display size on first use. The session keeps it between calls,
+starts it again after Daytona's auto-stop, and deletes it when the session's
+lease ends. Connect Daytona first. It takes the same configuration as
+`computer_use`.
+
+Every action goes through the sandbox's Computer Use API, so typed text and key
+names reach the desktop as data and never pass through a shell. A key the
+desktop has no name for is refused with the reason, and the agent can retry
+with another spelling.
+
+- There is no `navigate` action: the agent opens a browser on the desktop and
+  types the address.
+- The desktop has the Daytona sandbox's network access, the same as
+  `daytona_create_sandbox`. The session's network access list does not apply
+  inside it.
+- Changing the display size opens a new sandbox at the new size; the old one
+  is deleted.
+- `zoom` returns the region at its own size: Daytona's region capture does not
+  enlarge it.

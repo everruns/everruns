@@ -1,0 +1,15 @@
+{
+  "name": "everruns-session-authority",
+  "main": "src/index.js",
+  "build": { "command": "bash build-authority.sh" },
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "TENANT_ID": "example",
+    "EXECUTOR_URL": "http://127.0.0.1:8790/execute",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "SESSIONS", "class_name": "SessionAuthority" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionAuthority"] }],
+}

@@ -4,7 +4,10 @@
 // ApiResult: standard return type for API handlers
 // impl_auth_state!: macro to eliminate repeated FromRef<AppState> for AuthState impls
 
-use crate::storage::UpdateField;
+pub use crate::common_dto::{
+    AllowedAction, ErrorResponse, ListResponse, Pagination, deserialize_nullable_update_field,
+};
+pub use crate::resource_links::UrlBuilder;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -13,10 +16,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{DeserializeOwned, Error as DeError},
-};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -145,241 +145,6 @@ macro_rules! impl_auth_state {
     };
 }
 pub(crate) use impl_auth_state;
-
-/// Standard error response.
-///
-/// Wire shape is [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457):
-/// every error response includes `title` and `status`, and may include
-/// `detail`, `code`, `allowed_actions`, `retry_after_seconds`, `instance`,
-/// and `type`. The content type is rewritten to `application/problem+json`
-/// with the `application/problem+json` content type.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
-pub struct ErrorResponse {
-    /// RFC 9457 problem type URI. Optional; identifies the problem class.
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
-    #[schema(example = "https://docs.everruns.com/errors/session_not_found")]
-    pub type_uri: Option<String>,
-    /// Short, human-readable summary of the problem (e.g. "Not Found").
-    #[schema(example = "Session not found")]
-    pub title: String,
-    /// HTTP status code; mirrors the response status line.
-    #[schema(example = 404)]
-    pub status: u16,
-    /// Human-readable explanation specific to this occurrence.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(
-        example = "Session session_01933b5a000070008000000000000001 not found in org org_01933b5a000070008000000000000001."
-    )]
-    pub detail: Option<String>,
-    /// Request URI for this occurrence.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "/v1/sessions/session_01933b5a000070008000000000000001")]
-    pub instance: Option<String>,
-    /// Stable, machine-readable error code (snake_case).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "session_not_found")]
-    pub code: Option<String>,
-    /// Recovery actions the caller can take next.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allowed_actions: Vec<AllowedAction>,
-    /// Seconds the caller should wait before retrying (429 / transient 503).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = 30)]
-    pub retry_after_seconds: Option<u32>,
-}
-
-/// Agent-actionable link describing a follow-up the caller can take. Used in
-/// two contexts:
-///
-/// * **Error recovery** — `ErrorResponse.allowed_actions` carries `rel`s like
-///   `retry`, `retry-later`, `unarchive`, `get-existing` so the agent knows
-///   the right next call after a 4xx/429.
-/// * **Entity hypermedia** — `WithUrls<T>.allowed_actions` carries state-aware
-///   `rel`s like `cancel`, `events`, `self`, `update` on the entity itself
-///   so the agent can follow links instead of reconstructing routes from
-///   prose.
-///
-/// The shape is intentionally identical across both contexts; the closed
-/// `rel` vocabulary distinguishes them.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
-pub struct AllowedAction {
-    /// Link relation describing the action. Examples: `self`, `cancel`, `pause`,
-    /// `resume`, `events`, `retry`, `retry-later`, `unarchive`,
-    /// `get-existing`, `delete`, `update`.
-    pub rel: String,
-    /// OpenAPI `operationId` the caller should invoke. Lets an MCP client
-    /// resolve the call without parsing `href`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub operation_id: Option<String>,
-    /// HTTP method to use against `href`. Required for entity hypermedia
-    /// actions; usually omitted on error-recovery actions where the same
-    /// operation is retried with its original method.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "POST")]
-    pub method: Option<String>,
-    /// Short, agent-readable hint (e.g. "Shorten 'name' to <= 200 chars.",
-    /// "Cancel the active turn for this session.").
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hint: Option<String>,
-    /// Absolute (preferred) or relative URL the caller may invoke
-    /// directly. **Always present on entity hypermedia actions**
-    /// (`WithUrls<T>.allowed_actions`); **optional on error-recovery
-    /// actions** (`ErrorResponse.allowed_actions`) where the matching
-    /// `operation_id` is enough and the URI is implicit from the failed
-    /// call.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub href: Option<String>,
-    /// OpenAPI `$ref` to the request-body schema, when the action takes one
-    /// (e.g. `#/components/schemas/UpdateSessionRequest`). Lets a tool-calling
-    /// agent fetch the input shape without scanning the whole spec.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema_ref: Option<String>,
-}
-
-impl AllowedAction {
-    pub fn new(rel: impl Into<String>) -> Self {
-        Self {
-            rel: rel.into(),
-            ..Self::default()
-        }
-    }
-
-    pub fn with_operation_id(mut self, operation_id: impl Into<String>) -> Self {
-        self.operation_id = Some(operation_id.into());
-        self
-    }
-
-    pub fn with_method(mut self, method: impl Into<String>) -> Self {
-        self.method = Some(method.into());
-        self
-    }
-
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
-        self
-    }
-
-    pub fn with_href(mut self, href: impl Into<String>) -> Self {
-        self.href = Some(href.into());
-        self
-    }
-
-    pub fn with_schema_ref(mut self, schema_ref: impl Into<String>) -> Self {
-        self.schema_ref = Some(schema_ref.into());
-        self
-    }
-}
-
-impl ErrorResponse {
-    /// Construct an error whose `detail` is the supplied message.
-    ///
-    /// `title` is filled in from the HTTP reason phrase when this is later
-    /// passed through [`into_response`](Self::into_response). For full control,
-    /// build the struct directly or chain `.with_title(...)`.
-    pub fn new(detail: impl Into<String>) -> Self {
-        Self {
-            detail: Some(detail.into()),
-            ..Self::default()
-        }
-    }
-
-    /// Convert to axum response tuple, filling in `status` and (if missing)
-    /// `title` from the HTTP reason phrase.
-    pub fn into_response(mut self, status: StatusCode) -> (StatusCode, Json<Self>) {
-        self.status = status.as_u16();
-        if self.title.is_empty() {
-            self.title = status.canonical_reason().unwrap_or("Error").to_string();
-        }
-        (status, Json(self))
-    }
-
-    /// Create an internal server error response.
-    pub fn internal_error() -> (StatusCode, Json<Self>) {
-        Self {
-            detail: Some("Internal server error".to_string()),
-            code: Some("internal_error".to_string()),
-            ..Self::default()
-        }
-        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-    }
-
-    /// Create a not found error response.
-    pub fn not_found(resource: &str) -> (StatusCode, Json<Self>) {
-        Self {
-            detail: Some(format!("{} not found", resource)),
-            code: Some("not_found".to_string()),
-            ..Self::default()
-        }
-        .into_response(StatusCode::NOT_FOUND)
-    }
-
-    /// Hide a disabled feature's surface while explaining why a direct call failed.
-    pub fn feature_not_enabled(flag: &str) -> (StatusCode, Json<Self>) {
-        Self {
-            detail: Some(format!("Feature '{flag}' is not enabled")),
-            code: Some("feature_not_enabled".to_string()),
-            ..Self::default()
-        }
-        .into_response(StatusCode::NOT_FOUND)
-    }
-
-    /// Create a conflict error response (409).
-    pub fn conflict(message: &str) -> (StatusCode, Json<Self>) {
-        Self {
-            detail: Some(message.to_string()),
-            code: Some("conflict".to_string()),
-            ..Self::default()
-        }
-        .into_response(StatusCode::CONFLICT)
-    }
-
-    /// Create a bad gateway error response (502).
-    pub fn bad_gateway() -> (StatusCode, Json<Self>) {
-        Self {
-            detail: Some("Bad gateway".to_string()),
-            code: Some("bad_gateway".to_string()),
-            ..Self::default()
-        }
-        .into_response(StatusCode::BAD_GATEWAY)
-    }
-
-    // ---- Builders ---------------------------------------------------------
-
-    pub fn with_title(mut self, title: impl Into<String>) -> Self {
-        self.title = title.into();
-        self
-    }
-
-    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
-        self.detail = Some(detail.into());
-        self
-    }
-
-    pub fn with_code(mut self, code: impl Into<String>) -> Self {
-        self.code = Some(code.into());
-        self
-    }
-
-    pub fn with_type(mut self, type_uri: impl Into<String>) -> Self {
-        self.type_uri = Some(type_uri.into());
-        self
-    }
-
-    pub fn with_instance(mut self, instance: impl Into<String>) -> Self {
-        self.instance = Some(instance.into());
-        self
-    }
-
-    pub fn with_retry_after(mut self, seconds: u32) -> Self {
-        self.retry_after_seconds = Some(seconds);
-        self
-    }
-
-    pub fn with_action(mut self, action: AllowedAction) -> Self {
-        self.allowed_actions.push(action);
-        self
-    }
-}
 
 /// Log an internal error and return a generic 500 tuple `(StatusCode, String)`.
 ///
@@ -572,44 +337,6 @@ impl<T> ApiOptionExt<T> for Option<T> {
     }
 }
 
-/// Deserialize PATCH-style nullable fields into explicit tri-state semantics.
-pub fn deserialize_nullable_update_field<'de, D, T>(
-    deserializer: D,
-) -> Result<UpdateField<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: DeserializeOwned,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if value.is_null() {
-        Ok(UpdateField::Clear)
-    } else {
-        serde_json::from_value(value)
-            .map(UpdateField::Set)
-            .map_err(D::Error::custom)
-    }
-}
-
-/// Response wrapper for list endpoints.
-/// All list endpoints return responses wrapped in a `data` field.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ListResponse<T> {
-    /// Array of items returned by the list operation.
-    pub data: Vec<T>,
-}
-
-impl<T> ListResponse<T> {
-    pub fn new(data: Vec<T>) -> Self {
-        Self { data }
-    }
-}
-
-impl<T> From<Vec<T>> for ListResponse<T> {
-    fn from(data: Vec<T>) -> Self {
-        Self { data }
-    }
-}
-
 /// Response wrapper for paginated list endpoints.
 /// Includes pagination metadata along with the data array.
 ///
@@ -647,43 +374,13 @@ impl<T> PaginatedResponse<T> {
     }
 }
 
-/// Pagination parameters for list endpoints.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Pagination {
-    pub offset: u32,
-    pub limit: u32,
-}
-
-impl Pagination {
-    pub fn new(offset: u32, limit: u32) -> Self {
-        Self { offset, limit }
-    }
-}
-
 // ============================================================================
 // Resource URL enrichment
 // ============================================================================
 
-/// Builds absolute `url` (API) and `view_url` (UI) for resources.
-#[derive(Debug, Clone)]
-pub struct UrlBuilder {
-    api_base: String,
-    ui_base: String,
-}
-
+// `UrlBuilder` itself (construction and JSON link decoration) lives in
+// `crate::resource_links`; the typed hypermedia wrapping below is HTTP-only.
 impl UrlBuilder {
-    pub fn new(api_base: &str, ui_base: &str) -> Self {
-        Self {
-            api_base: api_base.trim_end_matches('/').to_string(),
-            ui_base: ui_base.trim_end_matches('/').to_string(),
-        }
-    }
-
-    /// Create from an `AuthConfig`.
-    pub fn from_auth_config(config: &crate::auth::config::AuthConfig) -> Self {
-        Self::new(&config.base_url, &config.frontend_url)
-    }
-
     /// Wrap a single resource with API and UI links plus its state-aware
     /// hypermedia actions (see `ResourceUrlable::allowed_actions`).
     pub fn wrap<T: ResourceUrlable + Serialize>(&self, item: T) -> WithUrls<T> {
@@ -703,14 +400,6 @@ impl UrlBuilder {
     /// Wrap a vec of resources.
     pub fn wrap_vec<T: ResourceUrlable + Serialize>(&self, items: Vec<T>) -> Vec<WithUrls<T>> {
         items.into_iter().map(|item| self.wrap(item)).collect()
-    }
-
-    /// Add resource links to any recognizable entity objects in a JSON value.
-    ///
-    /// This is the protocol-agnostic link aspect used for command/MCP output
-    /// and final API responses. It is additive only: existing link fields win.
-    pub fn decorate_value_links(&self, value: &mut Value) -> bool {
-        decorate_value_links(value, self)
     }
 }
 
@@ -930,169 +619,6 @@ fn response_is_json(response: &Response) -> bool {
         })
 }
 
-fn decorate_value_links(value: &mut Value, builder: &UrlBuilder) -> bool {
-    match value {
-        Value::Object(map) => {
-            let mut changed = false;
-            if !map.contains_key("ui_link")
-                && let Some(view_url) = map.get("view_url").and_then(Value::as_str)
-            {
-                map.insert("ui_link".to_string(), Value::String(view_url.to_string()));
-                changed = true;
-            }
-            if let Some(route) = route_for_object(map) {
-                if !map.contains_key("self_url")
-                    && let Some(api_path) = route.api_path
-                {
-                    map.insert(
-                        "self_url".to_string(),
-                        Value::String(format!("{}/{}", builder.api_base, api_path)),
-                    );
-                    changed = true;
-                }
-                if !map.contains_key("view_url") {
-                    let view_url = format!("{}/{}", builder.ui_base, route.ui_path);
-                    map.insert("view_url".to_string(), Value::String(view_url.clone()));
-                    changed = true;
-                    if !map.contains_key("ui_link") {
-                        map.insert("ui_link".to_string(), Value::String(view_url));
-                        changed = true;
-                    }
-                } else if !map.contains_key("ui_link")
-                    && let Some(view_url) = map.get("view_url").and_then(Value::as_str)
-                {
-                    map.insert("ui_link".to_string(), Value::String(view_url.to_string()));
-                    changed = true;
-                }
-            }
-
-            for child in map.values_mut() {
-                changed |= decorate_value_links(child, builder);
-            }
-            changed
-        }
-        Value::Array(items) => {
-            let mut changed = false;
-            for item in items {
-                changed |= decorate_value_links(item, builder);
-            }
-            changed
-        }
-        _ => false,
-    }
-}
-
-struct LinkRoute {
-    api_path: Option<String>,
-    ui_path: String,
-}
-
-struct ResourceId {
-    value: String,
-    include_self_url: bool,
-}
-
-fn route_for_object(map: &serde_json::Map<String, Value>) -> Option<LinkRoute> {
-    let id = own_resource_id(map)?;
-    let mut route = route_for_id(&id.value, map)?;
-    if !id.include_self_url {
-        route.api_path = None;
-    }
-    Some(route)
-}
-
-fn own_resource_id(map: &serde_json::Map<String, Value>) -> Option<ResourceId> {
-    for key in ["id", "public_id"] {
-        if let Some(id) = map.get(key).and_then(Value::as_str)
-            && route_for_id(id, map).is_some()
-        {
-            return Some(ResourceId {
-                value: id.to_string(),
-                include_self_url: true,
-            });
-        }
-    }
-
-    for key in [
-        "session_id",
-        "agent_id",
-        "harness_id",
-        "app_id",
-        "identity_id",
-        "mcp_server_id",
-        "skill_id",
-        "provider_id",
-        "model_id",
-        "eval_id",
-        "budget_id",
-    ] {
-        if let Some(id) = map.get(key).and_then(Value::as_str)
-            && route_for_id(id, map).is_some()
-        {
-            return Some(ResourceId {
-                value: id.to_string(),
-                include_self_url: false,
-            });
-        }
-    }
-
-    None
-}
-
-fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRoute> {
-    let Some((prefix, _)) = id.split_once('_') else {
-        return looks_like_capability(map).then(|| LinkRoute {
-            api_path: Some(format!("v1/capabilities/{id}")),
-            ui_path: format!("capabilities/{id}"),
-        });
-    };
-    let route = match prefix {
-        "agent" => ("v1/agents", format!("agents/{id}")),
-        "harness" => ("v1/harnesses", format!("harnesses/{id}")),
-        "session" => ("v1/sessions", format!("sessions/{id}/chat")),
-        "app" => ("v1/apps", format!("apps/{id}")),
-        "identity" => ("v1/virtual-users", format!("virtual-users/{id}")),
-        "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
-        "skill" => ("v1/skills", "skills".to_string()),
-        "provider" => ("v1/providers", "settings/providers".to_string()),
-        "model" => ("v1/models", "models".to_string()),
-        "eval" => ("v1/evals", format!("evals/{id}")),
-        "bdgt" => ("v1/budgets", "budgets".to_string()),
-        "sched" => {
-            let session_id = map.get("session_id").and_then(Value::as_str)?;
-            return Some(LinkRoute {
-                api_path: Some(format!("v1/sessions/{session_id}/schedules/{id}")),
-                ui_path: format!("sessions/{session_id}/schedules"),
-            });
-        }
-        _ if looks_like_capability(map) => {
-            return Some(LinkRoute {
-                api_path: Some(format!("v1/capabilities/{id}")),
-                ui_path: format!("capabilities/{id}"),
-            });
-        }
-        _ => return None,
-    };
-    Some(LinkRoute {
-        api_path: Some(format!("{}/{id}", route.0)),
-        ui_path: route.1,
-    })
-}
-
-fn looks_like_capability(map: &serde_json::Map<String, Value>) -> bool {
-    map.contains_key("tool_definitions")
-        || map.contains_key("tool_count")
-        || map.contains_key("dependencies")
-        || map.contains_key("config_schema")
-        || map
-            .get("type")
-            .and_then(Value::as_str)
-            .is_some_and(|value| matches!(value, "builtin" | "mcp_server" | "skill"))
-        || map.contains_key("is_mcp")
-        || map.contains_key("is_skill")
-        || map.contains_key("is_guardrail")
-}
-
 /// Trait for resources that can have `url` and `view_url` generated.
 pub trait ResourceUrlable {
     /// API path segment (e.g. `"v1/agents"`).
@@ -1214,10 +740,10 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 /// Hypermedia actions for an `Agent`.
 pub fn agent_allowed_actions(
     id: &str,
-    status: &crate::records::AgentStatus,
+    status: &crate::domains::agents::record::AgentStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::AgentStatus;
+    use crate::domains::agents::record::AgentStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1255,7 +781,7 @@ pub fn agent_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Agent {
+impl ResourceUrlable for crate::domains::agents::record::Agent {
     fn api_path() -> &'static str {
         "v1/agents"
     }
@@ -1273,10 +799,10 @@ impl ResourceUrlable for crate::records::Agent {
 /// Hypermedia actions for a `Harness`.
 pub fn harness_allowed_actions(
     id: &str,
-    status: &crate::records::HarnessStatus,
+    status: &crate::domains::harnesses::record::HarnessStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::HarnessStatus;
+    use crate::domains::harnesses::record::HarnessStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1309,7 +835,7 @@ pub fn harness_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Harness {
+impl ResourceUrlable for crate::domains::harnesses::record::Harness {
     fn api_path() -> &'static str {
         "v1/harnesses"
     }
@@ -1352,7 +878,7 @@ pub fn archival_app_ui_path(agent_id: Option<&str>) -> String {
     }
 }
 
-impl ResourceUrlable for crate::records::App {
+impl ResourceUrlable for crate::domains::apps::record::App {
     fn api_path() -> &'static str {
         "v1/apps"
     }
@@ -1374,7 +900,7 @@ impl ResourceUrlable for crate::records::App {
     }
 }
 
-impl ResourceUrlable for crate::records::Budget {
+impl ResourceUrlable for crate::domains::budgets::record::Budget {
     fn api_path() -> &'static str {
         "v1/budgets"
     }
@@ -1399,12 +925,12 @@ impl ResourceUrlable for crate::records::Budget {
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
     id: &str,
-    status: &crate::records::SessionStatus,
+    status: &crate::domains::sessions::record::SessionStatus,
     is_pinned: bool,
     is_archived: bool,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::SessionStatus;
+    use crate::domains::sessions::record::SessionStatus;
     let mut actions = Vec::new();
     actions.push(
         AllowedAction::new("self")
@@ -1488,7 +1014,7 @@ pub fn session_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Session {
+impl ResourceUrlable for crate::domains::sessions::record::Session {
     fn api_path() -> &'static str {
         "v1/sessions"
     }
@@ -1515,7 +1041,7 @@ impl ResourceUrlable for crate::records::Session {
     }
 }
 
-impl ResourceUrlable for crate::records::VirtualUser {
+impl ResourceUrlable for crate::domains::virtual_users::record::VirtualUser {
     fn api_path() -> &'static str {
         "v1/virtual-users"
     }
@@ -1527,7 +1053,7 @@ impl ResourceUrlable for crate::records::VirtualUser {
     }
 }
 
-impl ResourceUrlable for crate::records::eval::Eval {
+impl ResourceUrlable for crate::domains::evals::record::Eval {
     fn api_path() -> &'static str {
         "v1/evals"
     }
@@ -1539,28 +1065,28 @@ impl ResourceUrlable for crate::records::eval::Eval {
     }
 }
 
-impl ResourceUrlable for crate::records::McpServer {
+impl ResourceUrlable for crate::domains::mcp_servers::record::McpServer {
     fn api_path() -> &'static str {
         "v1/mcp-servers"
     }
     fn ui_path() -> &'static str {
-        "mcp-servers"
+        "settings/mcp-catalog"
     }
     fn resource_id(&self) -> String {
         self.id.to_string()
     }
     fn ui_url_path(&self) -> String {
-        "mcp-servers".to_string()
+        "settings/mcp-catalog".to_string()
     }
 }
 
 /// Hypermedia actions for a `Skill`.
 pub fn skill_allowed_actions(
     id: &str,
-    status: &crate::records::SkillStatus,
+    status: &crate::domains::skills::record::SkillStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use crate::records::SkillStatus;
+    use crate::domains::skills::record::SkillStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1591,7 +1117,7 @@ pub fn skill_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for crate::records::Skill {
+impl ResourceUrlable for crate::domains::skills::record::Skill {
     fn api_path() -> &'static str {
         "v1/skills"
     }
@@ -1609,22 +1135,22 @@ impl ResourceUrlable for crate::records::Skill {
     }
 }
 
-impl ResourceUrlable for crate::records::provider::Provider {
+impl ResourceUrlable for crate::domains::providers::record::Provider {
     fn api_path() -> &'static str {
         "v1/providers"
     }
     fn ui_path() -> &'static str {
-        "settings/providers"
+        "models/providers"
     }
     fn resource_id(&self) -> String {
         self.id.to_string()
     }
     fn ui_url_path(&self) -> String {
-        "settings/providers".to_string()
+        format!("models/providers/{}", self.id)
     }
 }
 
-impl ResourceUrlable for crate::records::Model {
+impl ResourceUrlable for crate::domains::models::record::Model {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -1639,7 +1165,7 @@ impl ResourceUrlable for crate::records::Model {
     }
 }
 
-impl ResourceUrlable for crate::records::ModelWithProvider {
+impl ResourceUrlable for crate::domains::models::record::ModelWithProvider {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -2241,7 +1767,7 @@ mod tests {
 
     #[test]
     fn session_actions_include_cancel_when_turn_is_active() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let actions = session_allowed_actions(
             "session_01",
             &SessionStatus::Active,
@@ -2265,7 +1791,7 @@ mod tests {
 
     #[test]
     fn session_actions_omit_cancel_in_idle_or_paused_states() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         for status in [
             SessionStatus::Started,
             SessionStatus::Idle,
@@ -2283,7 +1809,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_pin_rel_on_is_pinned() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let unpinned = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -2316,7 +1842,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_archive_rel_on_is_archived() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let active = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -2349,7 +1875,7 @@ mod tests {
 
     #[test]
     fn session_actions_always_include_self_events_stream_update_delete() {
-        use crate::records::SessionStatus;
+        use crate::domains::sessions::record::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
             &SessionStatus::Idle,
@@ -2413,7 +1939,7 @@ mod tests {
 
     #[test]
     fn agent_actions_offer_copy_only_when_active() {
-        use crate::records::AgentStatus;
+        use crate::domains::agents::record::AgentStatus;
         let active = agent_allowed_actions("agent_01", &AgentStatus::Active, "https://api.example");
         let archived =
             agent_allowed_actions("agent_01", &AgentStatus::Archived, "https://api.example");
@@ -2441,7 +1967,7 @@ mod tests {
 
     #[test]
     fn harness_actions_offer_copy_only_when_active() {
-        use crate::records::HarnessStatus;
+        use crate::domains::harnesses::record::HarnessStatus;
         let active =
             harness_allowed_actions("harness_01", &HarnessStatus::Active, "https://api.example");
         let archived = harness_allowed_actions(
@@ -2493,7 +2019,7 @@ mod tests {
 
     #[test]
     fn skill_actions_omit_delete_for_terminal_states() {
-        use crate::records::SkillStatus;
+        use crate::domains::skills::record::SkillStatus;
         for status in [SkillStatus::Active, SkillStatus::Disabled] {
             let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
             assert!(

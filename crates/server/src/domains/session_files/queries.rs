@@ -81,7 +81,7 @@ pub async fn verify_session(
     // role and bypasses policy evaluation (TM-AUTHZ-002), so this was the one
     // check it did not already pass — the only thing between *any* internal
     // path and a person's private files, including paths driven by inbound
-    // traffic (`api/slack_events`, `api/fcp`, the capability service, the
+    // traffic (`channels/slack/events`, `api/fcp`, the capability service, the
     // durable seal). None of them read the file surface at all.
     //
     // `acting_for_session` names the relationship instead: the worker declares

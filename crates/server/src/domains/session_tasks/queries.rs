@@ -1,5 +1,5 @@
-use crate::domains::agents::queries::row_to_agent;
 use crate::domains::common::{CommandError, Ctx};
+use crate::domains::harnesses::record::{Harness, HarnessStatus};
 use crate::kernel_imports::{
     AgentCapabilityConfig, SessionTask, contracts::error::from_json,
     contracts::typed_id::HarnessId, contracts::typed_id::SessionId,
@@ -8,12 +8,14 @@ use crate::kernel_imports::{
     session_services::SessionScheduleStore, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
-use crate::records::{Harness, HarnessStatus};
+use crate::max_iterations;
+use crate::setup::org_init;
+use crate::storage::row_to_agent;
 use crate::storage::{
     DbSessionScheduleStore, StorageBackend, create_db_session_storage_store,
-    create_db_session_storage_store_without_encryption, session_task_store::DbSessionTaskRegistry,
+    create_db_session_storage_store_without_encryption,
+    runtime::session_task::DbSessionTaskRegistry,
 };
-use crate::{max_iterations, org_init};
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::session_task::SessionTaskRegistry;
 use std::collections::HashSet;
@@ -90,7 +92,9 @@ pub async fn tool_context_for_ctx(
         tools: serde_json::from_value(session_row.tools.clone()).unwrap_or_default(),
         max_iterations: max_iterations::from_db(session_row.max_iterations),
         parallel_tool_calls: session_row.parallel_tool_calls,
+        max_output_tokens: None,
         mcp_servers: serde_json::from_value(session_row.mcp_servers.clone()).unwrap_or_default(),
+        communication: None,
     };
 
     // --- Load harness chain (root-to-leaf) ---
@@ -106,23 +110,24 @@ pub async fn tool_context_for_ctx(
     let harness_layers: Vec<Harness> = load_harness_chain(&ctx.db, org_id, harness_id).await?;
 
     // --- Load agent (if any) ---
-    let agent_layer: Option<crate::records::Agent> = if let Some(agent_id) = session_row.agent_id {
-        let agent_row = ctx
-            .db
-            .get_agent(org_id, agent_id)
-            .await?
-            .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps: Vec<AgentCapabilityConfig> = ctx
-            .db
-            .get_agent_capabilities(agent_id.uuid())
-            .await?
-            .into_iter()
-            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-            .collect();
-        Some(row_to_agent(agent_row, caps))
-    } else {
-        None
-    };
+    let agent_layer: Option<crate::domains::agents::record::Agent> =
+        if let Some(agent_id) = session_row.agent_id {
+            let agent_row = ctx
+                .db
+                .get_agent(org_id, agent_id)
+                .await?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
+            let caps: Vec<AgentCapabilityConfig> = ctx
+                .db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+                .collect();
+            Some(row_to_agent(agent_row, caps))
+        } else {
+            None
+        };
 
     // --- Fold overlays to derive effective network ACL ---
     let harness_overlays = harness_layers.iter().map(AgentConfigOverlay::from);

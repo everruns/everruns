@@ -62,6 +62,7 @@ impl BackgroundExecutableTool for TestBackgroundTool {
             total: Some(1),
             unit: Some("step".to_string()),
             label: Some("done".to_string()),
+            ..Default::default()
         })
         .await
         .map_err(ToolExecutionResult::internal_error)?;
@@ -316,6 +317,7 @@ impl SubagentSessionDelegate for TestSubagentDelegate {
         &self,
         _session_id: SessionId,
         _agent_id: everruns_contracts::typed_id::AgentId,
+        _reason: &str,
     ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionParticipantId> {
         Err(AgentLoopError::tool("test store does not add participants"))
     }

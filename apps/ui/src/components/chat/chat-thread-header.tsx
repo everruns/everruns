@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
+import { ChatMcpServersButton } from "@/components/chat/chat-mcp-servers";
 import { LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
@@ -144,8 +145,13 @@ export function ChatThreadHeader({
           />
         </>
       )}
+      <ChatMcpServersButton
+        sessionId={session.id}
+        status={session.status}
+        readOnly={!!session.archived_at}
+      />
       <LinkButton
-        href={`/sessions/${session.id}/transcript`}
+        href={`/sessions/${session.id}/trace`}
         variant="outline"
         size="sm"
         aria-label="Open session"
@@ -181,7 +187,7 @@ export function ChatThreadHeader({
     );
   }
   return (
-    <div className="flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
+    <div className="flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-2">

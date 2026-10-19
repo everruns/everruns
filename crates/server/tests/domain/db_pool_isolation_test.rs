@@ -302,7 +302,7 @@ async fn advisory_lock_wait_is_bounded() {
 #[tokio::test(flavor = "multi_thread")]
 async fn chatgpt_token_lease_waiters_do_not_starve_request_queries() {
     use everruns_drivers::chatgpt::auth::TokenStore;
-    use everruns_server::services::chatgpt::DbTokenStore;
+    use everruns_server::domains::user_connections::chatgpt::DbTokenStore;
     use everruns_server::storage::{EncryptionService, StorageBackend};
 
     let backend = std::sync::Arc::new(StorageBackend::from_database(tiny_request_pool().await));
@@ -339,5 +339,47 @@ async fn chatgpt_token_lease_waiters_do_not_starve_request_queries() {
     drop(first);
     while let Some(waiter) = waiters.join_next().await {
         waiter.expect("lease waiter task");
+    }
+}
+
+/// Preparing a fixture once must not turn API tests back into shared storage.
+#[tokio::test]
+async fn seeded_api_fixtures_remain_private_and_preserve_fixture_modes() {
+    use crate::test_harness::TestServer;
+
+    let first = TestServer::in_memory().await;
+    let original_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+        .fetch_one(&first.pool)
+        .await
+        .unwrap();
+    assert!(original_models.0 > 0);
+    sqlx::raw_sql("DELETE FROM models; UPDATE organizations SET name = 'changed by first test' WHERE org_id = 1")
+        .execute(&first.pool).await.unwrap();
+    let second = TestServer::in_memory().await;
+    assert_ne!(first.database_url(), second.database_url());
+    let second_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+        .fetch_one(&second.pool)
+        .await
+        .unwrap();
+    assert_eq!(original_models, second_models);
+    let name: (String,) = sqlx::query_as("SELECT name FROM organizations WHERE org_id = 1")
+        .fetch_one(&second.pool)
+        .await
+        .unwrap();
+    assert_ne!(name.0, "changed by first test");
+    let first_models: (i64,) = sqlx::query_as("SELECT count(*) FROM models")
+        .fetch_one(&first.pool)
+        .await
+        .unwrap();
+    assert_eq!(first_models.0, 0);
+
+    let postgres = TestServer::new().await;
+    for (pool, expected) in [(&second.pool, 1_i64), (&postgres.pool, 0)] {
+        let fixtures: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM organizations WHERE org_id = 999")
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        assert_eq!(fixtures.0, expected);
     }
 }

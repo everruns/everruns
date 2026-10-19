@@ -231,8 +231,8 @@ PACT Identity profile. Add `pact` to an A2A channel's config to serve it:
 | `personal_agents[].jwks_uri` or `jwks` | Where its public keys are: an HTTPS URL, or the JWKS document inline. |
 | `personal_agents[].enabled` | `false` refuses that personal agent. Defaults to `true`. |
 
-The channel is then also served at `/v1/a2a/{channel_id}`, with its PACT Agent
-Card at `/v1/a2a/{channel_id}/.well-known/agent-card.json`. Each request
+The channel is then also served at `/v1/channels/{channel_id}/a2a/pact`, with its PACT Agent
+Card at `/v1/channels/{channel_id}/a2a/pact/.well-known/agent-card.json`. Each request
 carries a short-lived ES256 or RS256 JWT that the personal agent signs for one
 of its users (`sub`). `message:send` answers with the agent's reply as a
 Message. Its `contextId` continues the conversation for that same user only,
@@ -281,7 +281,7 @@ delegation token for exactly those permissions (OAuth 2.0 device code).
 Login and connected pages may use plain `http://` on `localhost` for local
 development.
 
-The OAuth endpoints live under `/v1/a2a/{channel_id}/oauth/`, with metadata
+The OAuth endpoints live under `/v1/channels/{channel_id}/a2a/pact/oauth/`, with metadata
 at `.well-known/oauth-authorization-server` and the signing keys at
 `jwks.json`. Your account API verifies the delegation tokens against those
 keys: `typ` is `at+jwt`, `iss` is the `oauth` URL, `aud` the endpoint URL,
@@ -366,3 +366,13 @@ cargo run -p serve-example-a2a --bin writer -- "tide pools"
 - [Sub-agents](/capabilities/sub-agents/), the shared `spawn_agent` tool.
 - [ARD Discovery](/integrations/ard/), for finding A2A agents at runtime.
 - [Channels](/features/channels/), for channel lifecycle and legacy routes.
+
+## Watch PACT account consent
+
+A personal agent checks an order, receives a request for additional permission
+when cancellation is refused, and verifies the signed receipt after the customer
+approves. This is a local walkthrough with a demo client and synthetic store data.
+
+<iframe src="https://www.youtube-nocookie.com/embed/9FZiYv5PsWY?rel=0" title="PACT account consent and signed receipts in Everruns" loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+[Watch on YouTube](https://www.youtube.com/watch?v=9FZiYv5PsWY).

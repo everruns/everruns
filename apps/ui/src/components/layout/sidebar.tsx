@@ -30,7 +30,6 @@ import {
   defaultOperationalNavigation,
   defaultQualityNavigation,
   defaultRegistriesNavigation,
-  defaultSandboxesNavigation,
 } from "@/lib/navigation";
 import type { NavigationItem, NavigationSection } from "@/lib/navigation";
 
@@ -48,7 +47,6 @@ export {
   defaultOperationalNavigation,
   defaultQualityNavigation,
   defaultRegistriesNavigation,
-  defaultSandboxesNavigation,
 };
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useProviders } from "@/hooks/use-providers";
@@ -115,7 +113,7 @@ export function Sidebar({
             ? {
                 ...item,
                 warningTooltip:
-                  "No LLM provider configured. Set one up in Settings → Providers to use Chat.",
+                  "No provider connected. Connect one in Models → Providers to use Chat.",
               }
             : item,
         ),

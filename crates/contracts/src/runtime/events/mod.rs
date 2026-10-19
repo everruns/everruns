@@ -15,6 +15,8 @@ mod llm_data;
 mod message_data;
 mod reason_data;
 mod sandbox_lifecycle_data;
+mod severity;
+mod timer_data;
 mod tool_data;
 mod turn_data;
 mod usage;
@@ -25,6 +27,8 @@ pub use llm_data::*;
 pub use message_data::*;
 pub use reason_data::*;
 pub use sandbox_lifecycle_data::*;
+pub use severity::*;
+pub use timer_data::*;
 pub use tool_data::*;
 pub use turn_data::*;
 pub use usage::*;
@@ -41,6 +45,12 @@ pub const OUTPUT_MESSAGE_COMPLETED: &str = "output.message.completed";
 /// instead. The subsequent `output.message.completed` event carries the
 /// replacement as the persisted assistant message.
 pub const OUTPUT_MESSAGE_REPLACED: &str = "output.message.replaced";
+
+// Conversation events
+/// A message the agent sent to the conversation with `send_message` (explicit
+/// communication). This, not assistant text, is what people see from an agent
+/// that talks explicitly.
+pub const CONVERSATION_MESSAGE: &str = "conversation.message";
 
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
@@ -71,6 +81,8 @@ pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
 /// A provider-executed (hosted) tool call changed state (EVE-1115).
 pub const TOOL_HOSTED_CALL: &str = "tool.hosted_call";
+/// A tool a shell script called through `tools` finished (Tools in Shell).
+pub const TOOL_NESTED_CALL: &str = "tool.nested_call";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -125,8 +137,11 @@ pub const ENVIRONMENT_INSTANCE_LOST: &str = "environment.instance_lost";
 /// Legacy event type retained so historical event streams remain queryable.
 pub const ENVIRONMENT_RECOVERED: &str = "environment.recovered";
 
-// Schedule events
-pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
+// Timer events: the session log is the source of truth for when a session
+// wakes; schedule tables and queues are indexes rebuilt from these entries.
+pub const TIMER_SET: &str = "timer.set";
+pub const TIMER_FIRED: &str = "timer.fired";
+pub const TIMER_CANCELLED: &str = "timer.cancelled";
 
 // Subagent lifecycle events (`subagent.*`) were retired (EVE-585): the subagent
 // flow became Session Tasks and now emits `task.*` events. The legacy types are
@@ -164,6 +179,7 @@ pub const VOICE_OUTPUT_TRANSCRIPT_DELTA: &str = "voice.output_transcript.delta";
 pub const VOICE_OUTPUT_TRANSCRIPT_COMPLETED: &str = "voice.output_transcript.completed";
 pub const VOICE_SESSION_ENDED: &str = "voice.session.ended";
 pub const VOICE_SESSION_FAILED: &str = "voice.session.failed";
+pub const VOICE_OUTPUT_INTERRUPTED: &str = "voice.output.interrupted";
 
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
@@ -174,6 +190,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     OUTPUT_MESSAGE_DELTA,
     OUTPUT_MESSAGE_COMPLETED,
     OUTPUT_MESSAGE_REPLACED,
+    CONVERSATION_MESSAGE,
     TURN_STARTED,
     TURN_COMPLETED,
     TURN_FAILED,
@@ -192,6 +209,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TRANSCRIPT_REPAIRED,
     TOOL_CALL_REPAIRED,
     TOOL_HOSTED_CALL,
+    TOOL_NESTED_CALL,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -206,7 +224,9 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SANDBOX_RECOVERED,
     ENVIRONMENT_INSTANCE_LOST,
     ENVIRONMENT_RECOVERED,
-    SCHEDULE_TRIGGERED,
+    TIMER_SET,
+    TIMER_FIRED,
+    TIMER_CANCELLED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
     CONTEXT_COMPACTION_SKIPPED,
@@ -222,6 +242,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
     VOICE_SESSION_ENDED,
     VOICE_SESSION_FAILED,
+    VOICE_OUTPUT_INTERRUPTED,
     FILE_WRITTEN,
     CAPABILITY_USAGE,
 ];
@@ -584,7 +605,11 @@ pub const FILE_OP_CREATE: &str = "create";
 /// - `session.idled` → SessionIdledData
 /// - `session.title.updated` → SessionTitleUpdatedData
 /// - `session.model.changed` → SessionModelChangedData
+/// - `timer.set` → TimerSetData
+/// - `timer.fired` → TimerFiredData
+/// - `timer.cancelled` → TimerCancelledData
 /// - `file.written` → FileWrittenData
+/// - `conversation.message` → ConversationMessageData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
 //     field on `Event`/`EventRequest`, never inside `data`), and
@@ -609,6 +634,7 @@ pub enum EventData {
     OutputMessageDelta(OutputMessageDeltaData),
     OutputMessageStarted(OutputMessageStartedData),
     OutputMessageReplaced(OutputMessageReplacedData),
+    ConversationMessage(ConversationMessageData),
     OutputMessageCompleted(OutputMessageCompletedData),
 
     // Turn lifecycle events
@@ -634,6 +660,8 @@ pub enum EventData {
     ToolCallRepaired(ToolCallRepairedData),
     /// A provider-executed (hosted) tool call changed state.
     ToolHostedCall(HostedToolCallData),
+    /// A tool a shell script called through `tools` finished.
+    ToolNestedCall(ToolNestedCallData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -653,6 +681,11 @@ pub enum EventData {
     SessionIdled(SessionIdledData),
     SessionTitleUpdated(SessionTitleUpdatedData),
     SessionModelChanged(SessionModelChangedData),
+
+    // Timer events
+    TimerSet(TimerSetData),
+    TimerFired(TimerFiredData),
+    TimerCancelled(TimerCancelledData),
 
     // Managed Sandbox lifecycle events
     SandboxInstanceLost(SandboxLifecycleData),
@@ -692,6 +725,7 @@ pub enum EventData {
     VoiceOutputTranscriptCompleted(VoiceTranscriptData),
     VoiceSessionEnded(VoiceSessionEndedData),
     VoiceSessionFailed(VoiceSessionFailedData),
+    VoiceOutputInterrupted(VoiceOutputInterruptedData),
 
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
@@ -747,6 +781,7 @@ impl EventData {
                     .into_iter()
                     .map(RuntimeMessage::into_public)
                     .collect();
+                data.request_body = data.request_body.map(llm_data::public_request_body);
                 EventData::LlmGeneration(data)
             }
             other => other,
@@ -841,6 +876,9 @@ event_data_kinds! {
     OutputMessageReplaced(OutputMessageReplacedData) = OUTPUT_MESSAGE_REPLACED,
     OutputMessageCompleted(OutputMessageCompletedData) = OUTPUT_MESSAGE_COMPLETED,
 
+    // Conversation events
+    ConversationMessage(ConversationMessageData) = CONVERSATION_MESSAGE,
+
     // Turn lifecycle events
     TurnStarted(TurnStartedData) = TURN_STARTED,
     TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
@@ -865,6 +903,7 @@ event_data_kinds! {
     TranscriptRepaired(TranscriptRepairedData) = TRANSCRIPT_REPAIRED,
     ToolCallRepaired(ToolCallRepairedData) = TOOL_CALL_REPAIRED,
     ToolHostedCall(HostedToolCallData) = TOOL_HOSTED_CALL,
+    ToolNestedCall(ToolNestedCallData) = TOOL_NESTED_CALL,
 
     // LLM events
     LlmGeneration(LlmGenerationData) = LLM_GENERATION,
@@ -881,6 +920,11 @@ event_data_kinds! {
     SessionIdled(SessionIdledData) = SESSION_IDLED,
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
     SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
+
+    // Timer events
+    TimerSet(TimerSetData) = TIMER_SET,
+    TimerFired(TimerFiredData) = TIMER_FIRED,
+    TimerCancelled(TimerCancelledData) = TIMER_CANCELLED,
 
     // Managed Sandbox lifecycle events
     SandboxInstanceLost(SandboxLifecycleData) = SANDBOX_INSTANCE_LOST,
@@ -911,6 +955,7 @@ event_data_kinds! {
     VoiceOutputTranscriptCompleted(VoiceTranscriptData) = VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
     VoiceSessionEnded(VoiceSessionEndedData) = VOICE_SESSION_ENDED,
     VoiceSessionFailed(VoiceSessionFailedData) = VOICE_SESSION_FAILED,
+    VoiceOutputInterrupted(VoiceOutputInterruptedData) = VOICE_OUTPUT_INTERRUPTED,
 
     // Session task lifecycle events
     TaskCreated(SessionTaskEventData) = TASK_CREATED,
@@ -941,6 +986,7 @@ impl_from_event_data! {
     OutputMessageDeltaData => OutputMessageDelta,
     OutputMessageReplacedData => OutputMessageReplaced,
     OutputMessageCompletedData => OutputMessageCompleted,
+    ConversationMessageData => ConversationMessage,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
     TurnFailedData => TurnFailed,
@@ -960,6 +1006,7 @@ impl_from_event_data! {
     TranscriptRepairedData => TranscriptRepaired,
     ToolCallRepairedData => ToolCallRepaired,
     HostedToolCallData => ToolHostedCall,
+    ToolNestedCallData => ToolNestedCall,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,
@@ -970,6 +1017,9 @@ impl_from_event_data! {
     SessionIdledData => SessionIdled,
     SessionTitleUpdatedData => SessionTitleUpdated,
     SessionModelChangedData => SessionModelChanged,
+    TimerSetData => TimerSet,
+    TimerFiredData => TimerFired,
+    TimerCancelledData => TimerCancelled,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     ContextCompactionSkippedData => ContextCompactionSkipped,
@@ -978,6 +1028,7 @@ impl_from_event_data! {
     VoiceSessionStartedData => VoiceSessionStarted,
     VoiceSessionEndedData => VoiceSessionEnded,
     VoiceSessionFailedData => VoiceSessionFailed,
+    VoiceOutputInterruptedData => VoiceOutputInterrupted,
 }
 
 impl EventData {

@@ -183,11 +183,8 @@ async fn assert_system_prompt_for_store(store: Arc<dyn SessionFileSystem>) {
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
     let cap = FileSystemCapability;
     let ctx = SystemPromptContext {
-        session_id: SessionId::from_seed(7503),
-        locale: None,
         file_store: Some(store),
-        model: None,
-        session_storage: None,
+        ..SystemPromptContext::without_file_store(SessionId::from_seed(7503))
     };
     let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
     assert_system_prompt(&prompt, &expectations);
@@ -233,6 +230,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
     let stdout_path = format!("{root}/outputs/call_identity.stdout");
 
     let mut persist_result = ToolResult {
+        details: None,
         tool_call_id: "call_identity".to_string(),
         result: Some(json!({
             "stdout": "stdout preview",
@@ -246,7 +244,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
             "stdout body beyond preview\n--- stderr ---\nstderr body beyond preview".to_string(),
         ),
     };
-    PersistOutputHook
+    PersistOutputHook::default()
         .after_exec(
             &output_tool_call(),
             &output_tool_def(true),
@@ -262,6 +260,7 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
         .map(|i| json!({"id": i, "name": format!("row-{i}")}))
         .collect();
     let mut distill_result = ToolResult {
+        details: None,
         tool_call_id: "call_identity".to_string(),
         result: Some(json!({"rows": rows})),
         images: None,
@@ -285,11 +284,8 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
 async fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
     let ctx = SystemPromptContext {
-        session_id: SessionId::from_seed(7507),
-        locale: None,
         file_store: Some(store),
-        model: None,
-        session_storage: None,
+        ..SystemPromptContext::without_file_store(SessionId::from_seed(7507))
     };
     let registry = runtime_capability_registry();
     let collected = collect_capabilities(
@@ -313,11 +309,8 @@ async fn filesystem_root_rewrite_precedes_deferred_schema_capture() {
     let store: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
     let ctx = SystemPromptContext {
-        session_id: SessionId::from_seed(7508),
-        locale: None,
         file_store: Some(store),
-        model: None,
-        session_storage: None,
+        ..SystemPromptContext::without_file_store(SessionId::from_seed(7508))
     };
 
     let filesystem_hooks =
@@ -491,11 +484,8 @@ async fn collected_capability_prompt_uses_store_root() {
     let store: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
     let ctx = SystemPromptContext {
-        session_id: SessionId::from_seed(7506),
-        locale: None,
         file_store: Some(store),
-        model: None,
-        session_storage: None,
+        ..SystemPromptContext::without_file_store(SessionId::from_seed(7506))
     };
     let registry = runtime_capability_registry();
     let collected = collect_capabilities(

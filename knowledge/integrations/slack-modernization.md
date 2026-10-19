@@ -25,7 +25,7 @@ kept here because it is not recoverable from the code, and because the two open 
 depend on it.
 
 Implementation detail lives in
-[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md);
+[`knowledge/integrations/slack-integration.md`](slack-integration.md);
 the channel abstraction it instantiates lives in
 [Messaging Integrations](messaging-integrations.md).
 
@@ -36,7 +36,8 @@ feature does not replace the channel bot; the same app still answers `@mentions`
 channel and *additionally* gains an assistant container. Which surface an event belongs
 to is knowable from the event itself. So configuration carries a single
 `agent_surface_enabled` boolean that governs the manifest and event subscriptions, and
-delivery style is selected per event. A third `reply_mode`, or a separate `slack_agent`
+delivery style is selected per event. A third `reply_mode` (that setting has since moved
+to the agent as [Explicit Communication](explicit-communication.md)), or a separate `slack_agent`
 channel type, were both considered and rejected: they model as static configuration
 something that is a property of the inbound event.
 
@@ -57,7 +58,7 @@ status text would leak internals into a user-facing surface. AG-UI already solve
 with a `None` / `Generic` / `Narrated` policy; Slack consumes the same policy rather
 than growing a second one. What a public surface may reveal stays decided in one place.
 Exercised by EVE-975: the policy moved out of `api/ag_ui.rs` into
-`everruns_server::records::exposure::public_tool_activity_text`, which both surfaces now
+`everruns_server::domains::agent_channels::record::exposure::public_tool_activity_text`, which both surfaces now
 call. Slack channels grew the same `tool_visibility` / `generic_tool_text` knobs so the
 pane is configured like any other public surface rather than hard-coded.
 
@@ -102,12 +103,12 @@ from a classic Events API bot to a Slack agent app.
 
 EVE-978 settled the last gap: suggested prompts come from the agent's conversation
 starters, falling back to the harness's, resolved by
-`everruns_server::records::exposure::resolve_starters` and emitted into the manifest's
+`everruns_server::domains::agent_channels::record::exposure::resolve_starters` and emitted into the manifest's
 `features.agent_view.suggested_prompts`. The field was already there for Platform Chat,
 so the prompts are authored by whoever configures the agent rather than generated, and an
 agent with no starters emits no prompts at all — an empty pane beats prompts nobody wrote.
 See "Suggested prompts come from conversation starters" in
-[`crates/server/specs/slack-integration.md`](../../crates/server/specs/slack-integration.md).
+[`knowledge/integrations/slack-integration.md`](slack-integration.md).
 
 EVE-975 and EVE-988 have since shipped. Two decisions from EVE-975 are worth keeping:
 

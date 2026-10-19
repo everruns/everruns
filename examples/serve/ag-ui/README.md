@@ -4,8 +4,9 @@ A [serve](../../../crates/serve) app streamed to CopilotKit or any
 [AG-UI](https://docs.ag-ui.com) 1.0 client. The `ag-ui` feature serves
 `POST /v1/channels/assistant/ag-ui`, the same route shape as an Everruns endpoint, so
 a front end moves between the two by base URL alone. The `deploy` tool needs
-approval, which the client sees as an interrupt. It runs offline; without a
-model gateway, the agent follows a scripted simulator.
+approval, which the client sees as an interrupt. The agent runs on
+`openai/gpt-6.1-sol`: set `OPENAI_API_KEY` (or a host's `SERVE_GATEWAY_URL` /
+`OPENROUTER_API_KEY`).
 
 ```sh
 cargo run -p serve-example-ag-ui              # dev server on :3000
@@ -27,15 +28,14 @@ npm start               # approves; `npm start -- reject` rejects
 ```text
 [RUN_STARTED]
 [RUN_FINISHED]
-interrupt call_llmsim_0_0: tool_approval -> allow
+interrupt call_…: tool_approval -> allow
 [RUN_STARTED]
-Deployed to staging. (Offline demo reply: the deployment is in the tool result.)
+Deployed to staging.
 [TEXT_MESSAGE_END]
 [RUN_FINISHED]
 ```
 
-The offline script replies the same way either way; on a real model a
-rejected call never runs and the reply says so. `SERVE_URL` overrides the base
+A rejected call never runs, and the model's reply says so. `SERVE_URL` overrides the base
 URL.
 
 ## Plug it into CopilotKit
@@ -65,4 +65,4 @@ const runtime = new CopilotRuntime({
 Each AG-UI `threadId` maps to one session, which survives a restart, along
 with a turn parked on an approval or a question: after a restart the interrupt
 is still open. Pending approvals and questions can also be answered through `/v1/sessions/{id}/approvals/{tool_call_id}` and
-`/question-answers`. Set `OPENROUTER_API_KEY` to run the agent on a real model.
+`/question-answers`.

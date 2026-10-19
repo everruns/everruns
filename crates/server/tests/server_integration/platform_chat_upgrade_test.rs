@@ -6,8 +6,8 @@ use everruns_contracts::typed_id::{AgentId, PrincipalId};
 use everruns_server::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use everruns_server::storage::UpdateField;
 use everruns_server::{
-    org_init,
-    storage::{Database, StorageBackend, models::*},
+    setup::org_init,
+    storage::{CreateAgentTriggerRow, CreateMemoryFileRow, Database, StorageBackend, *},
 };
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
@@ -150,6 +150,8 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

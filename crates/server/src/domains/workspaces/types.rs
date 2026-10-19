@@ -1,6 +1,6 @@
 // HTTP DTOs for workspace CRUD endpoints.
 
-use crate::storage::models::WorkspaceRow;
+use crate::storage::WorkspaceRow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -36,15 +36,6 @@ pub fn workspace_response(row: WorkspaceRow) -> WorkspaceResponse {
         archived_at: row.archived_at,
         deleted_at: row.deleted_at,
     }
-}
-
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateWorkspaceRequest {
-    #[schema(example = "team-research")]
-    pub name: String,
-    #[serde(default)]
-    #[schema(example = "Shared workspace for the Q4 research project")]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]

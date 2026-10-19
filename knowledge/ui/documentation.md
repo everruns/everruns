@@ -10,16 +10,25 @@ tags:
 
 ## Abstract
 
-The Everruns documentation site provides user-facing documentation for operators and users of the platform. It is built with Astro Starlight and deployed to Cloudflare Pages at https://docs.everruns.com/.
+The Everruns documentation site provides user-facing documentation for operators and users of the platform. It is built with Astro Starlight and served at https://everruns.com/docs/ by the `everruns-docs` Cloudflare Worker.
 
 ## Requirements
+
+### Integration landing pages
+
+The [Slack landing page](../../docs/integrations/slack.mdx) introduces building
+and publishing an Agent with realistic English examples and the public demo.
+It is distinct from the detailed [Slack reference](../../docs/capabilities/slack.md).
+The integration route is a page, not an alias to the capability reference.
+Examples reconstructed or translated from captures must say so; raw recordings
+and unrelated messages stay out of published assets.
 
 ### Site Structure
 
 1. **Content Location**: `docs/` in the repository root
 2. **Site Application**: `apps/docs/` (Astro Starlight)
 3. **Content Symlink**: `apps/docs/src/content/docs` → `../../../../docs`
-4. **Final URL**: https://docs.everruns.com/
+4. **Final URL**: https://everruns.com/docs/
 5. **Content Format**: Markdown files with YAML frontmatter
 
 ### Content Organization
@@ -75,11 +84,46 @@ grade sit in one "Experimental (dev grade)" group rather than beside the
 supported ones, because Everruns Cloud runs at production grade and never
 offers them.
 
-Custom `Header.astro` override renders topics as a fixed tab bar below the
-main header. Sidebar topic list is hidden on desktop (visible on mobile).
+The layout replaces Starlight's fixed frame (`PageFrame.astro`): the
+everruns.com site header scrolls away, and a 48px docs bar (`Header.astro`:
+"Docs", the topic tabs, search, a light/dark/system switch) sticks to the top.
+Once the site header is out of view the bar collapses: the logo and an Open
+Cloud button slide in, so the bar alone still says which site this is. Below
+it, one 1200px column holds the sidebar, the article (720px) and the "On this
+page" column, which folds into a sticky dropdown below 1200px; the sidebar
+becomes a popover menu below 960px. The sidebar topic list shows only in that
+menu, since the tabs carry it on wider screens. Slate tokens and Geist live in
+`apps/docs/src/styles/slate.css`; code blocks are dark in both themes
+(`apps/docs/src/code-theme.json`).
 
 The Reference tab must remain active for all `/api/` pages, including nested
 OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*`.
+
+### API reference
+
+The reference leads with the caller-facing Agent API, followed by collapsed
+management domains. Its group landing pages explain what a caller can do;
+operation pages place schemas beside request and response examples. The
+existing operation and tag URLs remain durable. Every new canonical group
+and operation page must be in the sitemap and have a Markdown twin; any
+retired documentation URL needs a permanent redirect through the docs Worker.
+
+Grouping, readable labels, support, audience, availability and migration
+guidance come from the exported OpenAPI document, owned by the
+[documentation modifier](../../crates/server/src/openapi/documentation.rs).
+The renderer must not promote an unclassified operation to supported by
+default. Support describes compatibility; audience describes who the API is
+for, and neither changes authorization. Current public APIs are Preview
+unless explicitly Experimental; Stable is reserved for an announced
+compatibility commitment. Deprecated routes stay discoverable and name a
+successor when one exists; an unannounced removal date must not be invented.
+
+Use the existing schema renderer for references, alternatives, examples,
+callbacks and security requirements. Keep the API navigation focused on the
+reference and preserve the site's Slate styling. Endpoint search loads a
+static index on demand and bounds displayed matches so browsing never becomes
+another full operation dump. The [build verifier](../../apps/docs/scripts/verify-api-reference.mjs)
+checks route, sitemap, Markdown, migration and search coverage.
 
 ### Content Requirements
 
@@ -101,6 +145,9 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 - `title` and `description` are required
 - `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 - `appliesTo` is optional: any of `framework`, `platform`, `cloud`. `PageTitle.astro` renders it as an "Applies to" badge row under the title. Set it on capability, feature, and how-to pages, and only after checking availability in code: `framework` means the default Framework capability registry or an `everruns` Cargo feature; `platform` and `cloud` share the server registry, except that plugins behind a dev-grade feature flag are never on Cloud. A page without the field shows no row, which is better than a wrong one
+
+Unavailable targets keep muted gray labels and borders without strikethroughs; the
+badge row indicates applicability without making other products look deprecated.
 
 #### Notebook-Backed Tutorials
 
@@ -139,6 +186,19 @@ compared them. Each now has a source of truth CI compares it against:
 
 Design follows the brand guidelines defined in [knowledge/ui/brand.md](brand.md) (colors, typography, visual principles).
 
+The docs share everruns.com with the landing site, so they wear its header and
+footer rather than a look of their own: a reader moving between `/` and
+`/docs/` should not notice a second site. Landing (everruns/landing) owns that
+chrome and publishes it under `/site-chrome/`; `apps/docs/scripts/sync-site-chrome.mjs`
+snapshots it into `apps/docs/src/site-chrome/`, committed so a docs build never
+depends on landing being up, and the daily `docs-deploy.yml` run fails when the
+snapshot drifts. Change the chrome in landing, then resync here.
+
+Search is one box for the whole domain: the docs Pagefind index merges the
+landing index at `everruns.com/pagefind/` (built by landing from its
+`llms-full.txt`), weighted up so a product's own page can surface among the
+many docs pages.
+
 ### Screenshots
 
 Screenshots must be captured from the real running product, never faked,
@@ -167,20 +227,49 @@ product behaves; a fabricated one silently misleads readers.
 1. **Build Command**: `pnpm run build`
 2. **Output Directory**: `dist/`
 3. **Root Directory**: `apps/docs`
-4. **Deployment Platform**: Cloudflare Pages (GitHub integration)
-5. **CI Integration**: GitHub Actions workflow checks build on every PR
+4. **Deployment Platform**: Cloudflare Worker `everruns-docs` with static assets
+   (`apps/docs/wrangler.jsonc`, `apps/docs/worker/index.mjs`), deployed by
+   `.github/workflows/docs-deploy.yml`
+5. **CI Integration**: `ci.yml` checks the build and the Worker on every PR;
+   `docs-deploy.yml` deploys from main only, because it holds the Doppler token.
+   A preview is a manual `wrangler versions upload --preview-alias <name>`,
+   checked with `scripts/check-live.mjs --site <preview>/docs`
 
-Cloudflare Pages dashboard configuration:
-- Connect GitHub repository
-- Set root directory: `apps/docs`
-- Set build command: `pnpm run build` (Pages auto-installs from `pnpm-lock.yaml` before running the build command)
-- Set output directory: `dist`
-- Pin Node.js from `apps/docs/.node-version` (currently `22.16.0`) so Pages builds do not depend on dashboard defaults; any override must stay at `20.19.1+` or `22.12+` to satisfy Astro 6 toolchain requirements
-- Pnpm is selected automatically when Cloudflare Pages sees `pnpm-lock.yaml`; the `packageManager` field in `apps/docs/package.json` pins the exact version via corepack
+#### Serving under everruns.com/docs
 
-The docs homepage advertises agent-discoverable API resources with RFC 8288
-`Link` response headers from `apps/docs/public/_headers`. The header points to
-the docs API reference.
+Decision (2026-10-12): the docs moved from docs.everruns.com to a subfolder of
+everruns.com, so links to the docs count toward one domain and readers stay on
+one site. The landing site (`everruns/landing`) owns everruns.com as a Custom
+Domain on its own Worker; the docs Worker is attached to the route
+`everruns.com/docs*`, which Cloudflare matches before the Custom Domain. The two
+sites build and deploy independently and no request passes through both.
+
+1. `site` and `base` live in `apps/docs/site.config.mjs`. Astro adds the base
+   only to URLs it generates, so content keeps site-root links (`/framework/`)
+   and `plugins/rehype-base-links.ts` prefixes them at build time; components
+   use `src/lib/site.ts` helpers, never a hard-coded `/...` path
+2. `scripts/stage-worker-assets.mjs` copies `dist/` to `dist-worker/docs/`,
+   because the asset server answers by public path, and turns every
+   `redirects` entry into a real 301 in `_redirects`
+3. The Worker negotiates content like the landing site: `Accept:
+   text/markdown` (or a known AI user agent, never a search crawler) on a page
+   URL returns its `index.md` twin, with `Vary: Accept, User-Agent`. Every page
+   response carries `Link` headers for `llms.txt` and the API reference
+4. The docs Worker also owns the route `docs.everruns.com/*` and 301s every
+   path, query included, to the same path under https://everruns.com/docs. A
+   Worker route rather than a zone redirect rule, because the deploy token
+   manages Worker routes and the redirect stays tested in the repo. It stays
+   forever: published crate docs, plugins and old posts link the old host.
+   A route fires only on a proxied hostname, so docs.everruns.com keeps a
+   proxied placeholder DNS record (`AAAA 100::`, discard address, added
+   2026-10-13 after the old Pages project and its CNAME were deleted).
+   Deleting that record takes every old link down
+5. `apps/docs/scripts/check-live.mjs` checks every sitemap page and its
+   Markdown twin, the agent files, content negotiation and, with `--old`, each
+   old URL's redirect. It runs after every deploy and daily
+6. `scripts/lib/check-docs-host.sh` (pre-push and CI) fails on any new link
+   to docs.everruns.com outside the files about the move itself; the
+   maintenance skill sweeps the sibling repositories for the same
 
 ### Development
 
@@ -207,7 +296,7 @@ API reference documentation is auto-generated from the OpenAPI specification usi
 1. **Source of Truth**: OpenAPI spec generated from Rust code via `utoipa` derive macros
 2. **Export Binary**: `export-openapi` binary generates spec without running full server
 3. **Build-time Generation**: `starlight-openapi` plugin generates static HTML at build time
-4. **Static Output**: No runtime dependencies - works on any static hosting (Cloudflare Pages)
+4. **Static Output**: No runtime dependencies - works on any static hosting
 5. **Topic Navigation**: OpenAPI pages are excluded from `starlight-sidebar-topics` sidebar ownership, while the custom header still marks the Reference tab active for `/api/**`
 
 #### Workflow
@@ -227,7 +316,7 @@ cd apps/docs && pnpm run build
 | `docs/api/openapi.json` | Generated OpenAPI spec (committed to repo) |
 | `scripts/export-openapi.sh` | Script to regenerate spec |
 | `crates/server/src/bin/export_openapi.rs` | Binary for spec generation |
-| `crates/server/src/openapi.rs` | Shared OpenAPI definition |
+| `crates/server/src/openapi/mod.rs` | Shared OpenAPI definition |
 
 #### Starlight Integration
 
@@ -274,9 +363,15 @@ costs the reader twice.
 
 Page titles (rendered as `<title>Title | Everruns</title>`) must not exceed 70 characters total.
 
-- Starlight appends ` | Everruns` (12 chars), so page titles must be ≤57 chars
-- For API pages, route middleware strips the `METHOD /path - ` prefix from OpenAPI summaries to shorten titles
-- When writing OpenAPI `summary` doc comments in Rust, the description after the `METHOD /path - ` prefix should be ≤57 chars
+- Starlight appends ` | Everruns` (12 chars), so page titles should be ≤57 chars;
+  `routeData.ts` drops the suffix from a title that would still run over, and
+  `verify-seo.mjs` fails the build on any title over 70
+- API pages are titled by the OpenAPI summary, which the server keeps to ≤58
+  chars (`MAX_SUMMARY` in `crates/server/src/openapi/documentation.rs`, enforced
+  by its test). The server strips a `METHOD /path - ` prefix, takes the first
+  sentence, and moves the full text into the operation description, which the
+  page shows as its lede. A `#[command]` whose first sentence is still too long
+  sets `summary = "..."`; a hand-written handler puts a short first doc line
 
 A title is the page's name, not a keyword string. Prefer the name a reader would say out loud
 ("Daytona"), not the search phrase it might match ("Daytona Cloud Sandbox Capability for Agents").
@@ -304,12 +399,15 @@ No internal links should produce 404 errors.
 
 Every page gets a per-page Open Graph image for rich link previews on Twitter, Slack, Discord, etc. Images are generated at prebuild time by `apps/docs/scripts/generate-og-image.mjs` and output to `public/og/`.
 
-**Three card types:**
+**Card types:**
 
 | Type | Path | Content |
 |------|------|---------|
 | API operation | `public/og/api/operations/{operationId}.png` | Method badge, path, description, curl example |
 | Doc page | `public/og/{slug}.png` | Title, breadcrumb, description |
+| Changelog index | `public/og/changelog.png` | The five latest releases |
+| Changelog entry | `public/og/changelog/{folder}.png` | Date, products, title, description |
+| Changelog product page | `public/og/changelog/{product}.png` | That product's five latest entries |
 | Fallback | `public/og-image.png` | Generic Everruns branded card |
 
 **Hero images on doc pages:**
@@ -352,18 +450,42 @@ SEO improvements for auto-generated pages are handled by Starlight route middlew
 5. Leaves `og:image` alone for routes with no generated card — `generate-og-image.mjs` skips
    `docs/api/`, so the `api` overview and the schema and tag pages fall back to `public/og-image.png`
 
-Generated descriptions are held to the same house style as hand-authored ones above; the fallback
-appends nothing beyond the page title.
+6. Names each API tag page after its tag ("MCP Servers API"), since `starlight-openapi` titles
+   them all "Overview", and marks a `_legacy` operation's title "(legacy)" so it does not
+   duplicate its successor's
+7. Keeps API operation descriptions within a search snippet: the reference suffix goes on only
+   where it fits in 160 characters
+
+Generated descriptions are held to the same house style as hand-authored ones above.
+
+#### Analytics
+
+Every docs page loads the same Google tag as everruns.com (`apps/docs/src/google-tag.js`,
+inlined into the head) and fires the landing site's event names
+(`cloud_signup_click`, `github_click`, `subscribe`), so conversions from docs readers are
+counted with the landing site's. Keep the tag id and event names in step with
+everruns/landing `src/components/GoogleTag.astro`.
+
+#### Build Verification
+
+`apps/docs/scripts/verify-seo.mjs` runs after every build and fails it when a page has no
+canonical or `og:url` naming its own address, a `<title>` another page shares, a description
+outside 50-170 characters, an `og:image` the build does not contain, or other than one `<h1>`, or
+when `404.html` is indexable. Two pages on one subject (a feature page and its capability page)
+keep distinct `<title>`s through a frontmatter `head` title override.
+
+The docs Worker answers a page URL without its trailing slash with a 301 to the slashed URL;
+Workers static assets would answer 307, which tells search engines the move is temporary.
 
 ### Sitemap Requirements
 
-The docs site must ship a single `sitemap.xml` file at the site root.
+The docs site must ship a single `sitemap.xml` file at the docs root.
 
-1. `robots.txt` must reference `https://docs.everruns.com/sitemap.xml`
+1. The landing site's `robots.txt` (everruns.com owns `/robots.txt`) must reference the docs sitemap index, `https://everruns.com/docs/sitemap-index.xml`
 2. `sitemap.xml` must include both hand-authored docs pages and OpenAPI-generated API reference pages
 3. Every `<url>` entry must include a `<lastmod>` value
 4. `apps/docs/integrations/sitemap-enhance.mjs` is responsible for post-processing Astro's generated sitemap into the final `sitemap.xml`
-5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on Cloudflare Pages shallow clones
+5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on shallow CI clones
 
 ### Agent-Readable Output Requirements
 
@@ -389,7 +511,7 @@ without the site next to it.
 5. The REST API is excluded from the text outputs because the OpenAPI schema is
    the better machine-readable form — so the schema must actually be served, at
    `/api/openapi.json` (`apps/docs/scripts/copy-openapi.mjs`)
-6. `robots.txt` must allow the AI crawlers that respect it
+6. The landing site's `robots.txt` must allow the AI crawlers that respect it
 7. Every built documentation page at `<page>/` must also be available as
    `<page>/index.md`; the site root is available as `/index.md`. Per-page
    Markdown must carry the same canonical `Source:` line and absolute links as

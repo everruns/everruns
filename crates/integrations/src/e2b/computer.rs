@@ -34,7 +34,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::Engine;
 use serde_json::{Value, json};
 use tracing::warn;
 
@@ -43,7 +42,8 @@ use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, Ri
 use everruns_contracts::runtime::computer_use::{
     COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
     ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
+    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers, png_image,
+    zoom_factor,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
@@ -87,6 +87,11 @@ const TYPE_DELAY_MS: &str = "12";
 /// runs at that size, then an xfce session when the template has one. State,
 /// logs and the marker live in `$3`. Positional arguments only: nothing is
 /// interpolated into the script text.
+///
+/// Decision: `-noreset`. Each xdotool call is a one-shot X client, and until
+/// the xfce session connects (or when the template has none) it is the only
+/// one; by default Xvfb regenerates when its last client leaves, which snaps
+/// the pointer back to the screen center and drops held buttons and keys.
 const START_DISPLAY_SCRIPT: &str = r#"set -u
 display="$1"; size="$2"; dir="$3"
 for tool in Xvfb xdotool; do
@@ -98,7 +103,7 @@ if [ "$(cat "$dir/display" 2>/dev/null)" = "$display $size" ] && DISPLAY="$displ
 fi
 pkill -f "Xvfb $display" >/dev/null 2>&1 || true
 sleep 0.2
-setsid Xvfb "$display" -ac -screen 0 "${size}x24" -dpi 96 -nolisten tcp >"$dir/xvfb.log" 2>&1 </dev/null &
+setsid Xvfb "$display" -ac -screen 0 "${size}x24" -dpi 96 -nolisten tcp -noreset >"$dir/xvfb.log" 2>&1 </dev/null &
 i=0
 until DISPLAY="$display" xdotool getdisplaygeometry >/dev/null 2>&1; do
   i=$((i + 1))
@@ -134,6 +139,71 @@ fi
 [ -s "$out" ] || { echo "the screenshot produced no image" >&2; exit 1; }
 "#;
 
+/// Captures the `$5`x`$6` region at (`$3`, `$4`) of display `$1`, scaled to
+/// `$7`x`$8`, as a PNG at `$2`. ImageMagick's `import` when the template has
+/// it, else a full frame cropped and scaled by `ffmpeg` (E2B's `desktop`
+/// template ships ffmpeg and scrot but no ImageMagick).
+const ZOOM_SCRIPT: &str = r#"set -u
+display="$1"; out="$2"; x="$3"; y="$4"; w="$5"; h="$6"; sw="$7"; sh="$8"
+rm -f "$out"
+if command -v import >/dev/null 2>&1; then
+  import -display "$display" -window root -crop "${w}x${h}+${x}+${y}" +repage -resize "${sw}x${sh}!" "png:$out"
+elif command -v ffmpeg >/dev/null 2>&1; then
+  full="$out.full.png"; rm -f "$full"
+  if command -v scrot >/dev/null 2>&1; then
+    DISPLAY="$display" scrot "$full"
+  elif command -v xwd >/dev/null 2>&1; then
+    full="$out.full.xwd"; xwd -display "$display" -root -silent >"$full"
+  fi
+  [ -s "$full" ] || { echo "zoom could not capture the display" >&2; exit 1; }
+  ffmpeg -loglevel error -y -i "$full" -vf "crop=$w:$h:$x:$y,scale=$sw:$sh:flags=lanczos" -frames:v 1 "$out"
+  rm -f "$full"
+else
+  echo "zoom needs ImageMagick import or ffmpeg in this sandbox" >&2
+  exit 127
+fi
+[ -s "$out" ] || { echo "the zoom produced no image" >&2; exit 1; }
+"#;
+
+/// Path of the zoomed region inside the sandbox.
+const ZOOM_PATH: &str = "/tmp/everruns-computer/zoom.png";
+
+/// `bash -c` arguments of [`ZOOM_SCRIPT`]: the crop geometry and the output
+/// size that fits the region to the display with its aspect ratio kept.
+pub fn zoom_args(region: [u32; 4], display: DisplaySize) -> Vec<String> {
+    let [x0, y0, x1, y1] = region;
+    let factor = zoom_factor(region, display);
+    let scaled = |length: u32| ((f64::from(length) * factor).round() as u32).max(1);
+    vec![
+        "-c".to_string(),
+        ZOOM_SCRIPT.to_string(),
+        "everruns-zoom".to_string(),
+        DESKTOP_DISPLAY.to_string(),
+        ZOOM_PATH.to_string(),
+        x0.to_string(),
+        y0.to_string(),
+        (x1 - x0).to_string(),
+        (y1 - y0).to_string(),
+        scaled(x1 - x0).to_string(),
+        scaled(y1 - y0).to_string(),
+    ]
+}
+
+/// `X=12` / `Y=34` lines of `xdotool getmouselocation --shell`.
+pub fn parse_mouse_location(output: &str) -> Result<[u32; 2], String> {
+    let value = |name: &str| {
+        output
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(name))
+            .and_then(|rest| rest.strip_prefix('='))
+            .and_then(|number| number.trim().parse::<u32>().ok())
+    };
+    match (value("X"), value("Y")) {
+        (Some(x), Some(y)) => Ok([x, y]),
+        _ => Err("xdotool did not report the pointer position".to_string()),
+    }
+}
+
 // ============================================================================
 // Action -> xdotool argv
 // ============================================================================
@@ -164,25 +234,41 @@ pub fn xdotool_commands(action: &ComputerAction) -> Result<Vec<Vec<String>>, Str
         return Ok(commands);
     }
     match action {
-        ComputerAction::Screenshot | ComputerAction::Wait { .. } => Ok(Vec::new()),
+        // Run by the session itself: they read the screen or need a pause.
+        ComputerAction::Screenshot
+        | ComputerAction::Wait { .. }
+        | ComputerAction::Zoom { .. }
+        | ComputerAction::CursorPosition
+        | ComputerAction::HoldKey { .. } => Ok(Vec::new()),
         ComputerAction::LeftClickDrag {
             start_coordinate,
             coordinate,
+            text,
         } => {
+            let modifiers = parse_modifiers(text.as_deref().unwrap_or(""))?;
             // A midpoint gives drag handlers a motion event between press and
             // release.
             let mid = [
                 (start_coordinate[0] + coordinate[0]) / 2,
                 (start_coordinate[1] + coordinate[1]) / 2,
             ];
-            Ok(vec![
-                move_to(*start_coordinate),
+            let mut commands = vec![move_to(*start_coordinate)];
+            for modifier in &modifiers {
+                commands.push(argv(["keydown", modifier_name(*modifier)]));
+            }
+            commands.extend([
                 argv(["mousedown", "1"]),
                 move_to(mid),
                 move_to(*coordinate),
                 argv(["mouseup", "1"]),
-            ])
+            ]);
+            for modifier in modifiers.iter().rev() {
+                commands.push(argv(["keyup", modifier_name(*modifier)]));
+            }
+            Ok(commands)
         }
+        ComputerAction::LeftMouseDown => Ok(vec![argv(["mousedown", "1"])]),
+        ComputerAction::LeftMouseUp => Ok(vec![argv(["mouseup", "1"])]),
         ComputerAction::MouseMove { coordinate } => Ok(vec![move_to(*coordinate)]),
         ComputerAction::Scroll {
             coordinate,
@@ -344,33 +430,9 @@ fn xdotool_keysym(name: &str) -> Result<String, String> {
 // Screenshot decoding
 // ============================================================================
 
-const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-
-/// Width and height from a PNG's IHDR chunk.
-pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
-    if bytes.len() < 24 || bytes[..8] != PNG_SIGNATURE || &bytes[12..16] != b"IHDR" {
-        return Err("the screenshot is not a PNG image".to_string());
-    }
-    let width = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
-    let height = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
-    Ok((width, height))
-}
-
-/// Check a captured PNG against the display and encode it for the model.
-/// A frame of another size would put the model's coordinates in the wrong
-/// place, so it is an error rather than a picture.
-pub fn decode_screenshot(bytes: &[u8], display: DisplaySize) -> Result<Screenshot, String> {
-    let (width, height) = png_dimensions(bytes)?;
-    if (width, height) != (display.width, display.height) {
-        return Err(format!(
-            "the screenshot is {width}x{height} but the display is {display}"
-        ));
-    }
-    Ok(Screenshot {
-        base64: base64::engine::general_purpose::STANDARD.encode(bytes),
-        media_type: "image/png".to_string(),
-    })
-}
+pub use everruns_contracts::runtime::computer_use::{
+    png_dimensions, png_screenshot as decode_screenshot,
+};
 
 // ============================================================================
 // Backend
@@ -584,9 +646,18 @@ impl ComputerSession for E2BDesktopSession {
     }
 
     async fn perform(&mut self, action: &ComputerAction) -> Result<(), String> {
-        if let ComputerAction::Wait { duration } = action {
-            tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
-            return Ok(());
+        match action {
+            ComputerAction::Wait { duration } => {
+                tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
+                return Ok(());
+            }
+            ComputerAction::HoldKey { text, duration } => {
+                let combo = xdotool_key_combo(text)?;
+                self.xdotool(&argv(["keydown", "--", &combo])).await?;
+                tokio::time::sleep(Duration::from_secs_f64(*duration)).await;
+                return self.xdotool(&argv(["keyup", "--", &combo])).await;
+            }
+            _ => {}
         }
         let commands = xdotool_commands(action)?;
         for (index, command) in commands.iter().enumerate() {
@@ -636,6 +707,50 @@ impl ComputerSession for E2BDesktopSession {
             .read_file_bytes(&self.state, SCREENSHOT_PATH)
             .await?;
         decode_screenshot(&bytes, self.display)
+    }
+
+    async fn zoom(&mut self, region: [u32; 4]) -> Result<Screenshot, String> {
+        let args = zoom_args(region, self.display);
+        let result = self
+            .client
+            .exec_argv(
+                &self.state,
+                "bash",
+                &args,
+                &[],
+                None,
+                Some(COMMAND_TIMEOUT_MS),
+            )
+            .await?;
+        if result.exit_code != 0 {
+            return Err(format!(
+                "failed to capture the region: {}",
+                result.stderr.trim()
+            ));
+        }
+        let bytes = self.client.read_file_bytes(&self.state, ZOOM_PATH).await?;
+        png_image(&bytes)
+    }
+
+    async fn cursor_position(&mut self) -> Result<[u32; 2], String> {
+        let result = self
+            .client
+            .exec_argv(
+                &self.state,
+                "xdotool",
+                &argv(["getmouselocation", "--shell"]),
+                &[("DISPLAY", DESKTOP_DISPLAY)],
+                None,
+                Some(COMMAND_TIMEOUT_MS),
+            )
+            .await?;
+        if result.exit_code != 0 {
+            return Err(format!(
+                "xdotool getmouselocation failed: {}",
+                result.stderr.trim()
+            ));
+        }
+        parse_mouse_location(&result.stdout)
     }
 
     async fn release(self: Box<Self>) {

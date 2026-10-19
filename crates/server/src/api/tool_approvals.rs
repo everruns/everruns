@@ -30,22 +30,17 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use everruns_contracts::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
-use everruns_core::builtins::{
-    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
-};
-use everruns_core::events::{EventContext, EventRequest, InputMessageData, ToolCompletedData};
+use everruns_core::events::{EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse};
 use super::tool_results::AppState;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::EventService;
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::StorageBackend;
-use crate::storage::models::{
+use crate::storage::{
     ClaimWaitingTurnResult, EventRow, WaitingTurnResolutionPlan, WaitingTurnSessionValue,
 };
 
@@ -57,61 +52,11 @@ const APPROVAL_LOOKBACK_EVENTS: i32 = 200;
 /// than it ran, and the scheduler caps those far below this.
 const MAX_DECISIONS: usize = 64;
 
-/// What a person decided about one gated call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolApprovalDecision {
-    /// Run this call, once.
-    Allow,
-    /// Run this call, and every later call of the same tool in this session.
-    AllowAlways,
-    /// Do not run this call.
-    Reject,
-    /// Do not run this call, nor any later call of the same tool in this session.
-    RejectAlways,
-}
-
-/// One decision in a submission.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ToolApprovalAnswer {
-    /// The `approve_tool_call` call being answered.
-    #[schema(example = "tool_approval_toolu_01933b5a00007000800000000000001")]
-    pub tool_call_id: String,
-    /// The person's decision.
-    pub decision: ToolApprovalDecision,
-}
-
-/// Request to answer pending tool-approval requests.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct SubmitToolApprovalsRequest {
-    /// Decisions for the pending requests. A pending request in the same batch
-    /// that is left out is resolved as not approved: the turn resumes once, so
-    /// every request in it is settled now, and silence never approves.
-    pub decisions: Vec<ToolApprovalAnswer>,
-}
-
-/// How one pending request was settled.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ToolApprovalResolution {
-    /// The `approve_tool_call` call that was answered.
-    pub tool_call_id: String,
-    /// The gated tool.
-    pub tool: String,
-    /// `allow`, `allow_always`, `reject`, `reject_always`, `not_approved`
-    /// (left out of the submission) or `expired`.
-    #[schema(example = "allow")]
-    pub outcome: String,
-}
-
-/// Result of answering tool-approval requests.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SubmitToolApprovalsResponse {
-    /// How every pending request in the batch was settled.
-    pub resolved: Vec<ToolApprovalResolution>,
-    /// Session status after the decision.
-    #[schema(example = "active")]
-    pub status: String,
-}
+// The wire types are the Agent Execution API's, shared with serve.
+pub use everruns_contracts::execution_api::{
+    SubmitToolApprovalsRequest, SubmitToolApprovalsResponse, ToolApprovalAnswer,
+    ToolApprovalDecision, ToolApprovalResolution,
+};
 
 /// Routes for answering tool-approval requests. Merged into the tool-results
 /// router because it is the same pause-and-resume surface.
@@ -182,90 +127,7 @@ pub(crate) async fn pending_tool_approvals(
     Ok(pending_approvals_from_events(&requested))
 }
 
-/// How a pending request ends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApprovalOutcome {
-    Decided(ToolApprovalDecision),
-    /// Left out of a submission that answered its siblings.
-    NotApproved,
-    /// Nobody answered before the deadline.
-    Expired,
-}
-
-impl ApprovalOutcome {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => "allow",
-            Self::Decided(ToolApprovalDecision::AllowAlways) => "allow_always",
-            Self::Decided(ToolApprovalDecision::Reject) => "reject",
-            Self::Decided(ToolApprovalDecision::RejectAlways) => "reject_always",
-            Self::NotApproved => "not_approved",
-            Self::Expired => "expired",
-        }
-    }
-
-    fn allows(self) -> bool {
-        matches!(
-            self,
-            Self::Decided(ToolApprovalDecision::Allow | ToolApprovalDecision::AllowAlways)
-        )
-    }
-
-    /// What is recorded for the retried call to find. Silence records nothing:
-    /// a retry asks again rather than inheriting a decision nobody made.
-    fn stored_record(
-        self,
-        request: &ToolApprovalRequired,
-        now: DateTime<Utc>,
-    ) -> Option<(String, StoredToolApproval)> {
-        let tool = request.tool.as_str();
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => Some((
-                one_off_decision_storage_key(&request.fingerprint),
-                StoredToolApproval::one_off(tool, &request.fingerprint, true, now),
-            )),
-            Self::Decided(ToolApprovalDecision::Reject) => Some((
-                one_off_decision_storage_key(&request.fingerprint),
-                StoredToolApproval::one_off(tool, &request.fingerprint, false, now),
-            )),
-            Self::Decided(ToolApprovalDecision::AllowAlways) => Some((
-                always_decision_storage_key(tool),
-                StoredToolApproval::always(tool, true, now),
-            )),
-            Self::Decided(ToolApprovalDecision::RejectAlways) => Some((
-                always_decision_storage_key(tool),
-                StoredToolApproval::always(tool, false, now),
-            )),
-            Self::NotApproved | Self::Expired => None,
-        }
-    }
-
-    /// The decision as the person would say it. The request is engine-authored,
-    /// so nothing in the transcript claims the synthetic call and its result
-    /// never reaches the model; this line is what does.
-    fn spoken(self, tool: &str) -> String {
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => format!(
-                "I approved `{tool}` this once. Call it again now with exactly the same arguments."
-            ),
-            Self::Decided(ToolApprovalDecision::AllowAlways) => format!(
-                "I approved `{tool}` for the rest of this session. Call it again now with the same arguments."
-            ),
-            Self::Decided(ToolApprovalDecision::Reject) => format!(
-                "I rejected `{tool}`. Don't run it, and don't try to get the same result another way."
-            ),
-            Self::Decided(ToolApprovalDecision::RejectAlways) => {
-                format!("I rejected `{tool}` for the rest of this session. Don't call it again.")
-            }
-            Self::NotApproved => {
-                format!("I didn't approve `{tool}`, so it must not run.")
-            }
-            Self::Expired => format!(
-                "I didn't answer the approval request for `{tool}` in time, so it is not approved. Don't run it."
-            ),
-        }
-    }
-}
+pub(crate) use everruns_core::session_commands::ApprovalOutcome;
 
 /// Why a resolution did not happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -318,8 +180,11 @@ pub(crate) async fn resolve_tool_approvals(
         ));
     }
     let now = Utc::now();
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
+    // Recorded under the waiting turn, which the worker resumes; the spoken
+    // decision is part of that turn, not input that starts or steers one.
+    let context = crate::turns::open_turn_context(db, session_id)
+        .await
+        .map_err(|error| ApprovalResolveError::Internal(error.to_string()))?;
 
     let mut session_values = Vec::new();
     let mut completions = Vec::new();
@@ -347,7 +212,7 @@ pub(crate) async fn resolve_tool_approvals(
         });
         completions.push(EventRequest::new(
             session_id,
-            EventContext::turn(turn_id, event_message_id),
+            context.clone(),
             ToolCompletedData::success(
                 approval.request_call_id.clone(),
                 APPROVE_TOOL_CALL_TOOL.to_string(),
@@ -368,7 +233,7 @@ pub(crate) async fn resolve_tool_approvals(
     message.controls = latest_user_controls(db, session_id).await;
     let mut events = vec![EventRequest::new(
         session_id,
-        EventContext::empty(),
+        context,
         InputMessageData::new(message),
     )];
     events.extend(completions);
@@ -575,7 +440,36 @@ pub async fn submit_tool_approvals(
     let pending = pending_tool_approvals(&state.db, session_id)
         .await
         .log_internal_error_json("read session events")?;
-    let to_response = |error: ApprovalResolveError| match error {
+    let outcomes = validate_decisions(&pending, &req.decisions, Utc::now())
+        .map_err(approval_error_response)?;
+    let resolved = resolve_tool_approvals(
+        &ApprovalServices {
+            db: &state.db,
+            event_service: &state.event_service,
+            runner: &state.runner,
+        },
+        org.org_id,
+        session_id,
+        &pending,
+        &outcomes,
+        ApprovalOutcome::NotApproved,
+        "tool_approvals",
+    )
+    .await
+    .map_err(approval_error_response)?;
+
+    Ok(Json(SubmitToolApprovalsResponse {
+        resolved,
+        status: "active".to_string(),
+    }))
+}
+
+/// The HTTP answer for a resolution that did not happen. Shared by every
+/// surface that serves `POST …/tool-approvals`.
+pub(crate) fn approval_error_response(
+    error: ApprovalResolveError,
+) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
         ApprovalResolveError::NotWaiting(detail) => ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {detail})"
         ))
@@ -599,33 +493,15 @@ pub async fn submit_tool_approvals(
             ErrorResponse::new("Internal server error".to_string())
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         }
-    };
-    let outcomes = validate_decisions(&pending, &req.decisions, Utc::now()).map_err(to_response)?;
-    let resolved = resolve_tool_approvals(
-        &ApprovalServices {
-            db: &state.db,
-            event_service: &state.event_service,
-            runner: &state.runner,
-        },
-        org.org_id,
-        session_id,
-        &pending,
-        &outcomes,
-        ApprovalOutcome::NotApproved,
-        "tool_approvals",
-    )
-    .await
-    .map_err(to_response)?;
-
-    Ok(Json(SubmitToolApprovalsResponse {
-        resolved,
-        status: "active".to_string(),
-    }))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::tool_approval_types::{
+        always_decision_storage_key, one_off_decision_storage_key,
+    };
     use serde_json::json;
 
     fn pending(id: &str, expires_at: &str) -> PendingApproval {

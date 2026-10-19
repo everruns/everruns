@@ -51,11 +51,9 @@ fn shared_write_guard(root: &Path) -> Arc<tokio::sync::Mutex<()>> {
 /// accepted on every method but ignored — the store is single-workspace per
 /// process.
 ///
-/// `is_readonly` flags from `seed_initial_file` are tracked in an in-memory
-/// set (the disk backend has no place to persist them), so writes and
-/// deletes through this store still honor the trait contract within a
-/// single process. The flag is *not* mapped onto filesystem permissions —
-/// other host processes can still modify the file directly.
+/// Read-only starter-file flags are reflected in filesystem permissions so
+/// reopening the configured workspace retains them. This remains a tool API
+/// convention, not containment against a host process allowed to chmod files.
 #[derive(Debug, Clone)]
 pub struct RealDiskFileStore {
     /// Maps the virtual workspace namespace onto this host directory (EVE-660):
@@ -122,7 +120,16 @@ impl RealDiskFileStore {
     }
 
     async fn is_readonly(&self, canonical_path: &str) -> bool {
-        self.readonly.read().await.contains(canonical_path)
+        if self.readonly.read().await.contains(canonical_path) {
+            return true;
+        }
+        let Ok(path) = self.resolve(canonical_path) else {
+            return true;
+        };
+        match tokio::fs::metadata(path).await {
+            Ok(metadata) => metadata.is_file() && metadata.permissions().readonly(),
+            Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+        }
     }
 
     async fn mark_readonly(&self, canonical_path: String, readonly: bool) {
@@ -323,10 +330,41 @@ impl SessionFileSystem for RealDiskFileStore {
         self.reject_symlink_path(&absolute).await?;
         let canonical = self.relative_capability_path(&absolute)?;
         self.mark_readonly(canonical.clone(), false).await;
+        // Seeding is the trusted host's explicit replacement operation. Restore
+        // owner write access before replacing an earlier read-only declaration.
+        if let Ok(metadata) = tokio::fs::metadata(&absolute).await
+            && metadata.permissions().readonly()
+        {
+            let mut permissions = metadata.permissions();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                permissions.set_mode(permissions.mode() | 0o200);
+            }
+            #[cfg(not(unix))]
+            permissions.set_readonly(false);
+            tokio::fs::set_permissions(&absolute, permissions)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::tool(format!("restore seeded file permissions failed: {error}"))
+                })?;
+        }
 
         self.write_file_unlocked(session_id, &file.path, &file.content, &file.encoding)
             .await?;
         if file.is_readonly {
+            let mut permissions = tokio::fs::metadata(&absolute)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::tool(format!("read seeded file permissions failed: {error}"))
+                })?
+                .permissions();
+            permissions.set_readonly(true);
+            tokio::fs::set_permissions(&absolute, permissions)
+                .await
+                .map_err(|error| {
+                    AgentLoopError::tool(format!("persist seeded file permissions failed: {error}"))
+                })?;
             self.mark_readonly(canonical, true).await;
         }
         Ok(())

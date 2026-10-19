@@ -159,6 +159,11 @@ impl Tool for ReportResultTool {
         "report_result"
     }
 
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        // Shapes the turn, so it never runs from a shell script.
+        everruns_contracts::tool_types::ToolHints::default().with_stays_direct(true)
+    }
+
     fn display_name(&self) -> Option<&str> {
         Some("Report Result")
     }
@@ -316,6 +321,11 @@ impl Tool for ReportTaskProgressTool {
 
     fn name(&self) -> &str {
         "report_task_progress"
+    }
+
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        // Shapes the turn, so it never runs from a shell script.
+        everruns_contracts::tool_types::ToolHints::default().with_stays_direct(true)
     }
 
     fn display_name(&self) -> Option<&str> {

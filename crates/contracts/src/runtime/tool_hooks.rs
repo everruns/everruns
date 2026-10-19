@@ -52,6 +52,20 @@ pub trait PreToolUseHook: Send + Sync {
     fn is_policy_gate(&self) -> bool {
         false
     }
+
+    /// Whether this hook would hold the call, judged without running it and
+    /// without side effects: no prompt, no consumed answer, no outbound call.
+    /// `Some` is the outcome [`before_exec`](Self::before_exec) would give a
+    /// held call; `None` means it would not hold it, or cannot tell. Lets a
+    /// script runner stop a script before it starts (tools in shell D7).
+    async fn preview(
+        &self,
+        _tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        _context: &ToolContext,
+    ) -> Option<ToolResult> {
+        None
+    }
 }
 
 /// Marks a [`PreToolUseHook`] as a policy gate: its `Continue` is an
@@ -74,6 +88,15 @@ impl<H: PreToolUseHook> PreToolUseHook for PolicyGate<H> {
 
     fn is_policy_gate(&self) -> bool {
         true
+    }
+
+    async fn preview(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Option<ToolResult> {
+        self.0.preview(tool_call, tool_def, context).await
     }
 }
 
@@ -134,4 +157,16 @@ pub trait NestedToolPolicy: Send + Sync {
         result: &mut ToolResult,
         context: &ToolContext,
     );
+
+    /// The outcome the pre-tool chain would hold `tool_call` with, judged
+    /// without running anything (see [`PreToolUseHook::preview`]). `None`
+    /// when nothing would hold it or nobody can tell.
+    async fn preview(
+        &self,
+        _tool_call: &ToolCall,
+        _tool_def: &ToolDefinition,
+        _context: &ToolContext,
+    ) -> Option<ToolResult> {
+        None
+    }
 }

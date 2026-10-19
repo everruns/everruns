@@ -11,7 +11,7 @@ use crate::test_harness;
 
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_server::domains::common::Ctx;
-use everruns_server::services::platform_command_surface::{CatalogContext, Operation, invoke};
+use everruns_server::worker_link::platform_command_surface::{CatalogContext, Operation, invoke};
 use serde_json::json;
 use test_harness::TestServer;
 
@@ -24,6 +24,7 @@ fn context(server: &TestServer) -> CatalogContext {
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         server.db.clone(),
         server.encryption.clone(),

@@ -30,6 +30,7 @@ manifest.required = ["name"];
 manifest.properties.schema_version = { ...manifest.properties.schema_version, enum: [1], default: 1 };
 manifest.properties.name = { ...manifest.properties.name, pattern: "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", minLength: 1, maxLength: 255 };
 manifest.properties.max_iterations = { ...manifest.properties.max_iterations, minimum: 1, maximum: 1000 };
+manifest.properties.max_output_tokens = { ...manifest.properties.max_output_tokens, minimum: 1, maximum: 2147483647 };
 manifest.properties.files.maxItems = 100;
 manifest.properties.channels.maxProperties = 32;
 // Packages accept client-side declarations only; builtin tools come from capabilities.
@@ -67,7 +68,7 @@ function visit(value) {
 visit(manifest);
 const document = {
   $schema: "http://json-schema.org/draft-04/schema#",
-  id: "https://docs.everruns.com/schemas/agent/v1.json",
+  id: "https://everruns.com/docs/schemas/agent/v1.json",
   title: "Everruns agent.toml v1",
   description: "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   $ref: "#/definitions/Manifest",

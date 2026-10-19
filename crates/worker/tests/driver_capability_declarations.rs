@@ -27,7 +27,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         ),
         (
             DriverId::external("chatgpt"),
-            "ChatGPT plan",
+            "ChatGPT Plan",
             &[ServiceKind::Chat],
             true,
         ),
@@ -74,19 +74,19 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[ServiceKind::Decisions],
             false,
         ),
-        (DriverId::Mai, "Microsoft MAI", &[ServiceKind::Chat], false),
+        (
+            DriverId::Mai,
+            "Microsoft MAI",
+            &[ServiceKind::Chat, ServiceKind::Decisions],
+            false,
+        ),
         (
             DriverId::Fireworks,
             "Fireworks AI",
             &[ServiceKind::Chat],
             false,
         ),
-        (
-            DriverId::Meta,
-            "Meta Model API",
-            &[ServiceKind::Chat],
-            false,
-        ),
+        (DriverId::Meta, "Meta", &[ServiceKind::Chat], false),
         (
             DriverId::Cloudflare,
             "Cloudflare AI Gateway",
@@ -103,7 +103,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::LlmSim,
             "LLM Simulator",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Realtime],
             false,
         ),
     ]

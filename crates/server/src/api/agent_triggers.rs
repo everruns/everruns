@@ -7,6 +7,7 @@
 // agents router (whose state lacks those).
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::agent_triggers::record::AgentTrigger;
 use crate::domains::agent_triggers::types::{
     AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest,
 };
@@ -18,7 +19,6 @@ use crate::domains::agent_triggers::{
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
-use crate::records::AgentTrigger;
 use crate::services::CapabilityService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -47,6 +47,8 @@ pub struct AppState {
     pub message_service: Option<Arc<MessageService>>,
     /// Subscribes and unsubscribes `mcp_event` triggers.
     pub mcp_event_triggers: Option<Arc<McpEventTriggers>>,
+    /// The channel host targeted schedule triggers run on when fired by hand.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
 }
 
 impl AppState {
@@ -68,7 +70,16 @@ impl AppState {
             session_service: Some(session_service),
             message_service: Some(message_service),
             mcp_event_triggers: None,
+            channels: None,
         }
+    }
+
+    pub fn with_channels(
+        mut self,
+        channels: Option<Arc<crate::channels::host::ServerChannels>>,
+    ) -> Self {
+        self.channels = channels;
+        self
     }
 
     pub fn with_mcp_event_triggers(mut self, service: Arc<McpEventTriggers>) -> Self {
@@ -93,14 +104,20 @@ impl AppState {
             ctx = ctx.with_message_service(message_service.clone());
         }
         ctx.mcp_event_triggers = self.mcp_event_triggers.clone();
+        ctx.channels = self.channels.clone();
         ctx
     }
 }
 
 impl_auth_state!(AppState);
 
-/// Create agent-trigger routes.
+/// Create agent-trigger routes. Also mounts the agent-script routes, which
+/// share this state; app_builder.rs may not grow (file-size ratchet).
 pub fn routes(state: AppState) -> Router {
+    super::agent_scripts::routes(state.clone()).merge(trigger_routes(state))
+}
+
+fn trigger_routes(state: AppState) -> Router {
     Router::new()
         .route(
             "/v1/agents/{agent_id}/triggers",
@@ -263,7 +280,7 @@ pub struct DeliveriesQuery {
         DeliveriesQuery
     ),
     responses(
-        (status = 200, description = "Recent deliveries", body = Vec<crate::records::AgentTriggerDelivery>),
+        (status = 200, description = "Recent deliveries", body = Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>),
         (status = 404, description = "Trigger not found", body = ErrorResponse)
     ),
     tag = "agent-triggers"
@@ -273,7 +290,7 @@ pub async fn list_agent_trigger_deliveries(
     State(state): State<AppState>,
     Path((agent_id, trigger_id)): Path<(String, String)>,
     Query(query): Query<DeliveriesQuery>,
-) -> ApiResult<Vec<crate::records::AgentTriggerDelivery>> {
+) -> ApiResult<Vec<crate::domains::agent_triggers::record::AgentTriggerDelivery>> {
     let deliveries = ListAgentTriggerDeliveries {
         agent_id,
         trigger_id,

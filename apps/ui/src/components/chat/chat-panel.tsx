@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
+import { isAttachmentFile } from "@/hooks/use-file-attachments";
 import {
   useAgents,
   useFileAttachments,
@@ -21,8 +22,8 @@ import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
-import { sendUserMessageWithImages } from "@/lib/api/messages";
-import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
+import { startSessionVoice } from "@/lib/api/voice";
+import { useVoiceCall } from "@/hooks/use-voice-call";
 import { useMutation } from "@tanstack/react-query";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatComposer } from "@/components/chat/chat-composer";
@@ -118,6 +119,8 @@ export interface ChatPanelProps {
    * agent here; other surfaces leave it unset and keep the generic prompt.
    */
   replyToLabel?: string;
+  /** A thread a coordinator started: the composer says "this thread", not the agent. */
+  replyInThread?: boolean;
   /**
    * Render inline run cards for work the turns started. Off by default: it costs
    * a task subscription, and only the Chats thread surface wants it.
@@ -136,6 +139,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   resolvedThread = false,
   replyToLabel,
+  replyInThread = false,
   onDraftSubmit,
   showRunCards = false,
   collapseWorkLog = true,
@@ -160,7 +164,7 @@ export function ChatPanel({
     verbosity,
     setVerbosity,
     setIsWaitingForResponse,
-    sendMessage,
+    chatSends,
     cancelCurrentTurn,
   } = useSessionContext();
 
@@ -172,7 +176,8 @@ export function ChatPanel({
   // model cue.
   const intelligence = useIntelligenceStatus();
   const showNoIntelligence = !intelligence.isLoading && !intelligence.available;
-  const transcriptEmpty = !eventsLoading && chatEvents.length === 0;
+  const transcriptEmpty =
+    !eventsLoading && chatEvents.length === 0 && chatSends.pending.length === 0;
   const showPlatformIntro =
     transcriptEmpty && Boolean(platformIntro || platformStarters.length > 0);
   const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
@@ -182,12 +187,7 @@ export function ChatPanel({
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
-  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const voiceConnectionIdRef = useRef<string | null>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
     selectedModelId,
@@ -251,13 +251,14 @@ export function ChatPanel({
     (files: File[]) => {
       const isPdf = (f: File) =>
         f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf");
-      const pdfs = files.filter(isPdf);
-      const imgs = files.filter((f) => !isPdf(f));
+      // Zips are unpacked into the session's files, so any model can use them.
+      const docs = files.filter((f) => isAttachmentFile(f) && (supportsPdf || !isPdf(f)));
+      const imgs = files.filter((f) => !isAttachmentFile(f));
       if (imgs.length > 0) {
         addImageFiles(imgs);
       }
-      if (pdfs.length > 0 && supportsPdf) {
-        addFileFiles(pdfs);
+      if (docs.length > 0) {
+        addFileFiles(docs);
       }
     },
     [addImageFiles, addFileFiles, supportsPdf],
@@ -311,21 +312,6 @@ export function ChatPanel({
     }
   }, [eventsLoading]);
 
-  const sendMessageWithImages = useMutation({
-    mutationFn: async ({
-      text,
-      images,
-      files,
-      controls,
-      addressedParticipantId: addressed,
-    }: {
-      text: string;
-      images: Array<{ imageId: string; filename?: string }>;
-      files: Array<{ fileId: string; filename?: string }>;
-      controls?: Controls;
-      addressedParticipantId?: string | null;
-    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed, files),
-  });
   const executeCommand = useMutation({
     mutationFn: async ({
       name,
@@ -349,82 +335,15 @@ export function ChatPanel({
     allUploaded &&
     allFilesUploaded &&
     !draftSending &&
-    !sendMessage.isPending &&
-    !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
 
-  const cleanupVoiceClient = useCallback(() => {
-    peerConnectionRef.current?.close();
-    peerConnectionRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-      remoteAudioRef.current.remove();
-      remoteAudioRef.current = null;
-    }
-  }, []);
-
-  const stopVoice = useCallback(
-    async (reason = "client_ended") => {
-      const voiceConnectionId = voiceConnectionIdRef.current;
-      voiceConnectionIdRef.current = null;
-      cleanupVoiceClient();
-      setVoiceState("idle");
-      if (!voiceConnectionId) return;
-      try {
-        await endSessionVoice(sessionId, voiceConnectionId, reason);
-      } catch (error) {
-        console.error("Failed to end voice session:", error);
-      }
-    },
-    [cleanupVoiceClient, sessionId],
+  const placeSessionCall = useCallback(
+    async (sdp: string) => ({ sessionId, voice: await startSessionVoice(sessionId, { sdp }) }),
+    [sessionId],
   );
 
-  useEffect(() => {
-    return () => {
-      void stopVoice("unmounted");
-    };
-  }, [stopVoice]);
-
-  const startVoice = useCallback(async () => {
-    if (!voiceAvailable || voiceState !== "idle") return;
-    setVoiceError(null);
-    setVoiceState("connecting");
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      const peerConnection = new RTCPeerConnection();
-      peerConnectionRef.current = peerConnection;
-      mediaStreamRef.current = mediaStream;
-      mediaStream.getTracks().forEach((track) => peerConnection.addTrack(track, mediaStream));
-      const remoteAudio = document.createElement("audio");
-      remoteAudio.autoplay = true;
-      remoteAudio.setAttribute("playsinline", "true");
-      remoteAudioRef.current = remoteAudio;
-      peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
-      };
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      if (!offer.sdp) {
-        throw new Error("Missing local voice offer.");
-      }
-      const voice = await startSessionVoice(sessionId, {
-        sdp: offer.sdp,
-        reasoning_effort: reasoningEffort || undefined,
-      });
-      await peerConnection.setRemoteDescription({
-        type: "answer",
-        sdp: voice.answer_sdp,
-      });
-      document.body.appendChild(remoteAudio);
-      voiceConnectionIdRef.current = voice.voice_connection_id;
-      setVoiceState("connected");
-    } catch (error) {
-      cleanupVoiceClient();
-      setVoiceState("idle");
+  const handleVoiceError = useCallback(
+    (error: unknown) => {
       if (isMicrophonePermissionError(error)) {
         setVoiceError({
           message: t("voice_microphone_permission_error"),
@@ -441,8 +360,28 @@ export function ChatPanel({
           description: t("voice_error_description"),
         });
       }
-    }
-  }, [cleanupVoiceClient, reasoningEffort, sessionId, t, voiceAvailable, voiceState]);
+    },
+    [t],
+  );
+
+  const {
+    state: voiceState,
+    start: startVoiceCall,
+    stop: stopVoice,
+  } = useVoiceCall({ placeCall: placeSessionCall, onError: handleVoiceError });
+
+  // A call belongs to one session: switching sessions hangs it up.
+  useEffect(() => {
+    return () => {
+      void stopVoice("unmounted");
+    };
+  }, [sessionId, stopVoice]);
+
+  const startVoice = useCallback(async () => {
+    if (!voiceAvailable || voiceState !== "idle") return;
+    setVoiceError(null);
+    await startVoiceCall();
+  }, [startVoiceCall, voiceAvailable, voiceState]);
 
   const toggleVoice = useCallback(() => {
     if (voiceState === "connected") {
@@ -602,23 +541,28 @@ export function ChatPanel({
         await onDraftSubmit(inputValue.trim(), uploadedImageIds, uploadedFileIds, controls);
         clearImages();
         clearFiles();
-      } else if (hasImages || hasFiles) {
-        await sendMessageWithImages.mutateAsync({
+      } else {
+        // The turn status row takes over from Enter: the composer clears now,
+        // and a send that fails shows "Not delivered" with Retry on its row.
+        const send = chatSends.submit({
           text: inputValue.trim(),
-          images: uploadedImageIds,
-          files: uploadedFileIds,
+          images: hasImages ? uploadedImageIds : [],
+          files: hasFiles ? uploadedFileIds : [],
           controls,
           addressedParticipantId,
         });
         clearImages();
         clearFiles();
-      } else {
-        await sendMessage.mutateAsync({
-          sessionId,
-          content: inputValue.trim(),
-          controls,
-          addressedParticipantId,
-        });
+        persistSelection();
+        setInputValue("");
+        setAddressedParticipantId(null);
+        setIsWaitingForResponse(true);
+        send
+          .then(() => {
+            if (sessionId) void refetchParticipants();
+          })
+          .catch((error) => console.error("Failed to send message:", error));
+        return;
       }
 
       if (sessionId) void refetchParticipants();
@@ -633,6 +577,25 @@ export function ChatPanel({
       setDraftSending(false);
     }
   };
+
+  // Stop first takes back a send whose turn has not started: before the
+  // server acks it the text returns to the composer, after the ack the stop
+  // waits for the turn to start. Otherwise it cancels the running turn.
+  const stopTurn = useMemo(
+    () => ({
+      isPending: cancelCurrentTurn.isPending,
+      mutate: () => {
+        const stopped = chatSends.stop();
+        if (typeof stopped === "object") {
+          setInputValue((current) => current || stopped.text);
+          textareaRef.current?.focus();
+          return;
+        }
+        if (!stopped) cancelCurrentTurn.mutate();
+      },
+    }),
+    [cancelCurrentTurn, chatSends],
+  );
 
   const handleCommandSelect = useCallback(
     async (cmd: CommandDescriptor, controls?: Controls) => {
@@ -656,11 +619,13 @@ export function ChatPanel({
 
   return (
     <>
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SessionTranscript
             showRunCards={showRunCards}
             collapseWorkLog={collapseWorkLog}
+            // Playground sessions cannot be forked, so they get no Branch or rating.
+            messageActions={!!session && session.source !== "playground"}
             emptyState={
               showNoIntelligence ? (
                 <NoIntelligenceMessage canManage={intelligence.canManage} />
@@ -737,15 +702,13 @@ export function ChatPanel({
                   ? !modelReady
                     ? t("type_message_pick_model")
                     : undefined
-                  : replyToLabel
-                    ? t("reply_to", { name: replyToLabel })
-                    : undefined
+                  : replyInThread
+                    ? t("reply_in_thread")
+                    : replyToLabel
+                      ? t("reply_to", { name: replyToLabel })
+                      : undefined
               }
               selectedModelId={selectedModelId}
-              usingChatGptPlan={
-                selectedModel?.provider_type === "chatgpt" ||
-                (!selectedModelId && llmModel?.provider_type === "chatgpt")
-              }
               recentModels={recentModels}
               onModelChange={handleModelChange}
               modelTriggerLabel={
@@ -766,19 +729,14 @@ export function ChatPanel({
               defaultVerbosityName={defaultVerbosityName}
               getVerbosityName={getVerbosityName}
               onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
-              isActive={isActive}
-              cancelCurrentTurn={cancelCurrentTurn}
+              isActive={isActive || chatSends.busy}
+              cancelCurrentTurn={stopTurn}
               canSubmit={canSubmit}
               modelReady={modelReady}
               modelLoading={modelLoading}
               hideModelNotice={showPlatformIntro}
               isUploading={isUploading}
-              sendPending={
-                draftSending ||
-                sendMessage.isPending ||
-                sendMessageWithImages.isPending ||
-                executeCommand.isPending
-              }
+              sendPending={draftSending || executeCommand.isPending}
               textareaRef={textareaRef}
               voiceEnabled={voiceAvailable}
               voiceActive={voiceState === "connected"}

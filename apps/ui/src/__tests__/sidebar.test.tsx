@@ -69,7 +69,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 }));
 
 jest.mock("@/components/layout/mcp-connect-button", () => ({
-  McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
+  McpConnectButton: () => <button type="button" aria-label="Connect your coding agent" />,
   McpConnectDialog: ({ open }: { open: boolean }) =>
     open ? (
       <div role="dialog" aria-label="MCP connection details">
@@ -78,7 +78,7 @@ jest.mock("@/components/layout/mcp-connect-button", () => ({
     ) : null,
   McpConnectMenuItem: ({ onSelect }: { onSelect: () => void }) => (
     <button role="menuitem" onClick={onSelect}>
-      Connect via MCP
+      Connect your coding agent
     </button>
   ),
 }));
@@ -106,18 +106,14 @@ jest.mock("@/components/layout/notification-bell", () => ({
 // Mock feature flags provider
 const mockFeatureFlags = {
   chat_threads: false,
-  notifications: true,
   evals: true,
   skills: true,
   memory: true,
   knowledge: true,
   plugins: true,
-  channel_budgets: true,
   voice: true,
-  agent_delegation: true,
   observers: true,
   public_chat: true,
-  webmcp: true,
   reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
@@ -151,18 +147,14 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       chat_threads: false,
-      notifications: true,
       evals: true,
       skills: true,
       memory: true,
       knowledge: true,
       plugins: true,
-      channel_budgets: true,
       voice: true,
-      agent_delegation: true,
       observers: true,
       public_chat: true,
-      webmcp: true,
       reports: true,
     });
     mockPush.mockClear();
@@ -208,9 +200,9 @@ describe("Sidebar", () => {
 
     expect(brandRow).not.toBeNull();
     expect(within(searchRow).getByRole("button", { name: /search/i })).toBeInTheDocument();
-    expect(within(brandRow!).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(brandRow!).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(brandRow!).queryByLabelText("Notifications")).not.toBeInTheDocument();
-    expect(within(searchRow).queryByLabelText("Connect via MCP")).not.toBeInTheDocument();
+    expect(within(searchRow).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
     expect(within(searchRow).queryByLabelText("Notifications")).not.toBeInTheDocument();
   });
 
@@ -234,7 +226,7 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
+    expect(screen.getByText("Connect your coding agent")).toBeInTheDocument();
   });
 
   it("renders a local identity menu with applicable actions in no-auth mode", async () => {
@@ -257,13 +249,17 @@ describe("Sidebar", () => {
 
     fireEvent.click(trigger);
     expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
+      "href",
+      "https://everruns.com/docs/changelog/",
+    );
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /personal access tokens/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /sign out/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Connect via MCP" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Connect your coding agent" }));
     expect(
       await screen.findByRole("dialog", { name: /mcp connection details/i }),
     ).toBeInTheDocument();
@@ -284,7 +280,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
 
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
   });
 
   it("preserves authentication-only actions in authenticated mode", () => {
@@ -304,7 +300,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("menuitem", { name: /personal access tokens/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
   });
 
   it("renders only the version when no current user is available", () => {
@@ -335,6 +331,50 @@ describe("Sidebar", () => {
     expect(mockPush).toHaveBeenCalledWith("/settings/profile");
   });
 
+  it("opens the public docs from the Documentation menu item", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Documentation" }));
+
+    expect(open).toHaveBeenCalledWith("https://everruns.com/docs", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
+  it("links the Changelog menu item to the public changelog", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    const changelog = screen.getByRole("menuitem", { name: "Changelog" });
+
+    expect(changelog).toHaveAttribute("href", "https://everruns.com/docs/changelog/");
+    expect(changelog).toHaveAttribute("target", "_blank");
+    expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   it("renders all navigation items", () => {
     render(<Sidebar />);
 
@@ -348,7 +388,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Memory")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getByText("MCP")).toBeInTheDocument();
+    expect(screen.queryByText("MCP")).not.toBeInTheDocument();
     expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Plugins")).toBeInTheDocument();
@@ -392,13 +432,13 @@ describe("Sidebar", () => {
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const identitiesLink = screen.getByRole("link", { name: "Virtual Users" });
     const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
-    const mcpServersLink = screen.getByRole("link", { name: "MCP" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
     expect(chatsLink).toHaveAttribute("href", "/chats");
     expect(identitiesLink).toHaveAttribute("href", "/virtual-users");
     expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
-    expect(mcpServersLink).toHaveAttribute("href", "/mcp-servers");
+    // The org MCP catalog lives in Settings > Organization (user-mcp-servers.md, step 8).
+    expect(screen.queryByRole("link", { name: "MCP" })).not.toBeInTheDocument();
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(memoryLink).toHaveAttribute("href", "/memory");
@@ -414,11 +454,21 @@ describe("Sidebar", () => {
       render(<Sidebar />);
 
       const chat = screen.getByRole("link", { name: "Chat" });
+      const agents = screen.getByRole("link", { name: "Agents" });
       expect(chat).toHaveAttribute("href", "/chats");
+      // Chat shares the row inset with every other item. Its hover rail
+      // matches too, except while it is the current page.
+      expect(chat.className).toContain("px-3");
+      expect(chat.className).not.toContain("mx-2.5");
       if (pathname === "/chats") {
         expect(chat).toHaveAttribute("aria-current", "page");
+        expect(chat).toHaveClass("border-l-primary");
+        expect(chat).toHaveClass("bg-primary/5");
       } else {
         expect(chat).not.toHaveAttribute("aria-current");
+        expect(chat).not.toHaveClass("border-l-primary");
+        expect(chat.className).toContain("hover:bg-card/80");
+        expect(agents.className).toContain("hover:bg-card/80");
       }
     },
   );
@@ -428,10 +478,9 @@ describe("Sidebar", () => {
 
     const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
 
-    expect(icon("Skills")).toHaveClass("lucide-book-open");
-    expect(icon("Capabilities")).toHaveClass("lucide-blocks");
-    expect(icon("Plugins")).toHaveClass("lucide-plug");
-    expect(icon("MCP")).toHaveAttribute("viewBox", "0 0 186 186");
+    expect(icon("Skills")).toHaveAttribute("data-facet-icon", "skills");
+    expect(icon("Capabilities")).toHaveAttribute("data-facet-icon", "capabilities");
+    expect(icon("Plugins")).toHaveAttribute("data-facet-icon", "plugins");
   });
 
   it("snaps the active item instead of transitioning it after the page commits", () => {
@@ -508,7 +557,6 @@ describe("Sidebar", () => {
 
   it.each([
     "/settings/organization",
-    "/settings/providers",
     "/settings/members",
     "/settings/features",
     "/settings/payments",
@@ -541,28 +589,10 @@ describe("Sidebar", () => {
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
   });
 
-  it("keeps the Sandboxes group collapsed until one of its pages is open", () => {
+  it("links Sandboxes as one Building entry", () => {
+    mockPathname.mockReturnValue("/sandboxes/templates/template-1");
     render(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: "Sandboxes" }));
-    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/sandboxes");
-    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute(
-      "href",
-      "/sandbox-templates",
-    );
-  });
-
-  it.each(["/sandboxes", "/sandbox-templates/template-1"])(
-    "opens the Sandboxes group on %s",
-    (pathname) => {
-      mockPathname.mockReturnValue(pathname);
-      render(<Sidebar />);
-      expect(screen.getByRole("link", { name: "Fleet" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Templates" })).toBeInTheDocument();
-    },
-  );
-
-  it("hides the collapsed Sandboxes links elsewhere", () => {
-    render(<Sidebar />);
+    expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute("href", "/sandboxes");
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
   });
 
@@ -588,7 +618,7 @@ describe("Sidebar", () => {
   it("hides Durable Execution navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
@@ -600,7 +630,7 @@ describe("Sidebar", () => {
     const toggle = screen.getByRole("button", { name: /durable execution/i });
     fireEvent.click(toggle);
 
-    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
@@ -877,7 +907,7 @@ describe("Create Organization dialog", () => {
     render(<Sidebar />);
 
     const warningBtn = screen.getByRole("button", {
-      name: /no llm provider configured/i,
+      name: /no provider connected/i,
     });
     expect(warningBtn).toBeInTheDocument();
 

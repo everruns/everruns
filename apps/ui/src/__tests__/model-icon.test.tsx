@@ -39,7 +39,7 @@ describe("ModelIcon vendor selection", () => {
     gemini.unmount();
 
     const meta = render(<ModelIcon model={model("meta", "meta")} />);
-    expect(meta.getByTitle("Meta Model API")).toBeInTheDocument();
+    expect(meta.getByTitle("Meta")).toBeInTheDocument();
     meta.unmount();
 
     // No vendor tag at all → provider icon.

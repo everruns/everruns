@@ -22,6 +22,23 @@ behavior reflected in `knowledge/`, `apps/docs/`, OpenAPI, or examples; stale or
 knowledge replaced by links to source. Follow the maintenance rules in
 `knowledge/knowledge-contract.md` and `knowledge/project/maintenance.md`.
 
+## Public changelog
+
+The changelog at `docs/changelog/` covers finished changes meeting its impact criteria and says
+nothing the product no longer does ([design](../../../../knowledge/docs/changelog.md)):
+
+- **Missed entries.** List merged `feat` and user-visible `fix` PRs since the last sweep across
+  `everruns`, `saas`, `yolop`, `sdk`, `mira` and `bashkit` whose `Changelog:` line is missing or
+  names a program that has since finished without an entry. Apply the design's eligibility gate
+  before writing an entry; cosmetic polish and routine docs upkeep do not qualify. Write
+  qualifying entries, with screenshots for UI changes
+  (`.agents/skills/ship/references/changelog-entry.md`).
+- **Stale entries.** For entries whose linked docs pages, capability slugs, endpoints or flags
+  changed or disappeared after the entry date, append `## Update YYYY-MM-DD`, set
+  `supersededBy`, or fix the link in place. Never rewrite an entry to describe newer behavior.
+- **Media still owed.** `pnpm run check:changelog` warns on every `visual:` line, a screenshot that
+  was planned and never captured. Capture it and remove the line.
+
 ## Feature completeness across surfaces
 
 Features that look shipped in one surface are connected and consistent in the others:
@@ -32,6 +49,23 @@ Features that look shipped in one surface are connected and consistent in the ot
 - docs, knowledge, examples, tests, and manual test cases do not claim behavior the product lacks
 
 Fix locally, or record the missing surface, user impact, and next action.
+
+## Examples and demos
+
+Every example and docs snippet works when someone runs it, on a current model. CI only compiles
+examples; nothing else runs them, so this surface is checked by running them.
+
+- `doppler run -- scripts/run-live-examples.sh` runs the Framework examples that drive a real model
+  (pass `name:features` to pick others). Its job in the weekly Integration Live Sweep is the
+  backstop; a failure there is a broken example, not a flaky provider, until shown otherwise.
+- Examples, `docs/framework/` snippets, crate READMEs, and the copies in other repos (landing
+  snippets, the plugin skills in [everruns/plugins](https://github.com/everruns/plugins), Mira's docs
+  and examples) name the latest model of each provider they show, OpenAI, Anthropic and Google
+  alike; the model profiles in `crates/contracts/src/model_profile_data/` say which ids exist.
+  Product defaults (yolop's model list) are a decision, not a sweep. Leave recorded demo
+  transcripts as recorded until they are re-recorded.
+- Examples use a real LLM, never `llmsim` or a scripted driver (`AGENTS.md`); an offline mode that
+  is the default is a finding.
 
 ## Security and threat posture
 
@@ -128,8 +162,8 @@ Agent instructions, commands, and skills still match reality and do not contradi
   [`AGENTS.md`](../../../../AGENTS.md). Prune restatements instead of syncing them; move detail a
   skill only needs sometimes into a `references/` file.
 - Release and maintenance instructions point at the canonical workflow rather than duplicating it.
-- Check plugin surfaces against recent upstream platform changes across
-  `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`,
-  `.cursor-plugin/marketplace.json`, and the per-host manifests under `plugins/everruns/`
-  and `plugins/resend/` (see [`plugins/AGENTS.md`](../../../../plugins/AGENTS.md));
-  prove parity with `scripts/test-plugins.sh`.
+- Check plugin surfaces against recent upstream platform changes: the coding-agent plugin in
+  [everruns/plugins](https://github.com/everruns/plugins) (MCP tools, CLI commands and skills
+  still agree) and the per-host manifests under `plugins/resend/` (see
+  [`plugins/AGENTS.md`](../../../../plugins/AGENTS.md)); prove parity with
+  `scripts/test-plugins.sh`.

@@ -10,11 +10,11 @@
 use chrono::{TimeZone, Utc};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
-use everruns_durable_engine::engine::{
+use everruns_worker::engine::{
     ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnExecution,
     TurnLifecycleEffect, TurnPlan, TurnState,
 };
-use everruns_durable_engine::host::InProcessExecution;
+use everruns_worker::host::InProcessExecution;
 use serde_json::json;
 
 fn initial_state() -> TurnState {
@@ -32,6 +32,7 @@ fn initial_state() -> TurnState {
         cumulative_usage: None,
         tool_call_count: 0,
         llm_call_count: 0,
+        issue_count: 0,
         time_to_first_token_ms: None,
         final_message_id: None,
         final_answer_preview: None,
@@ -309,6 +310,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             &mut immediate,
             &mut durable,
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
@@ -316,6 +318,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 waiting_for_tool_approval: false,
             }),
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: true,
                 waiting_for_tool_results: false,
                 waiting_for_url_elicitation: false,
@@ -335,6 +338,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
             &mut immediate,
             &mut durable,
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,
@@ -342,6 +346,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
                 waiting_for_tool_approval: false,
             }),
             ActivityOutcome::Act(ActOutcome {
+                issue_count: 0,
                 blocked: false,
                 waiting_for_tool_results: true,
                 waiting_for_url_elicitation: false,

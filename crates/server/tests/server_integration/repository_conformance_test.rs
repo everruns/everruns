@@ -13,7 +13,7 @@ use everruns_contracts::typed_id::TriggerId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::MessageQuery;
-use everruns_server::org_init;
+use everruns_server::setup::org_init;
 use everruns_server::storage::{
     AcceptOrgInvitationOutcome, AddOrganizationMemberOutcome, CreateAgentRow,
     CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
@@ -48,7 +48,7 @@ pub(crate) async fn create_test_principal(repo: &StorageBackend, label: &str) ->
 pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: everruns_server::records::SessionSource::Api,
+        source: everruns_server::domains::sessions::record::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         channel_id: None,
@@ -99,6 +99,8 @@ pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
+        max_output_tokens: None,
+        communication: Default::default(),
         environments: None,
         is_built_in: false,
     }
@@ -476,7 +478,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create invitation user");
     let active_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Active Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -484,7 +486,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create active invitation org");
     let resolved_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Resolved Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -600,7 +602,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
         .expect("create existing member");
     let existing_member_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Existing Member Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -656,7 +658,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let capacity_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -754,7 +756,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let mixed_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Mixed Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })
@@ -819,7 +821,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
     let full_org = backend
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_server::records::generate_org_public_id(),
+            public_id: everruns_server::domains::organizations::record::generate_org_public_id(),
             name: format!("Full Capacity Invitation Org {label}"),
             created_by: Some(user.id),
         })

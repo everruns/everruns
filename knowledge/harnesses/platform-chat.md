@@ -38,6 +38,16 @@ Withholding platform capability from the effective Agent and harness composition
 Arguments remain data across shell forwarding, and invocation bounds prevent
 one shell loop from amplifying a turn into unbounded control-plane calls.
 
+## Built-in operating skills
+
+The `platform` capability supplies `everruns` for product orientation,
+`everruns-cli` for command usage and examples, and `everruns-agent-authoring`
+for agent design. The standard skills loader discovers their read-only mounts
+and activates instructions on demand. Essential authorization, credential, and
+change-context rules remain in code and the managed prompt; optional skill
+activation does not establish those boundaries. MCP-oriented authoring examples
+use the active session shell under the capability's interface guidance.
+
 ## Memory and privacy
 
 One reserved org-scoped Memory backs the shared folder. All Platform Chat
@@ -91,9 +101,9 @@ Virtual docs are process-local: resumed file access restores mounts from the eff
 Agent and harness after restart. Shared memory uses the original reserved namespace.
 Shared workspaces without a corresponding session never gain private chat mounts.
 
-The implementation is in [organization initialization](../../crates/server/src/org_init.rs),
-[storage consolidation](../../crates/server/src/storage/repositories/harnesses.rs),
-[file service](../../crates/server/src/domains/session_files/service.rs), and
+The implementation is in [organization initialization](../../crates/server/src/setup/org_init/mod.rs),
+[storage consolidation](../../crates/server/src/storage/repositories/harnesses/mod.rs),
+[file service](../../crates/server/src/domains/session_files/service/mod.rs), and
 [memory routing](../../crates/server/src/domains/session_files/memory_mounts.rs).
 Hosted embedders consuming the OSS built-ins receive the same behavior when
 they upgrade their server dependency and deploy it. Hosts supplying their own

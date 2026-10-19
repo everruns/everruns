@@ -26,7 +26,10 @@ an Agent or harness and test its behavior.
 
 Platform Chat uses the `everruns` command in its session shell to discover operations,
 read authoritative state, perform requested changes, and verify results. Product docs
-are mounted read-only at `/workspace/docs`.
+are mounted read-only at `/workspace/docs`. The Platform capability also supplies
+`everruns`, `everruns-cli`, and `everruns-agent-authoring` skills for product
+orientation, command workflows, and agent design. Discover and activate them
+through [Agent Skills](/capabilities/agent-skills/) as needed.
 
 `/memory/user` is private to the conversation owner. `/memory/shared` contains durable
 notes shared across Platform Chat conversations in the organization. Sharing requires
@@ -62,6 +65,8 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Ask User | Pause for structured user input when required |
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
+| Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat threads |
+| Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 
 ## Existing conversations
 

@@ -26,13 +26,28 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 - For bug fixes, write or update a failing test before the fix when practical.
 - Record important decisions as concise comments near the relevant code, not in scratch docs.
 - Internal code needs no backward compatibility unless a spec says otherwise.
+- Examples (`examples/`, `crates/*/examples/`) run against a real LLM. Never script one with
+  `llmsim` or another simulated model: that belongs in tests, and an example must show real
+  agent behavior. Use `gpt-6.1-sol` (or `gpt-6-luna` for a lighter model), never a `gpt-5`
+  model.
+- Changelog is part of done. A PR that meets the public changelog's impact criteria adds its
+  entry (`docs/changelog/<date>-<slug>/`) in the same PR and fills the PR template's
+  `Changelog:` line; a PR that changes behavior an older entry
+  describes updates that entry. Rules: `knowledge/docs/changelog.md`; how: the ship skill's
+  `references/changelog-entry.md`.
 
 ### Gotchas
 
+- Engine-owned durable execution for DO/Cloudflare/celld has an explicit user publication hold.
+  Do not create or reinstate its public changelog entry or announcement assets until the
+  Framework Engine, serve and celld implementation and qualification are complete, and the user
+  explicitly approves the entry afterward. CI, merge and release are not publication approval.
+  Continue implementation without an entry; record the hold in the PR's `Changelog:` line.
+
 - Working-tree changes you did not make are probably another agent's or the user's. Work with
   them, and stage files by name rather than `git add -A`.
-- Rebases silently keep colliding migration numbers. After a rebase that touches
-  `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
+- Create server migrations with `just new-migration <name>` (UTC timestamp version). A new
+  `NNN_` file fails CI; the baseline replaced 001..222, kept frozen in `legacy/`.
 - A secret a workflow fetches at runtime (`doppler secrets get`) is invisible to the Actions log
   masker, which only knows values that came through `secrets.*`. Put one in `$GITHUB_ENV` or
   `$GITHUB_OUTPUT` and the runner prints it in the `env:` block of every later step. Scope it to the

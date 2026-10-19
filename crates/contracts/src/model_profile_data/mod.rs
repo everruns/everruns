@@ -13,14 +13,15 @@ pub mod profiles;
 mod types;
 
 pub use profiles::{
-    ModelProfileEntry, all_profile_entries, all_profiles, estimate_cost_usd,
-    estimate_cost_usd_for_speed, get_model_profile, get_model_profile_by_key,
+    ModelProfileEntry, all_profile_entries, all_profiles, cache_write_1h_surcharge_usd,
+    estimate_cost_usd, estimate_cost_usd_for_speed, get_model_profile, get_model_profile_by_key,
     get_model_profile_key, get_model_service_kind, get_model_vendor, profile_entries_for_provider,
     profiles_for_provider, selected_profiles, selected_profiles_for_provider,
 };
 pub use types::{
-    CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, MID_CONVERSATION_SYSTEM_PARAMETER,
-    Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
+    CLEAR_AT_PARAMETER, CostTier, DecisionModelProfile, INLINE_TOOL_ADDITIONS_PARAMETER,
+    INLINE_TOOL_CHANGES_PARAMETER, MID_CONVERSATION_SYSTEM_PARAMETER, Modality, ModelCost,
+    ModelLimits, ModelModalities, ModelProfile, ModelVendor, ReasoningEffort,
     ReasoningEffortConfig, ReasoningEffortValue, ServiceKind, Speed, SpeedConfig, SpeedValue,
     Verbosity, VerbosityConfig, VerbosityValue,
 };

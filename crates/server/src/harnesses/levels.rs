@@ -1,5 +1,11 @@
 //! Canonical levels: shared capability data, hosted presentation and live parents.
-use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+//!
+//! Base → Conversation | Worker → Bashkit Worker | Sandbox Worker. The tree,
+//! use cases and diagram are in `docs/features/harnesses.md`; the capability
+//! data is in `everruns_contracts::capability::presets`.
+use crate::domains::harnesses::record::{
+    BuiltInHarnessDefinition, BuiltInHarnessRole, HarnessExecution,
+};
 use everruns_contracts::capability::BuiltInHarnessPreset;
 
 pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
@@ -7,33 +13,32 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
         BuiltInHarnessPreset::Base => (
             "Base",
             "square-dashed",
-            "Minimal foundation with zero capabilities.",
+            "System essentials: compaction, error disclosure, tool-call repair, loop detection and approval guidance. Best for custom harnesses that pick their own tools.",
         ),
         BuiltInHarnessPreset::Conversation => (
             "Conversation",
             "message-circle",
-            "Simple conversations with context compaction and tool-call robustness.",
-        ),
-        BuiltInHarnessPreset::WorkerBase => (
-            "Worker Base",
-            "terminal",
-            "Working files, bash, project instructions, session tools and durable tool output. A foundation for specialized workers.",
+            "Chat with structured questions and message timestamps. No workspace and no shell. Best for assistants, support bots and Q&A.",
         ),
         BuiltInHarnessPreset::Worker => (
             "Worker",
             "box",
-            "General-purpose worker with skills, long-context support, budgeting, subagents and task coordination.",
+            "Files, AGENTS.md, skills, subagents and tasks, with no shell. Best for agents that act through tools and MCP servers, such as triage and research.",
+        ),
+        BuiltInHarnessPreset::BashkitWorker => (
+            "Bashkit Worker",
+            "terminal",
+            "Worker plus the Bashkit virtual shell. No sandbox provider needed, but no native packages, processes or ports. Best for light automation and scripting.",
         ),
     };
     let mut definition = BuiltInHarnessDefinition::new(
         preset.name(),
         display_name,
         description,
-        if preset == BuiltInHarnessPreset::Base {
-            "You are a helpful assistant."
-        } else {
-            ""
-        },
+        // No level carries a generic persona line. Prepended to an agent's own
+        // prompt it contradicted it; when no layer supplies a prompt,
+        // `RuntimeAgentBuilder::from_overlay` falls back to one.
+        "",
     )
     .with_icon(icon)
     .with_tags([preset.name(), "built-in"])
@@ -41,11 +46,12 @@ pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
     if let Some(parent) = preset.parent() {
         definition = definition.with_parent_name(parent.name());
     }
-    if preset == BuiltInHarnessPreset::Conversation {
-        definition = definition.with_roles([BuiltInHarnessRole::Default]);
+    match preset {
+        BuiltInHarnessPreset::Base => definition.with_roles([BuiltInHarnessRole::Base]),
+        BuiltInHarnessPreset::Conversation => definition.with_roles([BuiltInHarnessRole::Default]),
+        BuiltInHarnessPreset::Worker => definition,
+        BuiltInHarnessPreset::BashkitWorker => definition
+            .with_tags([preset.name(), "built-in", "environment-fixed"])
+            .with_execution(HarnessExecution::FixedBashkit),
     }
-    if preset == BuiltInHarnessPreset::Base {
-        definition = definition.with_roles([BuiltInHarnessRole::Base]);
-    }
-    definition
 }

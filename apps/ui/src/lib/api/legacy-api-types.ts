@@ -1,3 +1,9 @@
+export type {
+  Organization,
+  UpdateOrganizationRequest,
+  SystemDecisionsSource,
+} from "./organization-types";
+
 import type {
   Model,
   ModelWithProvider,
@@ -37,7 +43,7 @@ export type {
 // From legacy virtual-user-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 
 // Generated enums used by entities that remain hand-maintained here.
-import type { Agent, AgentStatus, ConversationStarter } from "./agent-types";
+import type { Agent, ConversationStarter } from "./agent-types";
 export type {
   Agent,
   AgentStatus,
@@ -46,79 +52,16 @@ export type {
   ConversationStarter,
 } from "./agent-types";
 import type { SlackChannelConfig } from "./slack-api-types";
-export type { SlackChannelConfig, SlackReplyMode, SlackResponsePolicy } from "./slack-api-types";
+export type { SlackChannelConfig, SlackResponsePolicy } from "./slack-api-types";
 import type { DriverId } from "./provider-driver-types";
-import type { ChannelStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type {
+  ChannelStatus,
+  ConversationMessageData,
+  LlmRetryInfo,
+  SessionSource,
+} from "./schema-types";
 
-// From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// ============================================
-// Agent types (M2)
-// ============================================
-export interface CreateAgentRequest {
-  service_virtual_user_id?: string;
-  /** Addressable name (slug): lowercase alphanumeric and hyphens */
-  name: string;
-  /** Human-readable display name shown in UI */
-  display_name?: string;
-  description?: string;
-  /** Markdown intro for fresh Platform Chat threads (agent wins). */
-  intro_markdown?: string | null;
-  /** One-line description in simplified Markdown (agent wins). */
-  short_description?: string | null;
-  /** Conversation starters (agent wins when non-empty). */
-  starters?: ConversationStarter[];
-  system_prompt: string;
-  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to use the organization default (Conversation for new organizations). */
-  harness_id?: string;
-  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
-  harness_name?: string;
-  default_model_id?: string;
-  tags?: string[];
-  /** Capabilities with per-agent configuration */
-  capabilities?: AgentCapabilityConfig[];
-  initial_files?: InitialFile[];
-  /** Tool definitions (including client-side tools) */
-  tools?: ToolDefinition[];
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList;
-}
-
-export interface UpdateAgentRequest {
-  service_virtual_user_id?: string | null;
-  /** Addressable name (slug): lowercase alphanumeric and hyphens */
-  name?: string;
-  /** Human-readable display name shown in UI */
-  display_name?: string;
-  description?: string;
-  /** Markdown intro; omit to leave unchanged, null clears. */
-  intro_markdown?: string | null;
-  /** One-line description; omit to leave unchanged, null clears. */
-  short_description?: string | null;
-  /** Conversation starters; omit to leave unchanged, empty clears. */
-  starters?: ConversationStarter[] | null;
-  system_prompt?: string;
-  /** Base execution harness (id). Omit to leave unchanged; never clearable to null. Mutually exclusive with `harness_name`. */
-  harness_id?: string;
-  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
-  harness_name?: string;
-  default_model_id?: string;
-  tags?: string[];
-  /** Capabilities with per-agent configuration */
-  capabilities?: AgentCapabilityConfig[];
-  initial_files?: InitialFile[];
-  status?: AgentStatus;
-  /** Tool definitions (including client-side tools) */
-  tools?: ToolDefinition[];
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList | null;
-  /**
-   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
-   * NULL for sessions that were not forked. Distinct from a subagent's parent.
-   */
-  forked_from_session_id?: string | null;
-  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
-  forked_from_sequence?: number | null;
-}
+export type { CreateAgentRequest, UpdateAgentRequest } from "./agent-request-types";
 
 export type FindingSeverity = "warning" | "info" | "suggestion";
 
@@ -337,15 +280,9 @@ export interface PreviewHarnessRequest {
 // From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 
-export type ChannelType =
-  | "slack"
-  | "ag_ui"
-  | "schedule"
-  | "webhook"
-  | "a2a"
-  | "fcp"
-  | "api_endpoint"
-  | "public_chat";
+import type { ChannelType } from "./schema-types";
+import type { VoiceChannelConfig } from "./channel-types";
+export type * from "./channel-types";
 
 /**
  * What identity keys a session. Mirrors `everruns_core::channel::SessionBinding`.
@@ -370,7 +307,7 @@ export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channe
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
- * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ * `ChannelType::allowed_bindings()` for schedule, webhook and A2A.
  */
 export type InvocationSessionMode = Extract<
   SessionBinding,
@@ -599,6 +536,7 @@ export interface AgentChannel {
     | A2aChannelConfig
     | FcpChannelConfig
     | PublicChatChannelConfig
+    | VoiceChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
   /**
@@ -721,43 +659,10 @@ export interface OrganizationMembership {
   role: OrgRole;
 }
 
-/** Full organization details (from API) */
-export interface Organization {
-  id: string;
-  name: string;
-  default_model_id: string | null;
-  default_harness_id: string | null;
-  base_harness_id: string | null;
-  /** Default provider per service kind (EVE-569); empty object when none. */
-  default_provider_per_service: Record<string, string>;
-  /** Who answers guardrail jev checks and the Slack relevance check. */
-  system_decisions: SystemDecisionsSource;
-  created_at: string;
-  updated_at: string;
-  /**
-   * When the org's creator finished or skipped the setup wizard. `null` means
-   * onboarding is incomplete; the resume redirect sends the user to /setup.
-   */
-  onboarding_completed_at: string | null;
-}
-
 /** Request to create an organization */
 export interface CreateOrganizationRequest {
   name: string;
 }
-
-/** Request to update an organization */
-export interface UpdateOrganizationRequest {
-  name?: string;
-  default_model_id?: string | null;
-  default_harness_id?: string;
-  base_harness_id?: string;
-  /** Default provider per service kind (EVE-569); replaces the whole map. */
-  default_provider_per_service?: Record<string, string>;
-  system_decisions?: SystemDecisionsSource;
-}
-
-export type SystemDecisionsSource = "deployment" | "organization";
 
 export interface UserInfoResponse {
   id: string;
@@ -793,7 +698,7 @@ export interface PersonalAccessTokenListItem {
 
 export interface CreatePersonalAccessTokenRequest {
   name: string;
-  scopes?: string[];
+  scopes?: ["*"] | ["read"];
   expires_in_days?: number;
 }
 
@@ -831,45 +736,13 @@ export interface ProfileResponse {
   avatar_url?: string;
 }
 
-// ============================================
-// User Connection types
-// ============================================
-export interface UserConnection {
-  provider: string;
-  connection_type: string;
-  provider_username?: string;
-  scopes?: string;
-  connected_at: string;
-}
-
-export interface ConnectionProvider {
-  provider_id: string;
-  display_name: string;
-  description: string;
-  icon: string;
-  connection_type: "oauth" | "api_key";
-  capabilities: string[];
-  form_schema?: ConnectionFormSchema;
-}
-
-export interface ConnectionFormSchema {
-  fields: ConnectionFormField[];
-  instructions_markdown: string;
-}
-
-export interface ConnectionFormField {
-  name: string;
-  label: string;
-  field_type: "password" | "text" | "url";
-  required: boolean;
-  placeholder?: string;
-  help_text?: string;
-}
-
-export interface VerifyConnectionResponse {
-  valid: boolean;
-  error?: string;
-}
+export type {
+  ConnectionFormField,
+  ConnectionFormSchema,
+  ConnectionProvider,
+  UserConnection,
+  VerifyConnectionResponse,
+} from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // NOTE: CapabilityId is defined in common-types for proper ordering
@@ -2382,6 +2255,7 @@ export type EventData =
   | ContextCompactingData
   | ContextCompactedData
   | SessionModelChangedData
+  | ConversationMessageData
   | Record<string, unknown>; // Raw/unknown event data
 
 // ============================================
@@ -2396,6 +2270,8 @@ export interface EventTypeMap {
   "output.message.delta": OutputMessageDeltaData;
   "output.message.replaced": LegacyOutputMessageReplacedData;
   "output.message.completed": OutputMessageCompletedData;
+  /** A message the agent sent with `send_message` (explicit communication). */
+  "conversation.message": ConversationMessageData;
   "turn.started": TurnStartedData;
   "turn.completed": TurnCompletedData;
   "turn.failed": TurnFailedData;
@@ -2532,13 +2408,13 @@ export interface FileUploadResponse {
   created_at: string;
 }
 
-/** Allowed model-input file content types (PDF only for now) */
-export const ALLOWED_FILE_TYPES = ["application/pdf"] as const;
+/** Allowed attachment content types: PDFs, and zips the server unpacks */
+export const ALLOWED_FILE_TYPES = ["application/pdf", "application/zip"] as const;
 
 export type AllowedFileType = (typeof ALLOWED_FILE_TYPES)[number];
 
 /** Allowed model-input file extensions */
-export const ALLOWED_FILE_EXTENSIONS = [".pdf"] as const;
+export const ALLOWED_FILE_EXTENSIONS = [".pdf", ".zip"] as const;
 
 /** Maximum model-input file size in bytes (32 MB, matches the server cap) */
 export const MAX_FILE_SIZE = 32 * 1024 * 1024;
@@ -3155,11 +3031,7 @@ export interface ProviderRequestHeader {
   value: string;
 }
 
-/**
- * Per-connection request options: extra headers sent with every request to the
- * provider, and the prompt-cache diagnostics opt-in (honored by drivers with a
- * diagnostics protocol, today Anthropic).
- */
+/** Per-connection extra request headers and prompt-cache diagnostics opt-in (Anthropic today). */
 export interface ProviderRequestOptions {
   headers?: ProviderRequestHeader[];
   cache_diagnostics?: boolean;
@@ -3174,6 +3046,10 @@ export interface Provider {
   status: ProviderStatus;
   /** Whether this provider is host-managed (read-only to org admins). */
   managed: boolean;
+  /** Most recent successful model sync from the provider's API. */
+  last_synced_at?: string;
+  /** When someone last reviewed this provider's discovered models. */
+  models_reviewed_at?: string;
   created_at: string;
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */
@@ -3407,121 +3283,7 @@ export interface ReportingBackfillResult {
   usage_ledger: number;
 }
 
-// From legacy session-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// ============================================
-// Session types (M2)
-// ============================================
-// Session status values:
-// - "started": Session just created, no turn executed yet
-// - "active": A turn is currently running
-// - "idle": Turn completed, session waiting for next input
-// - "waiting_for_tool_results": Session paused, waiting for client-side tool results
-export type SessionStatus = "started" | "active" | "idle" | "waiting_for_tool_results";
-
-export interface Session {
-  id: string;
-  /** Organization this session belongs to */
-  organization_id: string;
-  /**
-   * Workspace this session is attached to (wsp_<32-hex>); owns the virtual
-   * filesystem. For the default 1:1 case this equals the session id. Optional
-   * here until the UI consumes it directly instead of deriving from the id.
-   */
-  workspace_id?: string;
-  harness_id: string;
-  agent_id: string | null;
-  /** Revision of the agent's history this session started on. */
-  agent_revision?: number | null;
-  virtual_user_id?: string | null;
-  /** Fixed end-user subject for an organisation-shared Playground conversation. */
-  playground_user_id?: string | null;
-  owner_principal_id: string;
-  resolved_owner_user_id?: string | null;
-  owner?: PrincipalSummary | null;
-  effective_owner?: PrincipalSummary | null;
-  title: string | null;
-  /** Objective shown in session lists and injected into the agent prompt */
-  goal?: string | null;
-  locale?: string | null;
-  /** Preview text from the first user message (truncated) */
-  preview?: string | null;
-  /** Preview text from the last assistant response (truncated) */
-  output_preview?: string | null;
-  tags: string[];
-  model_id: string | null;
-  /** Tool definitions (including client-side tools), defaults to [] */
-  tools?: ToolDefinition[];
-  status: SessionStatus;
-  /**
-   * How the session was started (EVE-852). Server-owned for every ingress
-   * except `chat`/`api`, which is what makes the Sessions source facet
-   * trustworthy. Optional here so responses from an older server still parse.
-   */
-  source?: SessionSource;
-  /**
-   * Outcome-oriented view of the session, derived server-side from its status
-   * and the outcome of its most recent turn. `status` alone has no notion of
-   * failure, which is why the list and the facet rail read this instead.
-   */
-  activity?: SessionActivity;
-  /**
-   * Generated one-sentence description of what the run did, and where it
-   * failed (EVE-867). Absent for chat threads, for runs with no terminal turn
-   * yet, and on deployments with no utility LLM — readers must have a fallback.
-   */
-  run_summary?: string;
-  created_at: string;
-  updated_at: string;
-  started_at: string | null;
-  finished_at: string | null;
-  /** Cumulative token usage for all LLM calls in this session */
-  usage?: TokenUsage;
-  /** Whether this session is pinned by the current user */
-  is_pinned?: boolean;
-  /**
-   * When this session was archived; absent means active. Archived sessions are
-   * hidden from default list results and shown by passing
-   * `include_archived=true`. Unlike `is_pinned`, archive is a property of the
-   * session itself rather than of the viewer.
-   */
-  archived_at?: string | null;
-  /** Number of active schedules for this session */
-  active_schedule_count?: number;
-  /**
-   * Total events recorded for this session. Denormalized counter, omitted when
-   * zero — an empty tab carries no badge (EVE-868).
-   */
-  event_count?: number;
-  /**
-   * Background work the session owns — subagents, external agents, background
-   * tools. This is what the Work tab holds; `active_schedule_count` describes
-   * only the schedules it also lists. Omitted when zero.
-   */
-  task_count?: number;
-  /**
-   * Non-directory files in this session's workspace. Persisted files only:
-   * capability-provided virtual mounts are served from memory and excluded.
-   * Omitted when zero.
-   */
-  file_count?: number;
-  /** Aggregated UI features from all active capabilities (harness + agent + session) */
-  features?: string[];
-  /** Session-level system prompt override (prepended to agent prompt) */
-  system_prompt?: string | null;
-  /** Session-level initial files (additive to agent initial_files) */
-  initial_files?: InitialFile[];
-  /** Session-level client hints (defaults for every turn) */
-  hints?: Record<string, unknown>;
-  /** Network access list for URL filtering */
-  network_access?: NetworkAccessList | null;
-  /**
-   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
-   * NULL for sessions that were not forked. Distinct from a subagent's parent.
-   */
-  forked_from_session_id?: string | null;
-  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
-  forked_from_sequence?: number | null;
-}
+export type { Session, SessionStatus } from "./session-types";
 
 /** Session counts grouped by status */
 export interface SessionStats {
@@ -3591,7 +3353,7 @@ export interface UpdateSessionRequest {
   title?: string;
   locale?: string;
   tags?: string[];
-  model_id?: string;
+  model_id?: string | null;
 }
 
 // ============================================
@@ -3663,13 +3425,8 @@ export function isTerminalTaskState(state: SessionTaskState): boolean {
   return state === "succeeded" || state === "failed" || state === "canceled";
 }
 
-/** Progress shape shared with background tool execution. */
-export interface TaskProgress {
-  current?: number;
-  total?: number;
-  unit?: string;
-  label?: string;
-}
+/** Progress shape shared with background tool execution; `steps` is a thread's checklist. */
+export type TaskProgress = import("./schema-types").BackgroundProgress;
 
 /** Structured ask posted by a task that needs input to continue. */
 export interface TaskInputRequest {

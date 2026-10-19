@@ -23,7 +23,7 @@ awaited lifecycle hooks on `AgentBuilder` (`crates/everruns/src/agent.rs`).
 It could not register a push listener. OpenTelemetry and Braintrust exist as
 `everruns_core::EventListener` implementations in `everruns_core::host::observability`
 (`crates/core/src/host/observability/mod.rs`), but only the server wires them
-(`crates/server/src/app_builder.rs`). A framework user has to pump each
+(`crates/server/src/app_builder/listeners.rs`). A framework user has to pump each
 session's stream by hand, re-deserialize core events, and remember to do it again for
 every resumed or spawned session. Short-lived programs also lose the last traces,
 because Braintrust flushes only on its interval ticker (`crates/core/src/host/observability/braintrust.rs`) and has
@@ -111,10 +111,12 @@ Why the Engine:
 - `Engine::shutdown(&self, deadline) -> ObserverReport` stops intake,
   drains the queues, then calls `flush()` on every listener. Concurrent callers
   await that same operation and report; the first caller supplies its deadline.
-- `async fn flush(&self) {}` is a defaulted method on
-  `everruns_core::EventListener`. EVE-1101 will make Braintrust signal its
-  batch task and await the final POST. The OTel wrapper will implement it with
-  `force_flush` on its provider.
+- Host listener flushes are fallible. OTel uses an explicit SDK provider off
+  runtime threads, so exporter failures reach the observer report and the async
+  deadline remains enforceable. An opaque global tracer cannot claim successful
+  provider flushing. See `crates/core/src/event_listeners.rs`,
+  `crates/everruns/src/observers.rs`, and the OTel listener in
+  `crates/core/src/host/observability/otel.rs`.
 - `Drop` for the last Engine clone does a best-effort non-blocking drain. The
   docs point short-lived programs at `shutdown`.
 
@@ -142,7 +144,7 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
 - Nothing is replayed on resume. The first event after `session.resumed` opens a
   new turn span.
 - Sessions spawned through the Engine (subagents, tasks) inherit the dispatcher.
-  OTel links them through the existing `parent_span_id` handling.
+  Each OTel turn remains its own trace; conversation/session attributes correlate events within each session. Child-turn causal links are not emitted.
 
 ### 7. Features and stability
 

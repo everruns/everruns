@@ -44,7 +44,7 @@ later change is a deliberate one.
 | Conversation | Copy all persisted events as-is | Faithful snapshot; reconstruction logic is unchanged. |
 | Compaction checkpoint | Copy the latest checkpoint within the copied event range | The fork keeps the canonical model view without weakening raw-history fidelity. |
 | KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
-| SQL databases | Copy (page-level; target design) | Pure data, transparent to the agent. |
+| SQL databases | Copy (page-level) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
 | Parent state required to fork | Not `active` / `waiting_for_tool_results` | Avoids snapshotting a half-written, in-flight turn. |
 | OpenAI Agents API sessions | Refused (`agents_api_session_not_forkable`) | Part of the context lives only at the provider and cannot be copied ([portability](../execution/openai-agents-api-runtime.md#portability)). |
@@ -144,17 +144,18 @@ internal budget-root override, which public HTTP session creation strips.
 
 ## Fork point
 
-V1 forks at "now", the parent's full persisted history. The schema
-(`forked_from_sequence`) and the copy routine are written in terms of an
-**upper-bound sequence**, so arbitrary-point forking is an additive follow-up:
-the request gains an optional `up_to_sequence` (or `up_to_message_id`), and the
-event copy filters `sequence <= up_to_sequence`. When forking mid-history:
+A fork copies the parent's full persisted history unless the request names
+`up_to_message_id` (branch from a message, the chat's "Branch into new chat").
+The copy routine and `forked_from_sequence` are written in terms of an
+**upper-bound sequence**, and the event copy filters `sequence <= cut`:
 
-- Copy events only up to the last **sealed** turn boundary at or before the
-  cutoff (`turn.completed` / `turn.sealed`), never a half-written turn, so the
-  child opens on a coherent conversation.
-- Workspace files / KV / SQL are still copied as of "now" in V1 (point-in-time
-  file snapshots are out of scope, files are not event-sourced).
+- The cut is the end of the turn that holds the message (`turn.completed`,
+  `turn.failed` or `turn.cancelled`), never a half-written turn, so the child
+  opens on a coherent conversation. A user message and its agent reply cut at
+  the same place. Resolution lives in `fork_cut_sequence` (events repository).
+- An unknown message is a `404` before anything is created.
+- Workspace files / KV / SQL are still copied as of "now" (point-in-time file
+  snapshots are out of scope, files are not event-sourced).
 
 ## Concurrency and consistency
 
@@ -202,7 +203,8 @@ in *its* lifecycle); the first input drives it like any new session.
 Errors:
 
 - `400`, invalid session id / invalid override payload.
-- `404`, parent not found (or archived/deleted dependency).
+- `404`, parent not found (or archived/deleted dependency), or
+  `up_to_message_id` names no message of the parent.
 - `409`, parent is mid-turn (`active` / `waiting_for_tool_results`).
 
 ### Auth & policy
@@ -238,11 +240,12 @@ Phased so each phase is independently reviewable and lands a coherent slice.
 
 ### Current implementation status
 
-Phase 1 is implemented: the fork endpoint creates an independent session that
-copies configuration, full conversation history, and workspace files, and
-records lineage. KV/secrets copy (phase 2), SQL-database copy (phase 3),
-single-transaction atomicity and arbitrary fork point (phase 4), and the list
-filter + UI (phase 5) are follow-ups. The copy is currently sequential
+The fork endpoint creates an independent session that copies configuration,
+conversation history, workspace files, session KV entries and session secrets
+(phase 2) and session SQL databases page for page (phase 3), and records lineage. `up_to_message_id` forks from an earlier
+message (phase 4). The UI has a Fork action on sessions and messages and a
+"forked from" provenance link (phase 5). Still open: single-transaction atomicity, the
+`?forked_from=` list filter, and a fork-tree view. The copy is currently sequential
 (per-table), not a single transaction, so a mid-copy failure can leave an
 incompletely-populated fork that the caller can delete and retry, matching the
 best-effort posture of `create_session`'s post-commit side effects.
@@ -250,19 +253,19 @@ best-effort posture of `create_session`'s post-commit side effects.
 ## Implementation references
 
 - Session model: `crates/contracts/src/runtime/session.rs` (`Session`, `SessionStatus`).
-- Session row + create row: `crates/server/src/storage/models.rs`
+- Session row + create row: `crates/server/src/storage/repositories/sessions/rows.rs`
   (`SessionRow`, `CreateSessionRow`).
 - Create flow + `row_to_session`:
   `crates/server/src/domains/sessions/service.rs`.
 - Session repo (transaction + workspace auto-create):
-  `crates/server/src/storage/repositories/sessions.rs`.
-- Events repo: `crates/server/src/storage/repositories/events.rs`
+  `crates/server/src/storage/repositories/sessions/mod.rs`.
+- Events repo: `crates/server/src/storage/repositories/events/mod.rs`
   (`list_events`, `create_event`, `allocate_event_sequence`).
-- Files repo: `crates/server/src/storage/repositories/session_files.rs`.
+- Files repo: `crates/server/src/storage/repositories/session_files/mod.rs`.
 - KV/secrets repo:
-  `crates/server/src/storage/repositories/session_storage.rs`.
-- Command pattern + routes: `crates/server/src/domains/sessions/commands.rs`,
-  `crates/server/src/api/sessions.rs`.
+  `crates/server/src/storage/repositories/session_storage/mod.rs`.
+- Command pattern + routes: `crates/server/src/domains/sessions/commands/mod.rs`,
+  `crates/server/src/api/sessions/mod.rs`.
 - Related: [session-resources.md](session-resources.md),
   [session-tasks.md](session-tasks.md), [session-sqldb.md](session-sqldb.md),
   [session-sandbox.md](session-sandbox.md), [workspace.md](workspace.md),

@@ -56,7 +56,7 @@ the protocol migration.
   enforces the 1.0 consumer rules and assembles a `RunResult`;
   `ResumeBuilder` answers interrupts. The HTTP/SSE `client` (core feature `ag-ui-client`)
   feeds it. See [Consumer rules](#consumer-rules).
-- **Server adapter**: [`crates/server/src/api/ag_ui.rs`](../../crates/server/src/api/ag_ui.rs)
+- **Server adapter**: [`crates/server/src/channels/ag_ui/mod.rs`](../../crates/server/src/channels/ag_ui/mod.rs)
   validates input, runs the turn and feeds the session's events to the
   projector.
 - **Framework**: `Session::ag_ui` in
@@ -244,7 +244,7 @@ client's own state handling and are not checked.
 ## Interrupts and resume
 
 A parked turn becomes interrupts, built in
-[`ag_ui_interrupts.rs`](../../crates/server/src/api/ag_ui_interrupts.rs):
+[`ag_ui/interrupts.rs`](../../crates/server/src/channels/ag_ui/interrupts.rs):
 
 | Parked on | `reason` | Answer (`ResumeEntry.payload`) |
 |---|---|---|
@@ -266,7 +266,7 @@ call. Frontend tool calls do not interrupt; see below.
 
 `RunAgentInput.tools` become the session's client-side tools, the same kind
 the session API declares, so the turn parks on a call to one
-([`ag_ui_frontend_tools.rs`](../../crates/server/src/api/ag_ui_frontend_tools.rs)).
+([`ag_ui/frontend_tools.rs`](../../crates/server/src/channels/ag_ui/frontend_tools.rs)).
 The consumer sends its tools on every run and the session takes the latest
 set. A parked call to one of the run's frontend tools streams as
 `TOOL_CALL_START`/`ARGS`/`END` under the assistant message that made it, with
@@ -340,7 +340,7 @@ itself, never an anonymous or Public Chat visitor.
 
 `GET /v1/channels/{channel_id}/ag-ui/capabilities` returns a 1.0 `AgentCapabilities`
 behind the same auth, gates and rate limit as a run
-([`ag_ui_capabilities.rs`](../../crates/server/src/api/ag_ui_capabilities.rs)).
+([`ag_ui/capabilities.rs`](../../crates/server/src/channels/ag_ui/capabilities.rs)).
 It is derived from the endpoint config only: identity (the endpoint name and
 description, `type: everruns`), streaming, client-provided tools, interrupts,
 and the opt-ins (reasoning, approvals, subagents, `state` snapshots and

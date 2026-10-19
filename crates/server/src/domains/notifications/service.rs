@@ -355,7 +355,7 @@ fn format_duration(duration_ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::SessionSource;
+    use crate::domains::sessions::record::SessionSource;
     use crate::storage::StorageBackend;
     use crate::storage::test_database::test_session_row;
     use everruns_contracts::typed_id::{AgentId, TurnId};
@@ -378,6 +378,7 @@ mod tests {
             session_id,
             context: EventContext::turn(turn_id, input_message_id),
             data: EventData::TurnCompleted(TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations: 1,
                 duration_ms: Some(duration_ms),

@@ -4,8 +4,9 @@
 use super::{
     AGENT_MANAGE, AGENT_VIEW, CreateAgent, GetAgent, UpsertAgent, types::CreateAgentRequest,
 };
+use crate::domains::agent_channels::record::ChannelType;
+use crate::domains::agents::record::Agent;
 use crate::domains::common::*;
-use crate::records::{Agent, ChannelType};
 use everruns_contracts::{CapabilityRef, model_spec::ModelSpec, runtime_provider::ProviderKey};
 use everruns_core::agent_package::{
     AgentPackage, Channel, File, Format, Manifest, PackageError, sensitive_key,
@@ -280,6 +281,8 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "network_access",
         "max_iterations",
         "parallel_tool_calls",
+        "max_output_tokens",
+        "communication",
         "tools",
         "intro_markdown",
         "short_description",
@@ -287,6 +290,10 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "sandbox_policy",
     ];
     object.retain(|key, _| allowed.contains(&key.as_str()));
+    // `direct` is the default; a package states only a deliberate choice.
+    if object.get("communication").and_then(|v| v.as_str()) == Some("direct") {
+        object.remove("communication");
+    }
     object.insert("schema_version".into(), json!(1));
     let instructions = object.remove("system_prompt").unwrap_or(json!(""));
     object.insert("instructions".into(), instructions);
@@ -530,8 +537,10 @@ pub async fn request(
         network_access: m.network_access.clone(),
         max_iterations: m.max_iterations,
         parallel_tool_calls: m.parallel_tool_calls,
+        max_output_tokens: m.max_output_tokens,
+        communication: m.communication.unwrap_or_default(),
     };
-    crate::api::validation::validate_create_agent_input(
+    crate::domains::validation::validate_create_agent_input(
         &req.name,
         req.display_name.as_deref(),
         req.description.as_deref(),
@@ -541,7 +550,8 @@ pub async fn request(
     )
     .map_err(|_| CommandError::bad_request("Agent configuration exceeds platform limits"))?;
     super::managed::validate_managed_name(&req.name)?;
-    crate::api::validation::check_platform_chat_content(
+    super::max_output_tokens::validate(req.max_output_tokens)?;
+    crate::domains::validation::check_platform_chat_content(
         req.intro_markdown.as_deref(),
         req.short_description.as_deref(),
         &req.starters,
@@ -585,14 +595,17 @@ pub async fn request(
     for (name, channel) in &m.channels {
         if !matches!(
             channel.channel_type.as_str(),
-            "ag_ui" | "public_chat" | "fcp" | "slack"
+            "ag_ui" | "public_chat" | "fcp" | "slack" | "voice"
         ) {
             return Err(CommandError::bad_request(format!(
-                "channels.{name}: package imports support ag_ui, public_chat, fcp and slack; use the channel/trigger API for this type"
+                "channels.{name}: package imports support ag_ui, public_chat, fcp, slack and voice; use the channel/trigger API for this type"
             )));
         }
         if channel.channel_type == "public_chat" && !ctx.feature_flags.public_chat {
             return Err(CommandError::feature_not_enabled("public_chat"));
+        }
+        if channel.channel_type == "voice" && !ctx.feature_flags.voice {
+            return Err(CommandError::feature_not_enabled("voice"));
         }
         crate::domains::agent_channels::validation::normalize_and_validate_channel_config(
             ChannelType::from_str_opt(&channel.channel_type).expect("validated channel type"),
@@ -619,7 +632,7 @@ async fn destination(
         None
     };
     if let Some(agent) = &existing
-        && agent.status != crate::records::AgentStatus::Active
+        && agent.status != crate::domains::agents::record::AgentStatus::Active
     {
         return Err(CommandError::bad_request("target agent must be active"));
     }
@@ -815,7 +828,7 @@ impl Command for ExportAgent {
             crate::domains::session_files::CreateWorkspaceFile {
                 session_id: session.to_string(),
                 path: path.clone(),
-                req: crate::api::session_files::CreateFileRequest {
+                req: crate::domains::session_files::types::CreateFileRequest {
                     content: Some(content),
                     encoding: Some(encoding),
                     is_readonly: Some(false),

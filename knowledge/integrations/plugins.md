@@ -37,11 +37,23 @@ code.
 
 Direction matters relative to existing specs:
 
-- `plugins/everruns/` is **outbound**: Everruns packaged as a plugin for
-  Claude Code/Codex/Cursor (see [the `everruns` plugin contract](#the-everruns-plugin-contract)).
+- **Outbound**: Everruns packaged as a plugin for coding agents (Claude Code,
+  Codex, Cursor, Gemini CLI) lives in its own repository,
+  [everruns/plugins](https://github.com/everruns/plugins), which owns its
+  format, skills and checks. It moved out of this repository so it releases
+  on its own schedule, hosts do not clone the monorepo to read a 1 KB catalog,
+  and its skills defer to the server (`--help`, `discover`, server
+  instructions) instead of restating the API.
+  Shared product guides (`everruns`, `everruns-cli`, `everruns-mcp`,
+  `everruns-agent-authoring`, and `everruns-framework`) are authored in the core
+  repository's [`skills/`](../../skills/) tree and distributed as complete
+  copies in the outbound plugin. The general `everruns` guide stays independent
+  of the invoking host; interface procedures live in the CLI and MCP skills.
+  The plugin repository owns its additional task guides, release version, and
+  generated skill listings.
 - This spec is **inbound**: Everruns consuming plugins in the same format.
   The outbound plugin doubles as the first dogfood content: `everruns`
-  must install cleanly into Everruns itself.
+  must install cleanly into Everruns itself, from the default marketplace.
 
 ## Why not just declarative capabilities
 
@@ -198,10 +210,13 @@ plugin entries with `name`, `source` (relative path, `github`, `url`,
 Unknown fields are preserved and ignored.
 
 The **default marketplace** is seeded for every organization. It is named
-`everruns`, uses `source_type: github`, and points at `everruns/everruns`
-(the repo's own `.claude-plugin/marketplace.json`). Seeding happens at org
-creation via `org_init::seed_default_plugin_marketplace`; existing orgs
-received it via the one-time backfill in `058_backfill_default_marketplace.sql`.
+`everruns`, uses `source_type: github`, and points at `everruns/plugins`
+(that repository's `.claude-plugin/marketplace.json`, the same catalog coding
+agents install from). Seeding happens at org creation via
+`org_init::seed_default_plugin_marketplace`; existing orgs received it via the
+one-time backfill in `058_backfill_default_marketplace.sql`, and
+`196_default_marketplace_everruns_plugins.sql` repointed rows still at the old
+`everruns/everruns` source.
 The marketplace is deletable/disableable like any other marketplace; "default"
 means seeded, not privileged. Deletion is permanent, the marketplace is
 never re-seeded lazily on read.

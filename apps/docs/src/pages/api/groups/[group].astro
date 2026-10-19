@@ -1,0 +1,10 @@
+---
+import ApiGroupPage from "../../../components/ApiGroupPage.astro";
+import { allGroups } from "../../../lib/api-reference";
+
+export function getStaticPaths() {
+  return allGroups.map(group => ({ params: { group: group.id }, props: { group } }));
+}
+const { group } = Astro.props;
+---
+<ApiGroupPage group={group} />

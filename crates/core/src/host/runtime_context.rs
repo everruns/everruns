@@ -21,7 +21,12 @@ use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::hosted_mcp::{HostedMcpDriver, HostedMcpResolver};
 use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::native_web_search::NATIVE_WEB_SEARCH_OPTION;
 use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime::connection_services::UserConnectionResolver;
+use everruns_contracts::runtime::web_search::{
+    cached_web_search_settings, resolve_native_web_search,
+};
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
@@ -40,6 +45,7 @@ pub struct StoreTurnContextResolver {
     file_store: Option<Arc<dyn SessionFileSystem>>,
     session_storage: Option<Arc<dyn crate::session_services::SessionStorageStore>>,
     hosted_mcp: Option<Arc<dyn HostedMcpResolver>>,
+    web_search_settings: Option<Arc<dyn UserConnectionResolver>>,
 }
 
 impl StoreTurnContextResolver {
@@ -65,6 +71,7 @@ impl StoreTurnContextResolver {
             file_store: None,
             session_storage: None,
             hosted_mcp: None,
+            web_search_settings: None,
         }
     }
 
@@ -92,6 +99,18 @@ impl StoreTurnContextResolver {
         resolver: Option<Arc<dyn HostedMcpResolver>>,
     ) -> Self {
         self.hosted_mcp = resolver;
+        self
+    }
+
+    /// Read the organization's web search defaults for native search. Each
+    /// turn then asks the model for its own search only while native comes
+    /// first in the agent's plan under the current defaults. Without it the
+    /// built-in defaults apply (Automatic, native allowed).
+    pub fn with_web_search_settings(
+        mut self,
+        resolver: Option<Arc<dyn UserConnectionResolver>>,
+    ) -> Self {
+        self.web_search_settings = resolver;
         self
     }
 }
@@ -123,6 +142,17 @@ impl TurnContextResolver for StoreTurnContextResolver {
             AssemblyMode::RequireMessages,
         )
         .await?;
+        // Native web search is decided per turn against the organization's
+        // current defaults, so a changed default or Automatic order reaches
+        // running sessions (cached for WEB_SEARCH_SETTINGS_TTL).
+        let options = &mut assembled.runtime_agent.driver_options;
+        if let Some(resolver) = &self.web_search_settings
+            && options.contains_key(NATIVE_WEB_SEARCH_OPTION)
+        {
+            let key = format!("session:{}", request.session_id);
+            let org = cached_web_search_settings(resolver.as_ref(), &key, request.session_id).await;
+            resolve_native_web_search(options, org.as_deref());
+        }
         // Credentials join the call inside the driver, below the engine, so
         // they never reach events or the persisted config.
         if let Some(resolver) = &self.hosted_mcp {
@@ -321,6 +351,16 @@ async fn assemble_from_snapshot(
             )
         });
     model.provider_managed_reduction_option = provider_managed_reduction_option;
+    if let Some((run, call_id)) = super::script_run::requested(&messages) {
+        // A script run (Tools in Shell D9) answers in place of the model, and
+        // has no provider to reduce history for it.
+        model.provider_managed_reduction_option = None;
+        model.driver = Arc::new(super::script_run::ScriptRunDriver::new(
+            run,
+            call_id,
+            Arc::clone(&model.driver),
+        ));
+    }
 
     let history = if model.provider_managed_reduction_option.is_some() {
         let filters = collect_message_filters_only_with_context(

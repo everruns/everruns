@@ -1,8 +1,8 @@
 use crate::support::*;
-use everruns_server::records::Agent;
-use everruns_server::records::Model;
-use everruns_server::records::Session;
-use everruns_server::records::provider::Provider;
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::models::record::Model;
+use everruns_server::domains::providers::record::Provider;
+use everruns_server::domains::sessions::record::Session;
 use serde_json::{Value, json};
 
 #[tokio::test]
@@ -298,11 +298,10 @@ async fn test_session_inherits_agent_default_model() {
         session.id, session.model_id
     );
 
-    // Verify session inherited the agent's default_model_id
+    // The session binds no model of its own; its turns resolve the agent's.
     assert_eq!(
-        session.model_id,
-        Some(model.id),
-        "Session should inherit agent's default_model_id"
+        session.model_id, None,
+        "Session must not copy the agent's default_model_id"
     );
 
     // Step 5: Create a session WITH explicit model_id (should override)

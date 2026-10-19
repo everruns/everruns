@@ -1,14 +1,16 @@
 "use client";
 
+import { SettingsIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { notFound, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
-import { Settings as SettingsIcon } from "lucide-react";
+
 import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
 import { visibleNavigationSections } from "@/lib/navigation";
 import { useOrg } from "@/providers/org-provider";
+import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
 
 interface SettingsLayoutProps {
   children: React.ReactNode;
@@ -18,11 +20,13 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const pathname = usePathname();
   const { flags, isLoading: featureFlagsLoading } = useFeatureFlagsState();
   const { hasRole } = useOrg();
+  const can = useNavigationPolicy();
   const settingsSections = visibleNavigationSections(
     settingsNavigationSections,
     flags,
     hasRole,
     process.env.NODE_ENV === "development",
+    can,
   );
   const machinePaymentsEnabled = flags.machine_payments;
 
@@ -41,7 +45,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground">
-            Organization defaults, providers, members, and your personal preferences.
+            Organization defaults, members, and your personal preferences.
           </p>
         </div>
       </div>

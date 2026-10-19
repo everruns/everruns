@@ -21,6 +21,7 @@
 // - tools: additive (overlay appended after base, deduplicated at build time)
 // - max_iterations: overlay wins if set, else inherit base
 // - parallel_tool_calls: overlay wins if set, else inherit base
+// - max_output_tokens: overlay wins if set, else inherit base (agent layer only today)
 // - mcp_servers: overlay overrides base by logical server name (last wins)
 
 use crate::runtime::agent_definition::AgentDefinition;
@@ -55,6 +56,12 @@ pub struct AgentConfigOverlay {
     pub max_iterations: Option<usize>,
     /// Request-level parallel tool calling preference (EVE-598).
     pub parallel_tool_calls: Option<bool>,
+    /// Per-call output token ceiling sent to the provider as `max_tokens`.
+    /// Only the agent layer sets it today.
+    pub max_output_tokens: Option<u32>,
+    /// How the agent talks. Only the agent layer sets it: the agent owns this
+    /// setting, and harnesses and sessions inherit it.
+    pub communication: Option<crate::runtime::conversation::Communication>,
     /// Remote MCP servers scoped to this layer.
     pub mcp_servers: ScopedMcpServers,
 }
@@ -76,6 +83,8 @@ impl AgentConfigOverlay {
         let default_model_id = overlay.default_model_id.or(self.default_model_id);
         let max_iterations = overlay.max_iterations.or(self.max_iterations);
         let parallel_tool_calls = overlay.parallel_tool_calls.or(self.parallel_tool_calls);
+        let max_output_tokens = overlay.max_output_tokens.or(self.max_output_tokens);
+        let communication = overlay.communication.or(self.communication);
         let mcp_servers = merge_scoped_mcp_servers(&self.mcp_servers, &overlay.mcp_servers);
 
         let mut tools = self.tools;
@@ -90,6 +99,8 @@ impl AgentConfigOverlay {
             tools,
             max_iterations,
             parallel_tool_calls,
+            max_output_tokens,
+            communication,
             mcp_servers,
         }
     }
@@ -229,6 +240,8 @@ impl From<&HarnessDefinition> for AgentConfigOverlay {
             tools: vec![],
             max_iterations: None,
             parallel_tool_calls: h.parallel_tool_calls,
+            max_output_tokens: None,
+            communication: None,
             mcp_servers: h.mcp_servers.clone(),
         }
     }
@@ -245,6 +258,8 @@ impl From<&AgentDefinition> for AgentConfigOverlay {
             tools: a.tools.clone(),
             max_iterations: a.max_iterations,
             parallel_tool_calls: a.parallel_tool_calls,
+            max_output_tokens: a.max_output_tokens,
+            communication: Some(a.communication),
             mcp_servers: a.mcp_servers.clone(),
         }
     }
@@ -267,6 +282,8 @@ impl From<&ExecutionSession> for AgentConfigOverlay {
             tools: s.tools.clone(),
             max_iterations: s.max_iterations,
             parallel_tool_calls: s.parallel_tool_calls,
+            max_output_tokens: None,
+            communication: None,
             mcp_servers: s.mcp_servers.clone(),
         }
     }
@@ -326,6 +343,8 @@ mod tests {
             tools: vec![tool("inspect", "Inspect the workspace")],
             max_iterations: Some(17),
             parallel_tool_calls: Some(false),
+            max_output_tokens: Some(4096),
+            communication: None,
             mcp_servers: [(
                 "docs".into(),
                 server("https://docs.example.com/mcp", "docs-provider"),
@@ -346,6 +365,7 @@ mod tests {
         );
         assert_eq!(actual.max_iterations, expected.max_iterations);
         assert_eq!(actual.parallel_tool_calls, expected.parallel_tool_calls);
+        assert_eq!(actual.max_output_tokens, expected.max_output_tokens);
         assert_eq!(actual.mcp_servers, expected.mcp_servers);
     }
 
@@ -527,16 +547,19 @@ mod tests {
                 default_model_id: base.map(model),
                 max_iterations: base.map(|n| n as usize),
                 parallel_tool_calls: base_parallel,
+                max_output_tokens: base.map(|n| n as u32),
                 ..Default::default()
             }
             .merge(AgentConfigOverlay {
                 default_model_id: overlay.map(model),
                 max_iterations: overlay.map(|n| n as usize),
                 parallel_tool_calls: overlay_parallel,
+                max_output_tokens: overlay.map(|n| n as u32),
                 ..Default::default()
             });
             assert_eq!(result.default_model_id, expected.map(model));
             assert_eq!(result.max_iterations, expected.map(|n| n as usize));
+            assert_eq!(result.max_output_tokens, expected.map(|n| n as u32));
             assert_eq!(result.parallel_tool_calls, expected_parallel);
         }
     }
@@ -644,6 +667,7 @@ mod tests {
         let mut expected = sample_overlay();
         expected.tools.clear();
         expected.max_iterations = None;
+        expected.max_output_tokens = None;
         let harness = HarnessDefinition {
             name: "harness".into(),
             system_prompt: expected.system_prompt.clone(),
@@ -673,6 +697,7 @@ mod tests {
         agent.tools = expected.tools.clone();
         agent.max_iterations = expected.max_iterations;
         agent.parallel_tool_calls = expected.parallel_tool_calls;
+        agent.max_output_tokens = expected.max_output_tokens;
         agent.mcp_servers = expected.mcp_servers.clone();
         assert_overlay(AgentConfigOverlay::from(&agent), expected);
     }
@@ -695,6 +720,7 @@ mod tests {
         ] {
             let mut expected = sample_overlay();
             expected.system_prompt = expected_prompt.map(str::to_owned);
+            expected.max_output_tokens = None;
             let mut session = ExecutionSession::new(
                 crate::runtime::typed_id::SessionId::new(),
                 crate::runtime::typed_id::WorkspaceId::new(),

@@ -94,7 +94,7 @@ impl Drop for TxSlot {
 
 fn count_outside(path: &'static str) {
     metrics::counter!(
-        crate::api::prometheus::names::DB_QUERIES_OUTSIDE_TRANSACTION,
+        crate::metrics_names::DB_QUERIES_OUTSIDE_TRANSACTION,
         "path" => path
     )
     .increment(1);
@@ -206,6 +206,9 @@ where
                 PgTransactionManager::start_rollback(&mut connection);
                 return Err(internal(error.into()));
             }
+            // Effects may wait (a cancel waits for the turn's holder): give
+            // the connection back first.
+            drop(connection);
             for effect in effects {
                 effect.await;
             }

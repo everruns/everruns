@@ -10,11 +10,16 @@ use crate::anthropic::driver::normalize_anthropic_id;
 ///
 /// Sonnet 5.5 rejects `disabled` too; its thinking-off mode (`between_tools`)
 /// is not something the driver sends, so it is treated as always on.
+///
+/// Haiku 5.5 accepts `disabled` only at effort `high` or below and thinks when
+/// `thinking` is omitted, so it is driven like Opus 5.5: always adaptive, with
+/// effort as the only control.
 const THINKING_ALWAYS_ON_FAMILIES: &[&str] = &[
     "claude-fable-5-1",
     "claude-fable-5",
     "claude-opus-5-5",
     "claude-sonnet-5-5",
+    "claude-haiku-5-5",
 ];
 
 /// The effort to send: the caller's, or [`default_effort`] when it chose none.
@@ -138,6 +143,11 @@ mod tests {
         ] {
             assert_eq!(effort_for(model), Some(ReasoningEffort::High), "{model}");
         }
+        // Haiku 5.5 sends its profile default, which matches the API's `medium`.
+        assert_eq!(
+            effort_for("claude-haiku-5-5"),
+            Some(ReasoningEffort::Medium)
+        );
     }
 
     /// Either omitting `thinking` turns it off, or the API default already
@@ -159,6 +169,9 @@ mod tests {
         // Sonnet 5.5 rejects `thinking: disabled` too.
         let sonnet55 = resolve(&config, "claude-sonnet-5-5", &profile("claude-sonnet-5-5"));
         assert_eq!(sonnet55, Some(ReasoningEffort::Low));
+        // Haiku 5.5 thinks when `thinking` is omitted, so off becomes `low`.
+        let haiku55 = resolve(&config, "claude-haiku-5-5", &profile("claude-haiku-5-5"));
+        assert_eq!(haiku55, Some(ReasoningEffort::Low));
         // Where omitting `thinking` turns it off, `None` keeps meaning off.
         let opus48 = resolve(&config, "claude-opus-4-8", &profile("claude-opus-4-8"));
         assert_eq!(opus48, Some(ReasoningEffort::None));

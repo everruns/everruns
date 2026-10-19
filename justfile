@@ -39,6 +39,19 @@ stop-infra:
 reset:
     ./scripts/lib/infra.sh reset
 
+# Create a new server migration named by UTC time (YYYYMMDDHHMMSS_<name>.sql)
+new-migration name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name="{{name}}"
+    if ! [[ "$name" =~ ^[a-z0-9_]+$ ]]; then
+        echo "migration name must be lowercase letters, digits and underscores" >&2
+        exit 1
+    fi
+    file="crates/server/migrations/$(date -u +%Y%m%d%H%M%S)_${name}.sql"
+    printf -- '-- %s\n' "$name" > "$file"
+    echo "$file"
+
 # === Build & Test ===
 
 # Build all crates
@@ -108,7 +121,7 @@ test-integration: start-infra
     cargo test -p everruns-server --test domain -- --test-threads=1
     cargo test -p everruns-durable --test postgres_integration_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test postgres_repository_test --features postgres-tests -- --test-threads=1
-    cargo test -p everruns-durable --test store_conformance_test --test timers_and_children_test --test schema_drift_test --features postgres-tests -- --test-threads=1
+    cargo test -p everruns-durable --test store_conformance_test --test schema_drift_test --features postgres-tests -- --test-threads=1
     cargo test -p everruns-durable --test failure_injection_test --test agent_reliability_test --features "failpoints,postgres-tests" -- --test-threads=1
 
 # Run workflow tests (requires running server + worker)
@@ -240,3 +253,12 @@ load-test profile="medium" *args:
 bench-turn-latency *args:
     DATABASE_URL="${DATABASE_URL:-postgres://everruns:everruns@localhost:${DB_PORT:-9332}/everruns_test}" \
         cargo bench --package everruns-server --bench turn_latency -- {{args}}
+
+# Needs running infra (PORT_PREFIX=433 bash scripts/lib/infra.sh start) and release
+# binaries in ${CARGO_TARGET_DIR:-target}/release. Example: just chaos --sessions 200 --no-chaos
+# Multi-process chaos + load harness: 2 servers, 3 workers, SIGKILLs, turn assertions
+[no-cd]
+chaos *args:
+    python3 scripts/chaos/run.py \
+        --server-bin "${CARGO_TARGET_DIR:-target}/release/everruns-server" \
+        --worker-bin "${CARGO_TARGET_DIR:-target}/release/everruns-worker" {{args}}

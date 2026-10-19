@@ -4,6 +4,10 @@ description: Give an agent the MCP servers of the person chatting with it, signe
 sidebar:
   order: 97
 appliesTo: [platform, cloud]
+# The feature page shares this title; keep the <title> distinct for search results.
+head:
+  - tag: title
+    content: "User MCP Servers Capability | Everruns"
 ---
 
 | | |
@@ -48,21 +52,47 @@ Added only when `manage` is on. They act on the list of the person who sent
 the message, the same list as **Settings > My MCP servers**, and never on the
 organization catalog.
 
-| Tool | What it does | Asks the person first |
+| Tool | What it does | Shared approval |
 |---|---|---|
-| `list_user_mcp_servers` | Lists the person's servers: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
-| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on | Yes |
-| `remove_user_mcp_server` | Removes a server | No |
-| `enable_user_mcp_server` | Turns a server on | Yes |
-| `disable_user_mcp_server` | Turns a server off without removing it | No |
+| `list_user_mcp_servers` | Lists the person's servers and those added to this conversation only: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
+| `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on. With `"scope": "chat"` it is added to this conversation only | In normal/protective mode |
+| `remove_user_mcp_server` | Removes a server, from this conversation or from the list | In protective mode |
+| `enable_user_mcp_server` | Turns a server on | In normal/protective mode |
+| `disable_user_mcp_server` | Turns a server off without removing it | In protective mode |
 | `connect_mcp_server` | Shows the person a Connect card for a server that needs a sign-in | No |
 
-`add_user_mcp_server` and `enable_user_mcp_server` wait for the person to
-approve them in chat (the card shows the call, such as the catalog name or URL), whether or not the
-agent has [Tool Approval](/capabilities/tool-approval/) on. `remove` and
-`disable` only take tools away and run without asking.
+`add_user_mcp_server` and `enable_user_mcp_server` declare that they require
+approval through the agent's shared [Tool Approval](/capabilities/tool-approval/)
+policy. With `tool_approval` enabled in `normal` or `protective` mode, they wait
+for approval in chat. With the capability absent or its mode set to `off`,
+they run without a hard approval gate. `user_mcp` adds no separate gate or
+approval setting. Other management tools follow the same mode and their tool
+hints; `remove` and `disable` only take tools away.
+
+OAuth sign-in remains a separate authorization step, regardless of the tool
+approval mode.
 
 A server added or enabled in a turn is usable from the person's next message.
+
+### This conversation only
+
+`add_user_mcp_server` with `"scope": "chat"` adds the server to the current
+conversation instead of the person's list. It joins every later turn of this
+conversation, loads on demand like the person's other servers, and never
+appears in **Settings > My MCP servers** or in their other conversations.
+`remove_user_mcp_server` takes it away from the next message. The same rules
+apply as for the list: the shared approval policy, catalog servers only unless
+`allow_custom_urls` is on, and no keys or headers. A catalog server signs in as
+the person, as it would from their list. A custom server that signs in with
+OAuth cannot be added this way, because its sign-in needs the list entry; add
+it to the list instead. A name that one of the agent's own servers, or a
+resource attached through [Resource Discovery](/integrations/ard/), already
+uses in this conversation is refused.
+
+In Chat, an **MCP** button in the conversation header lists these servers, with
+their host and whether you have signed in, and removes one with a click. The
+same list is `GET /v1/sessions/{session_id}/mcp-servers`, and
+`DELETE /v1/sessions/{session_id}/mcp-servers/{name}` removes one.
 `connect_mcp_server` never sees a credential: the person signs in in their own
 browser, as with any Connect card.
 
@@ -88,11 +118,16 @@ or headers; the person adds those in Settings.
 - The manage tools refuse to run without a person (unattended runs) and in
   sessions with more than one person, with a message saying so.
 - A server that fails validation is skipped on its own; the rest still load.
-- The person's servers load on demand: the agent sees one line per server
-  (`mcp_<name>`) and loads a server's tools through `tool_search`, or by calling
-  that line, when it needs them. They are callable from its next step and stay
-  loaded for the rest of the conversation (see
-  [Loading tools on demand](/features/mcp/#loading-tools-on-demand)).
+- The person's servers load on demand by default: the agent sees one line per
+  server (`mcp_<name>`) and loads a server's tools through `tool_search`, or by
+  calling that line, when it needs them. They are callable from its next step
+  and stay loaded for the rest of the conversation (see
+  [Loading tools on demand](/features/mcp/#loading-tools-on-demand)). Turning
+  off **Load tools on demand** on a server in **Settings > My MCP servers**
+  (`deferred: false` when adding or updating it under
+  `/v1/virtual-users/{id}/mcp-servers`)
+  lists its tools at the start of every turn instead. Servers added for one
+  conversation only always load on demand.
 
 ## Risk
 
@@ -101,6 +136,7 @@ person's login. Tool approval and the agent's other guardrails apply to these
 tools as to any MCP tool.
 
 With `manage`, adding a server is how a prompt injection would try to send the
-person's data somewhere new. That is why adding and enabling always wait for
-the person's approval, custom URLs are off by default, and every URL goes
-through the same address checks as the API.
+person's data somewhere new. Enable Tool Approval in `normal` or `protective`
+mode to hold add and enable calls for the person's approval. Leaving approval
+absent or off allows these calls to run autonomously. Custom URLs remain off
+by default, and every URL goes through the same address checks as the API.

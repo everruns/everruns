@@ -33,7 +33,7 @@ internal notes.
    standalone.
 5. A short "What It Provides" / "Features" list.
 6. A "Documentation" section linking the relevant
-   [docs.everruns.com](https://docs.everruns.com) page(s), and, for published
+   [everruns.com/docs](https://everruns.com/docs) page(s), and, for published
    crates, the docs.rs API reference.
 7. A "License" section linking the repository
    [`LICENSE`](https://github.com/everruns/everruns/blob/main/LICENSE) (MIT).
@@ -47,7 +47,7 @@ compiled example, so docs.rs and crates.io tell the same story. Examples in
 - Publishing/release mechanics, CI wiring, or "keep this in sync" maintainer notes.
 - Links to internal `knowledge/` files (they do not resolve on crates.io or docs.rs);
   reference design intent in code comments instead, or link a published
-  docs.everruns.com page.
+  everruns.com/docs page.
 - Internal "Decision:" scratch notes as the lead content. Reframe durable design
   rationale as a brief, user-facing "Design notes" subsection or move it to
   inline code comments.
@@ -120,12 +120,12 @@ server and worker binaries enable the opt-in exporter features explicitly.
 boundary and keeps Framework/provider dependency trees exporter-free.
 
 `everruns-durable` is a generic durable-execution engine with no `everruns-*`
-normal or build dependency; it knows workflows, activities, tasks, signals and
-schedules, not agents or turns. Agent semantics on top of it (the `TurnTaskDriver`
-that checkpoints `TurnExecution` between steps, turn signal types, and
-idempotent waiting-turn resolution tasks) live in `everruns-durable-engine`;
-the `turn.sealed` projection of a sealed task lives in `everruns-server`. `scripts/lib/check-durable-isolation.sh`
-(pre-push + CI) enforces the boundary.
+normal or build dependency; it knows workflows, activities, tasks and
+schedules, not agents or turns. Turns do not run on it: a worker runs each
+session's turn on a leased session actor (`crates/worker/src/actor_runtime/`).
+The worker's task loop (`task_driver.rs`) runs the queued activities that are
+not turns. `scripts/lib/check-durable-isolation.sh` (pre-push + CI) enforces
+the boundary.
 
 Environment-backed capability implementations live outside `everruns-core`.
 Core owns the capability, tool, filesystem, egress, and MCP-neutral contracts;
@@ -167,8 +167,10 @@ default Framework host can therefore provide them without compiling the
 control plane. `session_sql_database` and `session_sandbox` stay in
 `everruns-capabilities` because their implementations are hosted resources.
 
-Control-plane records stay in `crates/server/src/records` (EVE-1159), including
-workspace, agent, harness, session, provider, model, organization, and audit rows.
+Control-plane records stay in the server (EVE-1159), each in its owning domain as
+`crates/server/src/domains/<domain>/record.rs`, including workspace, agent, harness,
+session, provider, model, organization, and audit rows. `crates/server/src/records`
+holds only shapes no single domain owns (wire conversions, feature flags, email).
 `everruns-contracts` owns neutral sandbox, checkpoint, SQL, vector, knowledge, and
 connector interfaces. `everruns-capabilities` owns hosted orchestration and
 consumes runtime views; library hosts never materialize control-plane records.
@@ -332,7 +334,7 @@ just test-unit  # Runs in ~30s, no Docker needed
 - `crates/durable/tests/postgres_repository_test.rs` - Durable SQL queries, circuit breakers
 - `crates/durable/tests/schema_drift_test.rs` - Crate-owned schema (`PostgresWorkflowEventStore::migrate`) matches the server migrations for the durable tables
 - `crates/durable/tests/failure_injection_test.rs` - fail-rs rollback and retry coverage (`failpoints,postgres-tests`)
-- `crates/durable/tests/agent_reliability_test.rs` - manual executor/store reliability harness; not CI-gated until the restart/reclaim scenarios pass cleanly
+- `crates/durable/tests/agent_reliability_test.rs` - store reliability under worker crashes, restarts and network/database failures (`failpoints,postgres-tests`)
 
 > Not yet CI-wired: `mcp_endpoint_test.rs` and `skills_integration_test.rs` fail
 > due to shared-fixture name collisions and stale catalog expectations; tracked
@@ -799,7 +801,8 @@ every page is not acceptable.
 - App suffix: always `Everruns` at the end.
 - Order: most specific first, broadest last (browser tabs truncate from the
   right, so the distinguishing bit must lead).
-- Two to four segments. Drop empty segments.
+- Two to four segments. Drop empty segments, and drop a segment that repeats
+  the one before it (`Chat`, `Chat` becomes `Chat · Everruns`).
 
 Examples:
 

@@ -94,7 +94,7 @@ coexist because they all emit into the annotation envelope, tagged by `origin`.
 | --- | --- | --- |
 | `citation_retrieval` | knowledge-index / knowledge-base tool results | reads citations off `search_index` / `search_knowledge` results (`post_tool_exec_hooks`), then attaches spans via the post-generation annotation hook (below) by matching claims to retrieved snippets |
 | `citation_native` | Anthropic Citations API (`search_result` / `document` blocks) | the Anthropic driver emits `citations.enabled` source blocks and parses `citations_delta` / text-block `citations[]` back into annotations directly, token-free, pointer-guaranteed |
-| `citation_web` | provider server-side web search (`openrouter_server_tools`) | maps URL results into `source.uri` |
+| `citation_web` | `web_search` function results and native (provider-run) web search | the post-generation hook resolves result URLs / `w…` ids the model cited against the turn's `web_search` results (exact match), and maps provider citations that drivers report on the completion (`LlmCompletionMetadata::web_citations`, char spans plus the covered text, re-checked against the final text) |
 
 Per-capability config lives in `config_schema()` / `validate_config()`; the UI
 renders it generically. `features()` returns `"citations"` so the citation UI
@@ -117,6 +117,18 @@ one net-new platform boundary; everything else reuses existing hooks.
 `citation_native` does not use this boundary, its annotations arrive inline from the
 provider stream and are attached during driver parsing (a new `LlmStreamEvent`
 variant carries citation deltas up to the reason atom).
+
+`citation_web` takes the other path for provider citations, and it is the one
+to reuse: drivers never attach annotations. They report what the provider cited,
+provider-neutral, on the completion metadata (`crates/contracts/src/web_citation.rs`
+owns the shape and the span conversion), and the reason atom passes the list to
+the annotation hooks in `AnnotationContext`. So provider citations show only
+when the capability is on, with that capability's origin, and they reach the
+verifier like any other feed. Each provider counts span offsets differently
+(blocks, chars, UTF-8 bytes); the driver converts to chars of the text it
+streamed and keeps the covered text, and the feed drops a citation whose text
+is no longer at that place in the final answer instead of attaching a wrong
+span.
 
 ### Verification is a separate, composable guardrail capability
 
@@ -163,7 +175,7 @@ keep `snippet` for display but never rely on it for prompt reconstruction.
 Because each feed is a capability with the same output contract, a citation
 eval is two agents identical except for the enabled `citation_*` capability,
 scored on citation faithfulness and coverage. The `Scorer::CitationFaithful`
-rule (`crates/server/src/records/eval.rs`, graded in `crates/server/src/domains/evals/`)
+rule (`crates/server/src/domains/evals/record.rs`, graded in `crates/server/src/domains/evals/`)
 reads the `TextAnnotation`s off the final message, they already ride in the
 event log the runner fetches, and scores coverage (min citations) plus
 faithfulness (fraction verified `entailed`), so it composes with
@@ -206,7 +218,10 @@ payoff of keeping the waist thin.
    feed. Deferred because its provider round-trip needs live-API validation and
    it widens the shared LLM response/stream types across all drivers; best as
    its own PR.
-7. **`citation_web`** and additional feeds as sources land.
+7. **`citation_web`** *(landed)*, over `web_search` function results and
+   native search on Anthropic, OpenAI, OpenRouter and Gemini (see
+   `knowledge/integrations/web-search.md`). Opt-in, like `citation_retrieval`.
+   Additional feeds as sources land.
 
 ## Open questions
 

@@ -81,7 +81,7 @@ other providers.
 - Durable compaction checkpoints already store encrypted provider/model-specific
   state beside the immutable event log
   (`crates/core/src/compaction_checkpoint.rs:11-61`,
-  `crates/server/src/storage/compaction_checkpoint_store.rs:10-108`).
+  `crates/server/src/storage/runtime/compaction_checkpoint.rs:10-108`).
 
 A byte-stable notice would fix only the notice entry. The recent window would
 still move, so the full prior prefix would still change.
@@ -108,10 +108,11 @@ Native mode requires all of these conditions:
   - `claude-sonnet-5`
   - `claude-sonnet-4-6`
 - Dated aliases and `[1m]` variants inherit the normalized family's explicit
-  profile value. `claude-opus-5-5`, Haiku, and an unknown future family remain
+  profile value. `claude-opus-5-5`, Haiku 4.5, and an unknown future family remain
   false until Anthropic documents support and a profile test enables it.
-  `claude-sonnet-5-5` is documented for threshold compaction but stays false
-  until compaction is live-verified with its preserved-thinking binding.
+  `claude-sonnet-5-5` and `claude-haiku-5-5` are documented for threshold
+  compaction but stay false until compaction is live-verified with their
+  preserved-thinking binding.
 - No active `user_prompt_submit` hook or other configuration requires rebuilding
   provider-visible history from a different raw audit representation. This
   fails closed to legacy mode so filtered content cannot be resent.

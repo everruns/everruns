@@ -17,15 +17,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use everruns_durable::persistence::{
-    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, RunStart, RunSteering,
-    StoreError, TaskDefinition, TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo,
-    WorkflowEventStore, WorkflowStatus,
+    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, StoreError, TaskDefinition,
+    TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
-use everruns_durable::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
-use everruns_durable::{
-    DeadLetters, EventLog, HandOff, NextStep, SignalDrain, SignalStore, TaskQueue, WorkerRegistry,
-};
+use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
+use everruns_durable::{DeadLetters, EventLog, TaskQueue, WorkerRegistry};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -129,33 +126,17 @@ conformance!(
     heartbeat_reports_ownership,
     first_claim_records_activity_started,
     pending_tasks_per_workflow_are_capped,
-    dedupe_enqueue_returns_the_existing_task,
-    dedupe_replay_is_exempt_from_the_pending_cap,
-    concurrent_dedupe_enqueues_agree_on_one_task,
     cancel_pending_leaves_claimed_tasks,
     events_append_in_order_with_optimistic_concurrency,
-    signals_are_consumed_once,
     dead_letters_can_be_requeued,
     requeued_dead_letters_keep_their_queue_and_options,
     cancel_workflow_cancels_pending_tasks_once,
     drained_workers_stop_claiming_until_resumed,
-    start_run_creates_an_unknown_workflow,
-    start_run_leaves_an_active_run_alone,
-    start_run_restarts_a_finished_workflow,
-    start_run_steers_the_active_run_or_absorbs_its_signals,
-    concurrent_run_starts_elect_one_winner,
     claims_carry_the_workflow_status,
-    claimed_enqueue_hands_the_task_to_its_worker,
-    claimed_enqueue_falls_back_to_the_queue,
     ensure_schedule_converges_on_the_spec,
     concurrent_schedule_ensures_create_one_schedule,
     a_due_schedule_fires_once_across_schedulers,
     concurrent_reaps_settle_a_dead_task_once,
-    hand_off_completes_drains_and_claims_the_next_step,
-    hand_off_queues_the_next_step_or_completes_the_workflow,
-    rejected_hand_off_changes_nothing,
-    stranded_runs_are_requeued_once,
-    start_run_resumes_a_stranded_run,
 );
 
 // Dead-letter cases live in their own file to keep this one under the size cap.
@@ -342,7 +323,10 @@ async fn retry_waits_for_backoff<H: Harness>(h: H) {
 async fn delayed_tasks_wait_for_their_start_delay<H: Harness>(h: H) {
     let ty = activity_type();
     let w = worker(&h, &ty).await;
-    let later = ActivityOptions::default().with_start_delay(Duration::from_millis(300));
+    // Seconds, not milliseconds: a slow CI runner can spend a few hundred
+    // milliseconds between the enqueue and the first claim, making a short
+    // delay due before the "not due yet" assertion runs.
+    let later = ActivityOptions::default().with_start_delay(Duration::from_secs(3));
     let delayed = enqueue(&h, with_options(task(None, &ty, "later"), later)).await;
     let now = enqueue(&h, task(None, &ty, "now")).await;
 
@@ -351,7 +335,7 @@ async fn delayed_tasks_wait_for_their_start_delay<H: Harness>(h: H) {
         vec![now],
         "the delayed task is not due"
     );
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    tokio::time::sleep(Duration::from_millis(3200)).await;
     assert_eq!(claim(&h, &w, &ty, 2).await, vec![delayed]);
 }
 
@@ -556,82 +540,6 @@ async fn pending_tasks_per_workflow_are_capped<H: Harness>(h: H) {
     enqueue(&h, task(Some(wf), &ty, "fits-now")).await;
 }
 
-fn dedupe(task: TaskDefinition) -> TaskDefinition {
-    with_options(
-        task,
-        ActivityOptions::default().with_dedupe_by_activity_id(),
-    )
-}
-
-async fn dedupe_enqueue_returns_the_existing_task<H: Harness>(h: H) {
-    let ty = activity_type();
-    let wf = workflow(&h).await;
-    let first = enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await;
-    assert_eq!(
-        enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await,
-        first
-    );
-
-    // In any status, not only while pending.
-    let w = worker(&h, &ty).await;
-    assert_eq!(claim(&h, &w, &ty, 1).await, vec![first]);
-    h.store().complete_task(first, &w, json!(1)).await.unwrap();
-    assert_eq!(
-        enqueue(&h, dedupe(task(Some(wf), &ty, "resume-1"))).await,
-        first
-    );
-
-    // Scoped to the workflow and opt-in per task.
-    let other = workflow(&h).await;
-    assert_ne!(
-        enqueue(&h, dedupe(task(Some(other), &ty, "resume-1"))).await,
-        first
-    );
-    let plain = enqueue(&h, task(Some(wf), &ty, "plain")).await;
-    assert_ne!(enqueue(&h, task(Some(wf), &ty, "plain")).await, plain);
-
-    // Standalone tasks have no workflow to dedupe within.
-    let standalone = enqueue(&h, dedupe(task(None, &ty, "solo"))).await;
-    assert_ne!(
-        enqueue(&h, dedupe(task(None, &ty, "solo"))).await,
-        standalone
-    );
-}
-
-async fn dedupe_replay_is_exempt_from_the_pending_cap<H: Harness>(h: H) {
-    let ty = activity_type();
-    let wf = workflow(&h).await;
-    let resume = enqueue(&h, dedupe(task(Some(wf), &ty, "resume"))).await;
-    for i in 1..DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW {
-        enqueue(&h, task(Some(wf), &ty, &format!("t{i}"))).await;
-    }
-    assert_eq!(
-        enqueue(&h, dedupe(task(Some(wf), &ty, "resume"))).await,
-        resume
-    );
-    let err = h
-        .store()
-        .enqueue_task(dedupe(task(Some(wf), &ty, "new-resume")))
-        .await
-        .unwrap_err();
-    assert!(matches!(err, StoreError::TaskQueueLimitExceeded { .. }));
-}
-
-async fn concurrent_dedupe_enqueues_agree_on_one_task<H: Harness>(h: H) {
-    // The schema ships a unique index over these ids (server migration 143),
-    // so PostgreSQL settles the race in the database, not only in the
-    // pre-insert check.
-    let ty = activity_type();
-    let wf = workflow(&h).await;
-    let id = format!("waiting_turn_resolution_{}", Uuid::now_v7());
-    let enqueue_one = || h.store().enqueue_task(dedupe(task(Some(wf), &ty, &id)));
-    let (a, b, c, d) = tokio::join!(enqueue_one(), enqueue_one(), enqueue_one(), enqueue_one());
-    let a = a.expect("enqueue");
-    for other in [b, c, d] {
-        assert_eq!(other.expect("enqueue"), a);
-    }
-}
-
 async fn cancel_pending_leaves_claimed_tasks<H: Harness>(h: H) {
     let ty = activity_type();
     let w = worker(&h, &ty).await;
@@ -688,31 +596,6 @@ async fn events_append_in_order_with_optimistic_concurrency<H: Harness>(h: H) {
         sequences.windows(2).all(|w| w[0] < w[1]),
         "sequences ascend"
     );
-}
-
-async fn signals_are_consumed_once<H: Harness>(h: H) {
-    let wf = workflow(&h).await;
-    h.store()
-        .send_signal(wf, WorkflowSignal::new("approve", json!({ "by": "ops" })))
-        .await
-        .unwrap();
-    h.store()
-        .send_signal(wf, WorkflowSignal::new("comment", json!("hi")))
-        .await
-        .unwrap();
-
-    let approvals = h
-        .store()
-        .consume_pending_signals_by_type(wf, "approve")
-        .await
-        .unwrap();
-    assert_eq!(approvals.len(), 1);
-    assert_eq!(approvals[0].payload, json!({ "by": "ops" }));
-
-    let rest = h.store().consume_pending_signals(wf).await.unwrap();
-    assert_eq!(rest.len(), 1);
-    assert_eq!(rest[0].signal_type, "comment");
-    assert!(h.store().get_pending_signals(wf).await.unwrap().is_empty());
 }
 
 // --- cancellation, draining ----------------------------------------------------
@@ -772,12 +655,6 @@ async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
     assert!(!beat.draining, "an unknown worker is not draining");
 }
 
-// --- run start -------------------------------------------------------------------
-
-#[path = "store_conformance/run_start.rs"]
-mod run_start;
-use run_start::*;
-
 async fn claims_carry_the_workflow_status<H: Harness>(h: H) {
     let ty = activity_type();
     let w = worker(&h, &ty).await;
@@ -808,100 +685,6 @@ async fn claims_carry_the_workflow_status<H: Harness>(h: H) {
     assert_eq!(status_of("p"), Some(WorkflowStatus::Pending));
     assert_eq!(status_of("r"), Some(WorkflowStatus::Running));
     assert_eq!(status_of("standalone"), None);
-}
-
-// --- claimed enqueue -----------------------------------------------------------
-
-async fn claimed_enqueue_hands_the_task_to_its_worker<H: Harness>(h: H) {
-    let ty = activity_type();
-    let w = worker(&h, &ty).await;
-    let other = worker(&h, &ty).await;
-    let wf = workflow(&h).await;
-    h.store()
-        .update_workflow_status(wf, WorkflowStatus::Running, None, None)
-        .await
-        .unwrap();
-
-    let claimed = h
-        .store()
-        .enqueue_claimed_task(task(Some(wf), &ty, "next"), &w)
-        .await
-        .unwrap()
-        .into_claimed()
-        .expect("an active worker gets the task claimed");
-    assert_eq!(claimed.attempt, 1);
-    assert_eq!(claimed.activity_type, ty);
-    assert_eq!(claimed.input, json!({ "activity": "next" }));
-    assert_eq!(claimed.workflow_status, Some(WorkflowStatus::Running));
-    assert_eq!(status(&h, claimed.id).await, TaskStatus::Claimed);
-
-    // Nobody else can claim it, its worker owns it, and it started once.
-    assert!(claim(&h, &other, &ty, 1).await.is_empty());
-    assert!(
-        h.store()
-            .heartbeat_task(claimed.id, &w, None)
-            .await
-            .unwrap()
-            .accepted
-    );
-    let started = h
-        .store()
-        .load_events(wf)
-        .await
-        .unwrap()
-        .into_iter()
-        .filter(|(_, e)| matches!(e, WorkflowEvent::ActivityStarted { activity_id, worker_id, attempt: 1 } if activity_id == "next" && *worker_id == w))
-        .count();
-    assert_eq!(started, 1);
-
-    // An abandoned claimed enqueue is reclaimed like any claim.
-    h.expire_claim(claimed.id).await;
-    h.store()
-        .reclaim_stale_tasks(Duration::from_secs(30))
-        .await
-        .unwrap();
-    assert_eq!(claim(&h, &other, &ty, 1).await, vec![claimed.id]);
-}
-
-async fn claimed_enqueue_falls_back_to_the_queue<H: Harness>(h: H) {
-    let ty = activity_type();
-    let w = worker(&h, &ty).await;
-    let wf = workflow(&h).await;
-
-    // A worker that is not registered, or is draining, gets nothing claimed.
-    let unknown = format!("conformance-unknown-{}", Uuid::now_v7().simple());
-    let queued = h
-        .store()
-        .enqueue_claimed_task(task(Some(wf), &ty, "a"), &unknown)
-        .await
-        .unwrap();
-    assert!(queued.into_claimed().is_none());
-    h.store().drain_worker(&w).await.unwrap();
-    let queued = h
-        .store()
-        .enqueue_claimed_task(task(Some(wf), &ty, "b"), &w)
-        .await
-        .unwrap();
-    assert!(queued.into_claimed().is_none());
-    h.store().resume_worker(&w).await.unwrap();
-    assert_eq!(
-        claim(&h, &w, &ty, 10).await.len(),
-        2,
-        "both went to the queue"
-    );
-
-    // A delayed task waits in the queue.
-    let delayed = ActivityOptions {
-        start_delay: Some(Duration::from_secs(3600)),
-        ..ActivityOptions::default()
-    };
-    let queued = h
-        .store()
-        .enqueue_claimed_task(with_options(task(Some(wf), &ty, "c"), delayed), &w)
-        .await
-        .unwrap();
-    assert!(queued.into_claimed().is_none());
-    assert!(claim(&h, &w, &ty, 1).await.is_empty());
 }
 
 // --- schedules and maintenance ---------------------------------------------
@@ -1084,253 +867,4 @@ async fn concurrent_reaps_settle_a_dead_task_once<H: Harness>(h: H) {
         h.store().get_workflow_status(wf).await.expect("status"),
         WorkflowStatus::Failed
     );
-}
-
-// --- step hand-off and stranded runs ---------------------------------------------
-
-/// A Running workflow of its own type (so a stranded sweep of that type sees
-/// only this case's workflows) with one task claimed by a fresh worker.
-async fn running_step<H: Harness>(h: &H) -> (String, String, Uuid, Uuid) {
-    let ty = activity_type();
-    let w = worker(h, &ty).await;
-    let wf = Uuid::now_v7();
-    h.store()
-        .create_workflow(wf, &ty, json!({}), None)
-        .await
-        .expect("create workflow");
-    h.store()
-        .update_workflow_status(wf, WorkflowStatus::Running, None, None)
-        .await
-        .unwrap();
-    enqueue(h, task(Some(wf), &ty, "step-1")).await;
-    let claimed = claim(h, &w, &ty, 1).await;
-    (ty, w, wf, claimed[0])
-}
-
-fn wake() -> WorkflowSignal {
-    WorkflowSignal::new("wake", json!({}))
-}
-
-async fn pending_signal_types<H: Harness>(h: &H, wf: Uuid) -> Vec<String> {
-    h.store()
-        .get_pending_signals(wf)
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|s| s.signal_type)
-        .collect()
-}
-
-async fn hand_off_completes_drains_and_claims_the_next_step<H: Harness>(h: H) {
-    let (ty, w, wf, step) = running_step(&h).await;
-    for signal in [
-        wake(),
-        WorkflowSignal::new("other", json!({})),
-        wake(),
-        wake(),
-    ] {
-        h.store().send_signal(wf, signal).await.unwrap();
-    }
-
-    let handed = h
-        .store()
-        .complete_task_and_hand_off(
-            step,
-            &w,
-            json!({}),
-            HandOff {
-                workflow_id: wf,
-                drain: Some(SignalDrain {
-                    signal_type: "wake".into(),
-                    limit: 2,
-                }),
-                next: NextStep::Enqueue {
-                    task: Box::new(task(None, &ty, "step-2")),
-                    claim_for: Some(w.clone()),
-                },
-            },
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(handed.drained, 2);
-    assert_eq!(status(&h, step).await, TaskStatus::Completed);
-    let next = handed
-        .next
-        .and_then(|next| next.into_claimed())
-        .expect("an active worker gets the next step claimed");
-    assert_eq!(next.workflow_id, Some(wf));
-    assert_eq!(next.activity_id, "step-2");
-    assert_eq!(next.attempt, 1);
-    assert_eq!(next.workflow_status, Some(WorkflowStatus::Running));
-    assert_eq!(status(&h, next.id).await, TaskStatus::Claimed);
-    // Only the counted wakes went, oldest first; the rest wait.
-    assert_eq!(pending_signal_types(&h, wf).await, ["other", "wake"]);
-    let started = h
-        .store()
-        .load_events(wf)
-        .await
-        .unwrap()
-        .into_iter()
-        .filter(|(_, e)| matches!(e, WorkflowEvent::ActivityStarted { activity_id, .. } if activity_id == "step-2"))
-        .count();
-    assert_eq!(started, 1);
-}
-
-async fn hand_off_queues_the_next_step_or_completes_the_workflow<H: Harness>(h: H) {
-    let (ty, w, wf, step) = running_step(&h).await;
-    let other = worker(&h, &ty).await;
-
-    let handed = h
-        .store()
-        .complete_task_and_hand_off(
-            step,
-            &w,
-            json!({}),
-            HandOff {
-                workflow_id: wf,
-                drain: None,
-                next: NextStep::Enqueue {
-                    task: Box::new(task(None, &ty, "step-2")),
-                    claim_for: None,
-                },
-            },
-        )
-        .await
-        .unwrap();
-    let Some(everruns_durable::Enqueued::Queued(queued)) = handed.next else {
-        panic!("without a worker to claim for, the next step is queued");
-    };
-    assert_eq!(claim(&h, &other, &ty, 1).await, vec![queued]);
-
-    let handed = h
-        .store()
-        .complete_task_and_hand_off(
-            queued,
-            &other,
-            json!({}),
-            HandOff {
-                workflow_id: wf,
-                drain: None,
-                next: NextStep::Complete {
-                    result: Some(json!({ "checkpoint": 2 })),
-                    error: None,
-                },
-            },
-        )
-        .await
-        .unwrap();
-    assert!(handed.next.is_none());
-    let info = h.store().get_workflow_info(wf).await.unwrap();
-    assert_eq!(info.status, WorkflowStatus::Completed);
-    assert_eq!(info.result, Some(json!({ "checkpoint": 2 })));
-    assert_eq!(status(&h, queued).await, TaskStatus::Completed);
-}
-
-async fn rejected_hand_off_changes_nothing<H: Harness>(h: H) {
-    let (ty, w, wf, step) = running_step(&h).await;
-    let other = worker(&h, &ty).await;
-    h.store().send_signal(wf, wake()).await.unwrap();
-
-    let rejected = h
-        .store()
-        .complete_task_and_hand_off(
-            step,
-            &other,
-            json!({}),
-            HandOff {
-                workflow_id: wf,
-                drain: Some(SignalDrain {
-                    signal_type: "wake".into(),
-                    limit: 1,
-                }),
-                next: NextStep::Complete {
-                    result: None,
-                    error: None,
-                },
-            },
-        )
-        .await;
-
-    assert!(matches!(rejected, Err(StoreError::TaskNotOwned(id)) if id == step));
-    assert_eq!(status(&h, step).await, TaskStatus::Claimed);
-    assert_eq!(pending_signal_types(&h, wf).await, ["wake"]);
-    assert_eq!(
-        h.store().get_workflow_status(wf).await.unwrap(),
-        WorkflowStatus::Running
-    );
-    assert!(
-        h.store()
-            .heartbeat_task(step, &w, None)
-            .await
-            .unwrap()
-            .accepted
-    );
-}
-
-/// A Running workflow whose only task completed with no successor, as a
-/// client that completes and enqueues in separate writes leaves it when it
-/// dies in between.
-async fn stranded_run<H: Harness>(h: &H) -> (String, String, Uuid) {
-    let (ty, w, wf, step) = running_step(h).await;
-    h.store().complete_task(step, &w, json!({})).await.unwrap();
-    (ty, w, wf)
-}
-
-async fn stranded_runs_are_requeued_once<H: Harness>(h: H) {
-    let (ty, w, wf) = stranded_run(&h).await;
-    let sweep = |grace| h.store().requeue_stranded_workflows(&ty, grace, 10);
-
-    assert!(sweep(Duration::from_secs(3600)).await.unwrap().is_empty());
-    assert!(
-        h.store()
-            .requeue_stranded_workflows(&activity_type(), Duration::ZERO, 10)
-            .await
-            .unwrap()
-            .is_empty(),
-        "another workflow type is left alone"
-    );
-
-    let (a, b) = tokio::join!(sweep(Duration::ZERO), sweep(Duration::ZERO));
-    let requeued: Vec<_> = a.unwrap().into_iter().chain(b.unwrap()).collect();
-    assert_eq!(requeued.len(), 1, "{requeued:?}");
-    assert_eq!(requeued[0].workflow_id, wf);
-    assert_eq!(requeued[0].activity_type, ty);
-    assert!(sweep(Duration::ZERO).await.unwrap().is_empty());
-
-    let claimed = h
-        .store()
-        .claim_task(&w, std::slice::from_ref(&ty), 10)
-        .await
-        .unwrap();
-    assert_eq!(claimed.len(), 1);
-    assert_eq!(claimed[0].id, requeued[0].task_id);
-    assert_eq!(claimed[0].activity_id, "step-1");
-    assert_eq!(claimed[0].input, json!({ "activity": "step-1" }));
-    assert_eq!(claimed[0].attempt, 1);
-}
-
-async fn start_run_resumes_a_stranded_run<H: Harness>(h: H) {
-    let (ty, w, wf) = stranded_run(&h).await;
-    // A run that is merely Running with no task at all is not stranded.
-    let bare = Uuid::now_v7();
-    h.store()
-        .create_workflow(bare, &ty, json!({}), None)
-        .await
-        .unwrap();
-    h.store()
-        .update_workflow_status(bare, WorkflowStatus::Running, None, None)
-        .await
-        .unwrap();
-
-    assert_eq!(start_run(&h, wf, &ty, "next").await, RunStart::Active);
-    assert_eq!(start_run(&h, bare, &ty, "next").await, RunStart::Active);
-    let claimed = h
-        .store()
-        .claim_task(&w, std::slice::from_ref(&ty), 10)
-        .await
-        .unwrap();
-    assert_eq!(claimed.len(), 1, "only the stranded run resumes");
-    assert_eq!(claimed[0].workflow_id, Some(wf));
-    assert_eq!(claimed[0].activity_id, "step-1");
 }

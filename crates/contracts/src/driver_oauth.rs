@@ -9,7 +9,8 @@
 pub enum DriverOAuthFlow {
     /// OpenRouter one-click PKCE
     /// (<https://openrouter.ai/docs/guides/overview/auth/oauth>): redirect the
-    /// admin to `authorize_url?callback_url=..&code_challenge=..&code_challenge_method=S256`,
+    /// admin to `authorize_url?callback_url=..&code_challenge=..&code_challenge_method=S256`
+    /// (the host also sends `key_label` to prefill the created key's name),
     /// then POST JSON `{code, code_verifier, code_challenge_method}` to
     /// `token_url`; the `key` field of the response is the user-controlled API
     /// key to store. No client registration or secret is required (public PKCE

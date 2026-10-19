@@ -140,6 +140,9 @@ pub struct GitHubConnectionConfig {
     pub client_id: Option<String>,
     /// OAuth client secret of the same GitHub App.
     pub client_secret: Option<String>,
+    /// Webhook secret of the same GitHub App (`GITHUB_APP_WEBHOOK_SECRET`).
+    /// The shared App's webhook route refuses every delivery without it.
+    pub webhook_secret: Option<String>,
     /// GitHub endpoints. Always github.com outside tests.
     pub endpoints: crate::github_apps::GitHubEndpoints,
 }
@@ -256,6 +259,35 @@ impl Default for AuthConfig {
 }
 
 impl AuthConfig {
+    /// Public API origin. `AUTH_BASE_URL` or `BASE_URL` wins; otherwise the
+    /// public app URL plus `API_PREFIX`. Slack webhook and avatar URLs use it.
+    pub fn api_base_url_from_env() -> String {
+        let api_prefix =
+            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
+        let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
+        env_opt_string_any(&["AUTH_BASE_URL", "BASE_URL"])
+            .or_else(|| {
+                public_app_url
+                    .as_deref()
+                    .map(|url| auth_base_url_from_public_app_url(url, &api_prefix))
+            })
+            .unwrap_or_else(|| {
+                auth_base_url_from_public_app_url(DEFAULT_PUBLIC_APP_URL, &api_prefix)
+            })
+    }
+
+    /// Public UI origin. `FRONTEND_URL` wins, then the public app URL, then the
+    /// API origin without `API_PREFIX`. Post-auth redirects land here.
+    pub fn frontend_url_from_env() -> String {
+        let api_prefix =
+            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
+        env_opt_string_any(&["FRONTEND_URL"])
+            .or_else(|| env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]))
+            .unwrap_or_else(|| {
+                frontend_url_from_auth_base_url(&Self::api_base_url_from_env(), &api_prefix)
+            })
+    }
+
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         // Fail closed: reject unknown AUTH_MODE values and forbid no-auth
@@ -271,24 +303,11 @@ impl AuthConfig {
             );
         }
 
-        let api_prefix =
-            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
-        let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
-        let base_url = env_opt_string_any(&["AUTH_BASE_URL", "BASE_URL"])
-            .or_else(|| {
-                public_app_url
-                    .as_deref()
-                    .map(|url| auth_base_url_from_public_app_url(url, &api_prefix))
-            })
-            .unwrap_or_else(|| {
-                auth_base_url_from_public_app_url(DEFAULT_PUBLIC_APP_URL, &api_prefix)
-            });
+        let base_url = Self::api_base_url_from_env();
 
         // Post-auth redirects land on the public app origin. In single-origin
         // deployments this is the same host as AUTH_BASE_URL, without API_PREFIX.
-        let frontend_url = env_opt_string_any(&["FRONTEND_URL"])
-            .or(public_app_url.clone())
-            .unwrap_or_else(|| frontend_url_from_auth_base_url(&base_url, &api_prefix));
+        let frontend_url = Self::frontend_url_from_env();
         let login_origin = env_opt_string_any(&["AUTH_LOGIN_ORIGIN"])
             .map(|value| normalize_login_origin(&value).unwrap_or_else(|err| panic!("{err}")));
 
@@ -416,6 +435,7 @@ impl AuthConfig {
                     setup_url,
                     client_id: non_empty("GITHUB_APP_CLIENT_ID"),
                     client_secret: non_empty("GITHUB_APP_CLIENT_SECRET"),
+                    webhook_secret: non_empty("GITHUB_APP_WEBHOOK_SECRET"),
                     endpoints: crate::github_apps::GitHubEndpoints::default(),
                 })
             }
@@ -1064,6 +1084,7 @@ mod tests {
                 setup_url: "https://example.com/setup".to_string(),
                 client_id: None,
                 client_secret: None,
+                webhook_secret: None,
                 endpoints: Default::default(),
             }),
             ..Default::default()

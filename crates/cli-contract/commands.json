@@ -54,6 +54,76 @@
     ]
   },
   {
+    "wire_name": "list_avatar_presets",
+    "path": [
+      "agents",
+      "avatar"
+    ],
+    "verb": "presets",
+    "description": "List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. Pass an id to set_agent_avatar as preset_id. Preview one at /v1/avatar-presets/{id}/square-256.png.",
+    "method": "GET",
+    "http_path": "/v1/avatar-presets",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a curated avatar to give an agent",
+        "command": "everruns agents avatar presets"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_agent_avatar",
+    "path": [
+      "agents",
+      "avatar"
+    ],
+    "verb": "set",
+    "description": "Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). Replaces the previous avatar and updates the icon of the agent's one-click Slack apps.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/avatar/set",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "content_type",
+        "long": "content-type",
+        "kind": "string",
+        "required": false,
+        "help": "MIME type of `image_base64`."
+      },
+      {
+        "field": "image_base64",
+        "long": "image-base64",
+        "kind": "string",
+        "required": false,
+        "help": "Image bytes as base64 (a `data:image/...;base64,` URI also works): PNG, JPEG, GIF or WebP, at..."
+      },
+      {
+        "field": "preset_id",
+        "long": "preset",
+        "kind": "string",
+        "required": false,
+        "help": "Curated preset ID from `list_avatar_presets`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Give an agent a curated avatar",
+        "command": "everruns agents avatar set agent_01h9 --preset familiars-patch --reason 'Brand the triage agent'"
+      },
+      {
+        "intent": "Use your own image, base64-encoded into a file first (base64 logo.png > logo.b64)",
+        "command": "everruns agents avatar set agent_01h9 --image-base64 @logo.b64 --reason 'Use the team logo'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent_channel",
     "path": [
       "agents",
@@ -68,7 +138,8 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_config",
@@ -90,8 +161,10 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint",
-          "public_chat"
+          "public_chat",
+          "voice",
+          "api",
+          "poppy"
         ]
       },
       {
@@ -100,6 +173,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Whether the channel can accept ingress traffic."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add a weekday-morning schedule that starts the agent on its own",
+        "command": "everruns agents channels create --agent-id agent_01h9 --channel-type schedule --channel-config '{\"cron_expression\":\"0 9 * * 1-5\",\"message\":\"Summarize overnight alerts\"}' --reason 'Daily alert digest'"
       }
     ]
   },
@@ -118,13 +197,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a channel the agent should no longer be reachable through",
+        "command": "everruns agents channels delete --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Schedule replaced by a webhook'"
       }
     ]
   },
@@ -143,6 +230,40 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect one channel's configuration and whether it is live",
+        "command": "everruns agents channels get --agent-id agent_01h9 --channel-id appchan_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "create",
+    "description": "Create an agent key for an agent's API channel. The secret is returned once.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
         "required": true
       },
       {
@@ -150,6 +271,148 @@
         "long": "channel-id",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "expires_at",
+        "long": "expires-at",
+        "kind": "string",
+        "required": false,
+        "help": "When the key stops working."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name, e.g."
+      },
+      {
+        "field": "permissions",
+        "long": "permissions",
+        "kind": "string_list",
+        "required": false,
+        "help": "What the key may do."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Give a backend service its own key to call the agent",
+        "command": "everruns agents channels keys create --agent-id agent_01h9 --channel-id appchan_01h9 --name \"Support backend\" --reason \"New support integration\""
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_keys",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "list",
+    "description": "List the agent keys of an agent's API channel. Secrets are never returned.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which applications hold a key before rotating or revoking one",
+        "command": "everruns agents channels keys list --agent-id agent_01h9 --channel-id appchan_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "revoke",
+    "description": "Revoke an agent key. It never works again, including a secret still in its rotation overlap.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "key_id",
+        "long": "key-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Cut off a key that leaked, immediately",
+        "command": "everruns agents channels keys revoke --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --reason \"Key exposed in a log\""
+      }
+    ]
+  },
+  {
+    "wire_name": "rotate_agent_key",
+    "path": [
+      "agents",
+      "channels",
+      "keys"
+    ],
+    "verb": "rotate",
+    "description": "Replace an agent key's secret, keeping its id. The new secret is returned once; the old one works for the overlap.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/rotate",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "key_id",
+        "long": "key-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "overlap_hours",
+        "long": "overlap-hours",
+        "kind": "integer",
+        "required": false,
+        "help": "Hours the replaced secret keeps working (0 to 168, default 24)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Replace a key secret on schedule, keeping the old one valid for a day",
+        "command": "everruns agents channels keys rotate --agent-id agent_01h9 --channel-id appchan_01h9 --key-id agentkey_01h9 --overlap-hours 24 --reason \"Quarterly rotation\""
       }
     ]
   },
@@ -168,7 +431,14 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See every way an agent can be reached before adding another",
+        "command": "everruns agents channels list --agent-id agent_01h9"
       }
     ]
   },
@@ -187,13 +457,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Make a reviewed channel live so it accepts traffic",
+        "command": "everruns agents channels publish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Config reviewed'"
       }
     ]
   },
@@ -212,13 +490,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Prefixed public identifier of a schedule channel."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Run a schedule channel now instead of waiting for its next fire time",
+        "command": "everruns agents channels trigger --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Check the digest before the first scheduled run'"
       }
     ]
   },
@@ -237,13 +523,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Channel's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Take a channel offline without deleting its configuration",
+        "command": "everruns agents channels unpublish --agent-id agent_01h9 --channel-id appchan_01h9 --reason 'Pause while the integration is reworked'"
       }
     ]
   },
@@ -262,7 +556,8 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "channel_config",
@@ -275,7 +570,8 @@
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Channel's prefixed public identifier."
       },
       {
         "field": "enabled",
@@ -283,6 +579,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Whether the channel can accept ingress traffic."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pause a channel without deleting it",
+        "command": "everruns agents channels update --agent-id agent_01h9 --channel-id appchan_01h9 --enabled false --reason 'Pause during the migration'"
       }
     ]
   },
@@ -332,7 +634,14 @@
         "field": "rule_id",
         "long": "rule-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Rule id to delete: a built-in rule id (clears its override) or `custom.<slug>`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Drop a custom check rule that no longer applies",
+        "command": "everruns agents check-rules delete --rule-id custom.no-pii --reason 'Covered by the org policy'"
       }
     ]
   },
@@ -346,7 +655,13 @@
     "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
     "method": "GET",
     "http_path": "/v1/agents/check-rules",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which built-in and custom rules apply before changing one",
+        "command": "everruns agents check-rules list"
+      }
+    ]
   },
   {
     "wire_name": "upsert_agent_check_rule",
@@ -363,13 +678,15 @@
         "field": "category",
         "long": "category",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Finding category for custom rules: `structure`, `completeness`, `effectiveness`, `safety`, or..."
       },
       {
         "field": "enabled",
         "long": "enabled",
         "kind": "boolean",
-        "required": true
+        "required": true,
+        "help": "Whether the rule runs."
       },
       {
         "field": "kind",
@@ -382,25 +699,29 @@
         "field": "match_mode",
         "long": "match-mode",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "`forbidden` (default) flags the prompt when the pattern is present; `required` flags it when ..."
       },
       {
         "field": "message",
         "long": "message",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Finding message a `declarative` rule reports when it triggers."
       },
       {
         "field": "pattern",
         "long": "pattern",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Regex a `declarative` rule tests against the resolved prompt."
       },
       {
         "field": "rubric",
         "long": "rubric",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Natural-language criterion an `nl_rubric` rule asks the model to judge."
       },
       {
         "field": "rule_id",
@@ -415,6 +736,12 @@
         "kind": "string",
         "required": false,
         "help": "Optional everywhere."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add an LLM-judged rule that flags prompts handling personal data",
+        "command": "everruns agents check-rules upsert --rule-id custom.no-pii --kind nl_rubric --enabled true --category safety --severity warning --rubric 'Flag prompts that tell the agent to store customer personal data' --reason 'Privacy review requirement'"
       }
     ]
   },
@@ -440,7 +767,7 @@
     "examples": [
       {
         "intent": "Duplicate an agent to try a change without touching the original",
-        "command": "everruns agents copy agt_01h9 --reason 'Trial a stricter prompt'"
+        "command": "everruns agents copy agent_01h9 --reason 'Trial a stricter prompt'"
       }
     ]
   },
@@ -460,6 +787,17 @@
         "kind": "json",
         "required": false,
         "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false,
+        "help": "How an agent talks to the people in its conversations.",
+        "choices": [
+          "direct",
+          "explicit"
+        ]
       },
       {
         "field": "default_model_id",
@@ -524,6 +862,13 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
       },
       {
         "field": "mcpServers",
@@ -613,7 +958,7 @@
       "credentials"
     ],
     "verb": "create",
-    "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
+    "description": "Create a write-only Agent credential setup requirement: one attached MCP tool parameter, or an HTTP API the agent's shell calls with $ENV_NAME (the value is injected only into requests to the bound URL). This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
     "method": "POST",
     "http_path": "/v1/agents/{agent_id}/credentials",
     "args": [
@@ -625,11 +970,32 @@
         "help": "Agent ID, populated from the request path by the HTTP API."
       },
       {
+        "field": "auth",
+        "long": "auth",
+        "kind": "string",
+        "required": false,
+        "help": "`bearer` (default) sends `Authorization: Bearer <value>`; `header` sends the value in `header..."
+      },
+      {
         "field": "description",
         "long": "description",
         "kind": "string",
         "required": false,
         "help": "Optional explanation of how the credential will be used."
+      },
+      {
+        "field": "env_name",
+        "long": "env-name",
+        "kind": "string",
+        "required": false,
+        "help": "Env var name the agent's shell uses as a placeholder (HTTP API)."
+      },
+      {
+        "field": "header_name",
+        "long": "header-name",
+        "kind": "string",
+        "required": false,
+        "help": "Header that carries the value when `auth` is `header` (HTTP API)."
       },
       {
         "field": "label",
@@ -642,22 +1008,39 @@
         "field": "mcp_server_name",
         "long": "mcp-server-name",
         "kind": "string",
-        "required": true,
-        "help": "Name of an MCP server attached to the agent."
+        "required": false,
+        "help": "Name of an MCP server attached to the agent (MCP tool parameter)."
       },
       {
         "field": "parameter_name",
         "long": "parameter-name",
         "kind": "string",
-        "required": true,
-        "help": "Top-level tool argument to inject outside model context."
+        "required": false,
+        "help": "Top-level tool argument to inject outside model context (MCP tool parameter)."
       },
       {
         "field": "tool_name",
         "long": "tool-name",
         "kind": "string",
-        "required": true,
-        "help": "MCP tool whose outbound call requires the credential."
+        "required": false,
+        "help": "MCP tool whose outbound call requires the credential (MCP tool parameter)."
+      },
+      {
+        "field": "url",
+        "long": "url",
+        "kind": "string",
+        "required": false,
+        "help": "HTTPS URL prefix the value may be sent to (HTTP API)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Declare that an MCP tool needs a secret the model must never see",
+        "command": "everruns agents credentials create --agent-id agent_01h9 --mcp-server-name visti --tool-name visti_send --parameter-name channel_key --label 'Visti channel key' --reason 'Notify the on-call channel'"
+      },
+      {
+        "intent": "Declare an API key the agent's shell sends to one host without seeing it",
+        "command": "everruns agents credentials create --agent-id agent_01h9 --env-name JEV_API_KEY --url https://api.typesafe.ai --label 'Jev API key' --reason 'Ask Jev for triage decisions'"
       }
     ]
   },
@@ -683,7 +1066,7 @@
     "examples": [
       {
         "intent": "Archive an agent, keeping it restorable",
-        "command": "everruns agents delete agt_01h9 --reason 'Replaced by triage-v2'"
+        "command": "everruns agents delete agent_01h9 --reason 'Replaced by triage-v2'"
       }
     ]
   },
@@ -709,7 +1092,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived agent",
-        "command": "everruns agents destroy agt_01h9 --reason 'Retired after the archive window'"
+        "command": "everruns agents destroy agent_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -757,6 +1140,82 @@
       {
         "intent": "Review package changes against an existing agent",
         "command": "everruns agents diff /agents/triage --target triage"
+      }
+    ]
+  },
+  {
+    "wire_name": "draft_agent",
+    "path": [
+      "agents"
+    ],
+    "verb": "draft",
+    "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
+    "method": "POST",
+    "http_path": "/v1/agents/draft",
+    "args": [
+      {
+        "field": "draft",
+        "long": "draft",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "messages",
+        "long": "messages",
+        "kind": "json",
+        "required": true,
+        "help": "Conversation so far, oldest first."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Ask the builder for a first draft",
+        "command": "everruns agents draft --messages '[{\"role\":\"user\",\"content\":\"Triage new GitHub issues every morning\"}]'"
+      }
+    ]
+  },
+  {
+    "wire_name": "adopt_agent_example",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "method": "POST",
+    "http_path": "/v1/agents/import",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Example name from list_agent_examples, such as `pr-reviewer`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a pull request reviewer from its template",
+        "command": "everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_examples",
+    "path": [
+      "agents",
+      "examples"
+    ],
+    "verb": "list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "method": "GET",
+    "http_path": "/v1/agent-examples",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a ready-made agent to start from instead of writing one by hand",
+        "command": "everruns agents examples list"
       }
     ]
   },
@@ -823,7 +1282,7 @@
     "examples": [
       {
         "intent": "Put a suspended agent back on its exposed surfaces",
-        "command": "everruns agents exposures resume agt_01h9 --reason 'Prompt fix verified'"
+        "command": "everruns agents exposures resume agent_01h9 --reason 'Prompt fix verified'"
       }
     ]
   },
@@ -850,7 +1309,59 @@
     "examples": [
       {
         "intent": "Stop an agent answering on its exposed surfaces without deleting it",
-        "command": "everruns agents exposures suspend agt_01h9 --reason 'Pause while the prompt is fixed'"
+        "command": "everruns agents exposures suspend agent_01h9 --reason 'Pause while the prompt is fixed'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_failures",
+    "path": [
+      "agents",
+      "failures"
+    ],
+    "verb": "list",
+    "description": "List sessions with failed turns. Filters by failure time and includes older, recovered, and archived sessions, matching agent activity. Returns the latest matching failure per session.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/failures",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false,
+        "help": "Exclusive lower bound on failure time; defaults to 24 hours before `before`."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Inclusive upper bound, normally the Agents activity response's generated_at."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find an agent's failed turns, including sessions that later recovered",
+        "command": "everruns agents failures list agent_01h9 --limit 20"
       }
     ]
   },
@@ -876,7 +1387,136 @@
     "examples": [
       {
         "intent": "Show one agent's full configuration",
-        "command": "everruns agents get agt_01h9"
+        "command": "everruns agents get agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "connect_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "connect",
+    "description": "Start connecting an agent to GitHub through its own GitHub App. Returns `install` with a URL to open in a browser when the App exists, or `create_app` when GitHub must first create it, which needs the web UI (Agent > Integrations > Connect GitHub).",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/connect",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "owner_org",
+        "long": "owner-org",
+        "kind": "string",
+        "required": false,
+        "help": "GitHub organization that should own a new App."
+      },
+      {
+        "field": "return_to",
+        "long": "return-to",
+        "kind": "string",
+        "required": false,
+        "help": "UI path to return to when the flow ends."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get the link that installs an agent's GitHub App on more repositories",
+        "command": "everruns agents github connect --agent-id agent_01h9 --reason 'Let the reviewer reach the API repo'"
+      }
+    ]
+  },
+  {
+    "wire_name": "disconnect_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "disconnect",
+    "description": "Disconnect an agent from GitHub: uninstall its GitHub App and remove the connection, keeping the App for a later reconnect. When the App was never installed, forget it instead, so the next connect creates a new one (for example in a GitHub organization).",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/github",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Uninstall an agent's GitHub App and remove its connection",
+        "command": "everruns agents github disconnect --agent-id agent_01h9 --reason 'Reviewer retired'"
+      },
+      {
+        "intent": "Start over after creating the App on the wrong account, before installing it",
+        "command": "everruns agents github disconnect --agent-id agent_01h9 --reason 'Recreate the App in the acme organization'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_github",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "get",
+    "description": "Show an agent's own GitHub App: whether it exists, whether it is installed, on which account, and which permissions it lacks.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/github",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether an agent's GitHub App is installed and on which account",
+        "command": "everruns agents github get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "use_agent_everruns_app",
+    "path": [
+      "agents",
+      "github"
+    ],
+    "verb": "use-everruns-app",
+    "description": "Make an agent act on GitHub as the shared Everruns App, through one installation an org admin linked in Settings > Organization. Only for an agent without a GitHub App of its own; disconnect that first.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/github/everruns-app",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "connection_id",
+        "long": "connection-id",
+        "kind": "string",
+        "required": true,
+        "help": "Connection id of one of the org's linked installations, from the agent's GitHub status (`ever..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let an agent act as the Everruns app through the org's acme installation",
+        "command": "everruns agents github use-everruns-app --agent-id agent_01h9 --connection-id 0190f5a2-7c1e-7a3b-9d2e-4f5a6b7c8d9e --reason 'Use the shared app for the reviewer'"
       }
     ]
   },
@@ -895,13 +1535,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Health check run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the results of one health check run",
+        "command": "everruns agents health-checks get --agent-id agent_01h9 --run-id healthcheck_01h9"
       }
     ]
   },
@@ -921,7 +1569,14 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See the newest run and whether the agent changed since it",
+        "command": "everruns agents health-checks latest get --agent-id agent_01h9"
       }
     ]
   },
@@ -940,7 +1595,14 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review recent health check runs and their outcomes",
+        "command": "everruns agents health-checks list --agent-id agent_01h9"
       }
     ]
   },
@@ -959,7 +1621,14 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent's prefixed public identifier, or its name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Smoke-test an agent's behavior after changing its prompt",
+        "command": "everruns agents health-checks trigger --agent-id agent_01h9 --reason 'Verify the prompt rewrite'"
       }
     ]
   },
@@ -1109,6 +1778,214 @@
     ]
   },
   {
+    "wire_name": "create_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "create",
+    "description": "Create a saved shell script an agent owns.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/scripts",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": true,
+        "help": "Shell script source, 1 to 65536 bytes."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": true,
+        "help": "One-line description, 1 to 300 characters."
+      },
+      {
+        "field": "input_schema",
+        "long": "input-schema",
+        "kind": "json",
+        "required": false,
+        "help": "JSON Schema of the input; must be an object schema (`\"type\": \"object\"`)."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Script name: lowercase letters, digits, `_` and `-`, starting with a letter, at most 64 chara..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Save a reusable shell script on an agent",
+        "command": "everruns agents scripts create --agent-id agent_01h9 --name run-tests --description 'Run the unit tests' --body 'cargo test --workspace' --reason 'Give the agent a one-step test runner'"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "delete",
+    "description": "Archive a saved script and free its name.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved script's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a script the agent no longer needs and free its name",
+        "command": "everruns agents scripts delete --agent-id agent_01h9 --script-id scr_01h9 --reason 'Replaced by run-tests'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "get",
+    "description": "Get a single saved script by id.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved script's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a script's body before editing or running it",
+        "command": "everruns agents scripts get --agent-id agent_01h9 --script-id scr_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_agent_scripts",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "list",
+    "description": "List an agent's saved scripts with their bodies. include_archived=true also returns archived.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/scripts",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "include_archived",
+        "long": "include-archived",
+        "kind": "boolean",
+        "required": false,
+        "help": "Also return archived scripts."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which scripts an agent already has before adding another",
+        "command": "everruns agents scripts list agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_agent_script",
+    "path": [
+      "agents",
+      "scripts"
+    ],
+    "verb": "update",
+    "description": "Update a saved script's description, input schema or body. The name is immutable.",
+    "method": "PATCH",
+    "http_path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
+      },
+      {
+        "field": "body",
+        "long": "body",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement script source."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement description."
+      },
+      {
+        "field": "input_schema",
+        "long": "input-schema",
+        "kind": "json",
+        "required": false,
+        "help": "Replacement input schema (an object schema)."
+      },
+      {
+        "field": "script_id",
+        "long": "script-id",
+        "kind": "string",
+        "required": true,
+        "help": "Saved script's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Change a script's body, keeping its name",
+        "command": "everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body 'cargo test --workspace --locked' --reason 'Pin tests to the lockfile'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent_trigger",
     "path": [
       "agents",
@@ -1210,6 +2087,12 @@
         "help": "GitHub only: repositories (`owner/name`) to accept; empty accepts all."
       },
       {
+        "field": "script",
+        "long": "script",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "session_mode",
         "long": "session-mode",
         "kind": "string",
@@ -1229,6 +2112,20 @@
         "kind": "string",
         "required": false,
         "help": "Webhook and MCP event: template for the event subject."
+      },
+      {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the conversation on `target_channel_id`, keyed the way the channel binds sessi..."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Schedule only: the agent's channel whose conversation each run speaks in, instead of a sessio..."
       },
       {
         "field": "timezone",
@@ -1257,6 +2154,12 @@
           "mcp_event"
         ]
       }
+    ],
+    "examples": [
+      {
+        "intent": "Run an agent every weekday morning on a cron schedule",
+        "command": "everruns agents triggers create --agent-id agent_01h9 --trigger-type schedule --cron-expression '0 9 * * 1-5' --message 'Summarize overnight alerts' --reason 'Daily alert digest'"
+      }
     ]
   },
   {
@@ -1274,13 +2177,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a trigger from firing and archive it",
+        "command": "everruns agents triggers delete --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Digest no longer needed'"
       }
     ]
   },
@@ -1300,7 +2211,8 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "limit",
@@ -1313,7 +2225,14 @@
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find out why a webhook or event trigger did not start a session",
+        "command": "everruns agents triggers deliveries list --agent-id agent_01h9 --trigger-id trg_01h9 --limit 20"
       }
     ]
   },
@@ -1332,13 +2251,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a trigger's type, schedule and enabled state",
+        "command": "everruns agents triggers get --agent-id agent_01h9 --trigger-id trg_01h9"
       }
     ]
   },
@@ -1356,14 +2283,23 @@
       {
         "field": "agent_id",
         "long": "agent-id",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Also return archived items."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what triggers an agent already has before adding one",
+        "command": "everruns agents triggers list agent_01h9"
       }
     ]
   },
@@ -1383,13 +2319,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether recent firings of a trigger succeeded",
+        "command": "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9"
       }
     ]
   },
@@ -1408,13 +2352,21 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Fire a trigger once now to test it without waiting for its schedule",
+        "command": "everruns agents triggers trigger --agent-id agent_01h9 --trigger-id trg_01h9 --reason 'Test the digest message'"
       }
     ]
   },
@@ -1433,7 +2385,8 @@
         "field": "agent_id",
         "long": "agent-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Owning agent's prefixed public identifier."
       },
       {
         "field": "auth",
@@ -1519,6 +2472,12 @@
         "help": "Replacement GitHub repository scope."
       },
       {
+        "field": "script",
+        "long": "script",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "session_mode",
         "long": "session-mode",
         "kind": "string",
@@ -1530,6 +2489,20 @@
         "kind": "string",
         "required": false,
         "help": "Replacement subject template."
+      },
+      {
+        "field": "target_binding_key",
+        "long": "target-binding-key",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target conversation; given with `target_channel_id`."
+      },
+      {
+        "field": "target_channel_id",
+        "long": "target-channel-id",
+        "kind": "string",
+        "required": false,
+        "help": "Replacement target channel."
       },
       {
         "field": "timezone",
@@ -1549,7 +2522,14 @@
         "field": "trigger_id",
         "long": "trigger-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent trigger's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pause a trigger without deleting it",
+        "command": "everruns agents triggers update --agent-id agent_01h9 --trigger-id trg_01h9 --enabled false --reason 'Pause during the migration'"
       }
     ]
   },
@@ -1577,6 +2557,12 @@
         "kind": "json",
         "required": false,
         "help": "Capabilities to enable for this agent with per-agent configuration. Replaces existing capabil..."
+      },
+      {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "default_model_id",
@@ -1636,6 +2622,13 @@
         "help": "Maximum number of LLM iterations per turn for this agent."
       },
       {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to leave unchanged; ..."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -1685,7 +2678,7 @@
         "long": "starters",
         "kind": "json",
         "required": false,
-        "help": "Conversation starters; omit to leave unchanged, send empty to clear. `icon` reuses the harnes..."
+        "help": "Conversation starters as `[{\"text\": \"...\"}]`; omit to keep, `[]` to clear. An optional `icon`..."
       },
       {
         "field": "status",
@@ -1718,7 +2711,11 @@
     "examples": [
       {
         "intent": "Rename an agent, leaving the rest of it alone",
-        "command": "everruns agents update agt_01h9 --name triage-v2 --reason 'Rename after the triage split'"
+        "command": "everruns agents update agent_01h9 --name triage-v2 --reason 'Rename after the triage split'"
+      },
+      {
+        "intent": "Cap each model response so calls fit a low provider balance",
+        "command": "everruns agents update agent_01h9 --max-output-tokens 4096 --reason 'Provider said it can only afford fewer tokens'"
       }
     ]
   },
@@ -1746,6 +2743,17 @@
         "kind": "json",
         "required": false,
         "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
+      },
+      {
+        "field": "communication",
+        "long": "communication",
+        "kind": "string",
+        "required": false,
+        "help": "How an agent talks to the people in its conversations.",
+        "choices": [
+          "direct",
+          "explicit"
+        ]
       },
       {
         "field": "default_model_id",
@@ -1803,6 +2811,13 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of LLM iterations per turn for this agent."
+      },
+      {
+        "field": "max_output_tokens",
+        "long": "max-output-tokens",
+        "kind": "integer",
+        "required": false,
+        "help": "Ceiling on output tokens per model response (sent as `max_tokens`). Omit to use the provider ..."
       },
       {
         "field": "mcpServers",
@@ -1881,7 +2896,7 @@
     "examples": [
       {
         "intent": "Create or replace an agent at a known id, for a scripted deploy",
-        "command": "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'"
+        "command": "everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'"
       }
     ]
   },
@@ -1946,7 +2961,14 @@
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether a budget still has room before starting expensive work",
+        "command": "everruns budgets check --budget-id bdgt_01h9"
       }
     ]
   },
@@ -2008,6 +3030,12 @@
         "required": true,
         "help": "Kind of resource constrained by the budget."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Cap an agent's spend with an early warning before the hard limit",
+        "command": "everruns budgets create --subject-type agent --subject-id agent_01h9 --currency usd --limit 100 --soft-limit 80 --reason 'Monthly spend cap for the triage agent'"
+      }
     ]
   },
   {
@@ -2023,8 +3051,16 @@
       {
         "field": "budget_id",
         "long": "budget-id",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a cap that no longer applies",
+        "command": "everruns budgets delete bdgt_01h9 --reason 'Agent retired'"
       }
     ]
   },
@@ -2041,8 +3077,16 @@
       {
         "field": "budget_id",
         "long": "budget-id",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a budget's limit, balance and status",
+        "command": "everruns budgets get bdgt_01h9"
       }
     ]
   },
@@ -2078,6 +3122,12 @@
         "required": false,
         "help": "Zero-based offset into the result set."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Audit what drew down a budget, newest entries first",
+        "command": "everruns budgets ledger list --budget-id bdgt_01h9 --limit 20"
+      }
     ]
   },
   {
@@ -2104,6 +3154,12 @@
         "required": false,
         "help": "Only budgets on this kind of subject (session, agent, user, org, ...)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find the budgets that apply to one agent",
+        "command": "everruns budgets list --subject-type agent --subject-id agent_01h9"
+      }
     ]
   },
   {
@@ -2121,13 +3177,15 @@
         "field": "amount",
         "long": "amount",
         "kind": "number",
-        "required": true
+        "required": true,
+        "help": "Credits to add, in the budget's currency."
       },
       {
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier."
       },
       {
         "field": "description",
@@ -2135,6 +3193,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable description."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add credits to an exhausted budget so work can continue",
+        "command": "everruns budgets top-up top --budget-id bdgt_01h9 --amount 25 --description 'Extra allowance for the launch week' --reason 'Launch week'"
       }
     ]
   },
@@ -2152,7 +3216,8 @@
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier."
       },
       {
         "field": "limit",
@@ -2172,7 +3237,8 @@
         "field": "soft_limit",
         "long": "soft-limit",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Replacement soft threshold, or null to remove it."
       },
       {
         "field": "status",
@@ -2180,6 +3246,12 @@
         "kind": "string",
         "required": false,
         "help": "Current lifecycle status."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Raise a budget's hard limit",
+        "command": "everruns budgets update --budget-id bdgt_01h9 --limit 150 --reason 'Higher volume expected'"
       }
     ]
   },
@@ -2200,6 +3272,12 @@
         "required": true,
         "help": "Definition for the new declarative capability."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Package instructions and starter files as a reusable capability",
+        "command": "everruns capabilities create --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the research workflow.\"}' --reason 'Share the research workflow'"
+      }
     ]
   },
   {
@@ -2216,9 +3294,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a declarative capability that agents should stop using",
+        "command": "everruns capabilities declarative delete cap_01h9 --reason 'Replaced by research_pack v2'"
       }
     ]
   },
@@ -2263,9 +3348,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the saved definition of a declarative capability",
+        "command": "everruns capabilities declarative get cap_01h9"
       }
     ]
   },
@@ -2284,13 +3376,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Also return archived items."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive substring match on name or description."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List the declarative capabilities your organization has defined",
+        "command": "everruns capabilities declarative list --search research"
       }
     ]
   },
@@ -2306,6 +3406,14 @@
     "http_path": "/v1/capabilities/declarative/{id}",
     "args": [
       {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
         "field": "definition",
         "long": "definition",
         "kind": "json",
@@ -2313,18 +3421,17 @@
         "help": "Replacement declarative definition."
       },
       {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
-      },
-      {
         "field": "status",
         "long": "status",
         "kind": "string",
         "required": false,
         "help": "Optional lifecycle state update."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Replace a declarative capability's definition",
+        "command": "everruns capabilities declarative update cap_01h9 --definition '{\"name\":\"research_pack\",\"display_name\":\"Research Pack\",\"description\":\"Research workflow\",\"system_prompt\":\"Use the updated research workflow.\"}' --reason 'Tighten the instructions'"
       }
     ]
   },
@@ -2341,9 +3448,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read what a capability provides before adding it to an agent",
+        "command": "everruns capabilities get cap_01h9"
       }
     ]
   },
@@ -2392,6 +3506,12 @@
         "required": false,
         "help": "Tool name for `tool_use` stage checks (`tool_pattern` rules)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Try a guardrails config on sample text before attaching it to an agent",
+        "command": "everruns capabilities guardrails dry-run dry --stage output --text 'this is darn slow' --config '{\"mode\":\"advisory\",\"checks\":[{\"id\":\"profanity\",\"stage\":\"output\",\"type\":\"blocklist\",\"words\":[\"darn\"]}]}'"
+      }
     ]
   },
   {
@@ -2405,7 +3525,13 @@
     "description": "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
     "method": "GET",
     "http_path": "/v1/capabilities/guardrails/examples",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Start from a ready-made guardrail preset instead of writing checks by hand",
+        "command": "everruns capabilities guardrails examples list"
+      }
+    ]
   },
   {
     "wire_name": "list_capabilities",
@@ -2442,7 +3568,14 @@
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive substring match on name or description."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a capability by name when you do not know its id",
+        "command": "everruns capabilities list --search web"
       }
     ]
   },
@@ -2620,9 +3753,16 @@
       {
         "field": "execution_id",
         "long": "execution-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Schedule execution's identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect one run of a schedule, including its error if it failed",
+        "command": "everruns durable executions get exec_01h9"
       }
     ]
   },
@@ -2707,6 +3847,12 @@
         "required": false,
         "help": "Timezone (default: UTC)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Run a session workflow every night",
+        "command": "everruns durable schedules create --name nightly-triage --cron-expression '0 2 * * *' --timezone UTC --target '{\"type\":\"workflow\",\"name\":\"session.run\",\"input\":{\"session_id\":\"session_01h9\"}}' --reason 'Nightly triage'"
+      }
     ]
   },
   {
@@ -2726,6 +3872,12 @@
         "kind": "string",
         "required": true,
         "help": "Schedule's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a schedule you no longer need",
+        "command": "everruns durable schedules delete --schedule-id sched_01h9 --reason 'Replaced by a webhook trigger'"
       }
     ]
   },
@@ -2769,6 +3921,12 @@
         "required": false,
         "help": "Filter by execution status"
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find recent failed runs of a schedule",
+        "command": "everruns durable schedules executions list --schedule-id sched_01h9 --status failed"
+      }
     ]
   },
   {
@@ -2785,9 +3943,16 @@
       {
         "field": "schedule_id",
         "long": "schedule-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Schedule's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a schedule's cron expression, target and next run",
+        "command": "everruns durable schedules get sched_01h9"
       }
     ]
   },
@@ -2830,6 +3995,12 @@
         "required": false,
         "help": "Filter by target type (\"workflow\" or \"activity\")"
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find schedules that are still enabled",
+        "command": "everruns durable schedules list --enabled true"
+      }
     ]
   },
   {
@@ -2850,6 +4021,12 @@
         "required": true,
         "help": "Schedule's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a schedule from firing while you investigate",
+        "command": "everruns durable schedules pause --schedule-id sched_01h9 --reason 'Investigate repeated failures'"
+      }
     ]
   },
   {
@@ -2869,6 +4046,12 @@
         "kind": "string",
         "required": true,
         "help": "Schedule's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn a paused schedule back on",
+        "command": "everruns durable schedules resume --schedule-id sched_01h9 --reason 'Failures fixed'"
       }
     ]
   },
@@ -2891,6 +4074,12 @@
         "required": true,
         "help": "Schedule's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See a schedule's success and failure counts",
+        "command": "everruns durable schedules stats get --schedule-id sched_01h9"
+      }
     ]
   },
   {
@@ -2910,6 +4099,12 @@
         "kind": "string",
         "required": true,
         "help": "Schedule's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Run a schedule once now to test its target",
+        "command": "everruns durable schedules trigger --schedule-id sched_01h9 --reason 'Verify the target before the next run'"
       }
     ]
   },
@@ -2993,6 +4188,12 @@
         "required": false,
         "help": "New timezone (IANA name)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Move a schedule to a different time",
+        "command": "everruns durable schedules update --schedule-id sched_01h9 --cron-expression '0 3 * * *' --reason 'Avoid the 02:00 backup window'"
+      }
     ]
   },
   {
@@ -3017,7 +4218,14 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn recorded agent trajectories into eval cases",
+        "command": "everruns evals atif-import import --eval-id eval_01h9 --body \"$(cat trajectories.ndjson)\" --reason 'Seed cases from production sessions'"
       }
     ]
   },
@@ -3057,7 +4265,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "max_turns",
@@ -3114,6 +4323,12 @@
         "required": false,
         "help": "Per-case timeout in seconds."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Add a scripted conversation with a pass condition to an eval",
+        "command": "everruns evals cases create --eval-id eval_01h9 --name fix-failing-test --conversation '[{\"content\":\"Fix the failing test in src/lib.rs\"}]' --scorers '[{\"type\":\"contains\",\"text\":\"tests pass\"}]' --reason 'Cover the test-fix flow'"
+      }
     ]
   },
   {
@@ -3131,13 +4346,21 @@
         "field": "case_id",
         "long": "case-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval case's prefixed public identifier."
       },
       {
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Drop a case that no longer reflects expected behavior",
+        "command": "everruns evals cases delete --eval-id eval_01h9 --case-id evalcase_01h9 --reason 'Duplicate of fix-failing-test'"
       }
     ]
   },
@@ -3156,13 +4379,21 @@
         "field": "case_id",
         "long": "case-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval case's prefixed public identifier."
       },
       {
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read one case's conversation and scorers",
+        "command": "everruns evals cases get --eval-id eval_01h9 --case-id evalcase_01h9"
       }
     ]
   },
@@ -3181,7 +4412,14 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which cases an eval contains",
+        "command": "everruns evals cases list --eval-id eval_01h9"
       }
     ]
   },
@@ -3207,7 +4445,8 @@
         "field": "case_id",
         "long": "case-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval case's prefixed public identifier."
       },
       {
         "field": "conversation",
@@ -3227,7 +4466,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "max_turns",
@@ -3284,6 +4524,12 @@
         "required": false,
         "help": "Per-case timeout in seconds."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Give a slow case more turns",
+        "command": "everruns evals cases update --eval-id eval_01h9 --case-id evalcase_01h9 --max-turns 20 --reason 'Case timed out at the old limit'"
+      }
     ]
   },
   {
@@ -3330,6 +4576,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Start a regression suite aimed at one agent",
+        "command": "everruns evals create --name support-regression --target '{\"type\":\"session\",\"agent_id\":\"agent_01h9\"}' --reason 'Track support agent quality'"
+      }
     ]
   },
   {
@@ -3346,7 +4598,14 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove an eval that is no longer tracked",
+        "command": "everruns evals delete --eval-id eval_01h9 --reason 'Suite retired'"
       }
     ]
   },
@@ -3363,8 +4622,16 @@
       {
         "field": "eval_id",
         "long": "eval-id",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show an eval's target and settings",
+        "command": "everruns evals get eval_01h9"
       }
     ]
   },
@@ -3391,6 +4658,12 @@
         "kind": "json",
         "required": true,
         "help": "Attribution for the external system that produced the run."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record results from an eval harness that ran outside Everruns",
+        "command": "everruns evals import --source '{\"system\":\"mira\",\"run_id\":\"run-42\"}' --evals '[{\"name\":\"support\",\"cases\":[{\"name\":\"refund\",\"target\":{\"provider\":\"openai\",\"model\":\"gpt-5.1\"},\"status\":\"passed\"}]}]' --reason 'Publish the nightly Mira run'"
       }
     ]
   },
@@ -3435,6 +4708,12 @@
         "required": false,
         "help": "Case-insensitive name filter."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find an eval by name when you do not know the id",
+        "command": "everruns evals list --search support"
+      }
     ]
   },
   {
@@ -3453,13 +4732,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Download the files a run captured, one NDJSON line per result",
+        "command": "everruns evals runs artifacts export --eval-id eval_01h9 --run-id evalrun_01h9"
       }
     ]
   },
@@ -3478,13 +4765,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a run that was started with the wrong settings",
+        "command": "everruns evals runs cancel --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Wrong model override'"
       }
     ]
   },
@@ -3503,7 +4798,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "model_override",
@@ -3517,6 +4813,12 @@
         "long": "target",
         "kind": "json",
         "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Run every case in an eval, optionally on a different model",
+        "command": "everruns evals runs create --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Check the suite on the new model'"
       }
     ]
   },
@@ -3536,7 +4838,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "filters",
@@ -3568,7 +4871,14 @@
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Completed eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Build a training dataset from a finished run",
+        "command": "everruns evals runs dataset export --eval-id eval_01h9 --run-id evalrun_01h9 --format sft --reason 'Fine-tune on the passing cases'"
       }
     ]
   },
@@ -3588,19 +4898,28 @@
         "field": "dataset_id",
         "long": "dataset-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Dataset export's prefixed public identifier."
       },
       {
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Poll a dataset export until it completes, then read its NDJSON",
+        "command": "everruns evals runs dataset get --eval-id eval_01h9 --run-id evalrun_01h9 --dataset-id evaldataset_01h9"
       }
     ]
   },
@@ -3619,13 +4938,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a run's status and per-case results",
+        "command": "everruns evals runs get --eval-id eval_01h9 --run-id evalrun_01h9"
       }
     ]
   },
@@ -3644,7 +4971,14 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a past run to compare against",
+        "command": "everruns evals runs list --eval-id eval_01h9"
       }
     ]
   },
@@ -3665,7 +4999,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "metadata",
@@ -3678,13 +5013,15 @@
         "field": "result_id",
         "long": "result-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval case result's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
       },
       {
         "field": "scores",
@@ -3698,6 +5035,12 @@
         "long": "status",
         "kind": "string",
         "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Override one result's scores after a manual review",
+        "command": "everruns evals runs results scores update --eval-id eval_01h9 --run-id evalrun_01h9 --result-id evalresult_01h9 --scores '[{\"pass\":false,\"value\":0.0,\"reason\":\"Wrong refund amount\"}]' --status failed --reason 'Manual review'"
       }
     ]
   },
@@ -3717,7 +5060,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "metadata",
@@ -3737,7 +5081,14 @@
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Attach scores from an external grader to every result in a run",
+        "command": "everruns evals runs scores bulk --eval-id eval_01h9 --run-id evalrun_01h9 --results '[{\"result_id\":\"evalresult_01h9\",\"scores\":[{\"pass\":true,\"value\":1.0,\"reason\":\"Matches the reference\"}],\"status\":\"passed\"}]' --reason 'Apply grader output'"
       }
     ]
   },
@@ -3757,13 +5108,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Mint a read-only link to show a run's results to someone outside the org",
+        "command": "everruns evals runs share create --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Share results with the vendor'"
       }
     ]
   },
@@ -3783,13 +5142,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether a run is currently shared",
+        "command": "everruns evals runs share get --eval-id eval_01h9 --run-id evalrun_01h9"
       }
     ]
   },
@@ -3809,13 +5176,21 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "run_id",
         "long": "run-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval run's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Turn off every share link for a run",
+        "command": "everruns evals runs share revoke --eval-id eval_01h9 --run-id evalrun_01h9 --reason 'Vendor review finished'"
       }
     ]
   },
@@ -3840,7 +5215,8 @@
         "field": "eval_id",
         "long": "eval-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Eval's prefixed public identifier."
       },
       {
         "field": "model_override",
@@ -3869,6 +5245,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Point an eval at a different model by default",
+        "command": "everruns evals update --eval-id eval_01h9 --model-override gpt-5.1 --reason 'Move the suite to the new model'"
+      }
     ]
   },
   {
@@ -3886,7 +5268,8 @@
         "field": "exclude_id",
         "long": "exclude-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Harness id to ignore, so a harness can keep its own name."
       },
       {
         "field": "name",
@@ -3894,6 +5277,12 @@
         "kind": "string",
         "required": true,
         "help": "Human-readable name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a name is free before creating a harness",
+        "command": "everruns harnesses check-name check --name support-bot"
       }
     ]
   },
@@ -3910,9 +5299,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a new harness from an existing one",
+        "command": "everruns harnesses copy harness_01h9 --reason 'Fork for the EU deployment'"
       }
     ]
   },
@@ -4029,6 +5425,12 @@
         "required": false,
         "help": "Tags for organizing harnesses."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Create a harness with a prompt and a capability",
+        "command": "everruns harnesses create --name support-bot --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]' --reason 'Base harness for support agents'"
+      }
     ]
   },
   {
@@ -4044,9 +5446,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a harness you no longer use; it can be restored",
+        "command": "everruns harnesses delete harness_01h9 --reason 'Replaced by support-bot'"
       }
     ]
   },
@@ -4089,9 +5498,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show a harness by id or name",
+        "command": "everruns harnesses get harness_01h9"
       }
     ]
   },
@@ -4109,13 +5525,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived harnesses."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only harnesses whose name matches this text."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find harnesses by name when you do not know the id",
+        "command": "everruns harnesses list --search support"
       }
     ]
   },
@@ -4133,7 +5557,8 @@
         "field": "capabilities",
         "long": "capabilities",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Capabilities to apply, each `{\"ref\": ..., \"config\": ...}`."
       },
       {
         "field": "mcp_servers",
@@ -4151,7 +5576,14 @@
         "field": "system_prompt",
         "long": "system-prompt",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Base system prompt to preview."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See the final prompt and tools a harness would produce before saving it",
+        "command": "everruns harnesses preview --system-prompt 'You answer support questions' --capabilities '[{\"ref\":\"web_fetch\"}]'"
       }
     ]
   },
@@ -4165,6 +5597,14 @@
     "method": "PATCH",
     "http_path": "/v1/harnesses/{id}",
     "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
       {
         "field": "capabilities",
         "long": "capabilities",
@@ -4199,13 +5639,6 @@
         "kind": "json",
         "required": false,
         "help": "Replace the embedder metadata map entirely; omit to leave unchanged."
-      },
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
       },
       {
         "field": "initial_files",
@@ -4281,6 +5714,12 @@
         "required": false,
         "help": "Replace the tag list entirely; omit to leave unchanged."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Change a harness's system prompt",
+        "command": "everruns harnesses update harness_01h9 --system-prompt 'You answer support questions concisely' --reason 'Tighten replies'"
+      }
     ]
   },
   {
@@ -4300,6 +5739,12 @@
         "required": true,
         "help": "Stable identifier of the issue in the current organization."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Recheck whether an issue is resolved after fixing it",
+        "command": "everruns health-issues check --issue-id 550e8400-e29b-41d4-a716-446655440000"
+      }
     ]
   },
   {
@@ -4318,6 +5763,12 @@
         "kind": "string",
         "required": true,
         "help": "Stable identifier of the issue in the current organization."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read an issue's evidence and recovery steps",
+        "command": "everruns health-issues get --issue-id 550e8400-e29b-41d4-a716-446655440000"
       }
     ]
   },
@@ -4352,6 +5803,12 @@
         "required": false,
         "help": "Number of matching issues to skip; defaults to zero."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See what operational problems need attention",
+        "command": "everruns health-issues list --limit 10"
+      }
     ]
   },
   {
@@ -4370,6 +5827,12 @@
         "kind": "string",
         "required": true,
         "help": "Stable identifier of the issue in the current organization."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Silence your reminders for an issue for a day",
+        "command": "everruns health-issues snooze --issue-id 550e8400-e29b-41d4-a716-446655440000 --reason 'Fix scheduled for tomorrow'"
       }
     ]
   },
@@ -4634,9 +6097,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Fetch an uploaded image's data by id",
+        "command": "everruns images get img_01h9"
       }
     ]
   },
@@ -4663,6 +6133,12 @@
         "kind": "integer",
         "required": false,
         "help": "Zero-based offset into the result set."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Browse uploaded images to find an image id",
+        "command": "everruns images list --limit 20"
       }
     ]
   },
@@ -4697,6 +6173,12 @@
         "required": true,
         "help": "Human-readable name."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Start a knowledge base for a team's runbooks",
+        "command": "everruns knowledge-bases create --name support-runbooks --description 'How we handle common support cases' --reason 'Give agents a shared source of answers'"
+      }
     ]
   },
   {
@@ -4715,6 +6197,12 @@
         "kind": "string",
         "required": true,
         "help": "Knowledge base's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a knowledge base nobody uses any more",
+        "command": "everruns knowledge-bases delete --kb-id kb_01h9 --reason 'Merged into support-runbooks'"
       }
     ]
   },
@@ -4770,6 +6258,12 @@
         "required": true,
         "help": "Human-readable title."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Add a runbook entry to a knowledge base",
+        "command": "everruns knowledge-bases entries create --kb-id kb_01h9 --title 'Refund a payment past 30 days' --body 'Escalate to billing with the order id.' --kind runbook --tags billing,refunds --reason 'Document the refund exception'"
+      }
     ]
   },
   {
@@ -4797,6 +6291,12 @@
         "required": true,
         "help": "Knowledge base's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Remove an outdated entry",
+        "command": "everruns knowledge-bases entries delete --kb-id kb_01h9 --entry-id kbe_01h9 --reason 'Policy changed'"
+      }
     ]
   },
   {
@@ -4823,6 +6323,12 @@
         "kind": "string",
         "required": true,
         "help": "Knowledge base's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read one entry's full body",
+        "command": "everruns knowledge-bases entries get --kb-id kb_01h9 --entry-id kbe_01h9"
       }
     ]
   },
@@ -4855,7 +6361,14 @@
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive title or body filter."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find entries about a topic inside one knowledge base",
+        "command": "everruns knowledge-bases entries list --kb-id kb_01h9 --search refund"
       }
     ]
   },
@@ -4919,6 +6432,12 @@
         "required": false,
         "help": "Human-readable title."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Correct an entry's body after a policy change",
+        "command": "everruns knowledge-bases entries update --kb-id kb_01h9 --entry-id kbe_01h9 --body 'Escalate to billing within 24 hours.' --reason 'Updated refund policy'"
+      }
     ]
   },
   {
@@ -4934,9 +6453,16 @@
       {
         "field": "kb_id",
         "long": "kb-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Knowledge base's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show a knowledge base's settings",
+        "command": "everruns knowledge-bases get kb_01h9"
       }
     ]
   },
@@ -4954,13 +6480,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived knowledge bases."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive name filter."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a knowledge base by name when you do not know the id",
+        "command": "everruns knowledge-bases list --search runbooks"
       }
     ]
   },
@@ -4979,13 +6513,15 @@
         "field": "bundle_base64",
         "long": "bundle-base64",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "A base64-encoded `.tar.gz` OKF bundle."
       },
       {
         "field": "files",
         "long": "files",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Inline bundle files."
       },
       {
         "field": "kb_id",
@@ -4998,7 +6534,14 @@
         "field": "prune",
         "long": "prune",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "When true, delete previously-imported entries absent from this bundle."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Load an OKF bundle (a .tar.gz of markdown concepts) into a knowledge base",
+        "command": "everruns knowledge-bases okf-import import --kb-id kb_01h9 --bundle-base64 \"$(base64 < bundle.tar.gz)\" --prune true --reason 'Sync the docs repo'"
       }
     ]
   },
@@ -5039,6 +6582,12 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a knowledge base",
+        "command": "everruns knowledge-bases update --kb-id kb_01h9 --name support-playbooks --reason 'Broader scope than runbooks'"
       }
     ]
   },
@@ -5087,6 +6636,12 @@
         "required": false,
         "help": "External source type."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Index a GitHub repository so agents can search its docs",
+        "command": "everruns knowledge-indexes create --name product-docs --embedding-model-id model_01h9 --source-type github --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\"}' --reason 'Give support agents the product docs'"
+      }
     ]
   },
   {
@@ -5106,6 +6661,12 @@
         "required": true,
         "help": "Knowledge index's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a knowledge index that agents no longer need",
+        "command": "everruns knowledge-indexes delete --index-id kidx_01h9 --reason 'Docs moved to a new index'"
+      }
     ]
   },
   {
@@ -5122,9 +6683,16 @@
       {
         "field": "index_id",
         "long": "index-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Knowledge index's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which documents a sync has indexed",
+        "command": "everruns knowledge-indexes documents list kidx_01h9"
       }
     ]
   },
@@ -5141,9 +6709,16 @@
       {
         "field": "index_id",
         "long": "index-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Knowledge index's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a knowledge index's source and sync state",
+        "command": "everruns knowledge-indexes get kidx_01h9"
       }
     ]
   },
@@ -5161,13 +6736,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Also return archived items."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive substring match on name or description."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a knowledge index by name when you do not know the id",
+        "command": "everruns knowledge-indexes list --search docs"
       }
     ]
   },
@@ -5184,9 +6767,16 @@
       {
         "field": "index_id",
         "long": "index-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Knowledge index's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Re-index now after the source repository changed",
+        "command": "everruns knowledge-indexes sync kidx_01h9 --reason 'Docs updated upstream'"
       }
     ]
   },
@@ -5234,6 +6824,38 @@
         "kind": "json",
         "required": false,
         "help": "Non-secret source coordinates."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Point an index at a different branch or folder",
+        "command": "everruns knowledge-indexes update --index-id kidx_01h9 --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\",\"branch\":\"main\"}' --reason 'Track main instead of the release branch'"
+      }
+    ]
+  },
+  {
+    "wire_name": "check_mcp_server_connection",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "check-connection",
+    "description": "Check again whether an OAuth MCP server's sign-in service is reachable, and record the result on the server.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/check-connection",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See whether people can sign in to an OAuth MCP server from here",
+        "command": "everruns mcp-servers check-connection mcp_01h9"
       }
     ]
   },
@@ -5405,6 +7027,46 @@
     ]
   },
   {
+    "wire_name": "set_mcp_tool_label",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "label-tool",
+    "description": "Set or clear a person's risk label for one MCP server tool. read_only never asks for approval in normal mode, changes always asks, null clears.",
+    "method": "PUT",
+    "http_path": "/v1/mcp-servers/{id}/tools/{tool_name}/label",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
+        "field": "tool_name",
+        "long": "tool-name",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "The tool's own name on the MCP server."
+      },
+      {
+        "field": "label",
+        "long": "label",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop a read-only MCP tool from asking for approval",
+        "command": "everruns mcp-servers label-tool mcp_01h9 search_docs --label read_only --reason 'Only reads documentation'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_mcp_servers",
     "path": [
       "mcp-servers"
@@ -5431,6 +7093,58 @@
       {
         "intent": "Find a registered MCP server by name",
         "command": "everruns mcp-servers list --search github"
+      }
+    ]
+  },
+  {
+    "wire_name": "suggest_mcp_tool_labels",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "suggest-labels",
+    "description": "Ask the organization's decision model (or the deployment's decision service when the organization does not select its own) to suggest read_only or changes for every tool of an MCP server that has no label yet. Suggestions are never applied: a person confirms one by setting the label.",
+    "method": "POST",
+    "http_path": "/v1/mcp-servers/{id}/tools/suggest-labels",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get suggested risk labels for the unlabeled tools of an MCP server",
+        "command": "everruns mcp-servers suggest-labels mcp_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_mcp_server_tools",
+    "path": [
+      "mcp-servers"
+    ],
+    "verb": "tools",
+    "description": "List the tools an MCP server offers, with each tool's annotations and saved risk label.",
+    "method": "GET",
+    "http_path": "/v1/mcp-servers/{id}/tools",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which tools of an MCP server ask for approval",
+        "command": "everruns mcp-servers tools mcp_01h9"
       }
     ]
   },
@@ -5562,6 +7276,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Sync a docs repository into a workspace memory",
+        "command": "everruns memories create --name design-docs --description 'Living design documents' --source '{\"type\":\"github\",\"repository\":\"acme/design-docs\",\"branch\":\"main\",\"root_folder\":\"docs/\"}' --reason 'Give agents the design docs'"
+      }
     ]
   },
   {
@@ -5581,6 +7301,12 @@
         "required": true,
         "help": "Workspace memory's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a memory agents should stop reading",
+        "command": "everruns memories delete --memory-id mem_01h9 --reason 'Docs moved to a new repo'"
+      }
     ]
   },
   {
@@ -5596,9 +7322,16 @@
       {
         "field": "memory_id",
         "long": "memory-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Workspace memory's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a memory's source and sync state",
+        "command": "everruns memories get mem_01h9"
       }
     ]
   },
@@ -5616,13 +7349,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived memories."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only memories whose name matches this text."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find memories by name when you do not know the id",
+        "command": "everruns memories list --search design"
       }
     ]
   },
@@ -5642,6 +7383,12 @@
         "kind": "string",
         "required": true,
         "help": "Workspace memory's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Pull the latest source changes without waiting for the schedule",
+        "command": "everruns memories sync --memory-id mem_01h9 --reason 'Docs just changed'"
       }
     ]
   },
@@ -5682,6 +7429,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a memory or change its description",
+        "command": "everruns memories update --memory-id mem_01h9 --description 'Design docs, main branch' --reason 'Clarify scope'"
+      }
     ]
   },
   {
@@ -5694,7 +7447,13 @@
     "description": "Get the selected decision model.",
     "method": "GET",
     "http_path": "/v1/models/decision-default",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check which model handles typed decisions",
+        "command": "everruns models decision-default get"
+      }
+    ]
   },
   {
     "wire_name": "set_default_decision_model",
@@ -5714,6 +7473,12 @@
         "required": false,
         "help": "Prefixed saved model ID; omit or pass null to clear the default."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Choose the model that handles typed decisions",
+        "command": "everruns models decision-default set --model-id model_01h9 --reason 'Cheaper model is accurate enough'"
+      }
     ]
   },
   {
@@ -5726,7 +7491,13 @@
     "description": "Get the effective organization default model.",
     "method": "GET",
     "http_path": "/v1/models/default",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check which model new sessions use when none is chosen",
+        "command": "everruns models default get"
+      }
+    ]
   },
   {
     "wire_name": "delete_model",
@@ -5741,9 +7512,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a model that was registered by mistake",
+        "command": "everruns models delete model_01h9 --reason 'Duplicate of an existing entry'"
       }
     ]
   },
@@ -5760,9 +7538,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show a model with its provider and capabilities",
+        "command": "everruns models get model_01h9"
       }
     ]
   },
@@ -5780,13 +7565,15 @@
         "field": "favorites_only",
         "long": "favorites-only",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Only models marked as favorites."
       },
       {
         "field": "include_stale",
         "long": "include-stale",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include models the provider no longer lists."
       },
       {
         "field": "service",
@@ -5799,6 +7586,12 @@
         "long": "source",
         "kind": "string",
         "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the models you have starred",
+        "command": "everruns models list --favorites-only true"
       }
     ]
   },
@@ -5816,7 +7609,8 @@
         "field": "capabilities",
         "long": "capabilities",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Replacement capability labels."
       },
       {
         "field": "display_name",
@@ -5843,7 +7637,8 @@
         "field": "is_favorite",
         "long": "is-favorite",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Show the model first in pickers."
       },
       {
         "field": "model_id",
@@ -5872,6 +7667,12 @@
         "kind": "string",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Star a model so it appears first in pickers",
+        "command": "everruns models update --id model_01h9 --is-favorite true --reason 'Team default'"
+      }
     ]
   },
   {
@@ -5891,6 +7692,12 @@
         "required": false,
         "help": "Maximum number of items returned in this page."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Catch up on notifications addressed to you",
+        "command": "everruns notifications list --limit 20"
+      }
     ]
   },
   {
@@ -5907,9 +7714,16 @@
       {
         "field": "notification_id",
         "long": "notification-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier of the notification to mark as viewed."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Clear a notification once you have read it",
+        "command": "everruns notifications view mark notification_01h9"
       }
     ]
   },
@@ -5957,6 +7771,12 @@
         "required": true,
         "help": "Scoring rules."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Score a sample of production turns automatically",
+        "command": "everruns observers create --name helpfulness --sampling-rate 0.1 --scorers '[{\"key\":\"mentions_docs\",\"method\":\"rule\",\"rule\":{\"type\":\"contains\",\"text\":\"docs\"}}]' --reason 'Track answer quality'"
+      }
     ]
   },
   {
@@ -5973,7 +7793,14 @@
         "field": "observer_id",
         "long": "observer-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive an observer you no longer want scoring turns",
+        "command": "everruns observers delete --observer-id observer_01h9 --reason 'Replaced by a stricter observer'"
       }
     ]
   },
@@ -5990,8 +7817,16 @@
       {
         "field": "observer_id",
         "long": "observer-id",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Observer's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check an observer's scorers, match rules and sampling rate",
+        "command": "everruns observers get observer_01h9"
       }
     ]
   },
@@ -6011,6 +7846,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Include archived observers."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which observers are scoring production sessions",
+        "command": "everruns observers list"
       }
     ]
   },
@@ -6035,7 +7876,8 @@
         "field": "observer_id",
         "long": "observer-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Observer's prefixed public identifier."
       },
       {
         "field": "offset",
@@ -6047,7 +7889,14 @@
         "field": "session_id",
         "long": "session-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Look at the scores an observer gave one session",
+        "command": "everruns observers scores list --observer-id observer_01h9 --session-id session_01h9"
       }
     ]
   },
@@ -6085,7 +7934,8 @@
         "field": "observer_id",
         "long": "observer-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Observer's prefixed public identifier."
       },
       {
         "field": "sampling_rate",
@@ -6105,6 +7955,12 @@
         "long": "status",
         "kind": "string",
         "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Score fewer turns to cut judge cost",
+        "command": "everruns observers update --observer-id observer_01h9 --sampling-rate 0.05 --reason 'Reduce scoring volume'"
       }
     ]
   },
@@ -6161,6 +8017,116 @@
         "required": false,
         "help": "Max entries to return (default 50, max 200)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Review who changed what in the organization recently",
+        "command": "everruns orgs audit-logs list --domain management --limit 50"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_org_egress_allowlist",
+    "path": [
+      "orgs",
+      "egress-allowlist"
+    ],
+    "verb": "get",
+    "description": "Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/egress-allowlist",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether an organization may add hosts and which ones it added",
+        "command": "everruns orgs egress-allowlist get --org org_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_org_egress_allowlist_grant",
+    "path": [
+      "orgs",
+      "egress-allowlist",
+      "grant"
+    ],
+    "verb": "set",
+    "description": "Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). Omitted fields keep their value.",
+    "method": "PUT",
+    "http_path": "/v1/orgs/{org}/egress-allowlist/grant",
+    "args": [
+      {
+        "field": "granted",
+        "long": "granted",
+        "kind": "boolean",
+        "required": false,
+        "help": "Allow or stop this organization extending the allowlist; omitted keeps it."
+      },
+      {
+        "field": "open",
+        "long": "open",
+        "kind": "boolean",
+        "required": false,
+        "help": "Give or take back open egress; omitted keeps it."
+      },
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Allow an organization to extend the outbound allowlist (platform administrators)",
+        "command": "everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 'Approved in security review'"
+      },
+      {
+        "intent": "Give a verified organization open egress (platform administrators)",
+        "command": "everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_org_egress_allowlist",
+    "path": [
+      "orgs",
+      "egress-allowlist"
+    ],
+    "verb": "set",
+    "description": "Replace the organization's outbound allowlist extension. Requires an organization admin and a grant from a platform administrator. Patterns must name public hosts: `example.com`, `*.example.com`, or an `https://example.com/path/` prefix.",
+    "method": "PUT",
+    "http_path": "/v1/orgs/{org}/egress-allowlist",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      },
+      {
+        "field": "patterns",
+        "long": "patterns",
+        "kind": "string_list",
+        "required": true,
+        "help": "The full list of host patterns; replaces the stored list."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let agents reach your own API hosts under a curated egress policy",
+        "command": "everruns orgs egress-allowlist set --org org_01h9 --patterns api.example.com --patterns '*.internal.example.com' --reason 'Agents call our ticketing API'"
+      }
     ]
   },
   {
@@ -6176,8 +8142,16 @@
       {
         "field": "org",
         "long": "org",
+        "position": 1,
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show an organization's details",
+        "command": "everruns orgs get org_01h9"
       }
     ]
   },
@@ -6190,7 +8164,39 @@
     "description": "List organizations for the current user.",
     "method": "GET",
     "http_path": "/v1/orgs",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which organizations you belong to and their ids",
+        "command": "everruns orgs list"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_organization_connections",
+    "path": [
+      "orgs",
+      "provider-accounts"
+    ],
+    "verb": "list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/organization-connections",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true,
+        "help": "Organization public ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find the sandbox provider account to point a Sandbox Template at",
+        "command": "everruns orgs provider-accounts list --org org_01h9"
+      }
+    ]
   },
   {
     "wire_name": "resolve_org",
@@ -6277,6 +8283,12 @@
         "required": true,
         "help": "Settlement rail this account operates on."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Register a wallet an agent can pay from",
+        "command": "everruns payments accounts create --owner-type organization --owner-id org_01h9 --rail mpp_tempo --label 'Research wallet' --public-address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e --reason 'Fund paid API calls'"
+      }
     ]
   },
   {
@@ -6294,7 +8306,14 @@
         "field": "payment_account_id",
         "long": "payment-account-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment account's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Stop all spending from a wallet",
+        "command": "everruns payments accounts disable --payment-account-id payacct_01h9 --reason 'Wallet compromised'"
       }
     ]
   },
@@ -6313,7 +8332,14 @@
         "field": "payment_account_id",
         "long": "payment-account-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment account's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a wallet's rail, owner and status",
+        "command": "everruns payments accounts get --payment-account-id payacct_01h9"
       }
     ]
   },
@@ -6332,13 +8358,21 @@
         "field": "owner_id",
         "long": "owner-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only accounts owned by this principal's prefixed public identifier."
       },
       {
         "field": "owner_type",
         "long": "owner-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only accounts owned by this kind of principal: `user`, `virtual_user`, or `organization`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List the wallets an organization owns",
+        "command": "everruns payments accounts list --owner-type organization --owner-id org_01h9"
       }
     ]
   },
@@ -6357,7 +8391,8 @@
         "field": "label",
         "long": "label",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "New label."
       },
       {
         "field": "metadata",
@@ -6370,19 +8405,22 @@
         "field": "payment_account_id",
         "long": "payment-account-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment account's prefixed public identifier."
       },
       {
         "field": "private_key",
         "long": "private-key",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "New private key to rotate in."
       },
       {
         "field": "public_address",
         "long": "public-address",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "New public address on the rail."
       },
       {
         "field": "status",
@@ -6390,6 +8428,12 @@
         "kind": "string",
         "required": false,
         "help": "Current lifecycle status."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rotate a wallet's label or deactivate it",
+        "command": "everruns payments accounts update --payment-account-id payacct_01h9 --label 'Research wallet (prod)' --reason 'Mark the production wallet'"
       }
     ]
   },
@@ -6417,6 +8461,12 @@
         "kind": "string",
         "required": false,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Audit what a session tried to pay for",
+        "command": "everruns payments attempts list --session-id session_01h9 --limit 20"
       }
     ]
   },
@@ -6450,7 +8500,7 @@
         "long": "max-amount-usd-per-day",
         "kind": "number",
         "required": false,
-        "help": "Maximum cumulative amount (USD) per UTC day."
+        "help": "Maximum cumulative amount (USD) over a rolling 24 hours, enforced before signing by reserving..."
       },
       {
         "field": "max_amount_usd_per_request",
@@ -6464,7 +8514,7 @@
         "long": "max-amount-usd-per-turn",
         "kind": "number",
         "required": false,
-        "help": "Maximum cumulative amount (USD) per agent turn."
+        "help": "Maximum cumulative amount (USD) per agent turn, enforced before signing by reserving each req..."
       },
       {
         "field": "metadata",
@@ -6508,6 +8558,12 @@
         "required": true,
         "help": "Class of subject this policy binds to."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Limit what an agent may spend from a wallet",
+        "command": "everruns payments policies create --payment-account-id payacct_01h9 --subject-type agent --subject-id agent_01h9 --allowed-hosts api.shippo.com --max-amount-usd-per-request 5 --reason 'Allow shipping quotes up to 5 USD'"
+      }
     ]
   },
   {
@@ -6525,7 +8581,14 @@
         "field": "payment_policy_id",
         "long": "payment-policy-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment policy's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Revoke an agent's permission to spend",
+        "command": "everruns payments policies disable --payment-policy-id paypol_01h9 --reason 'Integration retired'"
       }
     ]
   },
@@ -6544,7 +8607,14 @@
         "field": "payment_policy_id",
         "long": "payment-policy-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment policy's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a spend policy's limits and allowlists",
+        "command": "everruns payments policies get --payment-policy-id paypol_01h9"
       }
     ]
   },
@@ -6563,19 +8633,28 @@
         "field": "payment_account_id",
         "long": "payment-account-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only policies that authorize spending from this payment account."
       },
       {
         "field": "subject_id",
         "long": "subject-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only policies bound to this subject's prefixed public identifier."
       },
       {
         "field": "subject_type",
         "long": "subject-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only policies bound to this kind of subject (`user`, `virtual_user`, `agent`, `agent_channel`..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which policies authorize spending from a wallet",
+        "command": "everruns payments policies list --payment-account-id payacct_01h9"
       }
     ]
   },
@@ -6594,31 +8673,36 @@
         "field": "allowed_capabilities",
         "long": "allowed-capabilities",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Replacement capability allowlist."
       },
       {
         "field": "allowed_hosts",
         "long": "allowed-hosts",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Replacement host allowlist for paid outbound calls."
       },
       {
         "field": "max_amount_usd_per_day",
         "long": "max-amount-usd-per-day",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Replacement per-day cap in USD (advisory, not yet enforced)."
       },
       {
         "field": "max_amount_usd_per_request",
         "long": "max-amount-usd-per-request",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Replacement per-request cap in USD."
       },
       {
         "field": "max_amount_usd_per_turn",
         "long": "max-amount-usd-per-turn",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Replacement per-turn cap in USD (advisory, not yet enforced)."
       },
       {
         "field": "metadata",
@@ -6631,19 +8715,22 @@
         "field": "payment_policy_id",
         "long": "payment-policy-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Payment policy's prefixed public identifier."
       },
       {
         "field": "rail_preference",
         "long": "rail-preference",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Replacement rail preference, in priority order."
       },
       {
         "field": "require_approval_above_usd",
         "long": "require-approval-above-usd",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Replacement approval threshold in USD (advisory, not yet enforced)."
       },
       {
         "field": "status",
@@ -6651,6 +8738,12 @@
         "kind": "string",
         "required": false,
         "help": "Current lifecycle status."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Tighten the per-request spend cap",
+        "command": "everruns payments policies update --payment-policy-id paypol_01h9 --max-amount-usd-per-request 2 --reason 'Cost review'"
       }
     ]
   },
@@ -6685,6 +8778,12 @@
         "required": true,
         "help": "Source type: `github`, `url`, or `local_path` (dev/test only)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Register a GitHub repository as a source of plugins",
+        "command": "everruns plugin-marketplaces create --name acme-plugins --source-type github --source acme/plugins --reason 'Share internal plugins'"
+      }
     ]
   },
   {
@@ -6700,9 +8799,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public marketplace ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a marketplace; installed plugins stay but become unattached",
+        "command": "everruns plugin-marketplaces delete plgmkt_01h9 --reason 'Source repository archived'"
       }
     ]
   },
@@ -6719,9 +8825,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public marketplace ID (`plgmkt_<32-hex>`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a marketplace's source and sync state",
+        "command": "everruns plugin-marketplaces get plgmkt_01h9"
       }
     ]
   },
@@ -6739,7 +8852,14 @@
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only marketplaces whose name matches this text."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find marketplaces by name when you do not know the id",
+        "command": "everruns plugin-marketplaces list --search acme"
       }
     ]
   },
@@ -6757,9 +8877,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public marketplace ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Browse what a marketplace offers and what is already installed",
+        "command": "everruns plugin-marketplaces plugins get plgmkt_01h9"
       }
     ]
   },
@@ -6776,9 +8903,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public marketplace ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Refresh a marketplace catalog after its source changed",
+        "command": "everruns plugin-marketplaces sync plgmkt_01h9 --reason 'New plugins published'"
       }
     ]
   },
@@ -6795,6 +8929,7 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public marketplace ID."
@@ -6803,13 +8938,21 @@
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "New marketplace name."
       },
       {
         "field": "status",
         "long": "status",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "New lifecycle status, e.g."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a marketplace or disable it",
+        "command": "everruns plugin-marketplaces update plgmkt_01h9 --status disabled --reason 'Pause installs while the catalog is audited'"
       }
     ]
   },
@@ -6826,9 +8969,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public plugin ID (`plugin_<32-hex>`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect an installed plugin's status and definition",
+        "command": "everruns plugins get plugin_01h9"
       }
     ]
   },
@@ -6856,6 +9006,12 @@
         "required": true,
         "help": "Name of the plugin entry in the marketplace catalog."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Install a plugin listed in a marketplace catalog",
+        "command": "everruns plugins install --marketplace-id plgmkt_01h9 --plugin-name microsoft-docs --reason 'Give agents the Microsoft docs tools'"
+      }
     ]
   },
   {
@@ -6872,7 +9028,14 @@
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only plugins whose name matches this text."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find installed plugins by name",
+        "command": "everruns plugins list --search docs"
       }
     ]
   },
@@ -6889,6 +9052,7 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public plugin ID."
@@ -6907,6 +9071,12 @@
         "required": false,
         "help": "New lifecycle status: `active` or `disabled`."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Disable a plugin, or choose which identity its MCP servers act as",
+        "command": "everruns plugins patch plugin_01h9 --status disabled --reason 'Pause during the incident'"
+      }
     ]
   },
   {
@@ -6922,9 +9092,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public plugin ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a plugin; agents that reference it will report a dangling capability",
+        "command": "everruns plugins uninstall plugin_01h9 --reason 'Replaced by a native capability'"
       }
     ]
   },
@@ -6941,9 +9118,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Public plugin ID."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Move an installed plugin to the marketplace's current version",
+        "command": "everruns plugins update plugin_01h9 --reason 'Pick up the security fix'"
       }
     ]
   },
@@ -6979,6 +9163,12 @@
         "required": true,
         "help": "LLM provider type."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Verify an API key works before saving a provider",
+        "command": "everruns providers check-credentials check --provider-type openai --api-key \"$OPENAI_API_KEY\""
+      }
     ]
   },
   {
@@ -6995,13 +9185,15 @@
         "field": "api_key",
         "long": "api-key",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Credential for the provider."
       },
       {
         "field": "base_url",
         "long": "base-url",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Custom API endpoint."
       },
       {
         "field": "name",
@@ -7029,6 +9221,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Connect an LLM provider with its API key",
+        "command": "everruns providers create --name openai-prod --provider-type openai --api-key \"$OPENAI_API_KEY\" --reason 'Enable OpenAI models'"
+      }
     ]
   },
   {
@@ -7044,9 +9242,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a provider and stop using its models",
+        "command": "everruns providers delete provider_01h9 --reason 'Account closed'"
       }
     ]
   },
@@ -7063,9 +9268,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show a provider's type and status",
+        "command": "everruns providers get provider_01h9"
       }
     ]
   },
@@ -7078,7 +9290,13 @@
     "description": "List all LLM providers.",
     "method": "GET",
     "http_path": "/v1/providers",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which LLM providers are connected",
+        "command": "everruns providers list"
+      }
+    ]
   },
   {
     "wire_name": "create_model",
@@ -7095,7 +9313,8 @@
         "field": "capabilities",
         "long": "capabilities",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Capability labels for the model."
       },
       {
         "field": "display_name",
@@ -7115,7 +9334,8 @@
         "field": "is_favorite",
         "long": "is-favorite",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Show the model first in pickers."
       },
       {
         "field": "model_id",
@@ -7128,7 +9348,8 @@
         "field": "profile_key",
         "long": "profile-key",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Stable model profile to assign to the model."
       },
       {
         "field": "provider_id",
@@ -7142,6 +9363,12 @@
         "long": "service",
         "kind": "string",
         "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Register a model that provider discovery does not list",
+        "command": "everruns providers models create --provider-id provider_01h9 --model-id gpt-5.1 --display-name 'GPT-5.1' --enabled true --reason 'Make the new model selectable'"
       }
     ]
   },
@@ -7163,6 +9390,38 @@
         "required": true,
         "help": "LLM provider's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See which models one provider offers",
+        "command": "everruns providers models list --provider-id provider_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "review_provider_models",
+    "path": [
+      "providers",
+      "models"
+    ],
+    "verb": "review",
+    "description": "Mark a provider's discovered models as reviewed, clearing their new flag.",
+    "method": "POST",
+    "http_path": "/v1/providers/{id}/models/review",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Clear the new flag once you have looked at a provider's newly discovered models",
+        "command": "everruns providers models review --id provider_01h9 --reason 'Checked new models'"
+      }
     ]
   },
   {
@@ -7183,6 +9442,12 @@
         "required": true,
         "help": "Prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Pull a provider's current model list after it ships new models",
+        "command": "everruns providers sync-models sync --id provider_01h9 --reason 'New models released'"
+      }
     ]
   },
   {
@@ -7199,13 +9464,15 @@
         "field": "api_key",
         "long": "api-key",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Replacement credential."
       },
       {
         "field": "base_url",
         "long": "base-url",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Replacement API endpoint."
       },
       {
         "field": "id",
@@ -7245,6 +9512,12 @@
         "kind": "json",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Rotate a provider's API key",
+        "command": "everruns providers update --id provider_01h9 --api-key \"$OPENAI_API_KEY\" --reason 'Scheduled key rotation'"
+      }
     ]
   },
   {
@@ -7265,6 +9538,12 @@
         "required": false,
         "help": "Maximum number of outbox rows to enqueue across all source types."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Rebuild reporting data that is missing from older sessions",
+        "command": "everruns reports admin backfill --limit 1000 --reason 'Reports are missing last week'"
+      }
     ]
   },
   {
@@ -7278,7 +9557,13 @@
     "description": "Inspect reporting projector lag and failed outbox rows.",
     "method": "GET",
     "http_path": "/v1/reports/admin/diagnostics",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check whether reporting is lagging behind live data",
+        "command": "everruns reports admin diagnostics get"
+      }
+    ]
   },
   {
     "wire_name": "get_report_catalog",
@@ -7290,7 +9575,13 @@
     "description": "Return semantic reporting datasets, dimensions, measures, and filter fields.",
     "method": "GET",
     "http_path": "/v1/reports/catalog",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Discover the datasets, dimensions and measures a query can use",
+        "command": "everruns reports catalog get"
+      }
+    ]
   },
   {
     "wire_name": "run_reporting_projector",
@@ -7309,6 +9600,12 @@
         "kind": "integer",
         "required": false,
         "help": "Maximum number of items returned in this page."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Process pending reporting rows right away when reports look stale",
+        "command": "everruns reports projector run --limit 500 --reason 'Reports lag behind live data'"
       }
     ]
   },
@@ -7340,6 +9637,12 @@
         "kind": "json",
         "required": true,
         "help": "Semantic query a caller submits to the reporting layer."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Download a one-off query result as CSV",
+        "command": "everruns reports query export --format csv --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}'"
       }
     ]
   },
@@ -7403,6 +9706,12 @@
         "required": true,
         "help": "Half-open time window applied to the dataset's primary timestamp column during a report query."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Answer a quick question, such as sessions per status last month",
+        "command": "everruns reports query run --dataset sessions --time-range '{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"}' --dimensions status --measures session_count"
+      }
     ]
   },
   {
@@ -7443,6 +9752,12 @@
         "required": true,
         "help": "Semantic query a caller submits to the reporting layer."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Save a query so the team can rerun it",
+        "command": "everruns reports saved create --name 'Sessions by status' --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}' --reason 'Monthly review'"
+      }
     ]
   },
   {
@@ -7462,6 +9777,12 @@
         "kind": "string",
         "required": true,
         "help": "Saved report's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Delete a saved report nobody uses",
+        "command": "everruns reports saved delete --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --reason 'Superseded by the weekly report'"
       }
     ]
   },
@@ -7490,6 +9811,12 @@
         "required": true,
         "help": "Request body for the `export_saved_report` operation."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Download a saved report's current data as JSON",
+        "command": "everruns reports saved export --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"format\":\"json\"}'"
+      }
     ]
   },
   {
@@ -7510,6 +9837,12 @@
         "required": true,
         "help": "Saved report's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Read a saved report's query before changing or running it",
+        "command": "everruns reports saved get --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90"
+      }
     ]
   },
   {
@@ -7522,7 +9855,13 @@
     "description": "List org-scoped saved report definitions.",
     "method": "GET",
     "http_path": "/v1/reports/saved",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a saved report's id",
+        "command": "everruns reports saved list"
+      }
+    ]
   },
   {
     "wire_name": "run_saved_report",
@@ -7541,6 +9880,12 @@
         "kind": "string",
         "required": true,
         "help": "Saved report's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get the current numbers for a saved report",
+        "command": "everruns reports saved run --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90"
       }
     ]
   },
@@ -7569,6 +9914,12 @@
         "required": true,
         "help": "Request body for the `update_saved_report` operation."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a saved report",
+        "command": "everruns reports saved update --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"name\":\"Weekly active agents\"}' --reason 'Clearer name'"
+      }
     ]
   },
   {
@@ -7580,7 +9931,13 @@
     "description": "List the Sandbox targets this deployment can offer.",
     "method": "GET",
     "http_path": "/v1/sandbox-targets",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which sandbox targets this deployment offers",
+        "command": "everruns sandbox-targets list"
+      }
+    ]
   },
   {
     "wire_name": "get_sandbox",
@@ -7749,6 +10106,12 @@
         "required": false,
         "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See how many Sandboxes are running and how many need attention",
+        "command": "everruns sandboxes stats get --provider daytona"
+      }
     ]
   },
   {
@@ -7832,6 +10195,12 @@
         "required": false,
         "help": "Window end (RFC 3339)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See when Sandboxes ran or were lost over the last day",
+        "command": "everruns sandboxes timeline get --from 2026-05-01T00:00:00Z --to 2026-05-02T00:00:00Z --state running,lost"
+      }
     ]
   },
   {
@@ -7856,7 +10225,7 @@
     "examples": [
       {
         "intent": "Move a finished session out of the active list",
-        "command": "everruns sessions archive ses_01h9 --reason 'Release shipped'"
+        "command": "everruns sessions archive session_01h9 --reason 'Release shipped'"
       }
     ]
   },
@@ -7874,9 +10243,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See if any budget would stop this session from running",
+        "command": "everruns sessions budget-check check session_01h9"
       }
     ]
   },
@@ -7894,9 +10270,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List every budget that constrains a session",
+        "command": "everruns sessions budgets list session_01h9"
       }
     ]
   },
@@ -7922,7 +10305,7 @@
     "examples": [
       {
         "intent": "Stop a session that is running away",
-        "command": "everruns sessions cancel ses_01h9"
+        "command": "everruns sessions cancel session_01h9"
       }
     ]
   },
@@ -7948,7 +10331,7 @@
     "examples": [
       {
         "intent": "See what is filling a session's context window",
-        "command": "everruns sessions context ses_01h9"
+        "command": "everruns sessions context session_01h9"
       }
     ]
   },
@@ -8114,19 +10497,12 @@
         "kind": "string",
         "required": false,
         "help": "Optional resident virtual user used for unattended/background execution."
-      },
-      {
-        "field": "workspace_id",
-        "long": "workspace-id",
-        "kind": "string",
-        "required": false,
-        "help": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`) instead of auto-creatin..."
       }
     ],
     "examples": [
       {
         "intent": "Start a session for an agent",
-        "command": "everruns sessions create --agent agt_01h9 --reason 'Investigate the failed release'"
+        "command": "everruns sessions create --agent agent_01h9 --reason 'Investigate the failed release'"
       }
     ]
   },
@@ -8155,6 +10531,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Give a session a scratch SQL database to work with",
+        "command": "everruns sessions databases create --session-id session_01h9 --name analytics --reason 'Store intermediate results'"
+      }
     ]
   },
   {
@@ -8181,6 +10563,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Drop a session database once its data is exported",
+        "command": "everruns sessions databases delete --session-id session_01h9 --name analytics --reason 'No longer needed'"
       }
     ]
   },
@@ -8209,6 +10597,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Check a session database's size and metadata",
+        "command": "everruns sessions databases get --session-id session_01h9 --name analytics"
+      }
     ]
   },
   {
@@ -8225,9 +10619,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which databases a session has created",
+        "command": "everruns sessions databases list session_01h9"
       }
     ]
   },
@@ -8257,6 +10658,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a session database's tables before writing queries",
+        "command": "everruns sessions databases schema get --session-id session_01h9 --name analytics"
+      }
     ]
   },
   {
@@ -8281,7 +10688,7 @@
     "examples": [
       {
         "intent": "Archive a session, keeping it restorable",
-        "command": "everruns sessions delete ses_01h9 --reason 'Duplicate of the release session'"
+        "command": "everruns sessions delete session_01h9 --reason 'Duplicate of the release session'"
       }
     ]
   },
@@ -8296,6 +10703,14 @@
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/events",
     "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
       {
         "field": "after_sequence",
         "long": "after-sequence",
@@ -8313,13 +10728,15 @@
         "field": "before_sequence",
         "long": "before-sequence",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Backward cursor: only events with sequence < before_sequence."
       },
       {
         "field": "exclude",
         "long": "exclude",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Omit these event types."
       },
       {
         "field": "exec_id",
@@ -8355,13 +10772,6 @@
         "kind": "string",
         "required": false,
         "help": "Full-text search via Postgres tsvector (substring fallback in-memory)."
-      },
-      {
-        "field": "session_id",
-        "long": "session-id",
-        "kind": "string",
-        "required": true,
-        "help": "Session's prefixed public identifier."
       },
       {
         "field": "since_id",
@@ -8408,7 +10818,8 @@
         "field": "types",
         "long": "types",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Only these event types, e.g."
       },
       {
         "field": "window",
@@ -8416,6 +10827,16 @@
         "kind": "integer",
         "required": false,
         "help": "Window size for `around` (events on each side)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find what failed in a session's tool calls",
+        "command": "everruns sessions events list session_01h9 --types tool.failed"
+      },
+      {
+        "intent": "Search a session's events for a phrase, newest first",
+        "command": "everruns sessions events list session_01h9 --q timeout --order-desc true"
       }
     ]
   },
@@ -8434,9 +10855,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Get a quick picture of a session (event counts, turns, errors) before reading events",
+        "command": "everruns sessions events summary events session_01h9"
       }
     ]
   },
@@ -8451,6 +10879,14 @@
     "http_path": "/v1/sessions/{session_id}/export",
     "args": [
       {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
         "field": "format",
         "long": "format",
         "kind": "string",
@@ -8460,13 +10896,12 @@
           "jsonl",
           "atif"
         ]
-      },
+      }
+    ],
+    "examples": [
       {
-        "field": "session_id",
-        "long": "session-id",
-        "kind": "string",
-        "required": true,
-        "help": "Session's prefixed public identifier."
+        "intent": "Save a session's transcript for review or audit",
+        "command": "everruns sessions export session_01h9 --format jsonl"
       }
     ]
   },
@@ -8599,7 +11034,7 @@
     "examples": [
       {
         "intent": "Branch from a session to try a different direction",
-        "command": "everruns sessions fork ses_01h9 --reason 'Try the rollback path'"
+        "command": "everruns sessions fork session_01h9 --reason 'Try the rollback path'"
       }
     ]
   },
@@ -8636,6 +11071,12 @@
         "required": true,
         "help": "Source path (relative to the workspace filesystem root)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Duplicate a file in a session's filesystem before editing it",
+        "command": "everruns sessions fs - copy --session-id session_01h9 --src-path /notes.md --dst-path /notes.bak.md --reason 'Keep a backup'"
+      }
     ]
   },
   {
@@ -8671,6 +11112,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find which files in a session mention a word",
+        "command": "everruns sessions fs - grep --session-id session_01h9 --pattern TODO"
+      }
     ]
   },
   {
@@ -8705,6 +11152,12 @@
         "kind": "string",
         "required": true,
         "help": "Source path (relative to the workspace filesystem root)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a file in a session's filesystem",
+        "command": "everruns sessions fs - move --session-id session_01h9 --src-path /draft.md --dst-path /final.md --reason 'Publish the draft'"
       }
     ]
   },
@@ -8776,6 +11229,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Search file contents with surrounding lines",
+        "command": "everruns sessions fs - search --session-id session_01h9 --pattern 'TODO|FIXME' --path-pattern '**/*.rs' --after-context 2"
+      }
     ]
   },
   {
@@ -8803,6 +11262,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a file's size and type without reading it",
+        "command": "everruns sessions fs - stat --session-id session_01h9 --path /report.md"
       }
     ]
   },
@@ -8849,7 +11314,8 @@
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Path in the session filesystem (relative to the filesystem root)."
       },
       {
         "field": "session_id",
@@ -8857,6 +11323,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Seed a session with a file the agent should read",
+        "command": "everruns sessions fs create --session-id session_01h9 --path /brief.md --content '# Brief' --reason 'Give the agent context'"
       }
     ]
   },
@@ -8875,13 +11347,15 @@
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Path in the session filesystem (relative to the filesystem root)."
       },
       {
         "field": "recursive",
         "long": "recursive",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Delete a directory and everything under it."
       },
       {
         "field": "session_id",
@@ -8889,6 +11363,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a scratch directory from a session's filesystem",
+        "command": "everruns sessions fs delete --session-id session_01h9 --path /tmp --recursive true --reason 'Clean up scratch files'"
       }
     ]
   },
@@ -8907,13 +11387,15 @@
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Path in the session filesystem (relative to the filesystem root)."
       },
       {
         "field": "recursive",
         "long": "recursive",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "List nested entries recursively when the path is a directory."
       },
       {
         "field": "session_id",
@@ -8921,6 +11403,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a file the agent wrote in a session",
+        "command": "everruns sessions fs get --session-id session_01h9 --path /report.md"
       }
     ]
   },
@@ -8936,17 +11424,25 @@
     "http_path": "/v1/sessions/{session_id}/fs",
     "args": [
       {
-        "field": "recursive",
-        "long": "recursive",
-        "kind": "boolean",
-        "required": false
-      },
-      {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "recursive",
+        "long": "recursive",
+        "kind": "boolean",
+        "required": false,
+        "help": "List nested entries recursively, not just the top level."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what files a session contains",
+        "command": "everruns sessions fs list session_01h9"
       }
     ]
   },
@@ -9000,7 +11496,8 @@
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Path in the session filesystem (relative to the filesystem root)."
       },
       {
         "field": "session_id",
@@ -9008,6 +11505,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Overwrite a file in a session's filesystem",
+        "command": "everruns sessions fs update --session-id session_01h9 --path /brief.md --content '# Updated brief' --reason 'Correct the scope'"
       }
     ]
   },
@@ -9033,7 +11536,7 @@
     "examples": [
       {
         "intent": "Show one session's state and configuration",
-        "command": "everruns sessions get ses_01h9"
+        "command": "everruns sessions get session_01h9"
       }
     ]
   },
@@ -9152,13 +11655,73 @@
     ]
   },
   {
+    "wire_name": "list_session_mcp_servers",
+    "path": [
+      "sessions",
+      "mcp-servers"
+    ],
+    "verb": "list",
+    "description": "List the MCP servers added to one chat only.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/mcp-servers",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which MCP servers were added to one chat only",
+        "command": "everruns sessions mcp-servers list session_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "remove_session_mcp_server",
+    "path": [
+      "sessions",
+      "mcp-servers"
+    ],
+    "verb": "remove",
+    "description": "Remove an MCP server added to one chat only. Its tools leave from the next turn.",
+    "method": "DELETE",
+    "http_path": "/v1/sessions/{session_id}/mcp-servers/{name}",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Server name."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session the server was added to."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Drop a chat-only MCP server so its tools leave from the next turn",
+        "command": "everruns sessions mcp-servers remove --session-id session_01h9 --name github --reason 'No longer needed in this chat'"
+      }
+    ]
+  },
+  {
     "wire_name": "create_message",
     "path": [
       "sessions",
       "messages"
     ],
     "verb": "create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "method": "POST",
     "http_path": "/v1/sessions/{session_id}/messages",
     "args": [
@@ -9167,6 +11730,13 @@
         "long": "addressed-participant-id",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "client_message_id",
+        "long": "client-message-id",
+        "kind": "string",
+        "required": false,
+        "help": "Client-minted id that makes a retried send idempotent."
       },
       {
         "field": "controls",
@@ -9198,7 +11768,8 @@
         "field": "request_id",
         "long": "request-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Caller-chosen request id, carried through to the run and logs for correlation."
       },
       {
         "field": "session_id",
@@ -9214,6 +11785,12 @@
         "required": false,
         "help": "Free-form tags attached to this resource."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Send a user message to a session and start the next run",
+        "command": "everruns sessions messages create --session-id session_01h9 --message '{\"content\":[{\"type\":\"text\",\"text\":\"Why is the build failing on main?\"}]}' --reason 'Ask about the failing build'"
+      }
     ]
   },
   {
@@ -9228,18 +11805,100 @@
     "http_path": "/v1/sessions/{session_id}/messages",
     "args": [
       {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
         "field": "limit",
         "long": "limit",
         "kind": "integer",
         "required": false,
         "help": "Maximum number of items returned in this page."
-      },
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the latest messages of a session",
+        "command": "everruns sessions messages list session_01h9 --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_message_feedback",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "rate",
+    "description": "Rate one message in a session good or bad, with an optional comment. A null rating clears your rating.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/messages/{message_id}/feedback",
+    "args": [
       {
         "field": "session_id",
-        "long": "session-id",
+        "long": "session",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "message_id",
+        "long": "message-id",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Message to rate (`msg_...`), a user or agent message of the session."
+      },
+      {
+        "field": "comment",
+        "long": "comment",
+        "kind": "string",
+        "required": false,
+        "help": "Optional note on what was good or bad."
+      },
+      {
+        "field": "rating",
+        "long": "rating",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Mark an agent reply as a bad answer",
+        "command": "everruns sessions messages rate session_01h9 msg_01h9 --rating bad --comment 'Ignored the failing test' --reason 'Flag a wrong answer'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_message_feedback",
+    "path": [
+      "sessions",
+      "messages"
+    ],
+    "verb": "ratings",
+    "description": "List your good and bad ratings of the messages in a session.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/feedback",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which replies you rated in a session",
+        "command": "everruns sessions messages ratings session_01h9"
       }
     ]
   },
@@ -9289,7 +11948,7 @@
     "examples": [
       {
         "intent": "Bring a user into a running session",
-        "command": "everruns sessions participants add --session ses_01h9 --kind user --reason 'Bring in the on-call reviewer'"
+        "command": "everruns sessions participants add --session session_01h9 --kind user --reason 'Bring in the on-call reviewer'"
       }
     ]
   },
@@ -9322,7 +11981,7 @@
     "examples": [
       {
         "intent": "Remove one participant from a session",
-        "command": "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9 --reason 'Review finished'"
+        "command": "everruns sessions participants leave --session session_01h9 --participant-id part_01h9 --reason 'Review finished'"
       }
     ]
   },
@@ -9348,7 +12007,7 @@
     "examples": [
       {
         "intent": "See who is attached to a session",
-        "command": "everruns sessions participants list --session ses_01h9"
+        "command": "everruns sessions participants list --session session_01h9"
       }
     ]
   },
@@ -9374,7 +12033,7 @@
     "examples": [
       {
         "intent": "Keep a session at the top of the list",
-        "command": "everruns sessions pin ses_01h9 --reason 'Active incident'"
+        "command": "everruns sessions pin session_01h9 --reason 'Active incident'"
       }
     ]
   },
@@ -9388,7 +12047,13 @@
     "description": "Open the current user's permanent platform conversation",
     "method": "POST",
     "http_path": "/v1/sessions/platform-chat",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Open your permanent platform conversation, creating it on first use",
+        "command": "everruns sessions platform-chat ensure --reason 'Open the platform chat'"
+      }
+    ]
   },
   {
     "wire_name": "list_session_resources",
@@ -9404,9 +12069,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List the files and other resources registered in a session",
+        "command": "everruns sessions resources list session_01h9"
       }
     ]
   },
@@ -9423,9 +12095,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Restart a session that paused when a budget ran out",
+        "command": "everruns sessions resume session_01h9 --reason 'Budget topped up'"
       }
     ]
   },
@@ -9443,9 +12122,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what a session's sandbox can reach",
+        "command": "everruns sessions sandbox get session_01h9"
       }
     ]
   },
@@ -9479,6 +12165,12 @@
         "required": true,
         "help": "Session's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Pause a session's sandbox to stop paying for idle compute",
+        "command": "everruns sessions sandbox manage --session-id session_01h9 --action pause --reason 'Idle overnight'"
+      }
     ]
   },
   {
@@ -9495,9 +12187,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Watch a session's events live as they happen",
+        "command": "everruns sessions sse stream session_01h9"
       }
     ]
   },
@@ -9533,9 +12232,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect the key-value pairs a session has stored",
+        "command": "everruns sessions storage keys list session_01h9"
       }
     ]
   },
@@ -9552,10 +12258,18 @@
     "http_path": "/v1/sessions/{session_id}/storage/secrets",
     "args": [
       {
+        "field": "bindings",
+        "long": "bindings",
+        "kind": "json",
+        "required": false,
+        "help": "Optional bindings keyed by secret name, e.g. `{\"JEV_API_KEY\": {\"url\": \"https://api.typesafe.a..."
+      },
+      {
         "field": "secrets",
         "long": "secrets",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Secret values keyed by name, e.g."
       },
       {
         "field": "session_id",
@@ -9563,6 +12277,12 @@
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Give a session several credentials in one call",
+        "command": "everruns sessions storage secrets batch --session-id session_01h9 --secrets '{\"SERVICE_TOKEN\":\"s3cr3t\",\"DB_PASSWORD\":\"hunter2\"}' --reason 'Provision credentials for the deploy run'"
       }
     ]
   },
@@ -9592,6 +12312,12 @@
         "required": true,
         "help": "Session that owns the secret."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Revoke a credential from a session",
+        "command": "everruns sessions storage secrets delete --session-id session_01h9 --name SERVICE_TOKEN --reason 'Token rotated'"
+      }
     ]
   },
   {
@@ -9609,9 +12335,16 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which secrets a session has, without their values",
+        "command": "everruns sessions storage secrets list session_01h9"
       }
     ]
   },
@@ -9639,6 +12372,12 @@
         "kind": "string",
         "required": true,
         "help": "Task's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Ask a runaway background task to stop",
+        "command": "everruns sessions tasks cancel --session-id session_01h9 --task-id task_01h9 --reason 'Stuck on a dead host'"
       }
     ]
   },
@@ -9681,6 +12420,12 @@
         "required": true,
         "help": "Task's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Read a task's state and its recent messages",
+        "command": "everruns sessions tasks get --session-id session_01h9 --task-id task_01h9"
+      }
     ]
   },
   {
@@ -9695,6 +12440,14 @@
     "http_path": "/v1/sessions/{session_id}/tasks",
     "args": [
       {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
         "field": "kind",
         "long": "kind",
         "kind": "string",
@@ -9702,18 +12455,17 @@
         "help": "Optional kind filter (subagent, external_agent, background_tool, ...)."
       },
       {
-        "field": "session_id",
-        "long": "session-id",
-        "kind": "string",
-        "required": true,
-        "help": "Session's prefixed public identifier."
-      },
-      {
         "field": "state",
         "long": "state",
         "kind": "string",
         "required": false,
         "help": "Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what background tasks a session is running",
+        "command": "everruns sessions tasks list session_01h9 --state running"
       }
     ]
   },
@@ -9764,6 +12516,12 @@
         "required": false,
         "help": "Plain-text message (alternative to `content`)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Answer a task that is waiting for input",
+        "command": "everruns sessions tasks messages post --session-id session_01h9 --task-id task_01h9 --text 'Use the staging database' --reason 'Unblock the migration task'"
+      }
     ]
   },
   {
@@ -9813,6 +12571,12 @@
         "required": true,
         "help": "URL to POST task events to."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Get a webhook call when a task finishes",
+        "command": "everruns sessions tasks push-configs create --session-id session_01h9 --task-id task_01h9 --url https://example.com/hooks/tasks --secret \"$WEBHOOK_SECRET\" --reason 'Notify the deploy pipeline'"
+      }
     ]
   },
   {
@@ -9848,6 +12612,12 @@
         "required": true,
         "help": "Task's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Stop webhook deliveries for a task",
+        "command": "everruns sessions tasks push-configs delete --session-id session_01h9 --task-id task_01h9 --config-id cfg_01h9 --reason 'Pipeline retired'"
+      }
     ]
   },
   {
@@ -9876,6 +12646,12 @@
         "required": true,
         "help": "Task's prefixed public identifier."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Check where a task's webhooks are delivered",
+        "command": "everruns sessions tasks push-configs list --session-id session_01h9 --task-id task_01h9"
+      }
     ]
   },
   {
@@ -9892,6 +12668,7 @@
       {
         "field": "session_id",
         "long": "session-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Session's prefixed public identifier."
@@ -9900,7 +12677,348 @@
         "field": "tool_results",
         "long": "tool-results",
         "kind": "json",
-        "required": true
+        "required": true,
+        "help": "Results for the pending client-side tool calls, one entry per `tool_call_id`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Return the result of a client-side tool call to a waiting session",
+        "command": "everruns sessions tool-results submit session_01h9 --tool-results '[{\"tool_call_id\":\"toolu_01\",\"result\":{\"url\":\"https://example.com/orders/42\"}}]' --reason 'Deliver the tool output'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace",
+    "path": [
+      "sessions",
+      "trace"
+    ],
+    "verb": "get",
+    "description": "Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace",
+    "args": [
+      {
+        "field": "buckets",
+        "long": "buckets",
+        "kind": "integer",
+        "required": false,
+        "help": "Minimap buckets wanted, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Count a session's turns, steps and errors",
+        "command": "everruns sessions trace get --session-id session_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turn_events",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List the raw events of one turn of a session's trace, without deltas; small payloads are inlined.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/events",
+    "args": [
+      {
+        "field": "after_sequence",
+        "long": "after-sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Only events after this sequence."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Events per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the raw events of one turn",
+        "command": "everruns sessions trace turns events list --session-id session_01h9 --turn 12"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_turns",
+    "path": [
+      "sessions",
+      "trace",
+      "turns"
+    ],
+    "verb": "list",
+    "description": "List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns",
+    "args": [
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns after this turn number."
+      },
+      {
+        "field": "around",
+        "long": "around",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on this turn number."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns before this turn number."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns per page, 1 to 50."
+      },
+      {
+        "field": "sequence",
+        "long": "sequence",
+        "kind": "integer",
+        "required": false,
+        "help": "Turns centered on the turn holding this event sequence."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Open the latest turns of a long session",
+        "command": "everruns sessions trace turns list --session-id session_01h9 --limit 20"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace_step",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "get",
+    "description": "Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}",
+    "args": [
+      {
+        "field": "full",
+        "long": "full",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return payloads whole, however large."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number within the turn (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read a tool call's full input and output",
+        "command": "everruns sessions trace turns steps get --session-id session_01h9 --turn 12 --step 4 --full true"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_steps",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps"
+    ],
+    "verb": "list",
+    "description": "Page through the steps of one turn of a session's trace, optionally only the failed ones.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps",
+    "args": [
+      {
+        "field": "errors_only",
+        "long": "errors-only",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only failed steps."
+      },
+      {
+        "field": "from_step",
+        "long": "from-step",
+        "kind": "integer",
+        "required": false,
+        "help": "First step of the range, inclusive."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Steps per page, 1 to 500."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "to_step",
+        "long": "to-step",
+        "kind": "integer",
+        "required": false,
+        "help": "Last step of the range, inclusive."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "List only the failed steps of turn 12",
+        "command": "everruns sessions trace turns steps list --session-id session_01h9 --turn 12 --errors-only true"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_session_trace_request",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "steps",
+      "request"
+    ],
+    "verb": "list",
+    "description": "Page through the messages a model call in a session's trace was sent, with each message's full content.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/steps/{step}/request",
+    "args": [
+      {
+        "field": "full",
+        "long": "full",
+        "kind": "boolean",
+        "required": false,
+        "help": "Return every message's content whole, however large."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Messages per page, 1 to 200."
+      },
+      {
+        "field": "native",
+        "long": "native",
+        "kind": "boolean",
+        "required": false,
+        "help": "Also return the provider request body as the driver sent it."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "First message index."
+      },
+      {
+        "field": "role",
+        "long": "role",
+        "kind": "string",
+        "required": false,
+        "help": "Only messages of this role: `system`, `user`, `assistant` or `tool`."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier (a path parameter)."
+      },
+      {
+        "field": "step",
+        "long": "step",
+        "kind": "integer",
+        "required": true,
+        "help": "Step number of a model call (a path parameter)."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number (a path parameter)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See exactly what a model call was sent",
+        "command": "everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3"
       }
     ]
   },
@@ -9926,7 +13044,7 @@
     "examples": [
       {
         "intent": "Bring an archived session back to the active list",
-        "command": "everruns sessions unarchive ses_01h9 --reason 'Release reopened'"
+        "command": "everruns sessions unarchive session_01h9 --reason 'Release reopened'"
       }
     ]
   },
@@ -9952,7 +13070,7 @@
     "examples": [
       {
         "intent": "Stop keeping a session at the top of the list",
-        "command": "everruns sessions unpin ses_01h9 --reason 'Incident resolved'"
+        "command": "everruns sessions unpin session_01h9 --reason 'Incident resolved'"
       }
     ]
   },
@@ -9962,7 +13080,7 @@
       "sessions"
     ],
     "verb": "update",
-    "description": "Update session title, tags, or locale.",
+    "description": "Update session title, tags, locale, or model. A null `model_id` clears the session model so turns follow the agent's default again.",
     "method": "PATCH",
     "http_path": "/v1/sessions/{session_id}",
     "args": [
@@ -9989,6 +13107,13 @@
         "help": "Session locale (BCP 47, e.g."
       },
       {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for this session's turns."
+      },
+      {
         "field": "tags",
         "long": "tags",
         "kind": "string_list",
@@ -10013,7 +13138,11 @@
     "examples": [
       {
         "intent": "Retitle a session so it is findable later",
-        "command": "everruns sessions update ses_01h9 --title 'Release triage' --reason 'Clarify the session topic'"
+        "command": "everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify the session topic'"
+      },
+      {
+        "intent": "Switch a running session to another model",
+        "command": "everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'"
       }
     ]
   },
@@ -10039,7 +13168,7 @@
     "examples": [
       {
         "intent": "Read a skill's body to see what it instructs",
-        "command": "everruns skills content skl_01h9"
+        "command": "everruns skills content skill_01h9"
       }
     ]
   },
@@ -10090,7 +13219,7 @@
     "examples": [
       {
         "intent": "Archive a skill, keeping it restorable",
-        "command": "everruns skills delete skl_01h9 --reason 'Superseded by the shared review skill'"
+        "command": "everruns skills delete skill_01h9 --reason 'Superseded by the shared review skill'"
       }
     ]
   },
@@ -10116,7 +13245,7 @@
     "examples": [
       {
         "intent": "Permanently remove an already-archived skill",
-        "command": "everruns skills destroy skl_01h9 --reason 'Retired after the archive window'"
+        "command": "everruns skills destroy skill_01h9 --reason 'Retired after the archive window'"
       }
     ]
   },
@@ -10142,7 +13271,7 @@
     "examples": [
       {
         "intent": "Show one skill's metadata without its body",
-        "command": "everruns skills get skl_01h9"
+        "command": "everruns skills get skill_01h9"
       }
     ]
   },
@@ -10213,7 +13342,7 @@
     "examples": [
       {
         "intent": "Replace a skill's content from a local file",
-        "command": "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'"
+        "command": "everruns skills update skill_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'"
       }
     ]
   },
@@ -10296,6 +13425,12 @@
         "required": false,
         "help": "Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled)."
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find failed background work anywhere in the org",
+        "command": "everruns tasks list --state failed --limit 20"
+      }
     ]
   },
   {
@@ -10315,6 +13450,12 @@
         "kind": "string",
         "required": false,
         "help": "Optional provider ID filter."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check which accounts you have connected",
+        "command": "everruns user connections list --provider github"
       }
     ]
   },
@@ -10337,6 +13478,12 @@
         "required": false,
         "help": "Optional case-insensitive provider name/ID filter."
       }
+    ],
+    "examples": [
+      {
+        "intent": "See which services you can connect an account to",
+        "command": "everruns user connections providers list --search github"
+      }
     ]
   },
   {
@@ -10353,7 +13500,14 @@
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only users whose name or email matches this text."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a user by name or email in the current organization",
+        "command": "everruns users list --search alice"
       }
     ]
   },
@@ -10413,6 +13567,12 @@
           "service"
         ]
       }
+    ],
+    "examples": [
+      {
+        "intent": "Create a service account for unattended agent runs",
+        "command": "everruns virtual-users create --name ops-bot --usage service --description 'Runs the nightly triage' --reason 'Dedicated identity for nightly triage'"
+      }
     ]
   },
   {
@@ -10428,9 +13588,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a virtual user that is no longer needed; it can be restored",
+        "command": "everruns virtual-users delete identity_01h9 --reason 'Integration decommissioned'"
       }
     ]
   },
@@ -10456,7 +13623,7 @@
     "examples": [
       {
         "intent": "Permanently remove a virtual user",
-        "command": "everruns virtual-users destroy vu_01h9 --reason 'Integration decommissioned'"
+        "command": "everruns virtual-users destroy identity_01h9 --reason 'Integration decommissioned'"
       }
     ]
   },
@@ -10473,9 +13640,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Show a virtual user's profile and status",
+        "command": "everruns virtual-users get identity_01h9"
       }
     ]
   },
@@ -10523,6 +13697,12 @@
         "kind": "string",
         "required": false
       }
+    ],
+    "examples": [
+      {
+        "intent": "Find service accounts by name",
+        "command": "everruns virtual-users list --usage service --search ops"
+      }
     ]
   },
   {
@@ -10536,6 +13716,14 @@
     "http_path": "/v1/virtual-users/{identity_id}",
     "args": [
       {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed public identifier."
+      },
+      {
         "field": "avatar_url",
         "long": "avatar-url",
         "kind": "string",
@@ -10548,13 +13736,6 @@
         "kind": "string",
         "required": false,
         "help": "Human-readable description."
-      },
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed public identifier."
       },
       {
         "field": "locale",
@@ -10583,31 +13764,11 @@
         "required": false,
         "help": "IANA time zone used for agent-facing defaults."
       }
-    ]
-  },
-  {
-    "wire_name": "create_workspace",
-    "path": [
-      "workspaces"
     ],
-    "verb": "create",
-    "description": "Create a new Workspace in the current organization.",
-    "method": "POST",
-    "http_path": "/v1/workspaces",
-    "args": [
+    "examples": [
       {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Optional human-readable description."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable workspace name."
+        "intent": "Change a virtual user's display name",
+        "command": "everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'"
       }
     ]
   },
@@ -10624,9 +13785,16 @@
       {
         "field": "workspace_id",
         "long": "workspace-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Workspace ID (wsp_<32-hex>)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Archive a workspace that is no longer used",
+        "command": "everruns workspaces delete wsp_01h9 --reason 'Project finished'"
       }
     ]
   },
@@ -10643,9 +13811,16 @@
       {
         "field": "workspace_id",
         "long": "workspace-id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Workspace ID (wsp_<32-hex>)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check a workspace's name and status",
+        "command": "everruns workspaces get wsp_01h9"
       }
     ]
   },
@@ -10663,13 +13838,21 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Also return archived items."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Case-insensitive substring match on name or description."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find a workspace by name when you do not know the id",
+        "command": "everruns workspaces list --search platform"
       }
     ]
   },
@@ -10707,6 +13890,12 @@
         "kind": "string",
         "required": true,
         "help": "Workspace ID (wsp_<32-hex>)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a workspace",
+        "command": "everruns workspaces update --workspace-id wsp_01h9 --name platform-core --reason 'Team renamed'"
       }
     ]
   }

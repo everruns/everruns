@@ -36,6 +36,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
         model: "test-model".to_string(),
         provider: Some("anthropic".to_string()),
         response_model: None,
+        provider_id: None,
         usage: None,
         duration_ms: None,
         time_to_first_token_ms: None,
@@ -51,6 +52,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
         tool_calls_dropped: 0,
         tool_calls_truncated_executed: 0,
         truncation_gate: None,
+        tool_changes: None,
     }
 }
 
@@ -122,6 +124,7 @@ fn into_public_strips_replay_state_from_input_and_generation_messages() {
 
     // The prompt replayed to the provider carries the same artifacts.
     let generation = LlmGenerationData {
+        request_body: None,
         messages: vec![message_with_replay_state()],
         tools: Vec::new(),
         output: LlmGenerationOutput {
@@ -162,6 +165,7 @@ fn needs_public_projection_covers_every_message_bearing_variant() {
     );
     assert!(
         EventData::LlmGeneration(LlmGenerationData {
+            request_body: None,
             messages: Vec::new(),
             tools: Vec::new(),
             output: LlmGenerationOutput {
@@ -517,6 +521,7 @@ fn test_llm_generation_data_with_request_options() {
             enabled: true,
             strategy: PromptCacheStrategy::Auto,
             provider_mode: Some("prompt_cache_key".to_string()),
+            retention: None,
         }),
         tool_search: Some(LlmToolSearchInfo {
             enabled: true,
@@ -919,4 +924,55 @@ fn response_model_serializes_only_when_the_provider_reported_one() {
         Some("test-model-20250929")
     );
     assert_eq!(round_tripped.model, "test-model");
+}
+
+#[test]
+fn captured_request_bodies_drop_inline_media_and_publish_without_replay_state() {
+    let image = format!("data:image/png;base64,{}", "A".repeat(4096));
+    let body = json!({
+        "messages": [
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image}},
+                {"type": "image", "source": {"type": "base64", "data": "B".repeat(4096)}},
+                {"type": "text", "text": "short data: kept"}
+            ]},
+            {"role": "assistant", "content": [
+                {"type": "thinking", "thinking": "visible", "signature": "sig-do-not-publish"},
+                {"type": "redacted_thinking", "data": "enc-do-not-publish"}
+            ]}
+        ],
+        "input": [{"type": "reasoning", "encrypted_content": "enc-do-not-publish"}]
+    });
+    let data = LlmGenerationData::success(
+        Vec::new(),
+        Vec::new(),
+        None,
+        Vec::new(),
+        "m".to_string(),
+        None,
+        None,
+        None,
+        None,
+    )
+    .with_request_body(Some(body));
+    let stored = data.request_body.clone().unwrap();
+    assert_eq!(
+        stored["messages"][0]["content"][0]["image_url"]["url"],
+        json!("[data:image/png;base64, 4118 bytes omitted]")
+    );
+    assert_eq!(
+        stored["messages"][0]["content"][1]["source"]["data"],
+        json!("[base64, 4096 bytes omitted]")
+    );
+    assert_eq!(
+        stored["messages"][0]["content"][2]["text"],
+        json!("short data: kept")
+    );
+
+    let EventData::LlmGeneration(public) = EventData::LlmGeneration(data).into_public() else {
+        panic!("variant must be preserved");
+    };
+    let text = public.request_body.unwrap().to_string();
+    assert!(!text.contains("do-not-publish"), "{text}");
+    assert!(text.contains("visible"));
 }

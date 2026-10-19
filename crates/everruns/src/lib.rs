@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-//! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
+//! The application-facing crate for the [Everruns Framework](https://everruns.com/docs/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
 //! tools, run isolated multi-turn sessions, bind backend-owned workspace heads
@@ -14,7 +14,9 @@
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin
-//! here; advanced execution hosts select the `host`, `engine`, `builtins`, MCP
+//! here. Engine hosting adapters use [`hosting::SessionHosting`] and
+//! [`hosting::spi`] without a direct Core dependency. Separately composed
+//! low-level execution hosts select the `host`, `engine`, `builtins`, MCP
 //! or AG-UI features of [`everruns-core`](https://docs.rs/everruns-core), with
 //! [`everruns-contracts`](https://docs.rs/everruns-contracts) for neutral extension
 //! types and `everruns::batteries` for concrete integration presets.
@@ -62,16 +64,51 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+/// Credential verification for agent endpoints: OIDC/JWKS, OAuth 2.0
+/// introspection, claim requirements. The everruns server's channel verifier.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "channel-auth")]
+pub mod channel_auth {
+    pub use everruns_core::channel_auth::*;
+}
+#[cfg(feature = "channels")]
+pub mod channels;
 mod context;
+/// The app as a Personal Agent Protocol ("Poppy") personal agent: tools that
+/// find a company by domain, message its agent, read replies, ask for a
+/// person and close the conversation, for the person the app works for.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "poppy")]
+pub mod poppy {
+    pub use everruns_capabilities::capabilities::poppy_client::protocol::{AGENT_PATH, JWKS_PATH};
+    pub use everruns_capabilities::capabilities::{PoppyKey, PoppyPersonalAgent};
+    /// What [`PoppyPersonalAgent::with_egress`] sends requests through.
+    pub use everruns_core::{
+        EgressError, EgressRequest, EgressResponse, EgressResult, EgressService,
+        EgressStreamResponse,
+    };
+}
+/// What an agent said to the conversation: the one rule every surface uses to
+/// pick an agent's answer, so commentary never counts as a reply.
+///
+/// Stability: alpha — may change without a major bump; see [`stability`].
+pub mod conversation {
+    pub use everruns_core::conversation::*;
+}
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
 mod default_workspace;
-/// Stability: experimental — outside the [`stability`] promises until the
-/// backend conformance suite passes on every backend.
-#[cfg(feature = "durable")]
-pub mod durable;
 mod engine;
+pub use events::{SessionEventCursor, SessionEventPage};
 mod events;
+pub mod hosting;
+/// Wire types of the Agent Execution API, the per-agent session API that the
+/// everruns server and serve both expose.
+///
+/// Stability: experimental — outside the [`stability`] promises.
+pub use everruns_contracts::execution_api;
 mod harness;
 mod history;
 mod hooks;
@@ -96,6 +133,9 @@ mod session_environment;
 /// Stability tiers and the marking convention.
 pub mod stability;
 mod tool;
+/// Stability: experimental — outside the [`stability`] promises.
+#[cfg(feature = "voice")]
+pub mod voice;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
@@ -165,6 +205,8 @@ pub use everruns_integrations::filesystem::FileSystem;
 pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
 pub use everruns_integrations::web_fetch::WebFetch;
+#[cfg(feature = "web-search")]
+pub use everruns_integrations::web_search::WebSearch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
     HarnessSessionBuilder,
@@ -174,8 +216,8 @@ pub use history::{
     ResumeError, SessionMessage,
 };
 pub use hooks::{
-    AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
-    ToolStartContext, TurnStartContext,
+    AgentStartContext, CompletionContext, HookFailure, HookPoint, HookRecovery, IntoHookResult,
+    ToolEndContext, ToolStartContext, TurnStartContext,
 };
 pub use llm::{Completion, CompletionError};
 pub use mcp::McpServer;
@@ -186,12 +228,16 @@ pub use observers::{
 };
 pub use plugin::PluginError;
 pub use session::{
-    CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError, SendDisposition,
-    SentMessage, Session, Turn, TurnHandle,
+    AttachError, CancelError, EnvironmentSessionBuilder, InterruptedTurn, RunError,
+    SendDisposition, SentMessage, Session, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
-pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, ToolResponse};
+pub use tool::{
+    FunctionTool, IntoTool, IntoToolResult, Tool, ToolAnswer, ToolCallContext, ToolResponse,
+};
 
+#[cfg(feature = "local")]
+pub mod coordination;
 #[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
@@ -285,7 +331,7 @@ pub use everruns_core::host::{
 };
 
 // --- Portable message, model, and platform types ------------------------
-pub use everruns_core::turn::TurnStopReason;
+pub use everruns_contracts::turn::TurnStopReason;
 // `MessageRole` is the role on stored and inspected session messages
 // (`SessionMessage`, `ContextMessage`) — the common path. The wire message and
 // role that travel on a direct model call live in [`llm`], so both keep the
@@ -338,12 +384,13 @@ pub use everruns_contracts::driver_registry::{
 };
 pub use everruns_contracts::provider::DriverId;
 pub use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
-pub use everruns_contracts::typed_id::{SessionId, WorkspaceId};
+pub use everruns_contracts::typed_id::{MessageId, SessionId, TurnId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 // `LlmSimConfig::scripted` takes `SimTurn`s, so the turn, tool-call, and
 // exhaustion types belong here beside it: without them the facade exposes a
 // constructor nothing outside the workspace can call.
+#[cfg(not(target_arch = "wasm32"))]
 pub use everruns_llmsim::{LlmSimConfig, OnExhausted, SimError, SimToolCall, SimTurn};
 
 /// The common path: everything needed to describe an agent and run turns.
@@ -364,6 +411,8 @@ pub mod prelude {
     pub use crate::DuckDuckGo;
     #[cfg(feature = "filesystem")]
     pub use crate::FileSystem;
+    #[cfg(not(target_arch = "wasm32"))]
+    pub use crate::LlmSimConfig;
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
@@ -374,6 +423,8 @@ pub mod prelude {
     pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "web-fetch")]
     pub use crate::WebFetch;
+    #[cfg(feature = "web-search")]
+    pub use crate::WebSearch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     pub use crate::models;
@@ -389,14 +440,14 @@ pub mod prelude {
         EventListener, EventStream, EventStreamError, FunctionTool, Harness, HarnessBuildError,
         HarnessBuilder, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
         HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine, InitialFile,
-        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
-        ObserverReport, ObserverStats, PluginError, ResumeError, RunError, RunOptions,
-        SendDisposition, SentMessage, Session, SessionContext, SessionEnvironmentError,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, Workspace, WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff,
-        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, ObserverReport,
+        ObserverStats, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
+        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
+        SessionEventKind, SessionId, SessionMessage, Tool, ToolCallContext, ToolEndContext,
+        ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceBackend, WorkspaceBackendId, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{
@@ -412,7 +463,7 @@ pub mod prelude {
     #[allow(deprecated)]
     #[deprecated(note = "use WorkspaceBackend and WorkspaceBackendId")]
     pub use crate::{WorkspaceProvider, WorkspaceProviderId};
-    pub use everruns_core::turn::TurnStopReason;
+    pub use everruns_contracts::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole as MessageRole};
 }
 

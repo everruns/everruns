@@ -36,9 +36,11 @@ impl ApiState {
     /// `services` supplies every service a command may use. Its caller,
     /// feature flags and acting session are ignored.
     pub fn new(services: Ctx, auth: AuthState) -> Self {
+        let github_apps = services.github_apps.clone().with_auth_config(&auth.config);
         let template = Ctx {
             caller: nobody(),
             acting_for_session: None,
+            github_apps,
             ..services
         };
         Self {
@@ -111,6 +113,7 @@ fn nobody() -> Caller {
         role: everruns_core::OrgRole::Member,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -130,6 +133,7 @@ mod tests {
             role: OrgRole::Admin,
             is_platform_user: false,
             feature_flags: all_feature_flags_for_test(),
+            read_only: false,
         }
     }
 

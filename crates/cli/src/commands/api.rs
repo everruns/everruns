@@ -4,6 +4,73 @@ use anyhow::{Context, Result};
 use reqwest::{Method, StatusCode};
 use serde_json::Value;
 
+/// What the CLI prints when a personal access token's scope does not cover a
+/// command (`403` with problem code `insufficient_scope`). `read` is the only
+/// narrow scope, so the line can name it.
+pub const INSUFFICIENT_SCOPE_MESSAGE: &str =
+    "This personal access token is read-only; this command needs a full-access token.";
+
+/// A non-success API response, kept typed so [`explain`] can recognize the
+/// failures a person can act on, whichever command or request path hit them.
+#[derive(Debug)]
+pub struct ApiError {
+    /// What was being attempted, the start of the message.
+    pub action: String,
+    pub status: StatusCode,
+    pub body: String,
+}
+
+impl ApiError {
+    /// The error for a response that was not a success. Reads the body.
+    pub async fn from_response(action: impl Into<String>, response: reqwest::Response) -> Self {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Self {
+            action: action.into(),
+            status,
+            body,
+        }
+    }
+
+    /// The problem document's `code`, when the body is one.
+    fn code(&self) -> Option<String> {
+        let problem: Value = serde_json::from_str(&self.body).ok()?;
+        problem.get("code")?.as_str().map(ToOwned::to_owned)
+    }
+
+    /// A personal access token whose scope does not cover the request.
+    pub fn is_insufficient_scope(&self) -> bool {
+        self.status == StatusCode::FORBIDDEN && self.code().as_deref() == Some("insufficient_scope")
+    }
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({}): {}", self.action, self.status, self.body)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+/// The error to report for a failed command.
+///
+/// Decision: scope refusals are explained here, once, for every command,
+/// rather than at each call site. A request path only has to fail with an
+/// [`ApiError`] somewhere in its error chain; `main` passes every failure
+/// through this function. Anything else is reported unchanged.
+pub fn explain(error: anyhow::Error) -> anyhow::Error {
+    let refused = error.chain().any(|cause| {
+        cause
+            .downcast_ref::<ApiError>()
+            .is_some_and(ApiError::is_insufficient_scope)
+    });
+    if refused {
+        anyhow::anyhow!(INSUFFICIENT_SCOPE_MESSAGE)
+    } else {
+        error
+    }
+}
+
 /// Tries a contract command gets before its failure is reported.
 const COMMAND_ATTEMPTS: u32 = 4;
 /// Wait before the first retry; doubled for each later one.
@@ -116,13 +183,11 @@ impl<'a> ApiClient<'a> {
                         .with_context(|| format!("Failed to parse response from POST {path}"));
                 }
                 Ok(response) => {
-                    let status = response.status();
-                    let text = response.text().await.unwrap_or_default();
-                    let failure = anyhow::anyhow!("API request failed ({status}): {text}");
-                    if !retryable_status(status, &text) {
-                        return Err(failure);
+                    let failure = ApiError::from_response("API request failed", response).await;
+                    if !retryable_status(failure.status, &failure.body) {
+                        return Err(failure.into());
                     }
-                    failure
+                    failure.into()
                 }
             };
             if attempt >= COMMAND_ATTEMPTS {
@@ -152,8 +217,9 @@ impl<'a> ApiClient<'a> {
             .with_context(|| format!("Failed to call {method} {path}"))?;
         let status = response.status();
         if !status.is_success() {
-            let response_body = response.text().await.unwrap_or_default();
-            anyhow::bail!("API request failed ({status}): {response_body}");
+            return Err(ApiError::from_response("API request failed", response)
+                .await
+                .into());
         }
         if status == reqwest::StatusCode::NO_CONTENT {
             return Ok(Value::Null);
@@ -381,6 +447,59 @@ mod tests {
         assert!(
             keys.try_recv().is_err(),
             "a rejected command is not retried"
+        );
+    }
+
+    const REFUSAL: &str = r#"{"status":403,"detail":"read-only","code":"insufficient_scope"}"#;
+
+    #[tokio::test]
+    async fn a_scope_refusal_is_explained_in_one_line() {
+        let (url, _keys) = serve(vec![Some((403, REFUSAL))]).await;
+        let client = ApiClient::new(&url, "evr_pat_read", None);
+        let err = client
+            .post_command("/v1/commands/create_agent", &serde_json::json!({}), "k-4")
+            .await
+            .unwrap_err();
+        assert_eq!(explain(err).to_string(), INSUFFICIENT_SCOPE_MESSAGE);
+    }
+
+    #[tokio::test]
+    async fn a_scope_refusal_on_a_rest_route_is_explained_through_context() {
+        let (url, _captured) = capture::serve_once(403, REFUSAL).await;
+        let client = ApiClient::new(&url, "evr_pat_read", None);
+        let err = client
+            .post("/v1/agents/import", None)
+            .await
+            .context("Failed to import")
+            .unwrap_err();
+        // `{:#}` prints the whole chain: the context is replaced, not prefixed.
+        assert_eq!(format!("{:#}", explain(err)), INSUFFICIENT_SCOPE_MESSAGE);
+    }
+
+    #[test]
+    fn other_failures_are_reported_unchanged() {
+        let forbidden = ApiError {
+            action: "API request failed".into(),
+            status: StatusCode::FORBIDDEN,
+            body: r#"{"code":"forbidden"}"#.into(),
+        };
+        assert!(!forbidden.is_insufficient_scope());
+        assert_eq!(
+            explain(forbidden.into()).to_string(),
+            r#"API request failed (403 Forbidden): {"code":"forbidden"}"#
+        );
+
+        // The code alone is not enough: the refusal is a 403.
+        let not_forbidden = ApiError {
+            action: "API request failed".into(),
+            status: StatusCode::BAD_REQUEST,
+            body: REFUSAL.into(),
+        };
+        assert!(!not_forbidden.is_insufficient_scope());
+        assert!(
+            explain(anyhow::anyhow!("plain failure"))
+                .to_string()
+                .contains("plain failure")
         );
     }
 

@@ -18,7 +18,7 @@ behavior and recording logic; it does not establish the quality of a live model'
 
 | Example | Provider and model | What it does |
 | --- | --- | --- |
-| [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-5.6-terra` | Chooses between MFA recovery, lockout, and browser troubleshooting from facts and policy. |
+| [Support Agent](/framework/examples/support-agent/) | OpenAI `gpt-6.1-sol` | Chooses between MFA recovery, lockout, and browser troubleshooting from facts and policy. |
 | [Everruns Support Agent](/framework/examples/everruns-support-agent/) | Anthropic `claude-opus-5-5` | Searches and reads citable official documentation snapshots. |
 | [Coding Review Agent](/framework/examples/coding-review-agent/) | Anthropic `claude-sonnet-5` | Reads a refund contract and executes a fixed regression before reporting a defect. |
 | [Research Agent](/framework/examples/research-agent/) | OpenRouter `z-ai/glm-5.2` | Searches and fetches primary sources before writing a cited brief. |
@@ -37,9 +37,15 @@ See [file-based agents](/how-to/define-agents-as-files/) for loading, importing 
 
 | Example | Provider and model | What it does |
 | --- | --- | --- |
-| [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-5.6-terra` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
-| [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-5.6-terra` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
+| [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-6.1-sol` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
+| [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-6.1-sol` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
 | [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
+
+## Talking to other companies' agents
+
+| Example | Provider and model | What it does |
+| --- | --- | --- |
+| [`poppy-personal-agent`](https://github.com/everruns/everruns/tree/main/examples/poppy-personal-agent) | OpenAI `gpt-6.1-sol` | Acts as a person's own agent over the [Personal Agent Protocol](/features/poppy/): finds a company by its domain, asks its agent about an order, and reports the answer. |
 
 ## Serving agents
 
@@ -50,6 +56,7 @@ These run agents as HTTP services with [Serve](/framework/serve/).
 | [`serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest serve app: one agent, one tool | `cargo run -p serve-example-hello` |
 | [`serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to CopilotKit or any AG-UI client | `cargo run -p serve-example-ag-ui` |
 | [`serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over [A2A](/framework/a2a/): a researcher served by serve, and a writer that delegates to it. Offline by default | `cargo run -p serve-example-a2a --bin researcher`, then `--bin writer -- "tide pools"` |
+| [`serve/voice`](https://github.com/everruns/everruns/tree/main/examples/serve/voice) | A hotel front desk people [call from the browser](/framework/voice/), with a greeting and a speaking style | `OPENAI_API_KEY=… cargo run -p serve-example-voice` |
 
 ## Core crate catalog
 
@@ -72,15 +79,16 @@ These run agents as HTTP services with [Serve](/framework/serve/).
 | [`engine_sessions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
 | [`workspace_heads.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_heads.rs) | Isolated Git workspace heads, Environment binding, and durable reopening | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs) | Offline bounded recording and typed rendering of live events | `cargo run -p everruns --example canonical_events` |
+| [`explicit_communication.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/explicit_communication.rs) | Offline agent with explicit communication: sent messages apart from working notes | `cargo run -p everruns --example explicit_communication` |
 | [`framework_observability.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/framework_observability.rs) | Engine-wide OpenTelemetry and optional Braintrust export with explicit shutdown flushing | `cargo run -p everruns --features otel,braintrust --example framework_observability` |
 | [`subagents.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/subagents.rs) | Public facade composition for delegated work | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) | Live events and cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/advanced_capability.rs) | Code-defined capability through the unified `capability(...)` entrypoint | `cargo run -p everruns --features openai --example advanced_capability` |
 | [`lifecycle_hooks.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 
-Live-provider modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`.
+Live-provider modes use `gpt-6.1-sol` and require `OPENAI_API_KEY`.
 `capability_configuration`, `canonical_events`, `direct_llm`,
-`engine_sessions`, `live_session`, `session_work`, `workspace_heads`,
+`engine_sessions`, `explicit_communication`, `live_session`, `session_work`, `workspace_heads`,
 `workspace_policy`, and `session_history` are fully offline;
 the GitHub monitor also offers a simulated GitHub flow:
 

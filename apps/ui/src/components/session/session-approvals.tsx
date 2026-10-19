@@ -31,9 +31,7 @@ function ApprovalEpisodeCard({
   const showAskedAction = Boolean(
     episode.ask && episode.grant && !sameWords(episode.ask.action, episode.grant.action),
   );
-  const consentHref = episode.grant?.consentMessageId
-    ? `/sessions/${sessionId}/transcript#message-${episode.grant.consentMessageId}`
-    : undefined;
+  const consentHref = episode.grant?.consentMessageId ? `/sessions/${sessionId}/trace` : undefined;
 
   return (
     <Card>

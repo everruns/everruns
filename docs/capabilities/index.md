@@ -29,10 +29,13 @@ Fundamental capabilities for file operations, command execution, web access, ses
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 10 |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
+| [Tools in Shell](/capabilities/tools-in-shell/) | `tools_in_shell` | 1 (`tools`, hidden from the model; it is the shell command) |
 | [Host Shell](/capabilities/host-shell/) | `host_shell` | 1 (Framework-only) |
 | [Session](/capabilities/session/) | `session` | 2 |
+| [Automatic session titles](/capabilities/automatic-session-titles/) | `automatic_session_titles` | 0 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
+| [Web Search](/capabilities/web-search/) | `web_search` | 1 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Ask User](/capabilities/ask-user/) | `ask_user` | 1 |
@@ -53,8 +56,10 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
-| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (contributes the `agent` `spawn_agent` target) |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (contributes the `external_a2a` `spawn_agent` target) |
+| AG-UI Agent Delegation | `ag_ui_delegation` | 0 (contributes the `external_ag_ui` `spawn_agent` target) |
+| [Coordination](/framework/coordination/) | `coordination` | 5 |
 
 ### Sandboxes
 
@@ -62,11 +67,10 @@ Cloud and container sandbox environments for isolated code execution.
 
 | Capability | ID | Tools |
 |---|---|---|
-| Managed Environment | `session_sandbox` | 6 |
+| Managed Environment | `session_sandbox` | 8 |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | `sandbox_fleet` | 8 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
-| Deno Sandboxes | `deno` | 6 |
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
@@ -77,6 +81,7 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
+| [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; `FEATURE_BROWSERLESS_BROWSER_USE` grade |
 | [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
 
 ### Data and knowledge
@@ -88,6 +93,7 @@ Structured data, knowledge retrieval, and memory.
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
+| [Web Citations](/capabilities/citation-web/) | `citation_web` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
 | [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1; `FEATURE_KNOWLEDGE` grade |
 | [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set); `FEATURE_KNOWLEDGE` grade |
@@ -119,11 +125,18 @@ External-service capabilities and blueprint-backed workflows.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [GitHub](/capabilities/github/) | `github` | 5 (6 with `allow_pull_requests`) |
+| [GitHub](/capabilities/github/) | `github` | 6 (7 with `allow_pull_requests`) |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [Agentic Resource Discovery](/integrations/ard/) | `resource_discovery` | 3 |
+| [AgentID Sign-In](/integrations/agentid/) | `agentid` | 1 |
+| [Brave Search](/integrations/brave-search/) | `brave_search` | 1 |
+| [DuckDuckGo](/integrations/duckduckgo/) | `duckduckgo` | 1 |
+| [Parallel Search and Fetch](/integrations/parallel/) | `parallel_search` | 0 (2 hosted MCP tools from Parallel) |
+| [Jev Decisions](/integrations/typesafe/) | `jev` | 1 |
 | [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
+| [Poppy Personal Agent](/capabilities/poppy-personal-agent/) | `poppy_client` | 5 |
 
 ### Platform
 
@@ -171,6 +184,7 @@ Streaming-output guardrails and runtime safety nets.
 | [Output Truncation](/capabilities/output-truncation/) | `output_truncation` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
+| [Dry Run](/capabilities/dry-run/) | `dry_run` | 0 |
 | Progress Guard | `progress_guard` | 0 |
 | [Soft Approval](/capabilities/soft-approval/) | `soft_approval` | 3 |
 | [Tool Loop Detection](/capabilities/loop-detection/) | `loop_detection` | 0 |
@@ -274,22 +288,24 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | Capability | Depends On |
 |---|---|
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
+| [Tools in Shell](/capabilities/tools-in-shell/) | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |
-| [Platform](/capabilities/platform/) | [File System](/capabilities/file-system/) (when embedded docs are enabled) |
+| [Platform](/capabilities/platform/) | [Agent Skills](/capabilities/agent-skills/), [File System](/capabilities/file-system/) (when embedded docs are enabled) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 | Managed Environment | [Storage](/capabilities/session-storage/) |
 | [Sandbox Fleet](/capabilities/sandbox-fleet/) | [Storage](/capabilities/session-storage/) |
 | [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 | [Daytona](/capabilities/daytona/) | [Storage](/capabilities/session-storage/) |
-| Deno Sandboxes | Storage |
 | [Browserless](/capabilities/browserless/) | [Storage](/capabilities/session-storage/) |
+| [Browser Use](/capabilities/browser-use/) | [Storage](/capabilities/session-storage/) |
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
+| AG-UI Agent Delegation | Session Tasks |
 
 ### Features
 

@@ -10,6 +10,9 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::sessions::SessionService;
+pub use crate::domains::tool_results::types::{
+    ClientToolResult, SubmitToolResultsRequest, SubmitToolResultsResponse,
+};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -18,51 +21,14 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
-use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::TurnBackend;
-use everruns_core::message::ContentPart;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::ClaimWaitingTurnResult;
 use everruns_core::Caller;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
-
-/// Request to submit client-side tool results
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct SubmitToolResultsRequest {
-    /// Tool results from the client
-    #[schema(example = json!([{"tool_call_id": "toolu_01933b5a00007000800000000000001", "result": {"url": "https://example.com/orders/42"}}]))]
-    pub tool_results: Vec<ClientToolResult>,
-}
-
-/// A single tool result from the client
-#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
-pub struct ClientToolResult {
-    /// Tool call ID (correlates with the tool call from tool.call_requested event)
-    #[schema(example = "toolu_01933b5a00007000800000000000001")]
-    pub tool_call_id: String,
-    /// Result value (any JSON — object, array, string, number, etc.). Null if the tool failed.
-    /// Example: `{"url": "https://example.com/orders/42"}`.
-    #[serde(default)]
-    pub result: Option<serde_json::Value>,
-    /// Error message if the tool failed
-    #[serde(default)]
-    #[schema(example = "Refund failed: order is outside refund window")]
-    pub error: Option<String>,
-}
-
-/// Response from submitting tool results
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SubmitToolResultsResponse {
-    /// Number of tool results accepted
-    pub accepted: usize,
-    /// Session status after submission
-    pub status: String,
-}
 
 /// App state for tool results routes
 #[derive(Clone)]
@@ -79,7 +45,7 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn TurnBackend>,
         auth: AuthState,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -164,13 +130,23 @@ pub async fn submit_tool_results(
         return Err(ErrorResponse::not_found("Session"));
     }
     let accepted = req.tool_results.len();
-    let plan = tool_results_plan(session_id, &req.tool_results);
-    let claim = match state
+    let result = state
         .db
-        .claim_waiting_turn(org.org_id, session_id, plan)
-        .await
-        .log_internal_error_json("claim waiting turn")?
+        .claim_tool_result_command(
+            org.org_id,
+            session_id,
+            req.tool_results
+                .iter()
+                .map(ClientToolResult::completed)
+                .collect(),
+        )
+        .await;
+    if let Err(error) = &result
+        && let Some(error) = error.downcast_ref::<everruns_contracts::AgentLoopError>()
     {
+        return Err(ErrorResponse::new(error.to_string()).into_response(StatusCode::BAD_REQUEST));
+    }
+    let claim = match result.log_internal_error_json("claim waiting turn")? {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { current_status } => {
             return Err(ErrorResponse::new(format!(
@@ -196,58 +172,22 @@ pub async fn submit_tool_results(
     .await
     .map(|_| SubmitToolResultsResponse {
         accepted,
-        status: "active".to_string(),
+        status: if claim
+            .plan
+            .response
+            .get("resume")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        {
+            "waiting_for_tool_results"
+        } else {
+            "active"
+        }
+        .to_string(),
     });
     Ok(Json(
         result.log_internal_error_json("resolve client tool results")?,
     ))
-}
-
-/// The waiting-turn resolution that records client tool results, shared with
-/// the AG-UI endpoint, whose consumer sends them as `tool` messages.
-pub(crate) fn tool_results_plan(
-    session_id: SessionId,
-    tool_results: &[ClientToolResult],
-) -> WaitingTurnResolutionPlan {
-    let turn_id = TurnId::from_uuid(session_id.uuid());
-    let event_message_id = MessageId::from_uuid(session_id.uuid());
-    let events = tool_results
-        .iter()
-        .map(|client_result| {
-            let tool_result = if let Some(ref error) = client_result.error {
-                ToolCompletedData::failure(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    "error".to_string(),
-                    error.clone(),
-                    None,
-                )
-            } else {
-                let result_content = client_result
-                    .result
-                    .as_ref()
-                    .map(|result| vec![ContentPart::tool_result_text(result)])
-                    .unwrap_or_default();
-                ToolCompletedData::success(
-                    client_result.tool_call_id.clone(),
-                    String::new(),
-                    result_content,
-                    None,
-                )
-            };
-            EventRequest::new(
-                session_id,
-                EventContext::turn(turn_id, event_message_id),
-                tool_result,
-            )
-        })
-        .collect();
-    WaitingTurnResolutionPlan {
-        kind: "tool_results".to_string(),
-        events,
-        session_values: Vec::new(),
-        response: serde_json::json!({ "accepted": tool_results.len() }),
-    }
 }
 
 #[cfg(test)]

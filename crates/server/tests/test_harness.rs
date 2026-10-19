@@ -24,10 +24,10 @@ use tower::ServiceExt;
 use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
-    api, auth, seed, services,
+    api, auth, domains, services,
     storage::{EncryptionService, StorageBackend},
+    turns::ActorTurnBackend,
 };
-use everruns_worker::DurableRunner;
 
 // Relative to this file's directory; a sibling `tests/*.rs` would be its own
 // test binary, so support modules live under `tests/test_harness/`.
@@ -41,8 +41,8 @@ pub use response::TestResponse;
 mod database;
 #[allow(unused_imports)] // each test binary uses a different subset
 pub use database::{
-    IsolatedDatabase, create_test_pool, database_migrated_before, get_database_url,
-    isolated_test_database,
+    IsolatedDatabase, create_test_pool, database_before_server_environment,
+    database_migrated_before, get_database_url, isolated_postgres_database, isolated_test_database,
 };
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
@@ -92,22 +92,29 @@ pub struct TestServer {
     /// Public ID of the managed Platform Chat.
     pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
-    pub mcp_events: Arc<services::mcp_events::McpEventsService>,
+    pub mcp_events: Arc<domains::mcp_servers::events::McpEventsService>,
     pub webhooks: Arc<WebhookReceiver>,
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
     pub mcp_servers: Arc<McpServerSlot>,
-    /// The private database of an in-memory-mode server; dropping the last
+    /// Serves personal agents' Poppy client documents without the network.
+    pub poppy_documents: api::channel_auth::ChannelAuthVerifier,
+    /// The private database of this server; dropping the last
     /// handle drops the database.
-    isolated_database: Option<Arc<IsolatedDatabase>>,
+    isolated_database: Arc<IsolatedDatabase>,
 }
 
 impl TestServer {
+    /// Pass this server's private database to subprocess fixtures explicitly.
+    pub fn database_url(&self) -> String {
+        self.isolated_database.url()
+    }
+
     /// Insert a real user and return its id, for tests that need another
     /// person to point a foreign key at (session owners, members).
     pub async fn create_user(&self, label: &str) -> uuid::Uuid {
         self.db
-            .create_user(everruns_server::storage::models::CreateUserRow {
+            .create_user(everruns_server::storage::CreateUserRow {
                 email: format!("{label}-{}@example.com", uuid::Uuid::now_v7()),
                 name: format!("Test {label}"),
                 avatar_url: None,
@@ -195,9 +202,8 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::{
-            CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
-        };
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::{CreateAppRow, CreatePrincipalRow};
         use uuid::Uuid;
 
         if let Some(provider) = channel_config
@@ -289,8 +295,8 @@ impl TestServer {
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
+        use everruns_server::storage::UpdateApp;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateApp;
 
         let app = self
             .db
@@ -334,7 +340,7 @@ impl TestServer {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::records::AgentChannelId;
-        use everruns_server::storage::models::CreateLegacyAliasChannelRow;
+        use everruns_server::storage::CreateLegacyAliasChannelRow;
 
         let app = self
             .db
@@ -374,7 +380,7 @@ impl TestServer {
     }
 
     pub async fn set_channel_status(&self, channel_public_id: &str, status: &str) -> Value {
-        use everruns_server::storage::models::UpdateChannelByIdRow;
+        use everruns_server::storage::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
@@ -412,8 +418,8 @@ impl TestServer {
         use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
+        use everruns_server::storage::UpdateChannelByIdRow;
         use everruns_server::storage::UpdateField;
-        use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
@@ -493,10 +499,11 @@ impl TestServer {
         .await;
         let router = server.router.clone().layer(axum::middleware::map_request(
             |mut request: axum::extract::Request| async move {
-                request.headers_mut().insert(
-                    "x-forwarded-proto",
-                    axum::http::HeaderValue::from_static("http"),
-                );
+                // A TLS front in the test (the Poppy interop run) says https.
+                request
+                    .headers_mut()
+                    .entry("x-forwarded-proto")
+                    .or_insert(axum::http::HeaderValue::from_static("http"));
                 request
             },
         ));
@@ -595,50 +602,16 @@ impl TestServer {
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
         policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
-        // Create storage backend based on mode
-        let (db, pool, durable_store, isolated_database) = match mode {
-            TestMode::Postgres => {
-                let pool = create_test_pool().await;
-                let db = Arc::new(StorageBackend::from_database(
-                    everruns_server::storage::Database::new(pool.clone()),
-                ));
-                let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
-                    Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-                (db, pool, durable_store, None)
-            }
-            TestMode::InMemory => {
-                // A private database on the embedded cluster, so these tests
-                // need no external PostgreSQL and see no other test's rows.
-                // Durable state lives there too: records reference durable
-                // rows by foreign key (trigger schedules, for one).
-                let database = isolated_test_database().await;
-                let pool = database.pool.clone();
-                let db = Arc::new(database.backend());
-                let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
-                    Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-                (db, pool, durable_store, Some(Arc::new(database)))
-            }
-        };
-
-        // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
         let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
         let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
-        if matches!(mode, TestMode::Postgres) {
-            // Seeding is idempotent but not safe to race on an empty shared
-            // database: the first server of the process seeds it alone.
-            static FIRST_SEED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-            FIRST_SEED
-                .get_or_init(|| async {
-                    seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
-                        .await
-                        .expect("Failed to seed test data");
-                })
-                .await;
-        }
-        seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
-            .await
-            .expect("Failed to seed test data");
+        let database =
+            database::seeded_database(mode, grade, &host_composition, &built_in_harnesses).await;
+        let pool = database.pool.clone();
+        let db = Arc::new(database.backend());
+        let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
+            Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+        let isolated_database = Arc::new(database);
 
         // Initialize encryption service (use test key)
         let encryption = encryption_enabled.then(|| {
@@ -669,11 +642,10 @@ impl TestServer {
             auth_state.permission_resolver = permission_resolver;
         }
 
-        // Use the requested test runner or a mode-appropriate default.
-        let runner = match runner_override {
-            Some(runner) => runner,
-            None => Arc::new(DurableRunner::new_with_pool(pool.clone())),
-        };
+        // The requested runner, or production's: turns start as session actors.
+        // No worker runs here, so a started turn stays runnable until cancelled.
+        let runner =
+            runner_override.unwrap_or_else(|| Arc::new(ActorTurnBackend::new(db.clone(), None)));
 
         // Create driver registry
         let driver_registry = Arc::new(host_composition.driver_registry().clone());
@@ -689,17 +661,14 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.channel_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
-        feature_flags.agent_delegation = true;
         feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
-        // into the experimental flags integration tests exercise. Deliberately scoped:
-        // `notifications` stays off so tests asserting its default-off state still hold.
+        // into the experimental flags integration tests exercise.
         let org_flag_overrides: std::collections::HashMap<String, bool> = [
             "evals",
             "skills",
@@ -708,25 +677,17 @@ impl TestServer {
             "plugins",
             "observers",
             "voice",
-            "agent_delegation",
-            "channel_budgets",
             "mcp_events",
+            // Prod-graded, so on for every org; the harness grades every flag
+            // Adoption and needs the opt-in to match production.
+            "agent_change_reasons_required",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))
         .collect();
-        {
-            // Postgres-mode servers share one database, and concurrent
-            // replace-all writes to the same org's flags deadlock each other.
-            static SHARED_FLAGS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-            let _shared = match mode {
-                TestMode::Postgres => Some(SHARED_FLAGS.lock().await),
-                TestMode::InMemory => None,
-            };
-            db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
-                .await
-                .expect("seed org feature flags for test org");
-        }
+        db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
+            .await
+            .expect("seed org feature flags for test org");
 
         let mut feature_flag_policy = everruns_server::records::FeatureFlagPolicy::from_env(grade);
         for (name, enabled) in &feature_flags.to_map().0 {
@@ -749,7 +710,7 @@ impl TestServer {
 
         let webhooks = Arc::new(WebhookReceiver::default());
         let mcp_events = Arc::new(
-            services::mcp_events::McpEventsService::new(
+            domains::mcp_servers::events::McpEventsService::new(
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),
@@ -793,7 +754,6 @@ impl TestServer {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
         );
@@ -840,10 +800,12 @@ impl TestServer {
         let sqldb_store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
-        let provider_resolver = Arc::new(services::ProviderResolverService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        // Mirror production: service-bound resolution (realtime voice,
+        // embeddings) needs the driver registry.
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry(driver_registry.as_ref().clone()),
+        );
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
@@ -939,18 +901,14 @@ impl TestServer {
         );
         let session_schedules_state =
             api::session_schedules::AppState::new(db.clone(), auth_state.clone());
-        let notifications_state = if feature_flags.notifications {
-            Some(api::notifications::AppState {
-                db: db.clone(),
-                notification_service: Arc::new(
-                    everruns_server::domains::notifications::NotificationService::new(db.clone()),
-                ),
-                sse_tracker: sse_tracker.clone(),
-                notification_broadcaster: None,
-                auth: auth_state.clone(),
-            })
-        } else {
-            None
+        let notifications_state = api::notifications::AppState {
+            db: db.clone(),
+            notification_service: Arc::new(
+                everruns_server::domains::notifications::NotificationService::new(db.clone()),
+            ),
+            sse_tracker: sse_tracker.clone(),
+            notification_broadcaster: None,
+            auth: auth_state.clone(),
         };
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
@@ -1004,67 +962,71 @@ impl TestServer {
             messages_state.message_service.clone(),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let slack_state = api::slack_events::SlackState::new(
+        let slack_state = everruns_server::channels::slack::events::SlackState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            None, // No delivery dispatcher in tests
-            feature_flags.notifications,
             event_delivery.clone(),
             "https://example.com/api".to_string(),
-        );
+        )
+        .with_channel_host();
         let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let channel_a2a_state = api::channel_a2a::ChannelA2aState::new(
+        let channel_a2a_state = everruns_server::channels::a2a::ChannelA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
-            api::a2a_signing::A2aReplayStore::in_memory(),
+            everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
+        let poppy_state = everruns_server::channels::poppy::PoppyState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            event_delivery.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("poppy"),
+            everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
+        );
+        let poppy_documents = poppy_state.verifier.clone();
         let channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
+            sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
-        );
-        let ag_ui_state = api::ag_ui::AgUiState::new(
+        )
+        .with_runtime_auth(auth_state.clone());
+        let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         );
-        let public_chat_state = api::ag_ui::AgUiState::new(
+        let public_chat_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         )
         .with_public_chat_enabled(true);
-        let fcp_state = api::fcp::FcpState::new(
+        let fcp_state = everruns_server::channels::fcp::FcpState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            feature_flags.notifications,
             event_delivery.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("fcp"),
         );
@@ -1074,7 +1036,6 @@ impl TestServer {
             auth_state.clone(),
             &host_composition,
             &built_in_harnesses,
-            feature_flags.notifications,
             event_delivery.clone(),
             encryption.clone(),
             Some(durable_store.clone()),
@@ -1085,7 +1046,8 @@ impl TestServer {
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, matching app_builder.
         .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
-        .with_mcp_events(mcp_events.clone());
+        .with_mcp_events(mcp_events.clone())
+        .with_provider_services(providers_state.provider_services());
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),
@@ -1094,15 +1056,16 @@ impl TestServer {
             auth_config.base_url.clone(),
         );
 
-        let voice_state = api::voice::AppState::new(
+        let voice_state = everruns_server::channels::voice::AppState::new(
             db.clone(),
             auth_state.clone(),
             feature_flags.clone(),
-            api::voice::AppDependencies {
+            everruns_server::channels::voice::AppDependencies {
                 runner: runner.clone(),
                 message_service: messages_state.message_service.clone(),
                 provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
+                encryption: encryption.clone(),
             },
             host_composition.as_ref(),
             &built_in_harnesses,
@@ -1124,7 +1087,7 @@ impl TestServer {
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
-            .merge(api::voice::routes(voice_state))
+            .merge(everruns_server::channels::voice::routes(voice_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
@@ -1166,13 +1129,26 @@ impl TestServer {
             .merge(api::sandbox_templates::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
-            .merge(api::ag_ui::routes(ag_ui_state))
-            .merge(api::public_chat::routes(public_chat_state))
-            .merge(api::fcp::routes(fcp_state))
-            .merge(api::slack_events::routes(slack_state))
+            .merge(everruns_server::channels::ag_ui::routes(ag_ui_state))
+            .merge(everruns_server::channels::public_chat::routes(
+                public_chat_state,
+            ))
+            .merge(everruns_server::channels::fcp::routes(fcp_state))
+            .merge(everruns_server::channels::slack::events::routes(
+                slack_state,
+            ))
             .merge(api::channel_webhooks::routes(channel_webhooks_state))
-            .merge(api::channel_a2a::routes(channel_a2a_state))
+            .merge(everruns_server::channels::a2a::routes(channel_a2a_state))
+            .merge(everruns_server::channels::poppy::routes(
+                poppy_state.clone(),
+            ))
             .merge(api::channel_api::routes(channel_api_state))
+            .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
+                db: db.clone(),
+                auth: auth_state.clone(),
+                encryption: encryption.clone(),
+                verifier: api::channel_auth::ChannelAuthVerifier::new(),
+            }))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {
@@ -1184,9 +1160,7 @@ impl TestServer {
                 },
             ));
 
-        if let Some(notifications_state) = notifications_state {
-            api_routes = api_routes.merge(api::notifications::routes(notifications_state));
-        }
+        api_routes = api_routes.merge(api::notifications::routes(notifications_state));
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         }
@@ -1208,6 +1182,9 @@ impl TestServer {
         ));
 
         let root_routes = Router::new()
+            .merge(everruns_server::channels::poppy::well_known_routes(
+                poppy_state,
+            ))
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))
             .merge(auth::cli_auth::cli_auth_public_routes(
@@ -1266,6 +1243,7 @@ impl TestServer {
             webhooks,
             mcp_event_triggers,
             mcp_servers,
+            poppy_documents,
             isolated_database,
         }
     }
@@ -1376,10 +1354,24 @@ impl TestServer {
         max_bytes: usize,
         idle: std::time::Duration,
     ) -> String {
+        self.get_stream_prefix_with_headers(uri, &[], max_bytes, idle)
+            .await
+    }
+
+    /// [`Self::get_stream_prefix`] with extra request headers.
+    pub async fn get_stream_prefix_with_headers(
+        &self,
+        uri: &str,
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+        idle: std::time::Duration,
+    ) -> String {
         let normalized_uri = Self::normalize_uri(uri);
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri(&normalized_uri)
+        let mut builder = Request::builder().method(Method::GET).uri(&normalized_uri);
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        let request = builder
             .body(Body::empty())
             .expect("Failed to build request");
 

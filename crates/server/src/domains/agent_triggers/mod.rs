@@ -5,12 +5,15 @@
 // CRUD (see `domains::agents`): `AGENT_VIEW` for reads, `AGENT_MANAGE` for
 // mutations and manual fires. See knowledge/foundations/domains.md for the command pattern.
 
+mod channel_target;
 pub mod commands;
 pub mod deliveries;
 pub mod events;
 pub mod github;
 pub mod mcp_event;
 pub mod queries;
+pub mod record;
+mod script_target;
 pub mod types;
 pub mod webhook;
 pub mod webhook_invocation;

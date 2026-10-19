@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::runtime::capability_types::AgentCapabilityConfig;
+use crate::runtime::conversation::Communication;
 use crate::runtime::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::runtime::network_access::NetworkAccessList;
 use crate::runtime::session_file::InitialFile;
@@ -56,6 +57,14 @@ pub struct AgentDefinition {
     /// Request-level parallel tool calling preference (EVE-598).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// Per-call output token ceiling sent to the provider; `None` keeps the
+    /// provider default. Clamped to the model's output limit when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
+    /// How the agent talks: its assistant text directly, or explicitly
+    /// through `send_message` with assistant text kept as working notes.
+    #[serde(default, skip_serializing_if = "Communication::is_direct")]
+    pub communication: Communication,
     /// Client-side tools registered for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
@@ -85,6 +94,8 @@ impl AgentDefinition {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
+            communication: Communication::Direct,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
         }
@@ -114,6 +125,7 @@ mod tests {
         )];
         definition.max_iterations = Some(7);
         definition.parallel_tool_calls = Some(false);
+        definition.max_output_tokens = Some(2048);
         definition.mcp_servers.insert(
             "docs".into(),
             crate::runtime::mcp_server::ScopedMcpServer {
@@ -125,6 +137,7 @@ mod tests {
             serde_json::json!([{"ref": "web_fetch", "config": {"timeout_ms": 30000}}]);
         expected["max_iterations"] = serde_json::json!(7);
         expected["parallel_tool_calls"] = serde_json::json!(false);
+        expected["max_output_tokens"] = serde_json::json!(2048);
         expected["mcpServers"] =
             serde_json::json!({"docs": {"type": "http", "url": "https://docs.example.test/mcp"}});
         assert_eq!(serde_json::to_value(&definition).unwrap(), expected);

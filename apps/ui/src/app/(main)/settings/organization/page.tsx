@@ -1,8 +1,9 @@
 "use client";
 
+import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Building2, Check, Loader2, Plus } from "lucide-react";
+import { AlertCircle, Check, Loader2, Plus } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { HarnessSelect } from "@/components/harness/harness-select";
+import { EgressAllowlistSettings } from "@/components/organizations/egress-allowlist-settings";
+import { EverrunsGitHubAppSettings } from "@/components/organizations/everruns-github-app-settings";
 import {
   useCreateOrganization,
   useOrganization,
@@ -78,7 +81,7 @@ export default function OrganizationPage() {
   const updateOrganization = useUpdateOrganization();
   const createOrganization = useCreateOrganization();
   // Backend gate: PATCH /v1/orgs/:org is admin-only
-  // (`is_org_admin_of_public_db`, crates/server/src/api/organizations.rs). Members
+  // (`is_org_admin_of_public_db`, crates/server/src/api/organizations/mod.rs). Members
   // used to get editable controls that always failed with 403, so the UI mirrors
   // that check and renders read-only instead.
   const canManage = hasRole("admin");
@@ -432,6 +435,10 @@ export default function OrganizationPage() {
                 </div>
               )}
             </SettingsGroup>
+
+            <EgressAllowlistSettings />
+
+            {canManage && <EverrunsGitHubAppSettings />}
           </div>
         )}
       </section>
@@ -450,7 +457,7 @@ export default function OrganizationPage() {
 
         {organizations.length === 0 ? (
           <Card className="p-8 text-center">
-            <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <OrganizationIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">No organizations</h3>
             <p className="text-muted-foreground">
               Create an organization to start managing shared resources.

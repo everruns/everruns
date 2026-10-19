@@ -435,6 +435,7 @@ async fn small_caps_lower_effort_where_thinking_cannot_be_disabled() {
         "claude-opus-5-5",
         "claude-opus-5-5-20260901",
         "claude-sonnet-5-5",
+        "claude-haiku-5-5",
     ] {
         for (effort, cap) in [
             (Some(ReasoningEffort::Low), 64),
@@ -911,6 +912,7 @@ fn test_tool_result_with_images_conversion() {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     };
 
     let assistant = Message {
@@ -926,6 +928,7 @@ fn test_tool_result_with_images_conversion() {
         phase: None,
         reasoning: Vec::new(),
         configuration_update: None,
+        tool_changes: None,
     };
     let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 

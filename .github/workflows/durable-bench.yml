@@ -12,12 +12,10 @@
 # refresh the baseline, download the `durable-bench-*` artifacts of a trusted
 # run and concatenate their summary.jsonl files into baseline.jsonl.
 #
-# The `turn-backends` job benches the integration rather than the engine: the
-# facade's `turn_backends` full run, which adds the durable PostgreSQL backend
-# rows only when DATABASE_URL is set (the facade CI job runs its smoke without
-# a database). The bench applies the durable schema itself, so the job needs
-# no migrations. Its compare gates only against baseline rows recorded with
-# this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
+# The `turn-backends` job benches the framework rather than the engine: the
+# facade's `turn_backends` full run, an engine's sessions on the actor runner
+# (the facade CI job runs only its smoke). Its compare gates only against
+# baseline rows recorded with this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
 # from a 4-core container next to the `github-ubuntu-latest` rows it gates on.
 #
 # The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
@@ -26,6 +24,13 @@
 # The bench migrates the database itself. It gates on throughput against
 # turn_latency_baseline.jsonl the same way, and on DB statements per turn
 # (pg_stat_statements), which unlike wall time is steady on shared runners.
+#
+# Its throughput swings with the runner's CPU: `ubuntu-latest` lands on
+# several CPU generations, and the same commit ran 17.5 to 28.7 turns/s at
+# concurrency 1 across them (EVE-1262, an A/B of the session actor cutover on
+# same-day runners, which found the per-turn steps and their timings
+# unchanged). Summary lines carry `cpu`, and `--top` prints the slowest turns'
+# slow steps, so a gate failure can be told apart from a slow runner.
 name: Durable Benchmarks
 
 on:
@@ -66,7 +71,7 @@ jobs:
             benches: db_concurrent_workers db_workflow_throughput db_cold_start_latency
     services:
       postgres:
-        image: postgres:17-alpine
+        image: mirror.gcr.io/library/postgres:17-alpine
         env:
           POSTGRES_USER: everruns
           POSTGRES_PASSWORD: everruns
@@ -131,25 +136,9 @@ jobs:
           if-no-files-found: warn
 
   turn-backends:
-    name: Turn Backend Benchmarks (in process, durable memory, durable PostgreSQL)
+    name: Turn Backend Benchmarks (actor runner)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U everruns"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
     steps:
       - uses: actions/checkout@v7
 
@@ -163,11 +152,8 @@ jobs:
 
       - name: Run turn_backends
         run: |
-          cargo bench -p everruns --features durable --bench turn_backends -- \
+          cargo bench -p everruns --bench turn_backends -- \
             --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
-          # A run without the PostgreSQL rows measured nothing this job is for.
-          grep -q '_durable_postgres_' "$RUNNER_TEMP/summary.jsonl" \
-            || { echo "::error::turn_backends ran without the durable PostgreSQL backend"; exit 1; }
 
       - name: Compare with baseline
         run: |
@@ -200,11 +186,19 @@ jobs:
       # must be preloaded. `track=all` also counts statements run inside
       # trigger functions (event inserts fire several), which are a large part
       # of a turn's database work.
+      #
+      # The server logs every statement over 50 ms (COMMIT included) and every
+      # lock wait over 50 ms, and times WAL syncs, for the "PostgreSQL stalls"
+      # step. A concurrency 1 tail on a shared runner has so far been either the
+      # database stalling (a COMMIT waiting ~120 ms on a WAL fsync) or the
+      # platform; these lines say which (EVE-1266). Match them to a scenario by
+      # time: the `Run turn_latency` step prints each scenario's row when it ends.
       - name: Start PostgreSQL with pg_stat_statements
         run: |
           docker run -d --name bench-postgres -p 5432:5432 \
             -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_test \
-            postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+            mirror.gcr.io/library/postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
+            -c log_min_duration_statement=50 -c log_lock_waits=on -c deadlock_timeout=50ms -c track_wal_io_timing=on
           for _ in $(seq 60); do
             docker exec bench-postgres pg_isready -U everruns -d everruns_test && exit 0
             sleep 1
@@ -241,6 +235,23 @@ jobs:
             crates/server/benches/turn_latency_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
           bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: PostgreSQL stalls
+        if: always()
+        run: |
+          docker logs bench-postgres > "$RUNNER_TEMP/postgres.log" 2>&1 || true
+          # Migrations and the bench's own setup run long statements too; the
+          # timestamps place each line before, in or after a scenario.
+          echo "::group::Statements over 50 ms and lock waits over 50 ms"
+          grep -E 'duration: |still waiting|acquired ' "$RUNNER_TEMP/postgres.log" | cut -c1-300 || true
+          echo "::endgroup::"
+          wal=$(docker exec bench-postgres psql -U everruns -d everruns_test -Atc \
+            "select wal_sync || ' WAL syncs, ' || round(wal_sync_time::numeric) || ' ms syncing' from pg_stat_wal" || true)
+          {
+            echo "PostgreSQL: $(grep -c 'duration: ' "$RUNNER_TEMP/postgres.log" || true) statements over 50 ms" \
+              "($(grep -c 'duration: [0-9.]* ms  statement: COMMIT' "$RUNNER_TEMP/postgres.log" || true) COMMIT)," \
+              "$(grep -c 'still waiting' "$RUNNER_TEMP/postgres.log" || true) lock waits over 50 ms; ${wal:-WAL stats unavailable}."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: always()

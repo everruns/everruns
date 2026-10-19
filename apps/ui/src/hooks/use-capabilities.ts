@@ -12,6 +12,7 @@ import {
   getDeclarativeCapability,
   listCapabilities,
   listDeclarativeCapabilities,
+  listGuardrailExamples,
   updateDeclarativeCapability,
 } from "@/lib/api/capabilities";
 import type {
@@ -61,6 +62,22 @@ export function useCapability(capabilityId: CapabilityId | undefined) {
   return {
     ...query,
     isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
+  };
+}
+
+export function useGuardrailExamples(options: { enabled?: boolean } = {}) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: [...queryKeys.capabilities.guardrailExamples(), org],
+    queryFn: () => listGuardrailExamples(),
+    enabled: !!org && (options.enabled ?? true),
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
   };
 }
 

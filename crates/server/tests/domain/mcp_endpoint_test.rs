@@ -8,15 +8,16 @@
 //!
 //! Requires migrated PostgreSQL through DATABASE_URL.
 
-#[path = "mcp_endpoint_test/capability_mcp_acts_as.rs"]
 mod capability_mcp_acts_as;
+mod resources;
+mod skills;
 use crate::test_harness;
 
 use axum::http::{Method, StatusCode};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::capability_types::VirtualFileTree;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
-use everruns_server::storage::models::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
+use everruns_server::storage::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use test_harness::{TestServer, extract_cookie};
@@ -121,7 +122,6 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("memory".to_string(), false),
         ("knowledge".to_string(), false),
         ("plugins".to_string(), false),
-        ("agent_delegation".to_string(), false),
     ]);
     server
         .db
@@ -159,28 +159,11 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         assert_eq!(body["code"], "feature_not_enabled");
     }
 
-    let capabilities: Value = server
-        .get("/v1/capabilities?limit=200")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert!(
-        capabilities["data"]
-            .as_array()
-            .expect("capability list")
-            .iter()
-            .all(|capability| capability["id"] != "agent_handoff"
-                && capability["id"] != "a2a_agent_delegation")
-    );
-    let capability_error: Value = server
+    // Delegation has no feature flag: adding the capability is the opt-in.
+    server
         .get("/v1/capabilities/agent_handoff")
         .await
-        .assert_status(StatusCode::NOT_FOUND)
-        .json();
-    assert_eq!(
-        capability_error["detail"],
-        "Feature 'agent_delegation' is not enabled"
-    );
+        .assert_status(StatusCode::OK);
 
     let discovered = mcp_tool_call(
         &server,
@@ -935,7 +918,7 @@ async fn test_mcp_agent_run_invalid_agent_id() {
 
 // Regression test for the `agent_get_card` session-count bug: the count must
 // be keyed by the agent's internal id, not its public id. Public and internal
-// ids are distinct UUIDs (see `crates/server/src/storage/repositories/agents.rs`
+// ids are distinct UUIDs (see `crates/server/src/storage/repositories/agents/mod.rs`
 // where `id` and `public_id` are populated independently), and
 // `sessions.agent_id` references `agents.id`. If the count keyed by public_id
 // instead, the assertion below would observe `0` sessions despite one existing.
@@ -2498,82 +2481,6 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_resources_read_cannot_escape_org_scope() {
-    let server = TestServer::in_memory().await;
-    let marker = format!("org2-resource-marker-{}", unique_suffix());
-
-    let org2: Value = server
-        .post(
-            "/v1/orgs",
-            json!({ "name": format!("MCP Resource Target {}", unique_suffix()) }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let org2_id = org2["id"].as_str().expect("org2 id").to_string();
-
-    let switch_resp = server
-        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
-        .await
-        .assert_status(StatusCode::OK);
-    let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
-
-    let create_agent_resp = mcp_tool_call_with_headers(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "create_agent --name '{marker}' --display_name 'Org 2 Resource Marker' --system_prompt 'tenant marker'"
-            )
-        }),
-        vec![("cookie", org2_cookie.as_str())],
-    )
-    .await;
-    assert!(
-        !tool_is_error(&create_agent_resp),
-        "org2 setup create_agent failed: {}",
-        tool_text(&create_agent_resp)
-    );
-
-    let default_resources = mcp_call(
-        &server,
-        "resources/read",
-        json!({ "uri": "everruns://agents" }),
-    )
-    .await;
-    assert!(
-        default_resources["error"].is_null(),
-        "default resources/read failed: {default_resources}"
-    );
-    let default_text = default_resources["result"]["contents"][0]["text"]
-        .as_str()
-        .expect("default resource text");
-    assert!(
-        !default_text.contains(&marker),
-        "default org resources/read leaked org2 marker: {default_text}"
-    );
-
-    let org2_resources = mcp_call_with_headers(
-        &server,
-        "resources/read",
-        json!({ "uri": "everruns://agents" }),
-        vec![("cookie", org2_cookie.as_str())],
-    )
-    .await;
-    assert!(
-        org2_resources["error"].is_null(),
-        "org2 resources/read failed: {org2_resources}"
-    );
-    let org2_text = org2_resources["result"]["contents"][0]["text"]
-        .as_str()
-        .expect("org2 resource text");
-    assert!(
-        org2_text.contains(&marker),
-        "org2 resources/read should see its own marker: {org2_text}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_bash_pipe() {
     let (_server, url) = TestServer::serving().await;
 
@@ -3551,14 +3458,11 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
-/// The consent page must carry its own CSP whose `form-action` allows the
-/// client's redirect origin. Chrome checks `form-action` against every hop of
-/// the form-submission redirect chain, so the global `form-action 'self'`
-/// policy silently blocks the 302 to the client callback (e.g. a native
-/// client's `http://localhost:<port>/callback`) — the click appears to do
-/// nothing.
+/// Browsers apply `form-action` to every hop of the confirm POST's redirect
+/// chain. The registered callback can redirect again to an unknown origin or
+/// loopback port, so this page must not carry that directive.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
+async fn test_oauth_authorize_page_csp_does_not_block_callback_redirects() {
     let server = TestServer::in_memory().await;
     let (client_id, _) = register_oauth_client(&server).await;
 
@@ -3570,9 +3474,11 @@ async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
         .get("content-security-policy")
         .and_then(|v| v.to_str().ok())
         .expect("consent page must set its own content-security-policy");
+    assert!(!csp.contains("form-action"), "got: {csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "got: {csp}");
     assert!(
-        csp.contains("form-action 'self' http://localhost:9999"),
-        "form-action must allow the validated redirect origin, got: {csp}"
+        page.text()
+            .contains(r#"<form method="post" action="/oauth/authorize">"#)
     );
 }
 
@@ -3835,7 +3741,7 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server
@@ -3896,7 +3802,7 @@ async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, resu
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
     };
-    use everruns_server::storage::models::CreateSessionFileRow;
+    use everruns_server::storage::CreateSessionFileRow;
 
     let sid = session_id.parse::<SessionId>().expect("valid session id");
     let session = server

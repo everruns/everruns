@@ -22,7 +22,7 @@ starts (or reuses) a session on the agent's own harness, as the agent's own
 identity.
 
 Field shapes, SQL, and route handlers live in code, see
-`crates/server/src/records/agent_trigger.rs` (`AgentTrigger`, `AgentTriggerType`,
+`crates/server/src/domains/agent_triggers/record.rs` (`AgentTrigger`, `AgentTriggerType`,
 `ScheduleTriggerConfig`), migration `104_agent_triggers.sql`, the
 `crates/server/src/domains/agent_triggers/` domain, and the
 `/v1/agents/{agent_id}/triggers` API.
@@ -91,6 +91,11 @@ When a schedule fires (or a caller hits the manual
 The manual endpoint fires exactly one invocation for testing without exposing
 the durable schedule id.
 
+A schedule or webhook trigger with a `script` runs that
+[saved script](agent-scripts.md) instead of asking the model: the message is
+dispatched with a reserved script-run marker, and that turn makes one `bash`
+call and no model call ([tools in shell D9](../execution/tools-in-shell.md)).
+
 ## Event pipeline
 
 Every trigger fire is an event, and every event takes one path, owned by
@@ -101,7 +106,11 @@ optional **event id**, **type** and **subject**, plus the template context. The
 pipeline then, for every source alike:
 
 1. **filters** on the trigger's conditions (a dotted path into the context must
-   equal one of a set of values); a miss starts nothing;
+   equal one of a set of values) and, with `changes_only`, on whether the value
+   at a path differs from the last one recorded for the same subject; a miss
+   starts nothing. The first value for a subject only records, an event with
+   no value there is ignored, and a failed run puts the previous value back so
+   a retry still reads as a change ([D2](proactive-agents.md));
 2. **deduplicates** on the event id, so a redelivery is logged instead of run
    twice;
 3. **routes** to a session: `shared_session`, `session_per_invocation`, or
@@ -134,6 +143,14 @@ scoped to repositories, and gets the GitHub delivery id as event id and
 request or issue. Unsubscribed events are not recorded; a repository outside
 the scope is a recorded filter miss. Events the App itself caused are dropped so
 an agent commenting on a pull request does not wake itself.
+CI results (`workflow_run.completed`, `check_suite.completed`) are events too:
+they carry a normalized `github.ci` context (workflow, branch, outcome `success`
+or `failure`, run URL) and the subject `owner/repo@branch:workflow`, so
+`per_thread` means one session per workflow on a branch. A conclusion that says
+nothing about health (cancelled, skipped, neutral) has no outcome, so a filter
+on `github.ci.outcome` drops it. See
+[proactive-agents.md](proactive-agents.md) for why CI arrives as an event rather
+than by polling.
 
 **MCP event triggers** (`trigger_type: mcp_event`) subscribe to an event on one
 of the agent's MCP servers through MCP Events (`events/subscribe`), using the
@@ -157,6 +174,33 @@ a guarded write that only sets the link when it is still NULL. An
 explicitly-linked identity is never overridden, and subsequent fires reuse the
 same identity. That identity principal is the stable key the `shared_session`
 reuse lookup matches on. See `knowledge/runtime-resources/agent-identities.md` for the identity model.
+
+## Channel conversation targets
+
+A schedule trigger may carry a target: one of the agent's own Slack channels
+and a binding key on it (`slack:user:{U}` or `slack:channel:{C}`). Such a run
+skips the tag-keyed session above and goes through the channel host
+(`ChannelHost::send_in_conversation`): the session is the one a message from
+that conversation binds, created and bound on the first run, and the turn's
+replies are delivered and recovered like an inbound message's. The session is
+owned and attributed as the channel's, not the agent identity's, because it is
+the channel's conversation.
+
+Why the host and not a trigger-side lookup: a person who talks to the agent in
+a Slack DM and gets a 07:00 briefing must see one history, and only the
+channel's binding table can say which session that is. Rejected alternative: a
+trigger that keeps its own session and posts into Slack, which splits the
+conversation and cannot see what the person said.
+
+Who may target what is checked on write (only the agent's own live Slack
+channel, a key the channel's binding produces, `agent:manage`) and again on
+every run. A run whose channel can no longer post fails and records a
+`failed` delivery; it never falls back to a tag session, so a retired channel
+is visible instead of silently moving the conversation elsewhere. Design
+record: the "Schedules that run in a Slack conversation" decision (D2/D3),
+with D1 in `channels/slack/actions/post_message.rs` (`scheduled_target`).
+Source: `crates/server/src/domains/agent_triggers/channel_target.rs`,
+`crates/server/src/channels/slack/scheduled.rs`.
 
 ## Relationship to App schedule channels
 

@@ -41,6 +41,7 @@ pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
+pub mod dry_run;
 pub mod error_disclosure;
 mod framework_config;
 pub mod guardrails;
@@ -145,6 +146,7 @@ pub use compaction::{
     should_compact_proactively, total_tool_result_bytes,
 };
 pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
+pub use dry_run::{DRY_RUN_CAPABILITY_ID, DRY_RUN_RESULT_KEY, DryRunCapability, runs_in_dry_run};
 pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
 };
@@ -198,9 +200,8 @@ pub use stateless_todo_list::{
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, DEFAULT_APPROVAL_TIMEOUT_SECONDS, DurableToolApprover,
-    ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_CAPABILITY_ID,
-    TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability, ToolApprovalPolicy, ToolApprover,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    TOOL_APPROVAL_CAPABILITY_ID, TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability,
+    ToolApprovalPolicy, ToolApprover, approval_fingerprint,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
@@ -214,7 +215,8 @@ pub use tool_output_persistence::{
     PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
 };
 pub use tool_search::{
-    TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
+    Reveal as ToolSearchReveal, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME,
+    ToolSearchCapability, ToolSearchTool,
 };
 pub use usage_limit_auto_continue::{
     AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
@@ -340,6 +342,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(PromptCanaryGuardrailCapability),
         Arc::new(GuardrailsCapability),
         Arc::new(SoftApprovalCapability::new()),
+        Arc::new(DryRunCapability),
     ]
 }
 
@@ -347,7 +350,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 31] = [
+    const RUNTIME_IDS: [&str; 32] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -379,6 +382,7 @@ mod bundle_tests {
         "prompt_canary_guardrail",
         "guardrails",
         "soft_approval",
+        "dry_run",
     ];
 
     fn portable_ids() -> Vec<&'static str> {

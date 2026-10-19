@@ -966,6 +966,7 @@ fn test_act_result_connection_required_serialization() {
                 arguments: json!({}),
             },
             result: ToolResult {
+                details: None,
                 tool_call_id: "call_1".to_string(),
                 result: Some(json!({"connection_required": "daytona"})),
                 images: None,
@@ -1317,6 +1318,7 @@ async fn test_idempotency_replay_already_settled() {
     // Pre-populate as settled.
     {
         let stored_result = serde_json::to_value(ToolResult {
+            details: None,
             tool_call_id: "c1".to_string(),
             result: Some(json!({"value": "hello"})),
             images: None,

@@ -379,6 +379,7 @@ fn the_request_capture_is_opt_in_and_is_what_goes_on_the_wire() {
         verbosity: None,
         metadata: None,
         response_format: None,
+        prompt_cache_key: None,
     };
 
     let mut config = call_config();
@@ -889,4 +890,44 @@ fn file_part_serializes_to_openai_file() {
         serde_json::json!("data:application/pdf;base64,JVBERi0=")
     );
     assert_eq!(v["file"]["filename"], serde_json::json!("report.pdf"));
+}
+
+#[tokio::test]
+async fn chat_strict_optional_nulls_round_trip_in_both_completion_modes() {
+    use futures::StreamExt;
+    let mut config = call_config();
+    config.tools = vec![ToolDefinition::function(
+        "list_tasks",
+        "List tasks",
+        json!({
+            "type":"object","properties":{"state":{"type":"string"}},"additionalProperties":false
+        }),
+    )];
+    let body = json!({"id":"chat-null","model":"model","choices":[{
+        "message":{"role":"assistant","content":null,"tool_calls":[{
+            "id":"call-null","type":"function","function":{"name":"list_tasks","arguments":r#"{"state":null}"#}
+        }]},"finish_reason":"tool_calls"
+    }]});
+    let (_server, provider) = mock_json_provider(body).await;
+    let response = provider
+        .chat_completion_non_streaming(vec![], &config)
+        .await
+        .unwrap();
+    assert_eq!(response.tool_calls.unwrap()[0].arguments, json!({}));
+    let chunk = json!({"id":"chat-null","model":"model","choices":[{
+        "index":0,"delta":{"tool_calls":[{"index":0,"id":"call-null","type":"function","function":{"name":"list_tasks","arguments":r#"{"state":null}"#}}]},"finish_reason":"tool_calls"
+    }]});
+    let (_server, provider) = mock_provider(&format!("data: {chunk}\n\ndata: [DONE]\n\n")).await;
+    let mut stream = provider
+        .chat_completion_stream(vec![], &config)
+        .await
+        .unwrap();
+    let mut saw_call = false;
+    while let Some(event) = stream.next().await {
+        if let LlmStreamEvent::ToolCalls(calls) = event.unwrap() {
+            assert_eq!(calls[0].arguments, json!({}));
+            saw_call = true;
+        }
+    }
+    assert!(saw_call);
 }

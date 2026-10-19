@@ -1000,7 +1000,7 @@ async fn execute_btw_command_returns_ephemeral_answer() {
 // Proves embedders can supply their own `UserConnectionResolver` through
 // `HostBackends` and have it reach connection-aware tools via
 // `ToolContext.connection_resolver` (the seam used by integrations such as
-// Daytona). See knowledge/foundations/runtime.md and crates/server/specs/user-connections.md.
+// Daytona). See knowledge/foundations/runtime.md and knowledge/integrations/user-connections.md.
 // ---------------------------------------------------------------------------
 
 struct StaticTokenResolver {
@@ -1135,7 +1135,7 @@ async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
 
     let session_id = runtime.default_session_id().expect("default session id");
     let resolver = runtime
-        .connection_resolver()
+        .connection_resolver(everruns_core::DEFAULT_ORG_ID)
         .expect("connection resolver should be wired into the host adapter");
     let token = resolver
         .get_connection_token(session_id, "daytona")
@@ -1164,7 +1164,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
         .unwrap();
 
     assert!(
-        runtime.connection_resolver().is_none(),
+        runtime.connection_resolver(1).is_none(),
         "no resolver should be wired unless the embedder supplies one",
     );
 }

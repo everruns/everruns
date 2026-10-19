@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { HarnessSelect } from "@/components/harness/harness-select";
+import { HARNESS_GUIDE_URL, HarnessSelect } from "@/components/harness/harness-select";
 import { useHarnesses } from "@/hooks";
 import type { Harness } from "@/lib/api/types";
 
@@ -62,6 +62,14 @@ describe("HarnessSelect", () => {
 
     const purpose = document.getElementById(trigger.getAttribute("aria-describedby") ?? "");
     expect(purpose).toHaveTextContent(generic.description ?? "");
+  });
+
+  it("links to the guide for choosing a harness", () => {
+    render(<HarnessSelect value={generic.id} onValueChange={() => {}} />);
+
+    const link = screen.getByRole("link", { name: "Which harness should I use?" });
+    expect(link).toHaveAttribute("href", HARNESS_GUIDE_URL);
+    expect(link).toHaveAttribute("target", "_blank");
   });
 
   it("lists a purpose under each harness that has one", () => {

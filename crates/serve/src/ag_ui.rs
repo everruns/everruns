@@ -42,19 +42,13 @@ use everruns::ag_ui::{
 };
 use everruns::approval::ApprovalDecision;
 use everruns::ask_user::Outcome;
-use serde_json::json;
 use tokio::sync::broadcast;
 
-use crate::host::{ApiError, Host, NewSession};
+use crate::host::{ApiError, Host};
 
 /// The route of `agent`'s AG-UI endpoint.
 pub(crate) fn route(agent: &str) -> String {
     format!("/v1/channels/{agent}/ag-ui")
-}
-
-/// The thread-map channel key of `agent`'s AG-UI threads.
-fn thread_channel(agent: &str) -> String {
-    format!("ag-ui:{agent}")
 }
 
 /// `POST /v1/channels/{agent}/ag-ui`: one AG-UI run. A malformed body or input the
@@ -98,19 +92,9 @@ async fn thread_session(host: &Host, agent: &str, thread: &str) -> crate::Result
     if host.app.agent(agent).is_none_or(|entry| entry.sub) {
         return Err(ApiError::NotFound(format!("agent {agent}")).into());
     }
-    let channel = thread_channel(agent);
-    if let Some(session) = host.thread_session(&channel, thread)? {
-        return Ok((session, false));
-    }
-    let session = host
-        .create_session(NewSession {
-            agent: Some(agent.to_string()),
-            metadata: Some(json!({ "channel": "ag-ui", "agent": agent, "thread": thread })),
-            ..NewSession::default()
-        })
-        .await?;
-    host.bind_thread(&channel, thread, &session)?;
-    Ok((session, true))
+    let conversation =
+        crate::channels::conversation(host, "ag-ui", agent, thread, "AG-UI thread").await?;
+    Ok((conversation.session_id, conversation.created))
 }
 
 /// serve's pending approvals and questions, as AG-UI interrupts.
@@ -159,7 +143,141 @@ impl HostInterrupts {
     }
 }
 
+#[async_trait::async_trait]
 impl InterruptSource for HostInterrupts {
+    async fn query(&self, session_id: SessionId) -> Result<Vec<Interrupt>, AgUiError> {
+        if !self.host.engine.has_session_hosting() {
+            return Ok(self.interrupts(session_id));
+        }
+        let status = self
+            .host
+            .engine
+            .session_status(session_id)
+            .await
+            .map_err(|error| AgUiError::InvalidInput(error.to_string()))?;
+        let mut interrupts = Vec::new();
+        for call in status.waiting {
+            if let Some(request) =
+                everruns_contracts::tool_approval_types::ToolApprovalRequired::from_request_call(
+                    &call.id,
+                    &call.name,
+                    &call.arguments,
+                )
+            {
+                interrupts.push(approval_interrupt(&everruns::ToolCall {
+                    id: call.id,
+                    name: request.tool,
+                    arguments: request.arguments,
+                }));
+            } else if call.name == "ask_user" {
+                let questions: Vec<everruns::ask_user::Question> =
+                    serde_json::from_value(call.arguments["questions"].clone())
+                        .map_err(|error| AgUiError::InvalidInput(error.to_string()))?;
+                interrupts.push(question_interrupt(&call.id, &questions));
+            }
+        }
+        Ok(interrupts)
+    }
+    async fn resume_commands(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
+        if !self.host.engine.has_session_hosting() {
+            return self.resume(session_id, entries);
+        }
+        let open = self.query(session_id).await?;
+        if open.is_empty() {
+            return Ok(ResumeOutcome::NothingOpen);
+        }
+        if open.iter().any(|interrupt| {
+            !entries
+                .iter()
+                .any(|entry| entry.interrupt_id == interrupt.id)
+        }) {
+            return Ok(ResumeOutcome::StillOpen(open));
+        }
+        let status = self
+            .host
+            .engine
+            .session_status(session_id)
+            .await
+            .map_err(|error| AgUiError::InvalidInput(error.to_string()))?;
+        let mut answers = Vec::new();
+        for call in status.waiting {
+            let Some(entry) = entries.iter().find(|entry| entry.interrupt_id == call.id) else {
+                continue;
+            };
+            if everruns_contracts::tool_approval_types::ToolApprovalRequired::from_request_call(
+                &call.id,
+                &call.name,
+                &call.arguments,
+            )
+            .is_some()
+            {
+                answers.push((call.id, Answer::Approval(approval_decision(entry)?)));
+            } else if call.name == "ask_user" {
+                let questions: Vec<everruns::ask_user::Question> =
+                    serde_json::from_value(call.arguments["questions"].clone())
+                        .map_err(|error| AgUiError::InvalidInput(error.to_string()))?;
+                answers.push((
+                    call.id.clone(),
+                    Answer::Question(question_outcome(entry, &call.id, &questions)?),
+                ));
+            }
+        }
+        let target = status
+            .open_turn
+            .ok_or_else(|| AgUiError::InvalidInput("no open turn".into()))?;
+        let mut approvals = Vec::new();
+        let mut results = Vec::new();
+        for (call, answer) in answers {
+            match answer {
+                Answer::Approval(decision) => {
+                    let decision = match decision {
+                        ApprovalDecision::Allow => everruns::hosting::ToolApprovalDecision::Allow,
+                        ApprovalDecision::Reject => everruns::hosting::ToolApprovalDecision::Reject,
+                        ApprovalDecision::AllowAlways => {
+                            everruns::hosting::ToolApprovalDecision::AllowAlways
+                        }
+                        ApprovalDecision::RejectAlways => {
+                            everruns::hosting::ToolApprovalDecision::RejectAlways
+                        }
+                        _ => {
+                            return Err(AgUiError::InvalidInput(
+                                "explicit approval required".into(),
+                            ));
+                        }
+                    };
+                    approvals.push(everruns::hosting::ApprovalCommit {
+                        turn_id: target,
+                        request_id: call,
+                        decision,
+                    });
+                }
+                Answer::Question(outcome) => results.push(everruns::ToolAnswer {
+                    tool_call_id: call,
+                    tool_name: "ask_user".into(),
+                    result: serde_json::to_value(outcome)
+                        .map_err(|error| AgUiError::InvalidInput(error.to_string()))?,
+                    error: None,
+                }),
+            }
+        }
+        let command = uuid::Uuid::new_v5(
+            &session_id.uuid(),
+            &serde_json::to_vec(&(target, entries))
+                .map_err(|error| AgUiError::InvalidInput(error.to_string()))?,
+        );
+        self.host
+            .session(&session_id.to_string())
+            .await
+            .map_err(|error| AgUiError::InvalidInput(error.to_string()))?
+            .resolve_waits(command, target, approvals, results)
+            .await
+            .map_err(|error| AgUiError::InvalidInput(error.to_string()))?;
+        Ok(ResumeOutcome::Resumed)
+    }
     fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt> {
         self.open(session_id)
             .iter()
@@ -210,9 +328,10 @@ impl InterruptSource for HostInterrupts {
             // answer through the `/v1` API); the turn has moved on then.
             let _ = match answer {
                 Answer::Approval(decision) => {
-                    self.host.decide_approval(&id, &tool_call_id, decision)
+                    self.host
+                        .decide_local_approval(&id, &tool_call_id, decision)
                 }
-                Answer::Question(outcome) => self.host.answer_questions(
+                Answer::Question(outcome) => self.host.answer_local_questions(
                     &id,
                     Some(&tool_call_id),
                     outcome.status,

@@ -29,6 +29,19 @@ and reasoning onto the Anthropic wire format.
    [Anthropic Console](https://console.anthropic.com/).
 4. Save. Everruns discovers available Claude models automatically.
 
+### Claude Max and Team API credits
+
+Claude Max and Team plans include monthly Claude API credits. They land in the
+Anthropic Console organization you link to your plan, so any API key from that
+organization spends them first, before purchased credits. To run Everruns
+agents on those credits, create the key in the linked organization and add it
+as described above. Nothing else in Everruns changes.
+
+Everruns does not offer signing in with a Claude.ai account: Anthropic does not
+allow third-party products to use Claude.ai login or plan usage limits. See
+[API credits for Max and Team plans](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
+for eligibility, amounts, and how to link the organization.
+
 ## Models
 
 Anthropic's `/v1/models` endpoint returns capability metadata, which Everruns
@@ -42,13 +55,13 @@ once with a lower limit if a stale profile causes the provider to reject it.
 Thinking counts toward `max_tokens`. When you set `max_tokens` yourself, Everruns
 preserves it as a hard limit on all generated tokens, including thinking. When
 the limit cannot accommodate thinking, the driver omits thinking rather than
-exceed the limit. On models where thinking cannot be disabled (Opus 5.5,
-Sonnet 5.5, Fable 5.x), omitting it would run thinking at the provider's default
+exceed the limit. On models that always think (Opus 5.5, Sonnet 5.5,
+Haiku 5.5, Fable 5.x), omitting it would run thinking at the provider's default
 effort, so the driver keeps it and lowers the effort to `low` instead. A very
 small limit on those models can still be spent on thinking; give them room for
 the answer.
 
-Claude models that always think (Opus 5.5, Sonnet 5.5, Fable 5.x) always get an explicit
+Claude models that always think (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.x) always get an explicit
 effort: the model's default when you choose none, and `low` when you choose
 `none`. These and the other adaptive-thinking models reject assistant prefill, so
 a conversation must end with a user or tool message.
@@ -57,5 +70,6 @@ a conversation must end with a user or tool message.
 
 - [Anthropic](https://www.anthropic.com/)
 - [Anthropic Console](https://console.anthropic.com/)
+- [API credits for Max and Team plans](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
 - [`everruns-drivers` on crates.io](https://crates.io/crates/everruns-drivers), feature `anthropic`
 - [Migrate between providers](/how-to/migrate-providers/)

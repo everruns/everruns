@@ -43,7 +43,7 @@ Tools can return images alongside JSON results via `ToolExecutionResult::success
 
 Supported image formats: PNG, JPEG, GIF, WebP (matching LLM vision API support).
 
-Note: OpenAI Responses API (`function_call_output`) does not support images in tool results - images are dropped with a warning in that path.
+The Responses protocol (OpenAI, OpenRouter) sends tool-result images as `input_image` parts of `function_call_output`.
 
 **Provided Tools:** See `crates/core/src/tools.rs` for the built-in tool implementations.
 
@@ -369,7 +369,7 @@ Current hooks:
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.
-- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/engine/execution/act_hooks.rs`.
+- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Native images have their own 5 MiB cumulative budget (they are priced by pixels, not bytes, and a text-sized cap dropped every ordinary screenshot); an image over it is dropped and the result says so. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/engine/execution/act_hooks.rs`.
 
 ### Loop Detection (EVE-227)
 
@@ -411,6 +411,7 @@ See `crates/core/src/builtins/loop_detection.rs`.
 - **Concurrent by default.** Calls with no `concurrency_class` run concurrently. Read-only tools and unannotated/MCP/dynamic tools therefore parallelize freely (permissive default).
 - **Class serialization.** Calls that share a non-empty `concurrency_class` run sequentially in arrival order, so mutations to the same shared resource cannot interleave. Annotated classes today: `session_workspace` (bash, `write_file`/`edit_file`/`delete_file`), `session_sql` (`sql_execute`), `session_todos` (`write_todos`), `session_storage` (`kv_store`/`secret_store`). Different classes run in parallel with each other.
 - **Concurrency cap.** Total simultaneously-executing calls are bounded by a semaphore. Default 32, override per-process with `EVERRUNS_ACT_MAX_TOOL_CONCURRENCY`.
+- **Call cap.** At most 64 server tool calls run from one model response (override with `EVERRUNS_ACT_MAX_TOOL_CALLS`). Each call past the cap gets an error result telling the model to request it in a later turn, and emits no tool events (TM-AGENT-007).
 - **CPU offload.** `cpu_bound` tools (e.g. the in-process `bash` interpreter) are executed on their own task (`tokio::spawn`) so a synchronous burst cannot starve the cooperative polling of I/O-bound tools sharing the batch. I/O-bound tools stay cooperative; no extra task is spawned for them.
 - **Override.** `ActInput.parallel_tool_calls == Some(false)` forces a strictly sequential schedule (mirrors the request's `parallel_tool_calls`). Results are always returned in the model's original call order regardless of completion order.
 

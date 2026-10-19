@@ -1,5 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
-import { Blocks, BookOpen, Plug } from "lucide-react";
+import {
+  AgentIcon,
+  SessionIcon,
+  HarnessDomainIcon,
+  SkillsIcon,
+  CapabilitiesIcon,
+  PluginsIcon,
+} from "@/components/icons/facet-icons";
 import { useGlobalSearch } from "@/hooks/use-global-search";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
 import { defaultNavigationSections } from "@/lib/navigation";
@@ -263,7 +270,7 @@ describe("useGlobalSearch", () => {
     expect(result.current).toContainEqual(
       expect.objectContaining({
         id: "session:session_123",
-        href: "/sessions/session_123/transcript",
+        href: "/sessions/session_123/trace",
       }),
     );
   });
@@ -271,8 +278,7 @@ describe("useGlobalSearch", () => {
   it.each([
     ["chats", "/chats"],
     ["playground", "/playground"],
-    ["exposures", "/exposures"],
-    ["sandbox templates", "/sandbox-templates"],
+    ["sandbox templates", "/sandboxes"],
     ["slack", "/settings/slack"],
     ["health", "/settings/health"],
     ["new side chat", "/chats/new"],
@@ -332,6 +338,22 @@ describe("useGlobalSearch", () => {
     expect(result.current.some((item) => item.href === "/dev")).toBe(false);
   });
 
+  it("offers MCP catalog only to people who can manage it", () => {
+    const allowed = renderHook(() => useGlobalSearch("mcp catalog"));
+    expect(allowed.result.current).toContainEqual(
+      expect.objectContaining({ category: "navigation", href: "/settings/mcp-catalog" }),
+    );
+    expect(allowed.result.current.some((item) => item.href === "/mcp-servers")).toBe(false);
+
+    mockDurableAllowed.value = false;
+    const denied = renderHook(() => useGlobalSearch("mcp catalog"));
+    expect(
+      denied.result.current.some(
+        (item) => item.category === "navigation" && item.href === "/settings/mcp-catalog",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps all settings destinations discoverable for a broad query", () => {
     const { result } = renderHook(() => useGlobalSearch("settings"));
     expect(result.current).toContainEqual(expect.objectContaining({ href: "/settings/health" }));
@@ -370,15 +392,25 @@ describe("useGlobalSearch", () => {
   });
 
   it.each([
-    ["skills", "/skills", BookOpen],
-    ["capabilities", "/capabilities", Blocks],
-    ["plugins", "/plugins", Plug],
+    ["skills", "/skills", SkillsIcon],
+    ["capabilities", "/capabilities", CapabilitiesIcon],
+    ["plugins", "/plugins", PluginsIcon],
   ])("uses the semantic %s icon in navigation search", (query, href, icon) => {
     const { result } = renderHook(() => useGlobalSearch(query));
 
     expect(result.current).toContainEqual(
       expect.objectContaining({ category: "navigation", href, icon }),
     );
+  });
+
+  it.each([
+    ["agent_unknown", "/agents/agent_unknown", AgentIcon],
+    ["session_unknown", "/sessions/session_unknown", SessionIcon],
+    ["harness_unknown", "/harnesses/harness_unknown", HarnessDomainIcon],
+    ["skill_unknown", "/skills/skill_unknown", SkillsIcon],
+  ])("uses the entity's own domain glyph for an ID lookup: %s", (query, href, icon) => {
+    const { result } = renderHook(() => useGlobalSearch(query));
+    expect(result.current).toContainEqual(expect.objectContaining({ category: "id", href, icon }));
   });
 
   it.each([

@@ -8,6 +8,7 @@
 // Resolution).
 
 use crate::api::state::ApiState;
+pub use crate::domains::organizations::types::ResolveOrgResponse;
 
 use axum::{
     Json, Router,
@@ -15,7 +16,7 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::AuthUser;
@@ -26,15 +27,6 @@ pub struct ResolveOrgQuery {
     /// Prefixed public ID of a top-level entity (e.g. a session, agent, app).
     #[schema(example = "session_019db85695a8785e87e8203109109343")]
     pub id: String,
-}
-
-/// Response body for the `resolve_org` operation.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct ResolveOrgResponse {
-    /// Public ID of the organization that owns the resource.
-    pub org_id: String,
-    /// Organization name (for UX messaging).
-    pub org_name: String,
 }
 
 /// GET /v1/resolve-org — resolve the owning org for a resource id.

@@ -81,7 +81,7 @@ impl RotatingAuth {
                 .is_some_and(|g| oauth::grants_plan_usage(&g.scopes))
         {
             return Err(authentication(
-                "ChatGPT plan use was not granted. Sign in again to allow plan use.",
+                "ChatGPT Plan use was not granted. Sign in again to allow plan use.",
             ));
         }
         if auth.access_token.is_empty() {
@@ -157,7 +157,7 @@ impl RotatingAuth {
                 .is_some_and(|g| oauth::grants_plan_usage(&g.scopes))
         {
             return Err(authentication(
-                "ChatGPT plan use was not granted. Sign in again to allow plan use.",
+                "ChatGPT Plan use was not granted. Sign in again to allow plan use.",
             ));
         }
         Ok(auth)

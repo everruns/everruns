@@ -135,6 +135,7 @@ struct CommandArgs {
     name: Option<LitStr>,
     category: Option<LitStr>,
     description: Option<LitStr>,
+    summary: Option<LitStr>,
     method: Option<LitStr>,
     path: Option<LitStr>,
     tag: Option<LitStr>,
@@ -173,6 +174,7 @@ impl Parse for CommandArgs {
                 ("description", Meta::NameValue(nv)) => {
                     args.description = Some(lit_str(&nv.value)?)
                 }
+                ("summary", Meta::NameValue(nv)) => args.summary = Some(lit_str(&nv.value)?),
                 ("method", Meta::NameValue(nv)) => {
                     let method = lit_str(&nv.value)?;
                     if !matches!(
@@ -209,7 +211,7 @@ impl Parse for CommandArgs {
                     return Err(syn::Error::new(
                         meta.span(),
                         "unknown #[command] argument; expected name, category, description, \
-                         method, path, tag, policy, positional, read_only, cli, http, \
+                         summary, method, path, tag, policy, positional, read_only, cli, http, \
                          params(..), request_body(..) or responses(..)",
                     ));
                 }
@@ -366,6 +368,7 @@ fn expand(args: CommandArgs, mut item: ItemImpl) -> syn::Result<TokenStream2> {
             output: &output,
             name: &name,
             description: &description,
+            summary: args.summary.as_ref(),
             method: &method,
             path: &path,
             tag: args.tag.as_ref().unwrap_or(&category),
@@ -373,15 +376,30 @@ fn expand(args: CommandArgs, mut item: ItemImpl) -> syn::Result<TokenStream2> {
             request_body: args.request_body,
             responses: args.responses,
         })?);
-    } else if args.params.is_some() || args.request_body.is_some() || args.responses.is_some() {
+    } else if args.summary.is_some()
+        || args.params.is_some()
+        || args.request_body.is_some()
+        || args.responses.is_some()
+    {
         return Err(syn::Error::new(
             Span::call_site(),
-            "params(..), request_body(..) and responses(..) document the generated HTTP \
-             handler; add `http = <mode>`",
+            "summary, params(..), request_body(..) and responses(..) document the generated \
+             HTTP handler; add `http = <mode>`",
         ));
     }
 
     Ok(out)
+}
+
+/// The text up to the first sentence end, without its period.
+fn first_sentence(text: &str) -> &str {
+    let text = text.trim();
+    let end = text
+        .match_indices(". ")
+        .map(|(i, _)| i)
+        .find(|&i| !["e.g", "i.e", "vs"].iter().any(|a| text[..i].ends_with(a)))
+        .unwrap_or(text.len());
+    text[..end].trim_end_matches('.')
 }
 
 struct HttpSpec<'a> {
@@ -391,6 +409,7 @@ struct HttpSpec<'a> {
     output: &'a Type,
     name: &'a LitStr,
     description: &'a LitStr,
+    summary: Option<&'a LitStr>,
     method: &'a LitStr,
     path: &'a LitStr,
     tag: &'a LitStr,
@@ -407,6 +426,7 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
         output,
         name,
         description,
+        summary,
         method,
         path,
         tag,
@@ -454,6 +474,15 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
     let user_params = params.into_iter();
     let request_body = request_body.map(|body| quote!(request_body = #body,));
     let user_responses = responses.map(|r| quote!(, #r));
+    // The OpenAPI summary titles the endpoint's reference page, so it stays
+    // short; the full description follows it. Without `summary = ".."` the
+    // description's first sentence is used, and the documentation module's
+    // test fails on any summary still too long for a page title.
+    let summary = summary
+        .cloned()
+        .unwrap_or_else(|| LitStr::new(first_sentence(&description.value()), description.span()));
+    let description = (description.value().trim().trim_end_matches('.') != summary.value())
+        .then(|| quote!(description = #description,));
     let http_method = syn::Ident::new(&method.value().to_lowercase(), method.span());
 
     let doc_fn = format_ident!("__command_openapi_{}", name.value());
@@ -469,7 +498,8 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
             #http_method,
             path = #path,
             operation_id = #name,
-            summary = #description,
+            summary = #summary,
+            #description
             params(#(#path_param_docs,)* #(#user_params)*),
             #request_body
             responses(#success #user_responses),
@@ -479,7 +509,7 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
         fn #doc_fn() {}
 
         ::inventory::submit! {
-            crate::api::command_http::CommandOpenApi::of::<#doc_path>()
+            crate::api::command_http::CommandOpenApi::of::<#doc_path>(#name)
         }
     })
 }

@@ -15,7 +15,8 @@ impl ChatDriver for AnthropicChatDriver {
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
-        let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
+        let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled);
+        let prompt_cache_enabled = prompt_cache.is_some();
         let (wire_model, wants_million_context) = split_million_context(&config.model);
         crate::anthropic::prefill::reject_trailing_assistant(wire_model, &messages)?;
         let profile = everruns_contracts::get_model_profile(
@@ -36,26 +37,68 @@ impl ChatDriver for AnthropicChatDriver {
                 .is_some_and(|profile| profile.supports_server_compaction);
         let mut prefix_messages = match &config.provider_opaque_context {
             Some(ProviderOpaqueContext::AnthropicMessagesPrefix { messages_json }) => {
+                // A driver error, not a control-plane one: a store error would
+                // be retried as infrastructure (see
+                // the reason step's `error_policy::returned_to_turn_driver`), and a
+                // corrupt checkpoint does not heal on retry.
                 serde_json::from_str::<Vec<Value>>(messages_json).map_err(|error| {
-                    AgentLoopError::store(format!(
+                    AgentLoopError::llm(format!(
                         "invalid Anthropic messages-prefix checkpoint: {error}"
                     ))
                 })?
             }
             _ => Vec::new(),
         };
-        let message_cache_enabled = prompt_cache_enabled && !wants_server_compaction;
-        let prepared = layout::keep_later_system_messages_in_place(&messages, &config.model);
-        let (system_prompt, converted_messages) = Self::convert_messages_with_options(
-            &prepared.messages,
-            Some(&prepared),
-            message_cache_enabled,
-            config.volatile_suffix_len,
-            !prefix_messages.is_empty(),
+        // The explicit strategy caches only the stable prefix (tools, system):
+        // no breakpoints on the conversation, so it is never written to cache.
+        let message_cache_enabled = prompt_cache.is_some_and(|cfg| {
+            cfg.strategy != everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
+        }) && !wants_server_compaction;
+        // Inline tool changes need every change on a system message; when one
+        // cannot be placed, the request goes out as before (see `tool_changes`).
+        let allow_unmatched_tool_results = !prefix_messages.is_empty();
+        let convert = |inline: bool| {
+            // Inline mode sends the epoch's system prompt too; prompt text
+            // added since rides in the changes' notes.
+            let sent = everruns_contracts::tool_changes::with_system_prompt(
+                &messages,
+                config.system_prompt_baseline.as_deref().filter(|_| inline),
+            );
+            let prepared =
+                layout::keep_later_system_messages_in_place(&sent, &config.model, inline);
+            let (system, converted) = Self::convert_messages_with_options(
+                &prepared.messages,
+                Some(&prepared),
+                message_cache_enabled,
+                config.volatile_suffix_len,
+                allow_unmatched_tool_results,
+            );
+            let placed = tool_changes::all_placed(&converted, prepared.tool_definition_count());
+            (system, converted, placed)
+        };
+        let mut inline_tool_changes = tool_changes::eligible(
+            config,
+            wire_model,
+            endpoint.base_url() == Some(DEFAULT_BASE_URL),
         );
-        let wants_clear_at = converted_messages
+        let (mut system_prompt, mut converted_messages, placed) = convert(inline_tool_changes);
+        if inline_tool_changes && !placed {
+            tracing::debug!(
+                "AnthropicDriver: a tool change has no place; sending the current tools"
+            );
+            inline_tool_changes = false;
+            (system_prompt, converted_messages, _) = convert(false);
+        }
+        let mut conversation_betas = Vec::new();
+        if converted_messages
             .iter()
-            .any(|message| message.clear_at.is_some());
+            .any(|message| message.clear_at.is_some())
+        {
+            conversation_betas.push("mid-conversation-system-clear-at-2026-08-21");
+        }
+        if inline_tool_changes {
+            conversation_betas.push(tool_changes::INLINE_TOOLS_BETA);
+        }
         for message in converted_messages {
             prefix_messages.push(serde_json::to_value(message).map_err(|error| {
                 AgentLoopError::llm(format!("failed to serialize Anthropic message: {error}"))
@@ -66,6 +109,19 @@ impl ChatDriver for AnthropicChatDriver {
         if computer_toolset {
             crate::anthropic::computer_toolset::rewrite_messages(&mut prefix_messages);
         }
+        // Native browser toolset: member calls replace `browser`.
+        let browser_toolset = crate::anthropic::browser_toolset::active(config, wire_model);
+        if browser_toolset {
+            crate::anthropic::browser_toolset::rewrite_messages(&mut prefix_messages);
+        }
+        // Native web search: the server tool replaces the `web_search`
+        // function tool, and replayed search blocks are made acceptable to a
+        // request with or without it.
+        let web_search_tool = crate::anthropic::web_search::server_tool(config, wire_model);
+        crate::anthropic::web_search::rewrite_messages(
+            &mut prefix_messages,
+            web_search_tool.is_some(),
+        );
         let anthropic_messages = prefix_messages;
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
@@ -84,7 +140,9 @@ impl ChatDriver for AnthropicChatDriver {
         // `claude_tool_search` / `auto_tool_search` capability — and reaches here
         // on `config.tool_search`.
         let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
-        let mut tools = if config.tools.is_empty() {
+        let mut tools = if inline_tool_changes {
+            Some(tool_changes::tools(config, prompt_cache_enabled))
+        } else if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
             if ts_config.enabled && supports_tool_search {
@@ -113,6 +171,41 @@ impl ChatDriver for AnthropicChatDriver {
                 entries[position] = AnthropicToolEntry::Raw(
                     crate::anthropic::computer_toolset::toolset_entry(cached),
                 );
+            }
+        }
+        if browser_toolset && let Some(entries) = tools.as_mut() {
+            // The toolset stands in for the `browser` function tool, keeping
+            // its prompt-cache breakpoint when it carried one.
+            let position = entries.iter().position(|entry| {
+                matches!(entry, AnthropicToolEntry::Function(tool)
+                    if tool.name == everruns_contracts::native_computer::BROWSER_TOOL_NAME)
+            });
+            if let Some(position) = position {
+                let cached = matches!(&entries[position],
+                    AnthropicToolEntry::Function(tool) if tool.cache_control.is_some());
+                entries[position] = AnthropicToolEntry::Raw(
+                    crate::anthropic::browser_toolset::toolset_entry(cached),
+                );
+            }
+        }
+        if let Some(mut server_tool) = web_search_tool
+            && let Some(entries) = tools.as_mut()
+        {
+            // The server tool stands in for the `web_search` function tool,
+            // keeping its prompt-cache breakpoint when it carried one. A
+            // deferred function tool is replaced too: server tools load up
+            // front.
+            let position = entries.iter().position(|entry| {
+                matches!(entry, AnthropicToolEntry::Function(tool)
+                    if tool.name == everruns_contracts::native_web_search::WEB_SEARCH_FUNCTION_TOOL)
+            });
+            if let Some(position) = position {
+                if matches!(&entries[position],
+                    AnthropicToolEntry::Function(tool) if tool.cache_control.is_some())
+                {
+                    server_tool["cache_control"] = json!({ "type": "ephemeral" });
+                }
+                entries[position] = AnthropicToolEntry::Raw(server_tool);
             }
         }
 
@@ -262,12 +355,12 @@ impl ChatDriver for AnthropicChatDriver {
         // Map the request-level parallel preference (EVE-598) onto Anthropic's
         // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
         // when tools are present, so skip it for tool-less requests.
-        // Computer member actions are stateful and screenshot-dependent: never let
+        // Computer and browser member actions are stateful and screen-dependent: never let
         // the provider batch them, so a failed action stops the turn instead of
         // letting later actions run against a stale screen.
         let parallel =
             config.resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model));
-        let parallel = if computer_toolset {
+        let parallel = if computer_toolset || browser_toolset {
             Some(false)
         } else {
             parallel
@@ -290,7 +383,7 @@ impl ChatDriver for AnthropicChatDriver {
         });
         let wants_cache_diagnostics = diagnostics.is_some();
 
-        let request = AnthropicRequest {
+        let mut request = AnthropicRequest {
             model: wire_model.to_string(),
             messages: anthropic_messages,
             max_tokens,
@@ -306,6 +399,10 @@ impl ChatDriver for AnthropicChatDriver {
             cache_control: (wants_server_compaction && prompt_cache_enabled)
                 .then(AnthropicCacheControl::ephemeral),
         };
+        super::cache::apply_ttl(
+            &mut request,
+            prompt_cache.and_then(|cfg| cfg.retention.anthropic_ttl()),
+        );
         let request_messages = Arc::new(request.messages.clone());
 
         // Share the (possibly fallback-mutated) request across reconnect
@@ -328,7 +425,7 @@ impl ChatDriver for AnthropicChatDriver {
                         needs_interleaved_thinking,
                         wants_million_context,
                         wants_cache_diagnostics,
-                        wants_clear_at,
+                        conversation_betas: &conversation_betas,
                         wants_server_compaction,
                         max_tokens_from_profile,
                         model: &config.model,
@@ -341,14 +438,24 @@ impl ChatDriver for AnthropicChatDriver {
         if wants_server_compaction {
             server_compaction::record_confirmation(endpoint, &config.model);
         }
+        // The body of the attempt that connected, after any max_tokens
+        // fallback rewrote it: the same value `send_messages_request` sent.
+        let captured_request = config
+            .capture_request
+            .then(|| serde_json::to_value(&*request.lock().unwrap()).ok())
+            .flatten();
 
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
         let output_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        let cache_creation_1h_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        // `usage.server_tool_use.web_search_requests`: billed native searches.
+        let web_search_requests = Arc::new(Mutex::new(0u32));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
-        let current_is_member = Arc::new(Mutex::new(false));
+        // Toolset of the tool call being streamed, when it is a member call.
+        let current_is_member = Arc::new(Mutex::new(Option::<Toolset>::None));
         let current_thinking = Arc::new(Mutex::new(Option::<OpenThinkingBlock>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
@@ -372,6 +479,8 @@ impl ChatDriver for AnthropicChatDriver {
             let output_tokens = Arc::clone(&output_tokens);
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
+            let cache_creation_1h_tokens = Arc::clone(&cache_creation_1h_tokens);
+            let web_search_requests = Arc::clone(&web_search_requests);
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_is_member = Arc::clone(&current_is_member);
             let current_thinking = Arc::clone(&current_thinking);
@@ -411,6 +520,11 @@ impl ChatDriver for AnthropicChatDriver {
                                         );
                                     }
                                     if let Some(usage) = data.message.usage {
+                                        if let Some(searches) = crate::anthropic::web_search::reported_searches(
+                                            usage.server_tool_use.as_ref(),
+                                        ) {
+                                            *web_search_requests.lock().unwrap() = searches;
+                                        }
                                         *input_tokens.lock().unwrap() = usage.input_tokens;
                                         if let Some(cache_read) = usage.cache_read_input_tokens {
                                             *cache_read_tokens.lock().unwrap() = Some(cache_read);
@@ -420,6 +534,10 @@ impl ChatDriver for AnthropicChatDriver {
                                         {
                                             *cache_creation_tokens.lock().unwrap() =
                                                 Some(cache_creation);
+                                        }
+                                        if let Some(split) = usage.cache_creation {
+                                            *cache_creation_1h_tokens.lock().unwrap() =
+                                                split.ephemeral_1h_input_tokens;
                                         }
                                     }
                                 }
@@ -433,7 +551,28 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .insert(data.index, data.content_block.clone());
-                                    let member = crate::anthropic::computer_toolset::is_member_block(
+                                    // Native web search: the server call and
+                                    // its result are hosted calls, never client
+                                    // tool calls; the raw blocks above replay.
+                                    if let Some(event) =
+                                        crate::anthropic::web_search::hosted_call_at_start(
+                                            &data.content_block,
+                                            |id| {
+                                                response_content
+                                                    .lock()
+                                                    .unwrap()
+                                                    .values()
+                                                    .find(|block| {
+                                                        block.get("id").and_then(Value::as_str)
+                                                            == Some(id)
+                                                    })
+                                                    .and_then(crate::anthropic::web_search::search_query)
+                                            },
+                                        )
+                                    {
+                                        return Ok(event);
+                                    }
+                                    let member = Toolset::of_block(
                                         &data.content_block,
                                     );
                                     let Ok(content_block) =
@@ -547,6 +686,26 @@ impl ChatDriver for AnthropicChatDriver {
                                                 .signature = Some(signature);
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
+                                        AnthropicDelta::CitationsDelta { citation } => {
+                                            // Kept on the raw text block: web search
+                                            // citations carry an `encrypted_index`
+                                            // the next turn sends back.
+                                            let mut blocks = response_content.lock().unwrap();
+                                            if let Some(Value::Object(block)) =
+                                                blocks.get_mut(&data.index)
+                                            {
+                                                let citations = block
+                                                    .entry("citations".to_string())
+                                                    .or_insert_with(|| Value::Array(Vec::new()));
+                                                if !citations.is_array() {
+                                                    *citations = Value::Array(Vec::new());
+                                                }
+                                                if let Value::Array(citations) = citations {
+                                                    citations.push(citation);
+                                                }
+                                            }
+                                            return Ok(LlmStreamEvent::TextDelta(String::new()));
+                                        }
                                         AnthropicDelta::CompactionDelta {
                                             content,
                                             encrypted_content,
@@ -586,10 +745,23 @@ impl ChatDriver for AnthropicChatDriver {
                                     if let Some(mut tc) = current.take() {
                                         // EVE-636: parse the accumulated JSON string exactly once.
                                         finalize_tool_arguments(&mut tc);
-                                        if std::mem::take(&mut *current_is_member.lock().unwrap()) {
-                                            crate::anthropic::computer_toolset::into_computer_call(&mut tc);
+                                        let mut accumulated = accumulated_tool_calls.lock().unwrap();
+                                        match current_is_member.lock().unwrap().take() {
+                                            Some(Toolset::Computer) => {
+                                                crate::anthropic::computer_toolset::into_computer_call(
+                                                    &mut tc,
+                                                    &accumulated,
+                                                )
+                                            }
+                                            Some(Toolset::Browser) => {
+                                                crate::anthropic::browser_toolset::into_browser_call(
+                                                    &mut tc,
+                                                    &accumulated,
+                                                )
+                                            }
+                                            None => {}
                                         }
-                                        accumulated_tool_calls.lock().unwrap().push(tc);
+                                        accumulated.push(tc);
                                     }
                                 }
 
@@ -629,6 +801,18 @@ impl ChatDriver for AnthropicChatDriver {
                                         .cloned()
                                         .and_then(|value| serde_json::from_value(value).ok())
                                 });
+
+                                // A native web search's query is complete:
+                                // report it on the in-progress hosted call.
+                                if let Some(index) = stop.as_ref().map(|data| data.index) {
+                                    let mut blocks = response_content.lock().unwrap();
+                                    if let Some(event) = blocks
+                                        .get_mut(&index)
+                                        .and_then(crate::anthropic::web_search::hosted_call_at_stop)
+                                    {
+                                        return Ok(event);
+                                    }
+                                }
 
                                 let mut open = current_thinking.lock().unwrap();
                                 if let Some(mut block) = open.take() {
@@ -677,6 +861,11 @@ impl ChatDriver for AnthropicChatDriver {
                                         record_cache_diagnostics(&diagnostics_payload, diagnostics);
                                     }
                                     if let Some(usage) = data.usage {
+                                        if let Some(searches) = crate::anthropic::web_search::reported_searches(
+                                            usage.server_tool_use.as_ref(),
+                                        ) {
+                                            *web_search_requests.lock().unwrap() = searches;
+                                        }
                                         *output_tokens.lock().unwrap() = usage.output_tokens;
                                         // Cache tokens may also appear in delta
                                         if usage.cache_read_input_tokens.is_some() {
@@ -687,9 +876,17 @@ impl ChatDriver for AnthropicChatDriver {
                                             *cache_creation_tokens.lock().unwrap() =
                                                 usage.cache_creation_input_tokens;
                                         }
+                                        if let Some(split) = usage.cache_creation {
+                                            *cache_creation_1h_tokens.lock().unwrap() =
+                                                split.ephemeral_1h_input_tokens;
+                                        }
                                     }
 
                                     if let Some(stop_reason) = data.delta.stop_reason {
+                                        // `pause_turn` (a long server-tool loop
+                                        // paused) ends the generation as a stop:
+                                        // the driver does not continue it (see
+                                        // `web_search`).
                                         let normalized = match stop_reason.as_str() {
                                             "max_tokens" => "length",
                                             "tool_use" => "tool_calls",
@@ -746,6 +943,11 @@ impl ChatDriver for AnthropicChatDriver {
                                     stop.as_deref().unwrap_or("none"),
                                 );
 
+                                let searches = crate::anthropic::web_search::search_count(
+                                    *web_search_requests.lock().unwrap(),
+                                    &content,
+                                );
+
                                 Ok(LlmStreamEvent::Done(Box::new({
                                     let mut metadata = LlmCompletionMetadata::default();
                                     metadata.total_tokens = Some(in_tokens + out_tokens);
@@ -753,6 +955,8 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.completion_tokens = Some(out_tokens);
                                     metadata.cache_read_tokens = cache_read;
                                     metadata.cache_creation_tokens = cache_creation;
+                                    metadata.cache_creation_1h_tokens =
+                                        *cache_creation_1h_tokens.lock().unwrap();
                                     metadata.model = Some(model);
                                     metadata.response_model = response_model.lock().unwrap().clone();
                                     // `None` when no `stop_reason` arrived: kept
@@ -768,6 +972,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         .lock()
                                         .unwrap()
                                         .clone();
+                                    metadata.web_citations =
+                                        crate::anthropic::web_search::citations(&content);
                                     if !content.is_empty() {
                                         metadata.provider_opaque_content =
                                             Some(ProviderOpaqueContent::new(
@@ -776,6 +982,11 @@ impl ChatDriver for AnthropicChatDriver {
                                             ));
                                     }
                                     metadata.provider_checkpoint_candidate = checkpoint_candidate;
+                                    if searches > 0 {
+                                        metadata
+                                            .hosted_tool_calls
+                                            .insert("web_search_call".to_string(), searches);
+                                    }
                                     metadata
                                 })))
                             }
@@ -799,7 +1010,10 @@ impl ChatDriver for AnthropicChatDriver {
             }
         }));
 
-        Ok(converted_stream)
+        Ok(everruns_contracts::driver_helpers::attach_request_body(
+            converted_stream,
+            captured_request,
+        ))
     }
 
     /// Anthropic maps the preference onto `tool_choice.disable_parallel_tool_use`
@@ -956,5 +1170,25 @@ impl ChatDriver for AnthropicChatDriver {
             .collect();
 
         Ok(Some(discovered))
+    }
+}
+
+/// A native toolset whose member calls map back to a function tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Toolset {
+    Computer,
+    Browser,
+}
+
+impl Toolset {
+    /// The toolset a raw `content_block_start` block is a member call of.
+    fn of_block(block: &serde_json::Value) -> Option<Self> {
+        if crate::anthropic::computer_toolset::is_member_block(block) {
+            Some(Self::Computer)
+        } else if crate::anthropic::browser_toolset::is_member_block(block) {
+            Some(Self::Browser)
+        } else {
+            None
+        }
     }
 }

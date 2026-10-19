@@ -66,7 +66,6 @@ export function ChatComposer({
   handlePaste,
   placeholder,
   selectedModelId,
-  usingChatGptPlan = false,
   recentModels,
   onModelChange,
   modelTriggerLabel,
@@ -120,7 +119,6 @@ export function ChatComposer({
   /** Overrides the generic prompt, e.g. to name the agent being replied to. */
   placeholder?: string;
   selectedModelId: string;
-  usingChatGptPlan?: boolean;
   recentModels: Model[];
   onModelChange: (value: string) => void;
   modelTriggerLabel: string;
@@ -226,6 +224,10 @@ export function ChatComposer({
     });
   };
 
+  // Send and Stop share one slot: typing while a turn runs offers Send, which
+  // steers the new message into that turn.
+  const showStop = isActive && inputValue.trim().length === 0 && !hasImages && !hasFiles;
+
   return (
     <div className={chatSurfaceStyles.composerSection}>
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -240,7 +242,7 @@ export function ChatComposer({
           accept={
             supportsPdf
               ? [...ALLOWED_IMAGE_TYPES, ...ALLOWED_FILE_EXTENSIONS].join(",")
-              : ALLOWED_IMAGE_TYPES.join(",")
+              : [...ALLOWED_IMAGE_TYPES, ".zip"].join(",")
           }
           multiple
           className="hidden"
@@ -323,109 +325,103 @@ export function ChatComposer({
               mentionQuery || showCommands ? COMPOSER_AUTOCOMPLETE_LISTBOX_ID : undefined
             }
           />
-        </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-lg"
-              className={chatSurfaceStyles.composerIconButton}
-              disabled={composerDisabled}
-              onClick={() => fileInputRef.current?.click()}
-              title={t("attach_images")}
-            >
-              <ImagePlus className="icon-sharp h-4 w-4" />
-            </Button>
-
-            {usingChatGptPlan && (
-              <a
-                href="https://chatgpt.com/settings/usage"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Using ChatGPT plan
-              </a>
-            )}
-            <ModelEffortMenu
-              models={models}
-              recentModels={recentModels}
-              selectedModelId={selectedModelId}
-              onModelChange={onModelChange}
-              modelTriggerLabel={modelTriggerLabel}
-              defaultModelOptionLabel={defaultModelOptionLabel}
-              supportsReasoning={supportsReasoning}
-              reasoningEffort={reasoningEffort}
-              reasoningEffortConfig={reasoningEffortConfig}
-              defaultEffortName={defaultEffortName}
-              getReasoningEffortName={getReasoningEffortName}
-              onReasoningEffortChange={onReasoningEffortChange}
-              supportsVerbosity={supportsVerbosity}
-              verbosity={verbosity}
-              verbosityConfig={verbosityConfig}
-              defaultVerbosityName={defaultVerbosityName}
-              getVerbosityName={getVerbosityName}
-              onVerbosityChange={onVerbosityChange}
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            {voiceEnabled && onToggleVoice && (
+          {/* Toolbar inside the card: attach, model and effort, then one slot that
+              holds Stop while a turn runs with nothing typed, and Send otherwise. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-2">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
+                variant="outline"
                 size="icon-lg"
-                variant={voiceActive ? "secondary" : "outline"}
-                className={cn(
-                  chatSurfaceStyles.composerIconButton,
-                  voiceActive && "border-success/50 text-success",
-                )}
-                disabled={voicePending || (composerDisabled && !voiceActive)}
-                onClick={onToggleVoice}
-                title={voiceActive ? "End voice session" : "Start voice session"}
+                className={chatSurfaceStyles.composerIconButton}
+                disabled={composerDisabled}
+                onClick={() => fileInputRef.current?.click()}
+                title={t("attach_images")}
               >
-                {voicePending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : voiceActive ? (
-                  <MicOff className="icon-sharp h-4 w-4" />
-                ) : (
-                  <Mic className="icon-sharp h-4 w-4" />
-                )}
+                <ImagePlus className="icon-sharp h-4 w-4" />
               </Button>
-            )}
 
-            {isActive && (
-              <Button
-                type="button"
-                size="icon-lg"
-                variant="destructive"
-                className={chatSurfaceStyles.composerDangerButton}
-                disabled={cancelCurrentTurn.isPending}
-                onClick={() => cancelCurrentTurn.mutate()}
-                title={t("cancel_current_turn")}
-              >
-                {cancelCurrentTurn.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <StopCircle className="icon-sharp h-4 w-4" />
-                )}
-              </Button>
-            )}
+              <ModelEffortMenu
+                models={models}
+                recentModels={recentModels}
+                selectedModelId={selectedModelId}
+                onModelChange={onModelChange}
+                modelTriggerLabel={modelTriggerLabel}
+                defaultModelOptionLabel={defaultModelOptionLabel}
+                supportsReasoning={supportsReasoning}
+                reasoningEffort={reasoningEffort}
+                reasoningEffortConfig={reasoningEffortConfig}
+                defaultEffortName={defaultEffortName}
+                getReasoningEffortName={getReasoningEffortName}
+                onReasoningEffortChange={onReasoningEffortChange}
+                supportsVerbosity={supportsVerbosity}
+                verbosity={verbosity}
+                verbosityConfig={verbosityConfig}
+                defaultVerbosityName={defaultVerbosityName}
+                getVerbosityName={getVerbosityName}
+                onVerbosityChange={onVerbosityChange}
+              />
+            </div>
 
-            <Button
-              type="submit"
-              size="icon-lg"
-              className={chatSurfaceStyles.composerSubmitButton}
-              disabled={!canSubmit}
-              title={isUploading ? t("uploading_images") : undefined}
-            >
-              {sendPending || isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="icon-sharp h-4 w-4" />
+            <div className="flex items-center gap-2">
+              {voiceEnabled && onToggleVoice && (
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant={voiceActive ? "secondary" : "outline"}
+                  className={cn(
+                    chatSurfaceStyles.composerIconButton,
+                    voiceActive && "border-success/50 text-success",
+                  )}
+                  disabled={voicePending || (composerDisabled && !voiceActive)}
+                  onClick={onToggleVoice}
+                  title={voiceActive ? "End voice session" : "Start voice session"}
+                >
+                  {voicePending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : voiceActive ? (
+                    <MicOff className="icon-sharp h-4 w-4" />
+                  ) : (
+                    <Mic className="icon-sharp h-4 w-4" />
+                  )}
+                </Button>
               )}
-            </Button>
+
+              {showStop && (
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="destructive"
+                  className={chatSurfaceStyles.composerDangerButton}
+                  disabled={cancelCurrentTurn.isPending}
+                  onClick={() => cancelCurrentTurn.mutate()}
+                  title={t("cancel_current_turn")}
+                >
+                  {cancelCurrentTurn.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <StopCircle className="icon-sharp h-4 w-4" />
+                  )}
+                </Button>
+              )}
+
+              {!showStop && (
+                <Button
+                  type="submit"
+                  size="icon-lg"
+                  className={chatSurfaceStyles.composerSubmitButton}
+                  disabled={!canSubmit}
+                  title={isUploading ? t("uploading_images") : undefined}
+                >
+                  {sendPending || isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="icon-sharp h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </form>

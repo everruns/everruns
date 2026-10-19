@@ -27,6 +27,8 @@ async fn test_create_and_get_agent() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -126,6 +128,8 @@ async fn test_create_and_list_sessions() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -144,7 +148,7 @@ async fn test_create_and_list_sessions() {
         .await
         .unwrap();
 
-    let pagination = crate::api::common::Pagination::new(0, 20);
+    let pagination = crate::common_dto::Pagination::new(0, 20);
     let (sessions, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
@@ -512,6 +516,8 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -627,6 +633,8 @@ async fn test_session_updated_at() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -698,6 +706,8 @@ async fn test_events_sequence() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -768,6 +778,8 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },

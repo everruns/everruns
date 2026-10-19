@@ -22,40 +22,105 @@ pub const DEFAULT_MIN_INTERVAL_SECONDS: i64 = 300;
 /// Default maximum number of active (enabled) schedules per org.
 pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 
-/// Returns the minimum interval (seconds) between the next few consecutive
-/// triggers of `cron_expression`, or `None` when the expression cannot be parsed
-/// or fires fewer than twice.
+/// Normalize a session-schedule cron expression to the seconds-aware form the
+/// `cron` crate parses, or `None` when it has the wrong number of fields.
 ///
-/// Accepts 5-field (`min hour dom mon dow`) and 6/7-field cron forms; 5-field is
-/// normalized to the seconds-aware form the `cron` crate expects (sec=0, year=*).
-/// This is more permissive than the app schedule channel's
-/// `normalize_cron_expression` (which accepts only 5 or 7 fields): here we also
-/// accept the 6-field seconds form the agent may already pass through to the store.
-pub fn cron_min_interval_seconds(cron_expression: &str) -> Option<i64> {
-    use std::str::FromStr;
+/// Accepts 5-field (`min hour dom mon dow`) and 6/7-field cron forms; 5-field
+/// gains sec=0 and year=*. This is more permissive than the app schedule
+/// channel's `normalize_cron_expression` (which accepts only 5 or 7 fields):
+/// here we also accept the 6-field seconds form the agent may already pass.
+///
+/// THREAT[TM-SCHED-001]: one normalizer for the interval gate and every next-trigger
+/// computation. When they disagreed, a 5-field Sunday cron failed to parse at
+/// the gate (and passed as "unrecognized") while the trigger computation
+/// accepted it, so `* * * * 0` slipped under the minimum interval.
+pub fn normalize_session_cron(cron_expression: &str) -> Option<String> {
     let fields: Vec<&str> = cron_expression.split_whitespace().collect();
-    let normalized = match fields.len() {
-        5 => format!("0 {} *", fields.join(" ")),
-        6 | 7 => cron_expression.to_string(),
-        _ => return None,
-    };
-    let schedule = cron::Schedule::from_str(&normalized).ok()?;
-    let upcoming: Vec<_> = schedule.upcoming(chrono::Utc).take(3).collect();
-    if upcoming.len() < 2 {
-        return None;
+    match fields.len() {
+        5 => standard_cron_to_crate_form(cron_expression),
+        6 | 7 => Some(fields.join(" ")),
+        _ => None,
     }
+}
+
+/// Rewrite a standard 5-field cron (`min hour dom mon dow`) as the 7-field
+/// form the `cron` crate parses, or `None` when it does not have 5 fields.
+///
+/// Standard cron counts weekdays 0-6 from Sunday (7 is Sunday too); the
+/// `cron` crate counts 1-7 from Sunday, so the weekday numbers become day
+/// names, which mean the same day to both. Every surface that accepts 5-field
+/// cron (session schedules, agent triggers, org schedules) reads it through
+/// here so `1-5` is Monday-Friday everywhere.
+pub fn standard_cron_to_crate_form(cron_expression: &str) -> Option<String> {
+    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
+    let [minute, hour, day, month, weekday] = fields[..] else {
+        return None;
+    };
+    Some(format!(
+        "0 {minute} {hour} {day} {month} {} *",
+        unix_weekdays_to_names(weekday)
+    ))
+}
+
+/// Rewrite a standard-cron weekday field's numbers (0-7, Sunday first) as
+/// day names, keeping lists, ranges, steps, and existing names intact.
+fn unix_weekdays_to_names(field: &str) -> String {
+    const NAMES: [&str; 8] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+    let day = |value: &str| match value.parse::<usize>() {
+        Ok(index) if index < NAMES.len() => NAMES[index].to_string(),
+        _ => value.to_string(),
+    };
+    field
+        .split(',')
+        .map(|part| {
+            let (range, step) = match part.split_once('/') {
+                Some((range, step)) => (range, Some(step)),
+                None => (part, None),
+            };
+            let range = range.split('-').map(day).collect::<Vec<_>>().join("-");
+            match step {
+                Some(step) => format!("{range}/{step}"),
+                None => range,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Parse the cron contract shared by recurring admission and trigger calculation.
+pub fn parse_session_cron(cron_expression: &str) -> Result<cron::Schedule, String> {
+    use std::str::FromStr;
+    let normalized = normalize_session_cron(cron_expression).ok_or_else(|| {
+        format!("Invalid cron expression '{cron_expression}': use 5 fields (minute hour day month weekday), or 6/7 fields with seconds")
+    })?;
+    cron::Schedule::from_str(&normalized)
+        .map_err(|error| format!("Invalid cron expression '{cron_expression}': {error}"))
+}
+
+/// Return the minimum interval between the next three occurrences.
+/// Invalid cron or fewer than two future occurrences provides no interval evidence.
+pub fn cron_min_interval_seconds(cron_expression: &str) -> Result<i64, String> {
+    cron_min_interval_seconds_after(cron_expression, Utc::now())
+}
+
+fn cron_min_interval_seconds_after(
+    cron_expression: &str,
+    after: DateTime<Utc>,
+) -> Result<i64, String> {
+    let schedule = parse_session_cron(cron_expression)?;
+    let upcoming: Vec<_> = schedule.after(&after).take(3).collect();
     upcoming
         .windows(2)
         .map(|w| (w[1] - w[0]).num_seconds())
         .min()
+        .ok_or_else(|| {
+            "Schedule cron must have at least two future occurrences to verify its minimum interval"
+                .to_string()
+        })
 }
 
 /// Validate that a recurring cron does not fire more often than the configured
-/// minimum interval. Returns a user-facing error string when it fires too often.
-///
-/// Unparseable expressions pass here (return `Ok`) and are rejected later at
-/// next-trigger computation, so this gate never false-rejects a valid cron form
-/// it does not recognize.
+/// minimum interval. Reject invalid expressions and unavailable interval evidence.
 pub fn validate_cron_min_interval(cron_expression: &str) -> Result<(), String> {
     validate_cron_min_interval_with(cron_expression, DEFAULT_MIN_INTERVAL_SECONDS)
 }
@@ -65,9 +130,9 @@ pub fn validate_cron_min_interval_with(
     cron_expression: &str,
     min_limit: i64,
 ) -> Result<(), String> {
-    if let Some(interval) = cron_min_interval_seconds(cron_expression)
-        && interval < min_limit
-    {
+    // THREAT[TM-SCHED-001]: unknown interval evidence cannot authorize recurrence.
+    let interval = cron_min_interval_seconds(cron_expression)?;
+    if interval < min_limit {
         return Err(format!(
             "Schedule cron must fire no more than once every {min_limit} seconds (≥ {} min); expression fires every {interval} seconds",
             min_limit / 60
@@ -217,14 +282,45 @@ mod limit_tests {
         ] {
             assert_eq!(
                 cron_min_interval_seconds(expression),
-                Some(seconds),
+                Ok(seconds),
                 "{expression}"
             );
         }
     }
 
+    /// Standard cron counts weekdays 0-6 from Sunday; the `cron` crate counts
+    /// 1-7. A Sunday-only every-minute cron must still hit the interval gate
+    /// rather than fail to parse here and slip through as "unrecognized".
     #[test]
-    fn unrecognized_or_exhausted_cron_has_no_interval_and_defers_validation() {
+    fn unix_weekday_crons_are_interval_checked() {
+        assert_eq!(cron_min_interval_seconds("* * * * 0"), Ok(60));
+        assert!(validate_cron_min_interval("* * * * 0").is_err());
+        assert!(validate_cron_min_interval("*/2 * * * 0,6").is_err());
+        assert_eq!(cron_min_interval_seconds("0 18 * * 0"), Ok(7 * 86_400));
+        assert_eq!(validate_cron_min_interval("0 18 * * 0"), Ok(()));
+    }
+
+    #[test]
+    fn five_field_weekdays_become_names() {
+        assert_eq!(
+            normalize_session_cron("0 18 * * 0").as_deref(),
+            Some("0 0 18 * * SUN *")
+        );
+        assert_eq!(unix_weekdays_to_names("0"), "SUN");
+        assert_eq!(unix_weekdays_to_names("7"), "SUN");
+        assert_eq!(unix_weekdays_to_names("1-5"), "MON-FRI");
+        assert_eq!(unix_weekdays_to_names("0,6"), "SUN,SAT");
+        assert_eq!(unix_weekdays_to_names("*/2"), "*/2");
+        assert_eq!(unix_weekdays_to_names("MON"), "MON");
+        assert_eq!(
+            normalize_session_cron(" 0 0 7 * * * ").as_deref(),
+            Some("0 0 7 * * *")
+        );
+        assert_eq!(normalize_session_cron("* * *"), None);
+    }
+
+    #[test]
+    fn invalid_or_exhausted_cron_is_rejected_at_admission() {
         for expression in [
             "not a cron",
             "* * *",
@@ -232,8 +328,55 @@ mod limit_tests {
             "99 * * * *",
             "0 0 0 1 1 * 2000",
         ] {
-            assert_eq!(cron_min_interval_seconds(expression), None, "{expression}");
-            assert_eq!(validate_cron_min_interval(expression), Ok(()));
+            assert!(
+                cron_min_interval_seconds(expression).is_err(),
+                "{expression}"
+            );
+            assert!(
+                validate_cron_min_interval(expression).is_err(),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_parser_preserves_compliant_weekdays_and_cron_forms() {
+        use chrono::TimeZone;
+        let after = Utc.with_ymd_and_hms(2026, 10, 12, 0, 0, 0).unwrap();
+        for expression in [
+            "0 9 * * 1-5",
+            "0 9 * * MON-FRI",
+            "0 0 9 * * MON-FRI",
+            "0 0 9 * * MON-FRI *",
+        ] {
+            let parsed = parse_session_cron(expression).unwrap();
+            assert_eq!(
+                parsed.after(&after).next(),
+                Some(Utc.with_ymd_and_hms(2026, 10, 12, 9, 0, 0).unwrap())
+            );
+            assert_eq!(
+                cron_min_interval_seconds_after(expression, after),
+                Ok(86_400)
+            );
+        }
+    }
+
+    #[test]
+    fn interval_evidence_requires_two_future_calendar_occurrences() {
+        use chrono::TimeZone;
+        let expression = "0 0 9 1,2 1 * 2027";
+        let before = Utc.with_ymd_and_hms(2026, 12, 31, 0, 0, 0).unwrap();
+        assert_eq!(
+            cron_min_interval_seconds_after(expression, before),
+            Ok(86_400)
+        );
+        let between = Utc.with_ymd_and_hms(2027, 1, 1, 10, 0, 0).unwrap();
+        let exhausted = Utc.with_ymd_and_hms(2027, 1, 3, 0, 0, 0).unwrap();
+        for after in [between, exhausted] {
+            assert_eq!(
+                cron_min_interval_seconds_after(expression, after).unwrap_err(),
+                "Schedule cron must have at least two future occurrences to verify its minimum interval"
+            );
         }
     }
 
@@ -336,6 +479,21 @@ mod limit_tests {
                 }
                 _ => panic!("unexpected result for {per_session}/{per_org}/{cron:?}"),
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn create_limits_reject_unknown_interval_without_insertion() {
+        let store = Counts {
+            session: Ok(0),
+            org: Ok(0),
+        };
+        for expression in ["not a cron", "0 0 0 1 1 * 2000"] {
+            assert!(matches!(
+                validate_schedule_create_limits(&store, SessionId::from_seed(9), Some(expression))
+                    .await,
+                Err(ScheduleLimitError::Rejected(_))
+            ));
         }
     }
 

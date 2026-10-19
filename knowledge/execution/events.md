@@ -29,9 +29,9 @@ payload structs, type registry, HTTP query fields, or SQL schema.
 - [`crates/server/src/api/events.rs`](../../crates/server/src/api/events.rs) owns
   the JSON and SSE endpoints, query validation, filtering, pagination, and
   summary response.
-- [`crates/server/src/services/event.rs`](../../crates/server/src/services/event.rs)
+- [`crates/server/src/services/event/mod.rs`](../../crates/server/src/services/event/mod.rs)
   owns emission and listener notification.
-- [`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql)
+- [`crates/server/migrations/legacy/001_base_schema.sql`](../../crates/server/migrations/legacy/001_base_schema.sql)
   and later migrations own storage columns, constraints, indexes, sequence
   allocation, and immutability triggers.
 - The tests in [`crates/contracts/src/runtime/events/mod.rs`](../../crates/contracts/src/runtime/events/mod.rs) cover
@@ -190,6 +190,26 @@ transition accompany the sealed event. See
 [`durable-execution-engine.md`](../operations/durable-execution-engine.md) for forward-progress
 and dead-letter behavior.
 
+### Failure severity: issues and errors
+
+Not every failure is broken work. The runtime, not the client, says which is
+which, using one vocabulary (`FailureSeverity` in
+[`severity.rs`](../../crates/contracts/src/runtime/events/severity.rs)):
+
+- An **issue** is a failure the work recovered from. A failed tool call is
+  returned to the model as a result and the turn carries on, so every failed
+  `tool.completed` carries `severity: issue`, and `turn.completed` reports how
+  many the turn absorbed as `issue_count`. A turn with issues still succeeded.
+- An **error** is a failure that stopped the work: `turn.failed` or a failed
+  session task. These are errors by event type or state and need no severity
+  field.
+
+Clients render issues as warnings and reserve error styling for errors. They
+must not infer severity from `success: false` alone. Failed `tool.completed`
+events recorded before the field existed omit it and read as issues, which is
+what each of them was. `act.completed.error_count` predates the vocabulary and
+keeps its name; it counts the same issues.
+
 User-facing failure events carry stable error classification and interpolation
 fields when available. Clients localize from those fields rather than matching
 English fallback text. Disclosure policy is defined in
@@ -232,6 +252,18 @@ lives in [`session-tasks.md`](../runtime-resources/session-tasks.md).
 Legacy `subagent.*` events are retired. They are no longer emitted or parsed as
 typed events; historical rows follow the unsupported-event behavior. New
 integrations consume `task.*`.
+
+### Timers
+
+A timer is a log entry: `timer.set` records when the session wants to wake
+(today, a session schedule), `timer.fired` each occurrence that was delivered,
+and `timer.cancelled` its end. Anything that indexes due work, such as the
+Framework's `local_schedules` table, is derived from these entries and rebuilt
+from them, so a crash between the log write and the index write is repaired by
+reading the log. The platform's schedule store does not write them yet; it
+moves onto them when platform workers lease sessions (step 6 of the
+actor-based design). Payloads live in
+[`timer_data.rs`](../../crates/contracts/src/runtime/events/timer_data.rs).
 
 ### Context compaction
 
@@ -355,3 +387,24 @@ records. Their output is derivative; it cannot mutate the source event.
   passed through as an untyped public payload.
 - Full-text and debug filters preserve the same authorization and supported-type
   checks as ordinary event listing.
+
+## Optional UI idle following
+
+Continuous following remains the default, including sessions driven by schedules,
+channels, or other clients. A client-driven embedding may opt out and accept that
+external updates wait for its next wake-up. Suspension requires a settled event
+tail, current settled session state, terminal background tasks, and cursor parity
+with the durable server tail. Uncertainty keeps following. A stale idle snapshot
+must never interrupt replay, local input, or parked work awaiting external events.
+
+Local mutations hold following across the request/commit gap. Reopening reuses the
+last durable cursor and preserves UI deduplication; ephemeral deltas cannot become
+replay cursors. Session switches, disabling, and unmount invalidate callbacks,
+checks, and retry timers belonging to the previous subscription.
+
+The [event hook](../../apps/ui/src/hooks/use-sessions.ts),
+[mutation coordination](../../apps/ui/src/lib/session-activity.ts), and
+[lifecycle tests](../../apps/ui/src/__tests__/use-events-idle.test.tsx) own the
+implementation and executable cases. [Events documentation](../../docs/features/events.md)
+explains the embedding option and its external-update tradeoff. Separate task
+subscriptions are unaffected; savings require measurement and are not promised.

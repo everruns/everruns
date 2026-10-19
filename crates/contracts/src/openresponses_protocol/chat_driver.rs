@@ -23,7 +23,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::header::HeaderMap;
+use http::header::HeaderMap;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -64,10 +64,51 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let supports_phases = self.native_phases;
         let supports_tool_search = self.hosted_tool_search;
 
-        let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
         // Native computer tool (EVE-1133): which transcript calls replay as
         // computer items, decided on the full transcript before delta trimming.
         let native_computer = self.native_computer_for(config);
+        // The native computer tool stands in for the `computer` function tool,
+        // and native web search for the `web_search` one.
+        let native_search = self.native_web_search_for(config).is_some();
+        let mut replaced = Vec::new();
+        if native_computer.is_some() {
+            replaced.push(crate::native_computer::COMPUTER_TOOL_NAME);
+        }
+        if native_search {
+            replaced.push(crate::native_web_search::WEB_SEARCH_FUNCTION_TOOL);
+        }
+        // Hosted search defers tools only at or above its threshold, counted on
+        // the baseline that inline mode sends.
+        let hosted_search = supports_tool_search
+            && config.tool_search.as_ref().is_some_and(|ts| {
+                ts.enabled
+                    && config.tool_baseline.as_ref().is_some_and(|baseline| {
+                        baseline
+                            .iter()
+                            .filter(|tool| !replaced.contains(&tool.name()))
+                            .count()
+                            >= ts.threshold
+                    })
+            });
+        let inline_tool_changes = super::tool_changes::eligible(
+            self.inline_tool_changes,
+            endpoint.base_url(),
+            config,
+            &messages,
+            &replaced,
+        )
+        .then_some(super::tool_changes::InlineToolChanges { hosted_search });
+        // Inline mode sends the epoch's system prompt too; prompt text added
+        // since rides in the changes' notes.
+        let sent = crate::tool_changes::with_system_prompt(
+            &messages,
+            config
+                .system_prompt_baseline
+                .as_deref()
+                .filter(|_| inline_tool_changes.is_some()),
+        );
+        let (instructions, transcript_input_items) =
+            Self::build_input_with_changes(&sent, supports_phases, inline_tool_changes);
         let computer_call_ids = if native_computer.is_some() {
             super::computer::computer_call_ids(&transcript_input_items)
         } else {
@@ -149,14 +190,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         let input_items = super::computer::replay_computer_calls(input_items, &computer_call_ids);
 
-        // The native computer tool stands in for the `computer` function tool.
-        let function_tools: Vec<ToolDefinition> = config
-            .tools
+        // Inline changes keep the epoch's baseline as `tools`; the changes
+        // since ride in `input`.
+        let sent_tools = match (inline_tool_changes, config.tool_baseline.as_deref()) {
+            (Some(_), Some(baseline)) => baseline,
+            _ => config.tools.as_slice(),
+        };
+        let function_tools: Vec<ToolDefinition> = sent_tools
             .iter()
-            .filter(|tool| {
-                native_computer.is_none()
-                    || tool.name() != crate::native_computer::COMPUTER_TOOL_NAME
-            })
+            .filter(|tool| !replaced.contains(&tool.name()))
             .cloned()
             .collect();
         let mut tools = if function_tools.is_empty() {
@@ -276,7 +318,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // retry recognises the response an earlier attempt left running.
         let background_responses = background.then(|| {
             super::background::BackgroundResponses::new(
-                self.client(),
+                self.http_client(),
                 endpoint,
                 &api_url,
                 &extension_headers,
@@ -296,7 +338,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // transient send failures) are handled inside the per-attempt send.
         // Opt-in WebSocket transport (see `websocket.rs`). `None` means it was
         // not wanted or failed before committing, and the call goes over SSE.
-        #[cfg(feature = "responses-websocket")]
+        #[cfg(all(feature = "responses-websocket", not(target_arch = "wasm32")))]
         let websocket_stream = match reattached {
             None if self.websocket.wants(config, background) => {
                 super::websocket_transport::open_stream(
@@ -310,7 +352,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             _ => None,
         };
-        #[cfg(not(feature = "responses-websocket"))]
+        #[cfg(any(not(feature = "responses-websocket"), target_arch = "wasm32"))]
         let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
 
         let first_connect = match (reattached, websocket_stream) {
@@ -415,6 +457,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             Err(error) => return Err(error),
         };
+        // The body as finally sent (background may have been switched off
+        // above), captured only when the call asked for it.
+        let captured_request = config.capture_request.then(|| request_body.clone());
         let event_stream = match background_responses.filter(|_| background) {
             Some(responses) => super::background::resumable(event_stream, responses, attached_id),
             None => event_stream,
@@ -805,6 +850,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             tool_calls_truncated_executed: truncated_executed,
                                             hosted_tool_calls:
                                                 super::hosted_tools::hosted_tool_calls(response_obj),
+                                            web_citations: super::citations::web_citations(
+                                                response_obj.get("output"),
+                                            ),
                                             ..Default::default()
                                         })))
                                     }
@@ -866,6 +914,22 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 futures::stream::iter(batch)
             }));
 
+        // Strict decoding uses null to represent an omitted optional field.
+        // Restore our own wire conversion before the runtime records a call or
+        // binds approval to its arguments. Deferred/non-strict stubs stay intact.
+        let argument_tools = config.tools.clone();
+        let converted_stream: LlmResponseStream = Box::pin(converted_stream.map(move |event| {
+            event.map(|mut event| {
+                if let LlmStreamEvent::ToolCalls(calls) = &mut event {
+                    crate::tool_schema_compat::restore_strict_openai_tool_calls(
+                        &argument_tools,
+                        calls,
+                    );
+                }
+                event
+            })
+        }));
+
         if required_completion {
             return Ok(Box::pin(converted_stream.chain(futures::stream::once(
                 async move {
@@ -881,7 +945,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 },
             ))));
         }
-        Ok(converted_stream)
+        Ok(crate::driver_helpers::attach_request_body(
+            converted_stream,
+            captured_request,
+        ))
     }
 
     fn supports_compact(&self) -> bool {

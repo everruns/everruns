@@ -124,11 +124,25 @@ pub trait McpTransport: Send + Sync {
         credential: Option<&McpCredential>,
     ) -> anyhow::Result<Vec<McpToolDefinition>>;
 
+    /// Call a tool. `idempotency_key` goes in the request's `_meta` under
+    /// [`IDEMPOTENCY_KEY_META_KEY`](crate::mcp::protocol::IDEMPOTENCY_KEY_META_KEY).
     async fn call_tool(
         &self,
         connection: &McpConnection,
         tool_name: &str,
         arguments: Value,
         credential: Option<&McpCredential>,
+        idempotency_key: Option<&str>,
     ) -> anyhow::Result<McpToolCallResult>;
+
+    /// Send one JSON-RPC request for any other method (for example
+    /// `resources/read`) and return its `result`. A JSON-RPC error comes back
+    /// as an [`McpRpcError`](crate::mcp::McpRpcError) inside the error.
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+        credential: Option<&McpCredential>,
+    ) -> anyhow::Result<Value>;
 }

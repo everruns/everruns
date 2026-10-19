@@ -16,6 +16,7 @@ mod anthropic_capabilities;
 mod enumeration;
 mod gpt6;
 mod model_id_match;
+mod realtime;
 mod speed;
 
 pub use enumeration::*;
@@ -170,7 +171,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5.1, Fable 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.x, Opus 5.5/5/4.x, Sonnet 5.5/5/4.6, Haiku 5.5)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -301,6 +302,15 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["openai"],
         ServiceKind::Decisions,
     ),
+    // Microsoft-Decision-1 on Microsoft Foundry, over System One. Foundry
+    // routes by deployment name, so `decision-1` covers the portal's short
+    // default name alongside the catalog id. Only the Foundry driver serves it.
+    md_service(
+        &["microsoft-decision-1", "decision-1"],
+        ModelVendor::Microsoft,
+        &["mai"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -316,6 +326,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     ),
     md_service(
         &["gpt-realtime-2"],
+        ModelVendor::OpenAi,
+        OPENAI,
+        ServiceKind::Realtime,
+    ),
+    md_service(
+        &["gpt-realtime-2.1"],
         ModelVendor::OpenAi,
         OPENAI,
         ServiceKind::Realtime,
@@ -351,7 +367,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.5"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.5-pro"], ModelVendor::OpenAi, OPENAI),
     // GPT-5.6 series: Sol (flagship), Terra (balanced), Luna (fast/cheap).
-    md(&["gpt-5.6-sol"], ModelVendor::OpenAi, OPENAI),
+    // Bare `gpt-5.6` is OpenAI's alias for Sol (models.dev canonical id).
+    md(&["gpt-5.6-sol", "gpt-5.6"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-terra"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-6-astra"], ModelVendor::OpenAi, OPENAI),
@@ -387,11 +404,18 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
+    md(&["gemini-4-argon"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.8-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.7-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.6-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.5-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.5-flash-lite"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-flash-lite"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-pro"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-flash"], ModelVendor::Google, GEMINI),
@@ -403,6 +427,11 @@ static REGISTRY: &[ModelDescriptor] = &[
             "nvidia/nemotron-3-super-120b-a12b",
         ],
         ModelVendor::Nvidia,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["qwen3.8-max", "qwen/qwen3.8-max"],
+        ModelVendor::Qwen,
         OPENAI_COMPAT,
     ),
     md(
@@ -419,6 +448,11 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["mai-code-1-flash", "microsoft/mai-code-1-flash"],
         ModelVendor::Microsoft,
         MICROSOFT_MAI,
+    ),
+    md(
+        &["muse-wonder-1.0", "meta/muse-wonder-1.0"],
+        ModelVendor::Meta,
+        META_MUSE,
     ),
     md(
         &["muse-spark-1.3", "meta/muse-spark-1.3"],
@@ -471,6 +505,30 @@ static REGISTRY: &[ModelDescriptor] = &[
         ],
         ModelVendor::Mistral,
         MISTRAL,
+    ),
+    // Mistral serves dated ids; `-latest` currently points at these.
+    md(
+        &[
+            "mistral-medium-2604",
+            "mistral-medium-latest",
+            "mistralai/mistral-medium-3-5",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
+    ),
+    md(
+        &[
+            "mistral-small-2603",
+            "mistral-small-latest",
+            "mistralai/mistral-small-2603",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
+    ),
+    md(
+        &["grok-4.7", "x-ai/grok-4.7", "xai/grok-4.7"],
+        ModelVendor::XAi,
+        OPENAI_COMPAT,
     ),
     md(
         &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],
@@ -611,6 +669,38 @@ pub fn estimate_cost_usd(
     )
 }
 
+/// Extra cost of cache writes made with a 1 hour retention, on top of what
+/// [`estimate_cost_usd`] charged for them at the model's `cache_write` rate.
+///
+/// Anthropic bills a 1 hour write at 2x the base input rate and a 5 minute
+/// write at 1.25x; profiles carry the 5 minute rate as `cache_write`. Returns
+/// `None` without cost data or when nothing was written with the long TTL.
+/// `prompt_tokens` is the whole prompt (uncached + cache read + cache write),
+/// which picks the long-context tier the same way `estimate_cost_usd` does.
+pub fn cache_write_1h_surcharge_usd(
+    provider_type: &str,
+    model_id: &str,
+    prompt_tokens: u32,
+    one_hour_write_tokens: u32,
+) -> Option<f64> {
+    if one_hour_write_tokens == 0 {
+        return None;
+    }
+    let cost = get_model_profile(provider_type, model_id)?.cost?;
+    let active_tier = cost
+        .cost_tiers
+        .iter()
+        .filter(|tier| prompt_tokens > tier.above_tokens.max(0) as u32)
+        .max_by_key(|tier| tier.above_tokens);
+    let input_rate = active_tier.map_or(cost.input, |tier| tier.input);
+    let charged_rate = match active_tier {
+        Some(tier) => tier.cache_write.unwrap_or(input_rate),
+        None => cost.cache_write.unwrap_or(input_rate),
+    };
+    let surcharge_rate = (2.0 * input_rate - charged_rate).max(0.0);
+    Some(one_hour_write_tokens as f64 / 1_000_000.0 * surcharge_rate)
+}
+
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &str, model_id: &str) -> Option<ModelVendor> {
@@ -654,6 +744,12 @@ pub fn get_model_service_kind(provider_type: &str, model_id: &str) -> ServiceKin
 /// availability and vendor tagging live in `REGISTRY`, not here. The segments
 /// are grouped by author for readability only — there is no provider dispatch.
 fn profile_data(canonical: &str) -> Option<ModelProfile> {
+    let mut profile = authored_profile_data(canonical)?;
+    profile.model_card_url = model_card_url(canonical).map(str::to_string);
+    Some(profile)
+}
+
+fn authored_profile_data(canonical: &str) -> Option<ModelProfile> {
     jev_profile_data(canonical)
         .or_else(|| openai_profile_data(canonical))
         .or_else(|| anthropic_profile_data(canonical))
@@ -665,6 +761,9 @@ fn profile_data(canonical: &str) -> Option<ModelProfile> {
 
 mod meta_profiles;
 use meta_profiles::meta_profile_data;
+
+mod model_cards;
+use model_cards::model_card_url;
 
 mod openai_profiles;
 use openai_profiles::openai_profile_data;
@@ -743,6 +842,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
             supports_server_compaction: false,
+            model_card_url: None,
             decisions: None,
         }),
         _ => None,
@@ -759,6 +859,9 @@ mod tests;
 fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
     if canonical == "gpt-6-luna-decisions" {
         return Some(openai_decisions_profile());
+    }
+    if canonical == "microsoft-decision-1" {
+        return Some(microsoft_decision_profile());
     }
     if !matches!(canonical, "jev-1.13.0" | "jev-latest") {
         return None;
@@ -794,6 +897,7 @@ fn jev_profile(name: &str) -> ModelProfile {
         supported_parameters: Vec::new(),
         supports_phases: false,
         supports_server_compaction: false,
+        model_card_url: None,
         decisions: Some(crate::model_profile_data::DecisionModelProfile {
             primitives: vec!["noul".into(), "choice".into(), "score".into()],
             calibrated: true,
@@ -817,6 +921,22 @@ fn openai_decisions_profile() -> ModelProfile {
         decisions.max_choice_options = None;
         decisions.state_tokens = None;
         decisions.request_tokens = None;
+    }
+    profile
+}
+
+/// Microsoft-Decision-1 (Qwen3.5-9B post-trained by Microsoft): input billed
+/// at $0.042 per 1M tokens, output free. One 32,768-token window holds the
+/// whole request; 2-10 score levels and 2-255 choice options were confirmed
+/// live on 2026-10-09.
+fn microsoft_decision_profile() -> ModelProfile {
+    let mut profile = jev_profile("Microsoft Decision 1");
+    profile.family = "microsoft-decision".into();
+    profile.description = Some("Microsoft's calibrated typed decisions over text.".into());
+    profile.release_date = Some("2026-10-09".into());
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.state_tokens = None;
+        decisions.request_tokens = Some(32_768);
     }
     profile
 }

@@ -78,7 +78,7 @@ describe("SessionApprovals", () => {
     expect(screen.getByText(/Approved by an unknown actor/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view consent/i })).toHaveAttribute(
       "href",
-      "/sessions/session_1/transcript#message-msg_consent",
+      "/sessions/session_1/trace",
     );
     expect(screen.getByText("1 approved")).toBeInTheDocument();
   });

@@ -16,7 +16,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 
 1. Open the Agent and select **Integrations**.
 2. Select **Add channel**, then select **Slack**.
-3. Choose a session strategy and reply mode.
+3. Choose a session strategy.
 4. Leave the Slack credentials empty and select **Save channel**.
 
 ## Choose a session strategy
@@ -51,13 +51,21 @@ decision leaves unmentioned messages silent, without posting an acknowledgement 
 agent. An organization that chose its own model stays silent when that model is missing or
 failing; it never falls back to the deployment's model.
 
-Reply mode still controls what an accepted turn posts to Slack. Response policy
-controls whether that turn starts. Select **All messages** to restore the previous
+The Agent's **Communication** setting controls what an accepted turn posts to
+Slack: a Direct Agent posts its replies, and an Explicit Agent posts only what it
+sends with `send_message`. See [Explicit communication](/features/explicit-communication/).
+Response policy controls whether that turn starts. Select **All messages** to restore the previous
 behavior.
 
 ## Publish and Connect
 
 Your organization must have a Slack workspace connected in **Settings** > **Slack workspaces** first; an administrator does this once. See [Connect a Slack Workspace](/capabilities/slack/#connect-a-slack-workspace).
+
+If your deployment connects workspaces through a Slack manager app, complete its
+consent in the same browser that started the connection. Each attempt expires
+after thirty minutes and can finish once. Separate tabs keep independent
+attempts. After cancellation, expiry, or an exchange failure, start a new
+connection from **Settings** > **Slack workspaces**.
 
 1. Select **Publish** in the channel editor.
 2. If more than one workspace is connected, choose which one.
@@ -67,7 +75,7 @@ Your organization must have a Slack workspace connected in **Settings** > **Slac
 
 Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
 
-The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app and again whenever you change the avatar in **Branding**. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
+The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app, again once the app is installed, and whenever you change the avatar in **Branding**. When this deployment's API is reachable on the public internet, Slack fetches that image; otherwise Everruns uploads the 512 px PNG. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
 
 With one-click setup, later changes to the agent's display name and description
 also update its Slack app automatically. If no display name is set, Slack uses
@@ -109,8 +117,8 @@ another fails; retrying completes the remaining cleanup.
 ## Resolve installation issues
 
 Open **Settings** > **Health** to review pending Slack permission or credential issues.
-The same warning appears beside the endpoint and under **Action required** in notifications
-when notifications are enabled. Reading or snoozing an announcement leaves the issue open.
+The same warning appears beside the endpoint and under **Action required** in notifications.
+Reading or snoozing an announcement leaves the issue open.
 
 For an app Everruns created, select **Reconnect Slack** and approve the additional permissions.
 For a manually configured app, add the listed bot scopes in Slack, reinstall the existing app,

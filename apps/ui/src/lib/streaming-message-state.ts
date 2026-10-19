@@ -7,6 +7,8 @@ export interface StreamingMessageState {
   text: string | null;
   isThinking: boolean;
   iteration: number | null;
+  /** Best-effort phase hint from the active assistant message, when the provider sent one. */
+  phase: "commentary" | "final_answer" | null;
 }
 
 const EMPTY_STREAMING_MESSAGE: StreamingMessageState = {
@@ -15,6 +17,7 @@ const EMPTY_STREAMING_MESSAGE: StreamingMessageState = {
   text: null,
   isThinking: false,
   iteration: null,
+  phase: null,
 };
 
 function startedForMessage(events: Event[], before: number, messageId: string) {
@@ -61,6 +64,7 @@ export function latestStreamingMessage(events: Event[]): StreamingMessageState {
         text: replaced.replacement,
         isThinking: false,
         iteration: started?.iteration ?? null,
+        phase: started?.phase ?? null,
       };
     }
 
@@ -73,6 +77,7 @@ export function latestStreamingMessage(events: Event[]): StreamingMessageState {
         text: delta.accumulated,
         isThinking: false,
         iteration: started?.iteration ?? null,
+        phase: delta.phase ?? started?.phase ?? null,
       };
     }
 
@@ -84,6 +89,7 @@ export function latestStreamingMessage(events: Event[]): StreamingMessageState {
         text: null,
         isThinking: false,
         iteration: started.iteration ?? null,
+        phase: started.phase ?? null,
       };
     }
 
@@ -96,6 +102,7 @@ export function latestStreamingMessage(events: Event[]): StreamingMessageState {
         text: null,
         isThinking: true,
         iteration: message?.iteration ?? null,
+        phase: null,
       };
     }
   }

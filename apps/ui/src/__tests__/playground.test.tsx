@@ -30,6 +30,10 @@ let mockChatEvents: Event[] = [];
 const mockAgent = { id: "agent_support", name: "Support agent", status: "active" };
 const mockMutation = { mutate: jest.fn(), isPending: false };
 
+jest.mock("@/hooks/use-chat-mcp-servers", () => ({
+  useChatMcpServers: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }),
+  useRemoveChatMcpServer: () => ({ mutate: jest.fn(), isPending: false, error: null }),
+}));
 jest.mock("next/navigation", () => ({ usePathname: () => "/playground/session_test" }));
 jest.mock("@/lib/api/sessions", () => ({
   listSessions: jest.fn(),
@@ -201,7 +205,7 @@ test("chat breadcrumbs return to Playground and session/workspace inspection use
   );
   expect(screen.getAllByRole("link", { name: "Open session" })[0]).toHaveAttribute(
     "href",
-    "/sessions/session_test/transcript",
+    "/sessions/session_test/trace",
   );
   expect(screen.queryByRole("link", { name: "Trace" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Pin chat" })).not.toBeInTheDocument();

@@ -40,6 +40,7 @@ use std::collections::HashSet;
 use tracing::{debug, warn};
 
 use super::client::DaytonaClient;
+use super::git_auth::get_github_token;
 use super::naming::create_sandbox_with_unique_name;
 use super::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
@@ -1517,7 +1518,8 @@ impl Tool for DaytonaGitCloneTool {
         let target_path = clone_path.unwrap_or(&default_path);
 
         // Resolve GitHub token for authenticated cloning
-        let github_token = get_github_token(context).await;
+        let github_token =
+            get_github_token(context, extract_owner_repo(repo_url_raw).as_deref()).await;
 
         let client = DaytonaClient::new(api_key);
 
@@ -1691,7 +1693,7 @@ impl Tool for DaytonaGitCredentialsTool {
         };
 
         // Resolve GitHub token (same chain as daytona_git_clone)
-        let github_token = match get_github_token(context).await {
+        let github_token = match get_github_token(context, None).await {
             Some(token) => token,
             None => {
                 return ToolExecutionResult::tool_error(
@@ -1962,32 +1964,6 @@ fn extract_owner_repo(url: &str) -> Option<String> {
 
 fn is_valid_owner_repo_segment(segment: &str) -> bool {
     !segment.is_empty() && segment != "." && segment != ".."
-}
-
-/// Resolve GitHub token lazily from user connections, with session secret fallback.
-async fn get_github_token(context: &ToolContext) -> Option<String> {
-    // Try lazy resolution from user connections (preferred: always fresh)
-    if let Some(ref resolver) = context.connection_resolver {
-        match resolver
-            .get_connection_token(context.session_id, "github")
-            .await
-        {
-            Ok(Some(token)) if !token.is_empty() => return Some(token),
-            Ok(_) => {}
-            Err(e) => debug!("Connection resolver failed: {e}"),
-        }
-    }
-
-    // Fallback: session secret (for backward compat with pre-injected tokens)
-    if let Some(ref storage) = context.storage_store {
-        match storage.get_secret(context.session_id, "GITHUB_TOKEN").await {
-            Ok(Some(token)) if !token.is_empty() => return Some(token),
-            Ok(_) => {}
-            Err(e) => debug!("No GITHUB_TOKEN session secret: {e}"),
-        }
-    }
-
-    None
 }
 
 // ============================================================================
@@ -2360,6 +2336,8 @@ mod tests {
     // ========================================================================
 
     use everruns_contracts::error::Result;
+    use everruns_contracts::runtime::mcp_server::McpServerActsAs;
+    use everruns_contracts::runtime::{GitHubAccess, McpResolvedCredential};
     use everruns_contracts::runtime::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
@@ -2443,6 +2421,17 @@ mod tests {
             _provider: &str,
         ) -> Result<Option<String>> {
             Ok(self.token.clone())
+        }
+
+        async fn get_github_token(
+            &self,
+            _session_id: SessionId,
+            _access: &GitHubAccess,
+        ) -> Result<Option<McpResolvedCredential>> {
+            Ok(self
+                .token
+                .clone()
+                .map(|token| McpResolvedCredential::unscoped(token, McpServerActsAs::Service)))
         }
     }
 
@@ -3436,7 +3425,7 @@ mod tests {
         });
         let context =
             ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
-        let token = get_github_token(&context).await;
+        let token = get_github_token(&context, None).await;
         assert_eq!(token, Some("preferred_token".to_string()));
     }
 
@@ -3449,7 +3438,7 @@ mod tests {
             .await;
         // No connection resolver
         let context = ToolContext::with_storage_store(session_id, store);
-        let token = get_github_token(&context).await;
+        let token = get_github_token(&context, None).await;
         assert_eq!(token, Some("secret_token".to_string()));
     }
 
@@ -3460,7 +3449,7 @@ mod tests {
         let resolver = Arc::new(MockConnectionResolver { token: None });
         let context =
             ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
-        let token = get_github_token(&context).await;
+        let token = get_github_token(&context, None).await;
         assert_eq!(token, None);
     }
 
@@ -3477,7 +3466,7 @@ mod tests {
         });
         let context =
             ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
-        let token = get_github_token(&context).await;
+        let token = get_github_token(&context, None).await;
         assert_eq!(token, Some("fallback".to_string()));
     }
 

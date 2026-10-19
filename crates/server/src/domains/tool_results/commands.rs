@@ -1,11 +1,8 @@
 use super::queries as q;
 use super::types::{ClientToolResult, SubmitToolResultsResponse};
 use crate::domains::common::*;
-use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
-use crate::storage::models::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan};
-use everruns_contracts::typed_id::{MessageId, TurnId};
-use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
-use everruns_core::message::ContentPart;
+use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
+use crate::storage::ClaimWaitingTurnResult;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -13,6 +10,7 @@ use utoipa::ToSchema;
 pub struct SubmitToolResults {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Results for the pending client-side tool calls, one entry per `tool_call_id`.
     pub tool_results: Vec<ClientToolResult>,
 }
 
@@ -21,6 +19,7 @@ pub struct SubmitToolResults {
     category = "tool_results",
     description = "Submit client-side tool results back to a waiting session.",
     method = "POST",
+    cli = CliRoute::new(&["sessions", "tool-results"], "submit").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("Return the result of a client-side tool call to a waiting session", "everruns sessions tool-results submit session_01h9 --tool-results '[{\"tool_call_id\":\"toolu_01\",\"result\":{\"url\":\"https://example.com/orders/42\"}}]' --reason 'Deliver the tool output'")]),
     path = "/v1/sessions/{session_id}/tool-results",
     policy = crate::domains::sessions::SESSION_MANAGE,
     positional = "session_id",
@@ -39,52 +38,24 @@ impl Command for SubmitToolResults {
             .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
-        let turn_id = TurnId::from_uuid(session_id.uuid());
-        let event_message_id = MessageId::from_uuid(session_id.uuid());
+        // Recorded under the waiting turn, so the worker's fold settles them.
         let accepted = self.tool_results.len();
-        let events = self
+        let results = self
             .tool_results
             .iter()
-            .map(|client_result| {
-                let tool_result = if let Some(error) = &client_result.error {
-                    ToolCompletedData::failure(
-                        client_result.tool_call_id.clone(),
-                        String::new(),
-                        "error".to_string(),
-                        error.clone(),
-                        None,
-                    )
-                } else {
-                    let result_content = client_result
-                        .result
-                        .as_ref()
-                        .map(|result| vec![ContentPart::text(result.to_string())])
-                        .unwrap_or_default();
-                    ToolCompletedData::success(
-                        client_result.tool_call_id.clone(),
-                        String::new(),
-                        result_content,
-                        None,
-                    )
-                };
-                EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, event_message_id),
-                    tool_result,
-                )
-            })
+            .map(ClientToolResult::completed)
             .collect();
-        let plan = WaitingTurnResolutionPlan {
-            kind: "tool_results".to_string(),
-            events,
-            session_values: Vec::new(),
-            response: serde_json::json!({ "accepted": accepted }),
-        };
         let claim = match ctx
             .db
-            .claim_waiting_turn(ctx.org_id(), session_id, plan)
-            .await?
-        {
+            .claim_tool_result_command(ctx.org_id(), session_id, results)
+            .await
+            .map_err(|error| {
+                if let Some(error) = error.downcast_ref::<everruns_contracts::AgentLoopError>() {
+                    CommandError::bad_request(error.to_string())
+                } else {
+                    CommandError::from(error)
+                }
+            })? {
             ClaimWaitingTurnResult::Claimed(claim) => claim,
             ClaimWaitingTurnResult::Conflict { current_status } => {
                 return Err(CommandError::conflict(format!(
@@ -109,7 +80,18 @@ impl Command for SubmitToolResults {
         .await?;
         Ok(SubmitToolResultsResponse {
             accepted,
-            status: "active".to_string(),
+            status: if claim
+                .plan
+                .response
+                .get("resume")
+                .and_then(serde_json::Value::as_bool)
+                == Some(false)
+            {
+                "waiting_for_tool_results"
+            } else {
+                "active"
+            }
+            .to_string(),
         })
     }
 }

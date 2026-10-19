@@ -20,7 +20,9 @@ Identifier for an action. Format: `org:<resource>:<action>`.
 
 See `crates/core/src/permissions.rs` for the full `Permission` enum with all variants.
 
-Permissions are scoped **per domain**: each managed resource (MCP servers, plugins, skills, capabilities, agent identities, harnesses, providers, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+Permissions are scoped **per domain**: each managed resource (MCP servers, plugins, skills, capabilities, agent identities, harnesses, models, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+
+Models and providers are one domain: `OrgModelsView` / `OrgModelsManage` gate both the `model.*` and the `provider.*` policies. Providers live on the Models page, and connecting one, syncing it, and choosing its models is one task, so splitting the grant would let a role do half of it.
 
 ### Rule
 
@@ -79,7 +81,7 @@ Built-in OSS auth preserves previous behavior by deriving `is_platform_user` fro
 
 ### Command Runner (Primary Enforcement Point)
 
-Every user-facing operation is a domain `Command` (`crates/server/src/domains/common.rs`). Each command declares its policy statically via `Command::policy()`. All four caller kinds, HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`, and platform capability, invoke commands through **`Command::run`**, which evaluates `policy()` against the `PermissionResolver` carried in `Ctx` before delegating to `execute()`:
+Every user-facing operation is a domain `Command` (`crates/server/src/domains/common/mod.rs`). Each command declares its policy statically via `Command::policy()`. All four caller kinds, HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`, and platform capability, invoke commands through **`Command::run`**, which evaluates `policy()` against the `PermissionResolver` carried in `Ctx` before delegating to `execute()`:
 
 ```rust
 impl Command for CreateAgent {
@@ -121,7 +123,7 @@ See `crates/core/src/permissions.rs` for evaluation logic. Policies support both
 
 Besides the `Permission` / `Policy` contract there is one hardcoded role gate in agent create/update enforcement: **assigning a `RiskLevel::High` capability to an agent requires `OrgRole::Admin`**.
 
-- **Where.** Canonical create/update enforcement is `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs` (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`). The shared package operations in `crates/server/src/domains/agents/packages.rs` preflight the same gate before invoking the existing create/upsert commands (TM-AGENT-005).
+- **Where.** Canonical create/update enforcement is `check_high_risk_caps` in `crates/server/src/domains/agents/commands/mod.rs` (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`). The shared package operations in `crates/server/src/domains/agents/packages.rs` preflight the same gate before invoking the existing create/upsert commands (TM-AGENT-005).
 - **Trigger.** Any capability whose `risk_level()` returns `High`, the canonical, current set is enumerated in `knowledge/execution/capabilities.md` and discoverable via `rg "RiskLevel::High" crates/core integrations` (sandbox/exec capabilities such as `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell` plus others including `web_fetch`, `user_hooks`, and `lua`); it is not frozen here. The full contract, including the rationale for `bashkit_shell` / `web_fetch` and migration semantics for grandfathered agents, lives in `knowledge/execution/capabilities.md` ("Admin-Only Tier Decision").
 - **Failure mode.** HTTP 403 with the offending capability ids; the request does not partially succeed.
 - **Why it lives outside the `Permission` enum.** The gate is based on per-capability metadata, not a per-action permission, and the set of capabilities is open (extensions can add them). Keeping it as a centralized hardcoded check in the agent enforcement path avoids a combinatorial explosion of `org:capability:<id>` permissions while preserving an explicit trust boundary.
@@ -203,8 +205,8 @@ Every non-GET domain command MUST declare `Command::policy() -> Option<&'static 
 | File | Purpose |
 |------|---------|
 | `crates/core/src/permissions.rs` | Permission enum, Rule, Policy, Caller, evaluation logic |
-| `crates/server/src/domains/common.rs` | `Command::run`, `Ctx.permission_resolver`, dispatch |
+| `crates/server/src/domains/common/mod.rs` | `Command::run`, `Ctx.permission_resolver`, dispatch |
 | `crates/server/src/domains/*/mod.rs` | Per-domain `Policy` constants |
 | `crates/server/src/domains/*/commands.rs` | `Command::policy()` declarations |
 | `crates/server/tests/domain/command_policy_enforcement_test.rs` | Inventory coverage test + resolver enforcement tests |
-| `crates/server/src/auth/middleware.rs` | `Caller` extraction from `ResolvedOrg`, `AuthState.permission_resolver` |
+| `crates/server/src/auth/middleware/mod.rs` | `Caller` extraction from `ResolvedOrg`, `AuthState.permission_resolver` |

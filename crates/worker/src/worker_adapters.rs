@@ -175,6 +175,31 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         Ok(())
     }
 
+    /// Store `requests` and then `last`, in order, returning `last` as stored.
+    /// A blocking emit stores the write-behind queue's waiting events this way
+    /// (see `crate::write_behind`).
+    async fn emit_events_then(
+        &self,
+        requests: Vec<EventRequest>,
+        last: EventRequest,
+    ) -> Result<Event> {
+        self.emit_events(requests).await?;
+        self.emit_event(last).await
+    }
+
+    /// Store `requests` in order as the holder of the session actor lease
+    /// `fence`, returning the last one as stored (`None` when the control
+    /// plane did not return it). The control plane stores them only while
+    /// `fence` is still the holder's unexpired lease, checked in the insert's
+    /// transaction; otherwise nothing lands and the error is
+    /// [`crate::actor_lease_store::actor_lease_lost`]. Every write of a leased
+    /// turn goes through here (see `SessionAdapter::with_actor_fence`).
+    async fn emit_events_fenced(
+        &self,
+        requests: Vec<EventRequest>,
+        fence: &crate::actor_lease_store::ActorFence,
+    ) -> Result<Option<Event>>;
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -436,6 +461,27 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// The session's Poppy client (`poppy_client` capability). Defaults to
+    /// none: the keys and the protocol live in the control plane, and the
+    /// tools then say Poppy is not available here.
+    fn poppy_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::PoppyInvoker>> {
+        None
+    }
+
+    /// The session's agent's saved scripts, for `tools scripts` (Tools in
+    /// Shell D8). Defaults to none: the scripts live in the control plane.
+    fn saved_script_store(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_contracts::runtime::saved_scripts::SavedScriptStore>> {
+        None
+    }
+
     /// Logical environment state and checkpoint persistence (EVE-870).
     /// Hosted workers route this composite store through the control plane;
     /// portable Framework hosts may leave it absent and use compatibility
@@ -462,20 +508,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session storage store for kv_store/secret_store tools, scoped to
     /// the caller's org. See `sqldb_store` for why this carries an org.
+    ///
+    /// Values and secrets run internal commands as that org's caller, so
+    /// there is no cross-org variant: the background sweepers (leased-resource
+    /// cleanup, the session-task reaper) take each item's org from their claim
+    /// and ask for that org's store.
     fn storage_store(
         &self,
         org_id: i64,
     ) -> Arc<dyn crate::core::session_services::SessionStorageStore>;
-
-    /// The same store for background sweepers that run across every org.
-    ///
-    /// Leased-resource cleanup and the session-task reaper claim work in batches
-    /// that span organizations — `LeasedResource` carries no org at all — so there
-    /// is no org to scope them by. They are named apart from `storage_store`
-    /// rather than handed an invented org, so the org-less trust context is
-    /// visible at the call site instead of buried in a default.
-    fn storage_store_unscoped(&self)
-    -> Arc<dyn crate::core::session_services::SessionStorageStore>;
 
     /// Get the image artifact store for tool-side image persistence.
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;
@@ -503,9 +544,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         session_id: SessionId,
     ) -> Arc<dyn everruns_capabilities::PlatformStore>;
 
-    /// Get the user connection resolver for lazy token lookup.
+    /// Get `org_id`'s user connection resolver for lazy token lookup.
+    ///
+    /// Its lookups run as that org's internal commands, so the server refuses
+    /// a session or virtual user outside it. The leased-resource sweeper takes
+    /// each claim's org and asks for that org's resolver.
     fn connection_resolver(
         &self,
+        org_id: i64,
     ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver>;
 
     /// Get the Knowledge Index search service for the `search_index` tool,
@@ -518,23 +564,29 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Get the leased-resource store for tool-side registration/touch/release.
-    fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
+    /// Get `org_id`'s leased-resource store for tool-side
+    /// registration/touch/release.
+    fn leased_resource_store(&self, org_id: i64) -> Arc<dyn LeasedResourceStore>;
 
-    /// Get the session resource registry for generic resource tracking.
-    /// Returns None when the registry is not available (e.g. gRPC workers
-    /// without the registry RPC — follow-up work).
+    /// Get `org_id`'s session resource registry for generic resource tracking.
+    /// Returns None when the registry is not available.
     fn session_resource_registry(
         &self,
+        _org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
         None
     }
 
-    /// Get the session task registry for background work tracking.
-    /// Returns None when the registry is not available (e.g. gRPC workers
-    /// without the task RPCs — follow-up work).
+    /// Get `org_id`'s session task registry for background work tracking.
+    /// Returns None when the registry is not available.
+    ///
+    /// The registry runs internal commands as that org's caller, so the
+    /// session-task reaper, which scans every org, asks for each orphan's own
+    /// org. It must emit `task.*` events and wake sessions per `wake_policy`
+    /// (both transports' command registries do), so reaped tasks fire them.
     fn session_task_registry(
         &self,
+        _org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
         None
     }
@@ -609,14 +661,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
-    /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
-        None
-    }
-
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
-    /// Default: `None` (a retried reason step announces itself again).
+    /// Default: `None` (a rerun reason announces itself again).
     fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
         None
     }
@@ -648,12 +694,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ///
     /// This is the control-plane entry point used by the durable cleanup
     /// activity. Implementations must coordinate across workers so one claim
-    /// wins per resource until the claim becomes stale.
+    /// wins per resource until the claim becomes stale. Each claim comes with
+    /// the org that owns it: the sweeper runs that lease's session storage
+    /// commands as it.
     async fn claim_due_leased_resources(
         &self,
         limit: u32,
         stale_after_seconds: u32,
-    ) -> Result<Vec<LeasedResource>>;
+    ) -> Result<Vec<(i64, LeasedResource)>>;
 
     /// Mark a claimed leased resource as released.
     ///
@@ -683,20 +731,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // Session task reaper (orphan reconciler)
     // =========================================================================
 
-    /// Return (session_id, task_id) pairs for tasks whose worker heartbeat has
-    /// gone stale. Tasks with NULL heartbeat_at are excluded (foreground tasks
-    /// with no liveness probe are covered by EVE-535 spawn handles).
+    /// Return (org_id, session_id, task_id) triples for tasks whose worker
+    /// heartbeat has gone stale. Tasks with NULL heartbeat_at are excluded
+    /// (foreground tasks with no liveness probe are covered by EVE-535 spawn
+    /// handles). The org is the session's: a reattached task gets its storage.
     async fn list_orphaned_session_task_ids(
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>>;
-
-    /// Session task registry for the reaper to call `update` through.
-    /// Must include an event emitter so task.updated events fire on reap.
-    fn reaper_session_task_registry(
-        &self,
-    ) -> std::sync::Arc<dyn crate::core::session_task::SessionTaskRegistry>;
+    ) -> Result<Vec<(i64, everruns_contracts::typed_id::SessionId, String)>>;
 
     /// Prune a bounded batch of terminal session tasks (succeeded/failed/
     /// canceled) whose `finished_at` is older than `ttl`, removing their
@@ -712,6 +755,11 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         ttl: chrono::Duration,
         limit: i64,
     ) -> Result<usize>;
+
+    /// Session actor leases and journal reads (actor-based design): a worker
+    /// leases a runnable session and runs its whole turn, and the session
+    /// event log is the only turn state.
+    fn actor_lease_store(&self) -> Arc<dyn crate::actor_lease_store::ActorLeaseStore>;
 }
 
 // =============================================================================
@@ -751,6 +799,8 @@ pub struct SessionAdapter<A: WorkerAdapters> {
     reads: Option<PhaseReads>,
     /// Stores a phase's lifecycle start events in the background.
     write_behind: Option<WriteBehind>,
+    /// The actor lease every event is appended under, on a leased turn.
+    fence: Option<crate::actor_lease_store::ActorFence>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
@@ -777,6 +827,30 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
             org_id: None,
             reads: None,
             write_behind: None,
+            fence: None,
+        }
+    }
+
+    /// Append every event under the actor lease `fence` (see
+    /// [`WorkerAdapters::emit_events_fenced`]).
+    pub fn with_actor_fence(mut self, fence: Option<crate::actor_lease_store::ActorFence>) -> Self {
+        self.fence = fence;
+        self
+    }
+
+    /// Store `requests` in order: under the lease when this adapter has one.
+    async fn store_batch(
+        adapters: &A,
+        fence: Option<&crate::actor_lease_store::ActorFence>,
+        requests: Vec<EventRequest>,
+    ) -> Result<()> {
+        match fence {
+            Some(fence) => {
+                let stored = adapters.emit_events_fenced(requests, fence).await;
+                fence.observe(&stored);
+                stored.map(drop)
+            }
+            None => adapters.emit_events(requests).await,
         }
     }
 
@@ -1053,21 +1127,55 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
         if let Some(reads) = &self.reads {
             reads.note_event(&request.event_type);
         }
+        let mut pending = Vec::new();
         if let Some(queue) = &self.write_behind {
+            // A queued store that gave up stops every later emit, so nothing
+            // lands past its gap (see `crate::write_behind`).
+            if let Some(error) = queue.failure() {
+                return Err(error);
+            }
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
+                let fence = self.fence.clone();
                 queue.enqueue_event(request, move |batch| {
+                    let adapters = adapters.clone();
+                    let fence = fence.clone();
                     Box::pin(async move {
-                        let count = batch.len();
-                        if let Err(error) = adapters.emit_events(batch).await {
-                            tracing::warn!(count, error = %error, "queued event store failed");
+                        let stored = Self::store_batch(&adapters, fence.as_ref(), batch).await;
+                        match (stored, &fence) {
+                            // The renewer gave the lease up while this store
+                            // failed: another holder may own the log by now.
+                            (Err(error), Some(fence))
+                                if fence.is_lost()
+                                    && !crate::actor_lease_store::is_actor_lease_lost(&error) =>
+                            {
+                                Err(crate::actor_lease_store::actor_lease_lost(
+                                    fence.session_id,
+                                    format!("lease lost while storing queued events: {error}"),
+                                ))
+                            }
+                            (stored, _) => stored,
                         }
                     })
-                });
+                })?;
                 return Ok(event);
             }
+            pending = queue.take_pending();
             queue.flush().await;
+            if let Some(error) = queue.failure() {
+                return Err(error);
+            }
+        }
+        if let Some(fence) = &self.fence {
+            let provisional = provisional_event(&request);
+            pending.push(request);
+            let stored = self.adapters.emit_events_fenced(pending, fence).await;
+            fence.observe(&stored);
+            return Ok(stored?.unwrap_or(provisional));
+        }
+        if !pending.is_empty() {
+            return self.adapters.emit_events_then(pending, request).await;
         }
         self.adapters.emit_event(request).await
     }

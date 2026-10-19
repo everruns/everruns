@@ -5,11 +5,11 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::{AgentId, HarnessId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::records::Agent;
-use everruns_server::records::Model;
-use everruns_server::records::Session;
-use everruns_server::records::provider::Provider;
-use everruns_server::storage::models::{CreateMcpServerRow, UpdateOrganizationSettings};
+use everruns_server::domains::agents::record::Agent;
+use everruns_server::domains::models::record::Model;
+use everruns_server::domains::providers::record::Provider;
+use everruns_server::domains::sessions::record::Session;
+use everruns_server::storage::{CreateMcpServerRow, UpdateOrganizationSettings};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -76,14 +76,25 @@ async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
 }
 
 #[tokio::test]
-async fn test_agent_preview_preserves_empty_base_and_rejects_missing_harness() {
+async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
     let server = TestServer::in_memory().await;
     for harness_id in [json!(server.seed_base_harness_id), Value::Null] {
         let preview: Value = server.post("/v1/agents/preview", json!({
             "harness_id": harness_id, "system_prompt": "Agent instructions.", "capabilities": []
         })).await.assert_status(StatusCode::OK).json();
-        assert_eq!(preview["tools"], json!([]));
-        assert_eq!(preview["features"], json!([]));
+        // Base carries only system essentials: approval tools, no workspace.
+        let tools = preview["tools"].as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .all(|t| t["name"].as_str().unwrap().contains("approval"))
+        );
+        assert!(
+            !preview["features"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("file_system"))
+        );
     }
     server
         .post(
@@ -562,7 +573,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .unwrap();
     assert_eq!(deleted_item["effective_harness"]["status"], "deleted");
 
-    let session: everruns_server::records::Session = server
+    let session: everruns_server::domains::sessions::record::Session = server
         .post(
             "/v1/sessions",
             json!({ "agent_id": inherited["id"], "title": "Inherited harness proof" }),
@@ -778,7 +789,7 @@ async fn test_delete_agent() {
         .json();
     assert_eq!(
         archived_agent.status,
-        everruns_server::records::AgentStatus::Archived
+        everruns_server::domains::agents::record::AgentStatus::Archived
     );
 
     let default_list: Value = server
@@ -1010,12 +1021,14 @@ async fn test_session_inherits_agent_default_model() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // Session should inherit agent's default_model_id
-    assert_eq!(
-        session.model_id,
-        Some(model.id),
-        "Session should inherit agent's default_model_id"
-    );
+    // The session binds no model of its own; its turns resolve the agent's.
+    assert_eq!(session.model_id, None, "agent default must not be copied");
+    let resolved: Value = server
+        .get(&format!("/v1/sessions/{}/resolved-model", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(resolved["model_id"], model.id.to_string());
 
     // Cleanup in correct order: session -> agent -> model -> provider
     server.delete(&format!("/v1/sessions/{}", session.id)).await;

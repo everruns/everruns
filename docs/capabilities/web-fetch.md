@@ -1,6 +1,6 @@
 ---
 title: Web Fetch
-description: Fetch a URL and convert its HTML to markdown.
+description: Fetch a URL and convert its HTML to markdown or plain text, with SSRF protection and structured fetchers for common developer and research sources.
 appliesTo: [framework, platform, cloud]
 ---
 
@@ -22,7 +22,11 @@ Fetch a URL and return its content.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `url` | string | yes | URL to fetch |
-| `method` | string | no | HTTP method (default: `GET`) |
+| `method` | string | no | `GET` (default), `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, or `OPTIONS` |
+| `headers` | object | no | Request headers, such as `Authorization` |
+| `body` | string | no | Raw request body |
+| `json` | any | no | JSON request body; sets `Content-Type: application/json` |
+| `form` | object | no | Form fields, sent as `application/x-www-form-urlencoded` |
 | `as_markdown` | boolean | no | Convert HTML to markdown |
 | `as_text` | boolean | no | Convert HTML to plain text |
 | `content_focus` | string | no | Extraction mode: `full`, `main`, `readable`, or `agent` |
@@ -33,6 +37,19 @@ Fetch a URL and return its content.
 | `save_to_file` | string | no | Workspace destination when file download is enabled for the capability |
 
 Returns: content body, status code, metadata, quality signals, redirect history, and crawl summaries when requested.
+
+### API requests
+
+A method other than `GET` or `HEAD`, or any of `headers`, `body`, `json`, or `form`, sends one plain HTTP request instead of a page fetch. The result is the status code, response headers, and the response text as received, without markdown conversion. Redirects are returned rather than followed. This lets an agent follow a service's own instructions for agents, such as an `auth.md` agent registration followed by a token request:
+
+```json
+{"url": "https://example.com/oauth/token", "method": "POST",
+ "form": {"grant_type": "client_credentials", "client_id": "..."}}
+```
+
+API requests need the host's egress service, so they pass the same network access and system egress policy checks as fetches. On deployments that restrict egress (such as Everruns Cloud), plain reads can reach any public site, while requests that send data (a method other than GET or HEAD, or a body) only reach the platform's list of approved services. Request and response bodies are limited to 256 KB, and the request times out after 30 seconds.
+
+If your organization needs to send data to its own services on such a deployment, a platform administrator can allow it to extend the list. Org admins then add their hosts under **Settings > Organization > Outbound allowlist**, one per line (`api.example.com`, `*.example.com`, or an `https://example.com/path/` prefix, up to 50, public hostnames only). The extra hosts apply to your organization's traffic only, changes take effect within a minute, and the platform's blocked hosts stay blocked.
 
 ## Notes
 

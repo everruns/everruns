@@ -12,7 +12,6 @@ import {
   useWorkflowEvents,
   useWorkflowSSE,
   useCancelWorkflow,
-  useSignalWorkflow,
   usePageTitle,
 } from "@/hooks";
 import type { WorkflowStatus, WorkflowEvent } from "@/lib/api/types";
@@ -26,9 +25,7 @@ import {
   ArrowLeft,
   ExternalLink,
   Play,
-  Pause,
   Timer,
-  Zap,
   MessageSquare,
 } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -80,9 +77,6 @@ function getEventIcon(eventType: string) {
   }
   if (eventType.startsWith("timer_")) {
     return <Timer className="h-4 w-4 text-purple-500" />;
-  }
-  if (eventType.startsWith("signal_")) {
-    return <Zap className="h-4 w-4 text-yellow-500" />;
   }
   if (eventType.startsWith("child_workflow_")) {
     return <MessageSquare className="h-4 w-4 text-blue-500" />;
@@ -151,7 +145,6 @@ export default function WorkflowDetailPage({
   usePageTitle(workflow?.workflow_type ?? null, "Workflow", "Durable");
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
-  const signalMutation = useSignalWorkflow();
 
   if (workflowLoading) {
     return (
@@ -206,12 +199,6 @@ export default function WorkflowDetailPage({
     }
   };
 
-  const handleSignal = (signalType: string) => {
-    if (confirm(`Send "${signalType}" signal to this workflow?`)) {
-      signalMutation.mutate({ workflowId, signalType });
-    }
-  };
-
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -243,15 +230,9 @@ export default function WorkflowDetailPage({
               {workflow.status}
             </Badge>
             {workflow.status === "running" && (
-              <>
-                <Button variant="outline" onClick={() => handleSignal("shutdown")}>
-                  <Pause className="h-4 w-4 mr-2" />
-                  Shutdown
-                </Button>
-                <Button variant="destructive" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </>
+              <Button variant="destructive" onClick={handleCancel}>
+                Cancel
+              </Button>
             )}
           </div>
         </div>
@@ -290,7 +271,7 @@ export default function WorkflowDetailPage({
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Linked Session</p>
                     <Link
-                      href={`/sessions/${workflow.session_id}/transcript`}
+                      href={`/sessions/${workflow.session_id}/trace`}
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
                       <ExternalLink className="h-4 w-4" />

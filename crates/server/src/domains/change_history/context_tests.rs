@@ -20,6 +20,7 @@ fn caller(role: OrgRole) -> Caller {
         role,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -37,12 +38,7 @@ async fn run(name: &str, params: Value, ctx: &Ctx) -> Result<Value, CommandError
 }
 
 async fn workspace(ctx: &Ctx, name: &str) -> String {
-    run("create_workspace", json!({ "name": name }), ctx)
-        .await
-        .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string()
+    crate::domains::workspaces::seed_workspace(ctx, name).await
 }
 
 fn with_reason(ctx: &Ctx, reason: &str) -> Ctx {
@@ -293,7 +289,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
         .db
         .create_harness(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateHarnessRow {
+            crate::storage::CreateHarnessRow {
                 name: "h".into(),
                 display_name: None,
                 icon: None,
@@ -318,7 +314,7 @@ async fn context_never_reaches_the_entity_or_its_export() {
     ctx.db
         .create_agent(
             DEFAULT_ORG_ID,
-            crate::storage::models::CreateAgentRow {
+            crate::storage::CreateAgentRow {
                 public_id: agent.clone(),
                 name: "kids".into(),
                 display_name: None,
@@ -336,6 +332,8 @@ async fn context_never_reaches_the_entity_or_its_export() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                max_output_tokens: None,
+                communication: Default::default(),
                 environments: None,
                 is_built_in: false,
             },
@@ -375,7 +373,8 @@ fn every_kind_lookup_names_a_read_command_and_its_param() {
             broken.push(format!("{}: no command {name}", kind.as_str()));
             continue;
         };
-        let fields = crate::api::mcp_endpoint::catalog::schema_field_paths(&(desc.param_schema)());
+        let fields =
+            crate::services::command_catalog::catalog::schema_field_paths(&(desc.param_schema)());
         if !(desc.read_only)() || !fields.iter().any(|field| field == param) {
             broken.push(format!(
                 "{}: {name} {param} not in {fields:?}",

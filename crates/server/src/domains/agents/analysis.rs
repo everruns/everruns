@@ -82,6 +82,43 @@ pub struct AnalysisPermit(#[allow(dead_code)] OwnedSemaphorePermit);
 /// check has passed and the slot is held*, so a rejected request never consumes
 /// another caller's headroom (no double-charging on rate-limit or busy).
 pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, AnalysisAdmissionError> {
+    acquire_permit(
+        caller,
+        &ANALYSIS_RATE_LIMITS,
+        &ANALYSIS_CONCURRENCY,
+        MAX_ANALYSES_PER_ORG_WINDOW,
+        MAX_ANALYSES_PER_CALLER_WINDOW,
+    )
+}
+
+/// The agent builder is a conversation, several calls per agent, so it gets
+/// its own, larger budget instead of spending the Analyze action's.
+const MAX_BUILDER_TURNS_PER_ORG_WINDOW: usize = 200;
+const MAX_BUILDER_TURNS_PER_CALLER_WINDOW: usize = 60;
+const MAX_CONCURRENT_BUILDER_TURNS: usize = 8;
+static BUILDER_CONCURRENCY: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_BUILDER_TURNS)));
+static BUILDER_RATE_LIMITS: LazyLock<Mutex<AnalysisRateLimits>> =
+    LazyLock::new(|| Mutex::new(AnalysisRateLimits::default()));
+
+/// Admission for one agent builder turn (`DraftAgent`).
+pub fn acquire_builder_permit(caller: &Caller) -> Result<AnalysisPermit, AnalysisAdmissionError> {
+    acquire_permit(
+        caller,
+        &BUILDER_RATE_LIMITS,
+        &BUILDER_CONCURRENCY,
+        MAX_BUILDER_TURNS_PER_ORG_WINDOW,
+        MAX_BUILDER_TURNS_PER_CALLER_WINDOW,
+    )
+}
+
+fn acquire_permit(
+    caller: &Caller,
+    rate_limits: &Mutex<AnalysisRateLimits>,
+    concurrency: &Arc<Semaphore>,
+    max_per_org: usize,
+    max_per_caller: usize,
+) -> Result<AnalysisPermit, AnalysisAdmissionError> {
     let now = Instant::now();
     let caller_key = caller
         .user_id
@@ -90,7 +127,7 @@ pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, Analys
 
     // Recover from a poisoned lock instead of turning one prior panic into a
     // permanent analysis outage.
-    let mut limits = ANALYSIS_RATE_LIMITS
+    let mut limits = rate_limits
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
@@ -100,7 +137,7 @@ pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, Analys
     if limits
         .by_org
         .get(&caller.org_id)
-        .is_some_and(|events| events.len() >= MAX_ANALYSES_PER_ORG_WINDOW)
+        .is_some_and(|events| events.len() >= max_per_org)
     {
         return Err(AnalysisAdmissionError::RateLimited {
             retry_after_seconds: ANALYSIS_RETRY_AFTER_SECONDS,
@@ -109,7 +146,7 @@ pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, Analys
     if limits
         .by_caller
         .get(&caller_key)
-        .is_some_and(|events| events.len() >= MAX_ANALYSES_PER_CALLER_WINDOW)
+        .is_some_and(|events| events.len() >= max_per_caller)
     {
         return Err(AnalysisAdmissionError::RateLimited {
             retry_after_seconds: ANALYSIS_RETRY_AFTER_SECONDS,
@@ -117,12 +154,13 @@ pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, Analys
     }
 
     // Both windows have headroom; only now take a concurrency slot.
-    let permit = ANALYSIS_CONCURRENCY
-        .clone()
-        .try_acquire_owned()
-        .map_err(|_| AnalysisAdmissionError::Busy {
-            retry_after_seconds: 30,
-        })?;
+    let permit =
+        concurrency
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| AnalysisAdmissionError::Busy {
+                retry_after_seconds: 30,
+            })?;
 
     // Charge both windows only after the request is fully admitted.
     limits

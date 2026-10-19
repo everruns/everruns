@@ -6,13 +6,18 @@
 //! the regular `ToolRegistry` (via `everruns_core::build_mcp_proxy_tools`),
 //! instead of routing `mcp_*` calls through a separate executor.
 
+use crate::capabilities::Capability as _;
 use crate::mcp::client::McpClient;
 use crate::mcp::elicitation::{ElicitationAction, UrlElicitationPending};
 use crate::mcp::form_elicitation::FormElicitationPending;
 use crate::mcp::http::McpHttpStatusError;
+use crate::mcp::http::McpRpcError;
 use crate::mcp::transport::McpConnection;
 use crate::mcp_server::sanitize_mcp_server_name;
-use crate::{McpToolInvoker, parse_mcp_tool_name};
+use crate::{
+    McpReadResourceResult, McpResourceListing, McpResourceOutcome, McpServerTools, McpToolInvoker,
+    parse_mcp_tool_name,
+};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result as CoreResult};
@@ -175,6 +180,16 @@ impl McpExecutor {
         &self,
         tool_call: &ToolCall,
     ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_keyed(tool_call, None).await
+    }
+
+    /// [`execute_mcp_tool_recorded`](Self::execute_mcp_tool_recorded) that
+    /// sends the call's idempotency key with it.
+    pub async fn execute_mcp_tool_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> Result<(ToolResult, Option<crate::McpServerActsAs>)> {
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
 
@@ -204,6 +219,7 @@ impl McpExecutor {
                 if object.contains_key(&binding.parameter_name) {
                     return Ok((
                         ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: Some(serde_json::json!({
                                 "code": "credential_override_rejected",
@@ -223,6 +239,7 @@ impl McpExecutor {
                 let Some(value) = binding.value.as_ref() else {
                     return Ok((
                         ToolResult {
+                            details: None,
                             tool_call_id: tool_call.id.clone(),
                             result: Some(serde_json::json!({
                                 "code": "credential_required",
@@ -259,6 +276,7 @@ impl McpExecutor {
                 tool_call.id.clone(),
                 &original_tool_name,
                 arguments,
+                idempotency_key,
             )
             .await;
         let result = match result {
@@ -352,6 +370,7 @@ fn connection_required_result(
             "The person must connect their account"
         };
         return ToolResult {
+            details: None,
             tool_call_id,
             result: Some(serde_json::json!({
                 "code": "connection_required",
@@ -371,6 +390,7 @@ fn connection_required_result(
         };
     }
     ToolResult {
+        details: None,
         tool_call_id,
         result: None,
         images: None,
@@ -423,6 +443,7 @@ fn url_elicitation_result(
         declined,
     };
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
         images: None,
@@ -457,12 +478,80 @@ fn form_elicitation_result(
         fingerprint: pending.fingerprint.clone(),
     };
     ToolResult {
+        details: None,
         tool_call_id,
         result: Some(serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)),
         images: None,
         error: None,
         connection_required: None,
         raw_output: None,
+    }
+}
+
+/// JSON-RPC "method not found": the server does not offer resources.
+const METHOD_NOT_FOUND: i64 = -32601;
+
+impl McpExecutor {
+    /// The connection a resource request on `server_prefix` uses, or the
+    /// connection-required result when it is missing a grant.
+    async fn resource_connection(
+        &self,
+        server_prefix: &str,
+    ) -> CoreResult<std::result::Result<McpConnection, ToolResult>> {
+        let connection = self
+            .resolver
+            .resolve(server_prefix)
+            .await
+            .map_err(|e| AgentLoopError::tool(e.to_string()))?
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("MCP server not found for prefix: {server_prefix}"))
+            })?;
+        Ok(match &connection.pending_oauth_provider {
+            Some(required) => Err(connection_required_result(
+                String::new(),
+                &connection,
+                required,
+            )),
+            None => Ok(connection),
+        })
+    }
+
+    /// Map a failed resource request. A rejected credential is invalidated and
+    /// becomes connection-required when the server now needs a sign-in, the
+    /// same recovery a tool call gets.
+    async fn resource_error<T>(
+        &self,
+        server_prefix: &str,
+        connection: &McpConnection,
+        error: anyhow::Error,
+    ) -> CoreResult<McpResourceOutcome<T>> {
+        if is_unauthorized(&error) {
+            self.resolver
+                .invalidate(server_prefix, connection)
+                .await
+                .map_err(|e| AgentLoopError::tool(e.to_string()))?;
+            if let Some(connection) = self
+                .resolver
+                .resolve(server_prefix)
+                .await
+                .map_err(|e| AgentLoopError::tool(e.to_string()))?
+                && let Some(required) = &connection.pending_oauth_provider
+            {
+                return Ok(McpResourceOutcome::ConnectionRequired(Box::new(
+                    connection_required_result(String::new(), &connection, required),
+                )));
+            }
+        }
+        if error
+            .downcast_ref::<McpRpcError>()
+            .is_some_and(|rpc| rpc.code == METHOD_NOT_FOUND)
+        {
+            return Err(AgentLoopError::tool(format!(
+                "MCP server '{server_prefix}' does not offer resources"
+            )));
+        }
+        tracing::warn!(server = %connection.name, error = %error, "MCP resource request failed");
+        Err(AgentLoopError::tool(error.to_string()))
     }
 }
 
@@ -484,11 +573,165 @@ impl McpToolInvoker for McpExecutor {
         &self,
         tool_call: &ToolCall,
     ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
-        self.execute_mcp_tool_recorded(tool_call)
+        self.invoke_keyed(tool_call, None).await
+    }
+
+    async fn invoke_keyed(
+        &self,
+        tool_call: &ToolCall,
+        idempotency_key: Option<&str>,
+    ) -> CoreResult<(ToolResult, Option<crate::McpServerActsAs>)> {
+        self.execute_mcp_tool_keyed(tool_call, idempotency_key)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "MCP tool execution failed");
                 AgentLoopError::tool(e.to_string())
             })
+    }
+
+    /// Lists through the connection a call would use, so the tools and the
+    /// account match what the turn would have listed had the server not been
+    /// deferred. Not cached: the reveal the caller writes moves the server onto
+    /// the cached discovery path from the next step.
+    async fn list_server_tools(
+        &self,
+        server_prefix: &str,
+        session_id: uuid::Uuid,
+    ) -> CoreResult<Option<McpServerTools>> {
+        let connection = self
+            .resolver
+            .resolve(server_prefix)
+            .await
+            .map_err(|e| AgentLoopError::tool(e.to_string()))?
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("MCP server not found for prefix: {server_prefix}"))
+            })?;
+        if let Some(required) = &connection.pending_oauth_provider {
+            return Ok(Some(McpServerTools::ConnectionRequired(
+                connection_required_result(String::new(), &connection, required),
+            )));
+        }
+        let tools = self.client.discover(&connection).await.map_err(|e| {
+            tracing::warn!(server = %connection.name, error = %e, "MCP tool listing failed");
+            AgentLoopError::tool(e.to_string())
+        })?;
+        // Same capability id the turn's own discovery gives this server.
+        let id = uuid::Uuid::new_v5(&session_id, connection.name.as_bytes());
+        let definitions =
+            crate::mcp::McpCapability::new(id, connection.name, None, tools).tool_definitions();
+        Ok(Some(McpServerTools::Listed(definitions)))
+    }
+
+    async fn list_resources(
+        &self,
+        server_prefix: &str,
+        cursor: Option<&str>,
+    ) -> CoreResult<Option<McpResourceOutcome<McpResourceListing>>> {
+        let connection = match self.resource_connection(server_prefix).await? {
+            Ok(connection) => connection,
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
+        };
+        let page = match self.client.list_resources(&connection, cursor).await {
+            Ok(page) => page,
+            Err(error) => {
+                return self
+                    .resource_error(server_prefix, &connection, error)
+                    .await
+                    .map(Some);
+            }
+        };
+        // Templates ride on the first page. Many servers have none and answer
+        // "method not found", which is not a failure of the listing.
+        let templates = if cursor.is_none() {
+            self.client
+                .list_resource_templates(&connection, None)
+                .await
+                .map(|page| page.resource_templates)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        Ok(Some(McpResourceOutcome::Done(McpResourceListing {
+            page,
+            templates,
+        })))
+    }
+
+    async fn read_resource(
+        &self,
+        server_prefix: &str,
+        uri: &str,
+    ) -> CoreResult<Option<McpResourceOutcome<McpReadResourceResult>>> {
+        let connection = match self.resource_connection(server_prefix).await? {
+            Ok(connection) => connection,
+            Err(required) => {
+                return Ok(Some(McpResourceOutcome::ConnectionRequired(Box::new(
+                    required,
+                ))));
+            }
+        };
+        match self.client.read_resource(&connection, uri).await {
+            Ok(read) => Ok(Some(McpResourceOutcome::Done(read))),
+            Err(error) => self
+                .resource_error(server_prefix, &connection, error)
+                .await
+                .map(Some),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::NoAuthProvider;
+
+    fn executor(connection: McpConnection) -> McpExecutor {
+        let client = Arc::new(McpClient::new(
+            Arc::new(crate::DisabledEgressService),
+            Arc::new(NoAuthProvider),
+        ));
+        let resolver = StaticConnectionResolver::new().with(connection);
+        McpExecutor::new(client, Arc::new(resolver))
+    }
+
+    #[tokio::test]
+    async fn listing_a_server_without_its_grant_asks_for_the_connection() {
+        let mut connection = McpConnection::http("docs", "https://example.com/mcp");
+        connection.pending_oauth_provider = Some(
+            everruns_contracts::ConnectionRequired::provider_only("docs-provider"),
+        );
+        let listing = executor(connection)
+            .list_server_tools("docs", uuid::Uuid::nil())
+            .await
+            .unwrap();
+        let Some(McpServerTools::ConnectionRequired(result)) = listing else {
+            panic!("expected a connection request, got {listing:?}");
+        };
+        assert!(
+            result.error.unwrap_or_default().contains("docs"),
+            "names the server"
+        );
+    }
+
+    #[tokio::test]
+    async fn listing_fails_for_a_server_outside_the_resolver_or_unreachable() {
+        let executor = executor(McpConnection::http("docs", "https://example.com/mcp"));
+        assert!(
+            executor
+                .list_server_tools("other", uuid::Uuid::nil())
+                .await
+                .is_err()
+        );
+        // Egress is disabled here, so the listing itself fails as a tool error.
+        assert!(
+            executor
+                .list_server_tools("docs", uuid::Uuid::nil())
+                .await
+                .is_err()
+        );
     }
 }

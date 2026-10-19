@@ -177,6 +177,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 
@@ -190,6 +191,7 @@ mod tests {
             phase: None,
             reasoning: Vec::new(),
             configuration_update: None,
+            tool_changes: None,
         }
     }
 

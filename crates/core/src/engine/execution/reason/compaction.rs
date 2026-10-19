@@ -917,6 +917,7 @@ pub(super) async fn apply_reactive_compaction(
                     phase: None,
                     reasoning: Vec::new(),
                     configuration_update: None,
+                    tool_changes: None,
                 },
                 Message {
                     native_tool_calls: Vec::new(),
@@ -931,6 +932,7 @@ pub(super) async fn apply_reactive_compaction(
                     phase: None,
                     reasoning: Vec::new(),
                     configuration_update: None,
+                    tool_changes: None,
                 },
             ];
             let mut summary_config = crate::engine::driver_registry::LlmCallConfig::new(
@@ -953,9 +955,13 @@ pub(super) async fn apply_reactive_compaction(
             {
                 Ok(response) => {
                     let system_message = has_system_prompt.then(|| messages[0].clone());
+                    let summary_text = crate::attachment_labels::summary_with_attachment_list(
+                        &response.text,
+                        to_summarize,
+                    );
                     *messages = context.policy.compose_summary_with_recent(
                         system_message,
-                        &response.text,
+                        &summary_text,
                         recent,
                     );
                     let duration_ms = step_start.elapsed().as_millis() as u64;

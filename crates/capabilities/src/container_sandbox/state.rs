@@ -5,6 +5,7 @@
 //! Decision: Docker operations re-check `managed-by` + `session` labels on the
 //! live object; mutable stored IDs alone are not trusted (EVE-1151).
 
+use super::config::ContainerSandboxConfig;
 use everruns_core::leased_resource::UpsertLeasedResource;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
@@ -29,9 +30,6 @@ pub const MANAGED_BY_LABEL: &str = "managed-by";
 pub const MANAGED_BY_VALUE: &str = "everruns";
 /// Label key binding a Docker object to the session that created it.
 pub const SESSION_LABEL: &str = "session";
-
-/// Lease duration for sandbox containers (20 minutes).
-pub const SANDBOX_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 
 /// Sandbox state persisted in session secrets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +208,7 @@ pub async fn delete_sandbox_state(
 pub async fn touch_sandbox_lease(
     context: &ToolContext,
     state: &SandboxState,
+    config: &ContainerSandboxConfig,
 ) -> Result<(), ToolExecutionResult> {
     let Some(store) = context.leased_resource_store.as_ref() else {
         return Ok(());
@@ -224,7 +223,7 @@ pub async fn touch_sandbox_lease(
             display_name: Some(state.container_name.clone()),
             owner_user_id: None,
             connection_id: None,
-            lease_duration_seconds: SANDBOX_LEASE_DURATION_SECONDS,
+            lease_duration_seconds: config.lease_duration_seconds(),
             metadata: json!({
                 "image": &state.image,
                 "working_dir": &state.working_dir,

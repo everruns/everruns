@@ -16,13 +16,26 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 
 | Type | `channel_type` | Who calls it | Canonical route | Guide |
 |---|---|---|---|---|
-| Slack | `slack` | Slack users, through a Slack app | `/v1/channels/{channel_id}/slack/events` | [Slack](/capabilities/slack/) |
+| Slack | `slack` | Slack users, through a Slack app | `/v1/channels/{channel_id}/slack/events` | [Slack](/integrations/slack/) |
 | AG-UI | `ag_ui` | Browser and app clients that speak the AG-UI protocol | `/v1/channels/{channel_id}/ag-ui` | [AG-UI](#ag-ui) |
 | A2A | `a2a` | Other agents, over the A2A protocol | `/v1/channels/{channel_id}/a2a` | [A2A](/features/a2a/) |
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
+| Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
+| Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
+| Poppy | `poppy` | People's own agents, over the Personal Agent Protocol | `/v1/channels/{channel_id}/poppy` | [Poppy](/features/poppy/) |
 
 Routes are relative to the API base, for example `https://your-everruns-host/api`. The channel ID in each route is the channel's own ID, not the Agent's.
+
+## Download received files
+
+Files received through Slack, AG-UI and A2A remain available to the Agent in
+its session. Opening a stored file's `/v1/files/{file_id}` URL downloads its
+bytes instead of rendering it on the application's origin. This endpoint uses
+`Content-Disposition: attachment`, `Content-Type: application/octet-stream`
+and `X-Content-Type-Options: nosniff` for every stored file, including PDFs and
+zip archives. File listings retain the original media type. Downloads require
+authentication and membership in the file's organization.
 
 ## Create a channel
 
@@ -53,6 +66,20 @@ Publishing and unpublishing require the dangerous Agent permission (Owner by def
 A channel serves traffic only when all three hold: the channel is live, the Agent is active, and the Agent's exposures are not suspended. Suspending exposures from the Agent's **Integrations** tab takes every channel of that Agent offline at once without changing each channel's state.
 
 Errors from public channels are sanitized so they do not expose internal state, such as whether a channel exists or why it is offline.
+
+## Files people send
+
+Files sent to a channel reach the Agent the same way on every channel. Each one is stored with the message and copied into the session's `/attachments` folder, where the Agent can open it again later in the conversation, including after compaction.
+
+| Channel | What is taken |
+|---|---|
+| Slack | Files shared in the message, downloaded with the app's bot token. Files linked from external services are described by name. |
+| AG-UI | Image, audio, video and document parts of the user message, inline or by URL. |
+| Public Chat | The same parts, inline only: at most 3 files of up to 10 MB, since visitors are not signed in. |
+| A2A | File parts, as bytes or a URI. PACT endpoints take text only, as the PACT protocol requires. |
+| Agent API | The `files` list of a message, as base64 `data` or a `url` ([Call your agent from code](/how-to/call-your-agent-from-code/#send-files)). A [serve](/framework/serve/) app takes the same list. |
+
+Files sent by URL are downloaded only from public `https` addresses. A message keeps at most 10 files of up to 25 MB each, and the file's contents decide its type, whatever the sender declared. A file that cannot be taken, for example because it is too large or its download failed, becomes a note in the message, such as `[Attachment report.pdf not received: 31 MB is over the 25 MB limit]`, so the Agent knows it was sent.
 
 ## AG-UI
 
@@ -125,13 +152,18 @@ Each agent becomes its own end user in the organization, keyed by its AgentID su
 
 To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initiate-login` as the sign-in URL and set `AGENTID_DEFAULT_CHANNEL` to the channel it should open. Without a default channel that URL creates nothing, because it does not say which chat the agent wants. `AGENTID_OWNER_SCOPES=true` also requests the owner's name and email; leave it off unless you need to contact owners.
 
+## Agent API
+
+An Agent API channel gives one Agent a base URL, `/v1/channels/{channel_id}`, that your own code calls with an **agent key** (`evr_ak_…`). A key reaches only this Agent's session routes, never the management API. Callers start sessions, send messages, follow events over SSE, answer questions, approve tool calls and cancel turns, and each caller sees only its own sessions. Channel settings add end users, your own identity provider, browser origins, safe retries and a daily spending limit per caller.
+
+Add an **Agent API** channel on the Agent's **Integrations** tab, publish it, and create a key in its **Agent keys** card. See [Agent API](/features/agent-api/) for keys, every route, authentication, settings, streaming and errors, and [Call your agent from code](/how-to/call-your-agent-from-code/) for a walkthrough. A [serve](/framework/serve/) app serves the same routes at `/v1/channels/{agent}`.
+
 ## Other transports
 
 The same channel model also carries transports that do not need a reply channel:
 
-- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**.
+- `webhook` runs the Agent when an authenticated HTTP call reaches `/v1/channels/{channel_id}/webhook`, and is available under **Add channel**. A sender that retries can set an `Idempotency-Key` header: a repeat of a key the channel accepted in the last day answers `"delivery": "duplicate"` and starts nothing.
 - `schedule` runs the Agent on a cron schedule. Create schedules as [Agent triggers](/features/agent-triggers/), which also cover webhook, GitHub, and MCP event starts.
-- `api_endpoint` gives callers an execution-only API key for the session routes under `/v1/channels/{channel_id}/sessions`.
 
 ## Existing integrations
 
@@ -147,5 +179,8 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step Slack setup.
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
+- [Voice](/features/voice/): talk to an Agent and hear its answers.
+- [Agent API](/features/agent-api/): call one Agent from your own code with an agent key.
+- [Poppy](/features/poppy/): answer people's personal agents as a company.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.

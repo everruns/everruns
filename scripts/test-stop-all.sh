@@ -39,20 +39,25 @@ rm -rf "$RUN_STATE_DIR"
 
 (exec -a everruns-server nc -lk 127.0.0.1 "$API_PORT" >/dev/null 2>&1) &
 listener_pid=$!
+# Next's dev server listens from a child process titled "next-server (vX)".
+(exec -a "next-server (v16.0.0)" nc -lk 127.0.0.1 "$UI_PORT" >/dev/null 2>&1) &
+ui_listener_pid=$!
 
 cleanup() {
-  kill "$listener_pid" >/dev/null 2>&1 || true
-  wait "$listener_pid" 2>/dev/null || true
+  kill "$listener_pid" "$ui_listener_pid" >/dev/null 2>&1 || true
+  wait "$listener_pid" "$ui_listener_pid" 2>/dev/null || true
   rm -rf "$RUN_STATE_DIR"
 }
 
 trap cleanup EXIT
 
 wait_for_listener "$API_PORT"
+wait_for_listener "$UI_PORT"
 
 "$PROJECT_ROOT/scripts/lib/services.sh" stop-all >/dev/null
 
 sleep 1
 assert_dead "$listener_pid" "managed listener without pid state"
+assert_dead "$ui_listener_pid" "Next dev server listener"
 
 echo "stop-all fallback cleanup checks passed"

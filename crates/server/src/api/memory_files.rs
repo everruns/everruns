@@ -129,7 +129,7 @@ pub struct DeleteQuery {
 // Mapping helpers
 // ============================================
 
-fn info_to_dto(row: crate::storage::models::MemoryFileInfoRow) -> MemoryFileInfo {
+fn info_to_dto(row: crate::storage::MemoryFileInfoRow) -> MemoryFileInfo {
     MemoryFileInfo {
         path: row.path,
         is_directory: row.is_directory,
@@ -267,6 +267,7 @@ pub async fn list_root(
 }
 
 #[utoipa::path(
+    operation_id = "get_memory_file",
     description = "Read a file or list a directory inside a Memory.",
     get,
     path = "/v1/memories/{memory_id}/fs/{path}",
@@ -447,6 +448,7 @@ pub async fn update_file(
 }
 
 #[utoipa::path(
+    operation_id = "delete_memory_file",
     description = "Delete a file or directory. Pass `recursive=true` to delete non-empty directories.",
     delete,
     path = "/v1/memories/{memory_id}/fs/{path}",
@@ -625,6 +627,7 @@ mod tests {
             role,
             is_platform_user: false,
             feature_flags: crate::domains::common::all_feature_flags_for_test(),
+            read_only: false,
         }
     }
 

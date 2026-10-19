@@ -51,7 +51,14 @@ work, there is no separate recurring-task primitive to configure.
 ## Notes
 
 - Maximum 5 active schedules per session
-- Cron uses standard 5-field format (minute, hour, day, month, weekday)
+- Cron uses standard 5-field format (minute, hour, day, month, weekday), with
+  weekdays counted 0-6 from Sunday (7 is also Sunday)
+- A recurring schedule fires at most once every 5 minutes by default. Admission
+  rejects invalid cron and expressions with fewer than two future occurrences,
+  because their minimum interval cannot be verified. Use a one-shot schedule for
+  a single future run
+- An invalid cron expression or timezone, or a schedule over a limit, fails the
+  tool call with the reason, so the agent can correct it
 - Scheduled messages are sent to the session as if the user sent them
 - Use [Current Time](/capabilities/current-time/) to determine "now" before scheduling
 

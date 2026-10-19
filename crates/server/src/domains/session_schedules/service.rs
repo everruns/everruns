@@ -5,33 +5,34 @@
 use crate::kernel_imports::{
     contracts::typed_id::ScheduleId,
     contracts::typed_id::SessionId,
-    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
+    session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, parse_session_cron},
 };
 use crate::storage::UpdateField;
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
-use crate::services::PrincipalService;
+use crate::domains::users::PrincipalService;
 use crate::storage::backend::StorageBackend;
-use crate::storage::models::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
-use crate::storage::session_schedule_store::row_to_domain;
+use crate::storage::runtime::session_schedule::row_to_domain;
+use crate::storage::{CreateSessionScheduleRow, UpdateSessionScheduleRow};
 
 /// Compute the next trigger time for a schedule.
 ///
-/// For cron: parses the expression and finds the next occurrence after now.
+/// For cron: accepts the standard 5-field form the `create_schedule` tool
+/// documents, read through `parse_session_cron` (shared with the interval
+/// gate and the facade's local schedule store, so hosted and embedded
+/// schedules agree on what a cron means), evaluates it in the schedule's IANA
+/// timezone, and finds the next occurrence after now. Every error is a caller
+/// input error: an invalid cron or timezone.
 /// For one-shot: returns the scheduled_at time if it's in the future.
 pub fn compute_next_trigger(
     cron_expression: Option<&str>,
     scheduled_at: Option<DateTime<Utc>>,
-    _timezone: &str,
+    timezone: &str,
 ) -> Result<Option<DateTime<Utc>>> {
     if let Some(cron_expr) = cron_expression {
-        let schedule = cron::Schedule::from_str(cron_expr)
-            .map_err(|e| anyhow!("Invalid cron expression '{}': {}", cron_expr, e))?;
-
-        let next = schedule.upcoming(Utc).next();
-        Ok(next)
+        next_cron_occurrence(cron_expr, timezone, Utc::now())
     } else if let Some(at) = scheduled_at {
         if at > Utc::now() {
             Ok(Some(at))
@@ -41,6 +42,24 @@ pub fn compute_next_trigger(
     } else {
         Ok(None)
     }
+}
+
+fn next_cron_occurrence(
+    cron_expr: &str,
+    timezone: &str,
+    after: DateTime<Utc>,
+) -> Result<Option<DateTime<Utc>>> {
+    let schedule = parse_session_cron(cron_expr).map_err(|error| anyhow!(error))?;
+    let tz = if timezone.trim().is_empty() {
+        chrono_tz::UTC
+    } else {
+        chrono_tz::Tz::from_str(timezone)
+            .map_err(|e| anyhow!("Invalid IANA timezone '{timezone}': {e}"))?
+    };
+    Ok(schedule
+        .after(&after.with_timezone(&tz))
+        .next()
+        .map(|next| next.with_timezone(&Utc)))
 }
 
 use std::str::FromStr;
@@ -221,5 +240,80 @@ impl SessionScheduleService {
             .effective_owner_summary(org_id, schedule.resolved_owner_user_id)
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn five_field_cron_is_accepted() {
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
+        let next = next_cron_occurrence("0 7 * * *", "UTC", after).unwrap();
+        assert_eq!(
+            next,
+            Some(Utc.with_ymd_and_hms(2026, 10, 12, 7, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn cron_is_evaluated_in_the_schedule_timezone() {
+        // 07:00 in Chicago is 12:00 UTC while daylight saving time is on.
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
+        let next = next_cron_occurrence("0 7 * * *", "America/Chicago", after).unwrap();
+        assert_eq!(
+            next,
+            Some(Utc.with_ymd_and_hms(2026, 10, 12, 12, 0, 0).unwrap())
+        );
+        // Sunday 18:00 Chicago (cron weekday 0) after the DST switch is 00:00 UTC Monday.
+        let after = Utc.with_ymd_and_hms(2026, 11, 2, 0, 0, 0).unwrap();
+        let next = next_cron_occurrence("0 18 * * 0", "America/Chicago", after).unwrap();
+        assert_eq!(
+            next,
+            Some(Utc.with_ymd_and_hms(2026, 11, 9, 0, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn five_field_weekdays_count_from_sunday() {
+        // Monday 2026-10-12 09:00 UTC is the first weekday run after Sunday.
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
+        assert_eq!(
+            next_cron_occurrence("0 9 * * 1-5", "UTC", after).unwrap(),
+            Some(Utc.with_ymd_and_hms(2026, 10, 12, 9, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn six_and_seven_field_cron_still_work() {
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
+        assert!(
+            next_cron_occurrence("0 0 7 * * *", "UTC", after)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            next_cron_occurrence("0 0 7 * * * *", "UTC", after)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn canonical_parser_preserves_leap_day_calendar() {
+        let after = Utc.with_ymd_and_hms(2027, 3, 1, 0, 0, 0).unwrap();
+        assert_eq!(
+            next_cron_occurrence("0 9 29 2 *", "UTC", after).unwrap(),
+            Some(Utc.with_ymd_and_hms(2028, 2, 29, 9, 0, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn bad_cron_and_timezone_are_rejected() {
+        let after = Utc.with_ymd_and_hms(2026, 10, 11, 23, 0, 0).unwrap();
+        assert!(next_cron_occurrence("every day", "UTC", after).is_err());
+        assert!(next_cron_occurrence("0 7 * * *", "Mars/Olympus", after).is_err());
     }
 }

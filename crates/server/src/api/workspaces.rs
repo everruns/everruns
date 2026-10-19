@@ -1,6 +1,8 @@
 // Workspace CRUD HTTP routes and the workspace-scoped filesystem alias.
 //
-// /v1/workspaces/* — CRUD on the new Workspace entity.
+// /v1/workspaces/* — read, rename and archive Workspaces. There is no create:
+// every workspace is the one a session made for itself, and sessions can no
+// longer attach to another one (see `WORKSPACE_ATTACH_RETIRED`).
 // /v1/workspaces/{workspace_id}/fs/* — delegates to the existing session
 // filesystem service. Since the migration ensures each session's
 // `workspace_id` equals its `session.id` for the default 1:1 case, we can
@@ -12,10 +14,10 @@ use crate::domains::change_history::rest::RestChange;
 use crate::domains::change_history::{ChangeAction, EntityKind};
 use crate::domains::workspaces::types::workspace_response;
 pub use crate::domains::workspaces::types::{
-    CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
+    ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
-use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
+use crate::storage::UpdateWorkspace;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -42,10 +44,7 @@ fn enforce(
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route(
-            "/v1/workspaces",
-            get(list_workspaces).post(create_workspace),
-        )
+        .route("/v1/workspaces", get(list_workspaces))
         .route(
             "/v1/workspaces/{workspace_id}",
             get(get_workspace)
@@ -79,90 +78,6 @@ pub async fn list_workspaces(
     Ok(Json(ListResponse::new(
         rows.into_iter().map(workspace_response).collect(),
     )))
-}
-
-#[utoipa::path(
-    description = "Create a Workspace.",
-    post,
-    path = "/v1/workspaces",
-    request_body = CreateWorkspaceRequest,
-    responses(
-        (status = 201, description = "Created", body = WorkspaceResponse),
-        (status = 400, description = "Invalid input", body = ErrorResponse),
-        (status = 409, description = "Name conflict", body = ErrorResponse),
-    ),
-    tag = "workspace"
-)]
-pub async fn create_workspace(
-    org: ResolvedOrg,
-    State(state): State<ApiState>,
-    Json(req): Json<CreateWorkspaceRequest>,
-) -> Result<(StatusCode, Json<WorkspaceResponse>), (StatusCode, Json<ErrorResponse>)> {
-    enforce(
-        &state,
-        &org,
-        &WORKSPACE_MANAGE,
-        "authorize create workspace",
-    )?;
-    let name = req.name.trim();
-    if name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("name cannot be empty")),
-        ));
-    }
-    if name.chars().count() > 255 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("name must be at most 255 characters")),
-        ));
-    }
-    // Pin the internal primary key to the public id's uuid so
-    // `id.hex == public_id suffix` holds universally (matching default
-    // per-session workspaces). This keeps `WorkspaceId::from_uuid(id)` equal to
-    // the public id, so callers — e.g. the `workspace_id` rendered on a session
-    // response — round-trip correctly.
-    let change = history(
-        &state,
-        &org,
-        "create_workspace",
-        ChangeAction::Created,
-        None,
-        &{
-            let mut fields = vec!["name"];
-            fields.extend(req.description.as_ref().map(|_| "description"));
-            fields
-        },
-    )
-    .await?;
-    let workspace_id = WorkspaceId::new();
-    let public_id = workspace_id.to_string();
-    let row = state
-        .db
-        .create_workspace(
-            org.org_id,
-            CreateWorkspaceRow {
-                id: Some(workspace_id.uuid()),
-                public_id,
-                name: name.to_string(),
-                description: req.description,
-                owner_principal_id: None,
-                resolved_owner_user_id: None,
-            },
-        )
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("already exists") {
-                (
-                    StatusCode::CONFLICT,
-                    Json(ErrorResponse::new("workspace name already exists")),
-                )
-            } else {
-                internal_error(e)
-            }
-        })?;
-    change.finish(&row.public_id).await;
-    Ok((StatusCode::CREATED, Json(workspace_response(row))))
 }
 
 #[utoipa::path(

@@ -11,9 +11,10 @@
  */
 "use client";
 
+import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Bot } from "lucide-react";
+
 import {
   SessionProvider,
   useSessionContext,
@@ -37,10 +38,12 @@ function ThreadContent({
   threadId,
   extraActions,
   threadMode,
+  coordinatorId,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
+  coordinatorId?: string;
 }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
@@ -59,7 +62,10 @@ function ThreadContent({
 
   const counterpart = getDisplayName(agent);
 
-  const platformIntro = agent ? resolvePlatformChatIntro(agent) : null;
+  // A coordinator thread runs the Chat's own agent, but it is not the Chat:
+  // its intro and description would describe the wrong conversation.
+  const coordinatorThread = !!coordinatorId && session?.parent_session_id === coordinatorId;
+  const platformIntro = agent && !coordinatorThread ? resolvePlatformChatIntro(agent) : null;
 
   usePageTitle(session ? title : null, "Chat");
 
@@ -84,12 +90,17 @@ function ThreadContent({
     );
   }
 
-  if (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME) {
+  // A thread the Chat started may run any Agent the person can run, so it is
+  // recognized by its parent rather than by its Agent.
+  if (
+    !coordinatorThread &&
+    (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME)
+  ) {
     return (
       <ResourceNotFound
         title="Thread not found"
         description="This session is available as a recording. Use Playground to test its Agent."
-        backHref={`/sessions/${threadId}/transcript`}
+        backHref={`/sessions/${threadId}/trace`}
         backLabel="Open recording"
         resourceId={threadId}
       />
@@ -97,12 +108,13 @@ function ThreadContent({
   }
 
   return (
-    <div className="flex h-full flex-col bg-background bg-brand-dots">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background bg-brand-dots">
       <ChatThreadHeader
         session={session}
         extraActions={extraActions}
         threadMode={threadMode}
         title={title}
+        contextLabel={coordinatorThread ? "Started by Chat" : undefined}
         counterpart={counterpart}
         platformIntro={platformIntro?.intro ?? null}
         platformDescription={platformIntro?.description ?? null}
@@ -112,7 +124,7 @@ function ThreadContent({
               href={`/agents/${agentId}`}
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              <Bot className="icon-sharp size-3" />
+              <AgentIcon className="icon-sharp size-3" />
               {counterpart}
             </Link>
           ) : undefined
@@ -121,6 +133,7 @@ function ThreadContent({
       <ChatPanel
         resolvedThread={threadMode && !!session.archived_at}
         replyToLabel={counterpart}
+        replyInThread={coordinatorThread}
         showRunCards
         showParticipants={false}
         platformIcon="everruns"
@@ -135,14 +148,22 @@ export function ChatThreadView({
   threadId,
   extraActions,
   threadMode = false,
+  coordinatorId,
 }: {
   threadId: string;
   extraActions?: ReactNode;
   threadMode?: boolean;
+  /** The permanent Chat: its child sessions open here as threads. */
+  coordinatorId?: string;
 }) {
   return (
     <SessionProvider key={threadId} sessionId={threadId} readOnlyWhenArchived={threadMode}>
-      <ThreadContent threadId={threadId} extraActions={extraActions} threadMode={threadMode} />
+      <ThreadContent
+        threadId={threadId}
+        extraActions={extraActions}
+        threadMode={threadMode}
+        coordinatorId={coordinatorId}
+      />
     </SessionProvider>
   );
 }

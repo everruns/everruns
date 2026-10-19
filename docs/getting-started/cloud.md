@@ -38,7 +38,9 @@ UI, open **Settings** > **Personal Access Tokens** and create one. Tokens start
 with `evr_pat_` and are shown once, so copy it before you close the dialog.
 
 A token belongs to your user account, not to one organization, and can reach
-every organization you belong to. Revoke it from the same page.
+every organization you belong to. Choose **Read-only** for scripts that only
+read; it still reads every organization you belong to
+([Token access](/features/ui/#token-access)). Revoke a token from the same page.
 
 ## 4. Connect
 
@@ -124,7 +126,7 @@ you set on a session or an agent; credit is what pays for the built-in provider.
 
 ## Bring your own keys (optional)
 
-You can add your own provider API keys under **Settings** > **LLM Providers**,
+You can add your own provider API keys under **Models** > **Providers**,
 and point agents at those models. Calls through your own keys are billed by
 that provider, not against your Everruns credit, and keep working when the
 credit balance is zero.

@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: write # dispatch/wait for exact-revision validation when publishing directly
 
 concurrency:
   group: publish-crate-${{ github.event.client_payload.package || github.event.inputs.package || 'unknown' }}-${{ github.event.client_payload.tag || github.event.inputs.tag || github.ref }}
@@ -121,6 +122,12 @@ jobs:
         run: |
           set -euo pipefail
           git -c advice.detachedHead=false checkout --detach "$TRUSTED_SHA"
+
+      - name: Require full validation of the trusted package revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.trusted_ref.outputs.sha }}
+        run: python3 .github/scripts/ci/wait_full.py --sha "$RELEASE_SHA"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0

@@ -1,7 +1,8 @@
 "use client";
 
+import { KnowledgeIcon } from "@/components/icons/facet-icons";
 import { use, useMemo, useState } from "react";
-import { GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
+import { GitBranch, Pencil, RefreshCw } from "lucide-react";
 import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { useOrg } from "@/providers/org-provider";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
@@ -133,7 +134,7 @@ export default function KnowledgeIndexDetailPage({
       />
 
       <PageMasthead
-        icon={<Library />}
+        icon={<KnowledgeIcon />}
         entityId={index.id}
         title={<span className={getEntityNameClassName(index.status)}>{index.name}</span>}
         badges={
@@ -392,7 +393,7 @@ function DiagnosticAction({
   }
   if (diagnostic.action === "configure_provider" && diagnostic.providerId) {
     return (
-      <LinkButton size="sm" variant="outline" href={`/settings/providers/${diagnostic.providerId}`}>
+      <LinkButton size="sm" variant="outline" href={`/models/providers/${diagnostic.providerId}`}>
         Configure provider
       </LinkButton>
     );

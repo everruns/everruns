@@ -309,6 +309,7 @@ mod tests {
                 total: Some(10),
                 unit: Some("steps".into()),
                 label: Some(label.into()),
+                ..Default::default()
             });
             assert_eq!(
                 wake_text_for(&task, TaskTransition::Message).unwrap(),

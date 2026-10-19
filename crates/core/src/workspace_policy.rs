@@ -62,6 +62,19 @@ fn preset_read_only_hidden_scopes() -> Vec<PolicyPath> {
         .collect()
 }
 
+/// Root the host copies message attachments into
+/// (`/attachments/<id>/<filename>`). It is ordinary and readable, but only
+/// the host writes it, so a label's path always names the file the user sent.
+const ATTACHMENTS_ROOT: &str = "attachments";
+
+/// Scopes the presets never let the model write: the read-only hidden scopes
+/// plus the attachments root.
+fn preset_write_denied_scopes() -> Vec<PolicyPath> {
+    let mut scopes = preset_read_only_hidden_scopes();
+    scopes.push(PolicyPath(vec![ATTACHMENTS_ROOT.to_string()]));
+    scopes
+}
+
 /// A validated, composable workspace access policy.
 ///
 /// [`Default`] is intentionally read-only: ordinary non-hidden files are
@@ -153,7 +166,7 @@ impl WorkspacePolicy {
                 deny_read: Vec::new(),
                 // No write scope exists; the deny keeps the readable hidden
                 // scopes read-only even if this layer is ever widened.
-                deny_write: preset_read_only_hidden_scopes(),
+                deny_write: preset_write_denied_scopes(),
                 deny_write_components: Vec::new(),
                 hidden: preset_read_only_hidden_scopes(),
                 sensitive: Vec::new(),
@@ -176,7 +189,7 @@ impl WorkspacePolicy {
                 read: vec![PolicyPath::root()],
                 write: vec![PolicyPath::root()],
                 deny_read: Vec::new(),
-                deny_write: preset_read_only_hidden_scopes(),
+                deny_write: preset_write_denied_scopes(),
                 deny_write_components: DEFAULT_WRITE_DENY_COMPONENTS
                     .iter()
                     .map(|component| (*component).to_string())
@@ -842,6 +855,20 @@ mod tests {
         let default = WorkspacePolicy::default();
         assert!(!default.permits_write("/.agent-runs/run_1/result.json"));
         assert!(default.permits_read("/.tasks/task_1/result.json"));
+    }
+
+    #[test]
+    fn presets_keep_attachments_readable_but_host_written() {
+        for policy in [WorkspacePolicy::read_only(), WorkspacePolicy::read_write()] {
+            for path in [
+                "/attachments/a1b2c3/report.pdf",
+                "/workspace/attachments/a1b2c3/report.pdf",
+            ] {
+                assert!(policy.permits_read(path), "read: {path}");
+                assert!(!policy.permits_write(path), "write: {path}");
+            }
+        }
+        assert!(WorkspacePolicy::read_write().permits_write("/notes/attachments.md"));
     }
 
     /// EVE-1165: the model reads the results the runtime writes for it

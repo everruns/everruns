@@ -31,7 +31,7 @@ vendor features turn on the matching features here and re-export this crate as
 | `fireworks` | `fireworks` | Fireworks AI | OpenAI Chat Completions |
 | `gemini` | `gemini` | Google Gemini | Gemini API |
 | `mai` | `mai` | Microsoft AI (Foundry) | OpenAI Chat Completions |
-| `meta` | `meta` | Meta Model API | Open Responses |
+| `meta` | `meta` | Meta | Open Responses |
 | `mistral` | `mistral` | Mistral AI (La Plateforme) | OpenAI Chat Completions |
 | `openai` | `openai` | OpenAI and Azure OpenAI | Responses and Chat Completions |
 | `openrouter` | `openrouter` | OpenRouter | OpenAI Responses-compatible |
@@ -164,6 +164,17 @@ Stream items can fail with a transport error, and providers can also emit an
 `Error` event. Handle both. `LlmStreamEvent` is non-exhaustive, so keep a wildcard
 arm; tool calls and other events need handling when building an agent loop.
 
+## WASM and host HTTP
+
+OpenAI and OpenRouter chat drivers build for `wasm32-unknown-unknown`. Supply
+`.with_transport(Arc<dyn HttpTransport>)` from `everruns_contracts::http_transport`
+to use your host's fetch; request encoding, options, SSE, tools and retries stay
+in the driver. Native builds keep their existing client by default. The adapter
+owns endpoint/DNS policy, redirect refusal, timeouts and cancellation. Non-chat
+services and WebSockets remain native. See the
+[host fetch guide](https://everruns.com/docs/framework/models-and-providers/#wasm-and-host-fetch)
+and the [Workers adapter](https://github.com/everruns/everruns/blob/main/examples/celld-engine/src/fetch.rs).
+
 ## Register enabled drivers
 
 Hosts that select providers from configuration can register the enabled vendors
@@ -254,9 +265,9 @@ and `everruns_openai::X` with `everruns_drivers::openai::X`. Bedrock's
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-drivers)
-- [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Models and providers](https://everruns.com/docs/framework/models-and-providers/)
+- [Migrate between LLM providers](https://everruns.com/docs/how-to/migrate-providers/)
+- [Everruns documentation](https://everruns.com/docs)
 
 ## License
 
@@ -270,7 +281,9 @@ Hosts provide the browser opener and an implementation of
 persists the full rotated pair before producing authentication headers. Hosts
 with writers outside that lease must implement atomic `compare_and_save`.
 `chatgpt::login::LoginAttempt` handles loopback PKCE and verified dynamic
-registration; credentials and registration are host-owned.
+registration; credentials and registration are host-owned. Embedders can call
+`LoginAttempt::with_success_page_html` to replace the default plain-text
+login-complete response with their own HTML page.
 
 The `chatgpt-login` example provides a private-file handoff for remote self-hosted
-installations. See [ChatGPT plan](https://docs.everruns.com/features/chatgpt/).
+installations. See [ChatGPT plan](https://everruns.com/docs/features/chatgpt/).

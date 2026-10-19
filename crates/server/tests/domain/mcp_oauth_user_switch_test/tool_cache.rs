@@ -12,10 +12,10 @@ use everruns_core::{
 use everruns_server::CapabilityService;
 use everruns_server::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions;
 use everruns_server::domains::mcp_servers::{McpServerService, McpServerSettings};
-use everruns_server::storage::models::{
+use everruns_server::storage::CreateVirtualUserRow;
+use everruns_server::storage::{
     CreateAgentRow, CreateMcpServerRow, CreatePrincipalRow, CreateSessionRow,
-    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, CreateVirtualUserRow,
-    UpdateMcpServerTools,
+    CreateUserConnectionRow, CreateUserRow, CreateVirtualUserConnectionRow, UpdateMcpServerTools,
 };
 use everruns_server::storage::{DbConnectionResolver, EncryptionService, StorageBackend};
 use serde_json::{Value, json};
@@ -103,10 +103,10 @@ struct CacheFixture {
 impl CacheFixture {
     async fn new(scope: &'static str, ttl_ms: i64) -> Self {
         let db = Arc::new(StorageBackend::test_database());
-        everruns_server::seed::seed_all(
+        everruns_server::setup::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
-            &everruns_server::seed::SeedAuthContext::default(),
+            &everruns_server::setup::seed::SeedAuthContext::default(),
         )
         .await
         .unwrap();
@@ -162,6 +162,8 @@ impl CacheFixture {
                     network_access: None,
                     max_iterations: None,
                     parallel_tool_calls: None,
+                    max_output_tokens: None,
+                    communication: Default::default(),
                     environments: None,
                     is_built_in: false,
                 },
@@ -305,7 +307,7 @@ async fn create_persisted_session(
         .create_session(CreateSessionRow {
             playground_user_id: None,
             trigger_id: None,
-            source: everruns_server::records::SessionSource::Api,
+            source: everruns_server::domains::sessions::record::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             workspace_id: None,
             app_id: None,

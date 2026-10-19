@@ -1,11 +1,8 @@
 use super::*;
+use crate::domains::agent_channels::record::ChannelType;
 use crate::domains::agent_channels::{CreateAgentChannel, types::CreateAgentChannelRequest};
 use crate::domains::common::*;
-use crate::records::ChannelType;
-use crate::storage::{
-    ObserveHealthIssue, StorageBackend,
-    models::{CreateAgentRow, CreateHarnessRow},
-};
+use crate::storage::{CreateAgentRow, CreateHarnessRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, Permission, PermissionResolver};
@@ -62,6 +59,8 @@ async fn seed_agent(db: &StorageBackend) -> String {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            max_output_tokens: None,
+            communication: Default::default(),
             environments: None,
             is_built_in: false,
         },
@@ -116,6 +115,7 @@ async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelR
             role: OrgRole::Owner,
             is_platform_user: false,
             is_internal: false,
+            read_only: false,
         },
         db.clone(),
         None,
@@ -325,7 +325,7 @@ async fn denied_policy_revoked_membership_and_other_org_cannot_read_health() {
 async fn granted_scopes_verify_without_mutating_slack() {
     let (db, ctx, row) = fixture().await;
     let mock = MockServer::start().await;
-    let scopes = crate::api::slack_events::slack_bot_scopes(false);
+    let scopes = crate::domains::agent_channels::record::slack_channel::slack_bot_scopes(false);
     Mock::given(method("POST"))
         .and(path("/auth.test"))
         .respond_with(
@@ -375,16 +375,11 @@ async fn absent_scope_header_and_wrong_workspace_never_report_healthy() {
 }
 
 #[tokio::test]
-async fn notification_flag_does_not_disable_health_and_due_reminder_is_once() {
-    let (db, mut ctx, row) = fixture().await;
+async fn open_issue_notifies_and_due_reminder_is_once() {
+    let (db, ctx, row) = fixture().await;
     db.observe_health_issue(observation(&row, "open"))
         .await
         .unwrap();
-    ctx.feature_flags.notifications = false;
-    let first = list(&ctx).await;
-    assert_eq!(first.total, 1);
-    assert!(first.data[0].notification_id.is_none());
-    ctx.feature_flags.notifications = true;
     let issue = list(&ctx).await.data.remove(0);
     let notification = issue.notification_id.unwrap().parse().unwrap();
     let user = ctx.caller.user_id.unwrap();
@@ -446,4 +441,95 @@ async fn concurrent_manual_checks_share_cooldown() {
         service.check_requested(&row.channel_public_id, id)
     );
     assert_ne!(a.unwrap(), b.unwrap());
+}
+
+/// Poll for the issue a detached `record_limit_reached` writes.
+async fn org_issue(db: &StorageBackend, org_id: i64) -> crate::storage::HealthIssueRow {
+    for _ in 0..100 {
+        let rows = db.list_health_issues(org_id, 0, 10, None).await.unwrap();
+        if let Some(row) = rows
+            .into_iter()
+            .find(|row| row.code == active_turns::ACTIVE_TURN_LIMIT)
+        {
+            return row;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("no active-turn limit issue was recorded");
+}
+
+#[tokio::test]
+async fn active_turn_limit_issue_opens_reopens_and_resolves_below_the_limit() {
+    use crate::domains::sessions::limits::OrgCaps;
+    let (db, ctx, _row) = fixture().await;
+    let org_id = ctx.org_id();
+    let at_limit = OrgCaps {
+        max_concurrent_sessions: 10,
+        max_active_turns: 0,
+    };
+    let under_limit = OrgCaps {
+        max_concurrent_sessions: 10,
+        max_active_turns: 1,
+    };
+
+    active_turns::record_limit_reached(db.clone(), org_id);
+    let opened = org_issue(&db, org_id).await;
+    assert_eq!(opened.status, "open");
+    assert_eq!(opened.channel_id, None);
+
+    // Members see it with no agent or channel attached.
+    let listed = list(&ctx).await;
+    let issue = listed
+        .data
+        .iter()
+        .find(|issue| issue.code == active_turns::ACTIVE_TURN_LIMIT)
+        .expect("org issue listed");
+    assert_eq!(issue.title, "Active turn limit reached");
+    assert!(issue.agent_id.is_none() && issue.channel_id.is_none());
+    assert!(!issue.stale);
+
+    // "Check again" right after detection hits the shared cooldown.
+    let error = CheckHealthIssue {
+        issue_id: opened.id,
+    }
+    .run(&ctx)
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("Wait a few seconds"), "{error}");
+
+    // A refusal burst does not rewrite the still-open issue.
+    active_turns::recheck(&db, org_id, at_limit).await.unwrap();
+    let same = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(same.last_checked_at, opened.last_checked_at);
+
+    active_turns::recheck(&db, org_id, under_limit)
+        .await
+        .unwrap();
+    let resolved = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(resolved.status, "resolved");
+    assert!(
+        !list(&ctx)
+            .await
+            .data
+            .iter()
+            .any(|issue| issue.code == active_turns::ACTIVE_TURN_LIMIT)
+    );
+
+    // Hitting the limit again reopens the same issue as a new episode.
+    active_turns::recheck(&db, org_id, at_limit).await.unwrap();
+    let reopened = db
+        .get_health_issue(org_id, opened.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reopened.status, "open");
+    assert_ne!(reopened.episode_id, opened.episode_id);
 }

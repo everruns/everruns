@@ -89,10 +89,10 @@ Don't retry indefinitely, a turn that fails twice usually fails for a reason (ra
 
 | `error_code` | Cause | Action |
 |---|---|---|
-| `provider_rate_limited` | LLM provider throttled the request | Wait, retry with backoff |
+| `provider_rate_limited` | LLM provider throttled the request. `reason: "in_flight_budget_exhausted"` means the provider's in-flight spending limit is reached; `retry_after` is the wait in seconds | Wait, retry with backoff. When `retry_after` is at most 600 s, the session retries on its own (`auto_retry: true`), up to 3 times an hour |
 | `provider_usage_limit_reached` | Provider subscription or plan limit hit; resets at a later time | Wait for the reset time, or switch model |
 | `provider_unavailable` | Provider is down or unreachable | Retry later, or switch provider |
-| `provider_quota_exhausted` | Provider account is out of credits | Top up the provider account |
+| `provider_quota_exhausted` | Provider account is out of credits. `requested_max_tokens` and `affordable_tokens` are set when the balance covers fewer output tokens than requested | Top up the provider account, or lower max output tokens |
 | `provider_misconfigured` | Missing or invalid provider API key | Fix the provider key |
 | `provider_attestation_required` | Provider needs an account confirmation (for example OpenRouter age verification) | Complete it in the provider settings |
 | `model_unavailable` / `model_not_configured` | Model missing, or none set for the agent or session | Pick a configured model |

@@ -8,7 +8,7 @@
 //! A capability lands here when it is an *embedder* capability: something a CLI
 //! host, a CI runner, or an operator's own box opts into, rather than something
 //! the hosted product offers every tenant. Those go in an integration crate and
-//! are named by `everruns-integrations-catalog`.
+//! are named by `everruns-capabilities::integrations_catalog`.
 //!
 //! One pair lives elsewhere by design. `session` and `session_storage` are the
 //! capability face of the session-service seam and sit under
@@ -76,6 +76,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",
+        feature = "web-search",
         feature = "lua",
         feature = "mcp"
     ))]
@@ -86,6 +87,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "bashkit",
         feature = "web-fetch",
         feature = "duckduckgo",
+        feature = "web-search",
         feature = "lua",
         feature = "mcp"
     )))]
@@ -99,6 +101,8 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations::filesystem::FileSystemCapability);
     #[cfg(feature = "bashkit")]
     _registry.register(everruns_integrations::bashkit::BashkitShellCapability);
+    #[cfg(feature = "bashkit")]
+    _registry.register(everruns_integrations::bashkit::tools_in_shell::ToolsInShellCapability);
     // Both contribute a tool named `bash`, so an embedder selects one. Nothing
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.
@@ -108,6 +112,8 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]
     _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
+    #[cfg(feature = "web-search")]
+    _registry.register(everruns_integrations::web_search::WebSearchCapability::from_env());
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::from_env().lua {
         _registry.register(everruns_integrations::lua::LuaCapability);
@@ -174,6 +180,7 @@ mod tests {
         assert_eq!(registry.has("host_shell"), cfg!(feature = "host-shell"));
         assert_eq!(registry.has("web_fetch"), cfg!(feature = "web-fetch"));
         assert_eq!(registry.has("duckduckgo"), cfg!(feature = "duckduckgo"));
+        assert_eq!(registry.has("web_search"), cfg!(feature = "web-search"));
         assert!(!registry.has("openui"));
         assert!(!registry.has("a2ui"));
         assert!(!registry.has("openrouter_server_tools"));
@@ -207,6 +214,7 @@ mod tests {
             feature = "bashkit",
             feature = "web-fetch",
             feature = "duckduckgo",
+            feature = "web-search",
             feature = "lua",
             feature = "mcp"
         ));

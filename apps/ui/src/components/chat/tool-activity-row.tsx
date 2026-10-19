@@ -8,10 +8,11 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, CalendarClock, Check, Loader2, MonitorSmartphone } from "lucide-react";
+import { CalendarClock, Check, Loader2, MonitorSmartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
+import { FailureIcon, failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { McpAppResourceList } from "./mcp-app-resource-list";
 import { ToolResultThumbnails } from "./tool-result-thumbnails";
 import type { ToolCallContent } from "./tool-call-utils";
@@ -23,6 +24,8 @@ import {
 import { extractMcpAppResources, extractResultImages, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-activity";
+import { WebSearchRow } from "./web-search-details";
+import { parseWebSearchDetails } from "@/lib/web-search";
 
 export function ToolActivityRow({
   toolCall,
@@ -48,6 +51,7 @@ export function ToolActivityRow({
   const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
+  const failureSeverity = hasToolError ? (toolFailureSeverity(toolResult) ?? "issue") : null;
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
   const summaryChip = isComplete ? getToolActivitySummaryChip(toolCall, toolResult) : null;
@@ -56,6 +60,11 @@ export function ToolActivityRow({
     return (
       <ApprovalToolActivity toolCall={toolCall} toolResult={toolResult} context={approvalContext} />
     );
+  }
+
+  const search = parseWebSearchDetails(toolResult?.details);
+  if (search && toolResult) {
+    return <WebSearchRow details={search} durationMs={toolResult.duration_ms} event={toolResult} />;
   }
 
   return (
@@ -67,8 +76,8 @@ export function ToolActivityRow({
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-4 w-4 items-center justify-center">
-          {hasToolError ? (
-            <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+          {failureSeverity ? (
+            <FailureIcon severity={failureSeverity} />
           ) : isComplete ? (
             <Check className="h-3.5 w-3.5 text-accent" />
           ) : (
@@ -116,7 +125,11 @@ export function ToolActivityRow({
             )}
           </div>
 
-          {hasToolError && <div className="mt-1 text-xs text-destructive">{toolResult?.error}</div>}
+          {failureSeverity && (
+            <div className={cn("mt-1 text-xs", failureTextClass(failureSeverity))}>
+              {toolResult?.error}
+            </div>
+          )}
 
           <ExecutedArgumentsNotice toolResult={toolResult} originalArguments={toolCall.arguments} />
 

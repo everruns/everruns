@@ -43,6 +43,10 @@ impl SessionService {
             return Err(BadRequestError::new(RESERVED_SESSION_TAG_ERROR).into());
         }
 
+        if let UpdateField::Set(model_id) = req.model_id {
+            self.validate_model_id(caller.org_id, Some(model_id))
+                .await?;
+        }
         let virtual_user_id = match req.virtual_user_id {
             UpdateField::Set(identity_id) => {
                 let identity = self
@@ -121,6 +125,7 @@ impl SessionService {
             resolved_owner_user_id,
             locale: req.locale,
             tags: req.tags,
+            model_id: req.model_id,
             ..Default::default()
         };
         let row = self
@@ -167,7 +172,9 @@ impl SessionService {
                     None
                 };
                 let mut session = Self::row_to_session(r, &caller.org_public_id, fallback);
-                self.hydrate_ownership(caller.org_id, &mut session).await?;
+                // No owner summaries: every caller (the worker, cancel,
+                // durable seal and failure) only settles the status, and
+                // hydrating them cost two queries on every turn.
                 self.resolve_session_agent_id(caller.org_id, &mut session)
                     .await?;
                 Ok(Some(session))

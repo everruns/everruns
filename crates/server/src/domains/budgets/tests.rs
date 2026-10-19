@@ -1,13 +1,11 @@
 // BudgetService, storage, ledger, hierarchy, and end-to-end integration tests.
 
 use crate::domains::budgets::BudgetService;
-use crate::storage::StorageBackend;
-use crate::storage::models::*;
+use crate::storage::*;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
-use everruns_core::EventListener;
 use everruns_core::budget::BudgetAction;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
-use everruns_core::org_public_id_from_internal;
+use everruns_core::{EventListener, org_public_id_from_internal};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -118,27 +116,12 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
     let agent = db
         .create_agent(
             1,
-            CreateAgentRow {
-                public_id: AgentId::new().to_string(),
-                name: format!("{channel_type} budget test agent"),
-                display_name: None,
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: String::new(),
-                default_model_id: None,
-                harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil()),
-                tags: vec![],
-                initial_files: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                environments: None,
-                is_built_in: false,
-            },
+            CreateAgentRow::new(
+                AgentId::new().to_string(),
+                format!("{channel_type} budget test agent"),
+                String::new(),
+                everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil()),
+            ),
         )
         .await
         .unwrap();
@@ -1499,7 +1482,7 @@ async fn test_set_budget_status() {
 #[test]
 fn test_row_to_budget_dto() {
     let row = make_budget_row(100.0, 75.0, Some(80.0), "usd");
-    let dto = BudgetService::row_to_budget(&row);
+    let dto = crate::domains::budgets::record::Budget::from(&row);
     assert_eq!(dto.limit, 100.0);
     assert_eq!(dto.balance, 75.0);
     assert_eq!(dto.soft_limit, Some(80.0));
@@ -1531,7 +1514,7 @@ fn test_row_to_ledger_entry_dto() {
         rating_metadata: None,
         created_at: chrono::Utc::now(),
     };
-    let dto = BudgetService::row_to_ledger_entry(&row);
+    let dto = crate::domains::budgets::record::LedgerEntry::from(&row);
     assert_eq!(dto.amount, 5.5);
     assert_eq!(dto.meter_source, "llm_tokens");
     assert_eq!(dto.description, Some("test".into()));

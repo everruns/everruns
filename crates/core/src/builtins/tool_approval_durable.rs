@@ -6,18 +6,20 @@
 // binds a one-off answer to the exact call that was shown.
 // Spec: knowledge/execution/tool-approval.md.
 
+use everruns_contracts::rt::Instant;
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use chrono::DateTime;
+use chrono::Utc;
 use sha2::{Digest, Sha256};
 
 use crate::builtins::tool_approval::{ApprovalDecision, ToolApprover};
 use crate::builtins::tool_types::{ToolCall, ToolDefinition};
-use crate::builtins::typed_id::SessionId;
+use crate::builtins::typed_id::{SessionId, TurnId};
 use crate::tool_context::ToolContext;
 
 /// Session-storage prefix every durable approval record lives under.
@@ -26,13 +28,6 @@ use crate::tool_context::ToolContext;
 /// listing (`is_internal_session_kv_key`), so neither a model nor a tool can
 /// mint an approval for itself. Only the server's tool-approvals API writes it.
 pub use crate::capabilities::TOOL_APPROVAL_KV_PREFIX;
-
-/// How long a one-off answer waits for the retried call before it lapses.
-///
-/// A one-off approval is meant for the call the person just looked at, retried
-/// in the turn that resumes; one left lying around should not quietly let an
-/// identical call through much later.
-pub const ONE_OFF_DECISION_TTL_SECONDS: i64 = 3_600;
 
 /// How long a consumed one-off approval keeps answering for the same call.
 const CONSUMED_ONE_OFF_TTL: Duration = Duration::from_secs(60);
@@ -53,19 +48,29 @@ static CONSUMED_ONE_OFF: LazyLock<Mutex<VecDeque<ConsumedOneOff>>> =
     LazyLock::new(|| Mutex::new(VecDeque::new()));
 
 /// (session, call id, fingerprint, when it was consumed).
-type ConsumedOneOff = (SessionId, String, String, Instant);
+type ConsumedOneOff = (SessionId, Option<TurnId>, String, String, Instant);
 
-fn consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &str) -> bool {
+fn consumed_one_off(
+    session_id: SessionId,
+    turn_id: Option<TurnId>,
+    call_id: &str,
+    fingerprint: &str,
+) -> bool {
     let mut consumed = CONSUMED_ONE_OFF
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
     consumed.retain(|(.., at)| at.elapsed() < CONSUMED_ONE_OFF_TTL);
-    consumed
-        .iter()
-        .any(|(session, id, fp, _)| *session == session_id && id == call_id && fp == fingerprint)
+    consumed.iter().any(|(session, turn, id, fp, _)| {
+        *session == session_id && *turn == turn_id && id == call_id && fp == fingerprint
+    })
 }
 
-fn record_consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &str) {
+fn record_consumed_one_off(
+    session_id: SessionId,
+    turn_id: Option<TurnId>,
+    call_id: &str,
+    fingerprint: &str,
+) {
     let mut consumed = CONSUMED_ONE_OFF
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
@@ -74,6 +79,7 @@ fn record_consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &s
     }
     consumed.push_back((
         session_id,
+        turn_id,
         call_id.to_string(),
         fingerprint.to_string(),
         Instant::now(),
@@ -119,75 +125,11 @@ pub fn approval_fingerprint(tool_call: &ToolCall) -> String {
     hex
 }
 
-fn fold_key_part(part: &str) -> String {
-    part.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-/// Session-storage key of the "always" rule for `tool`.
-///
-/// Folding can collide in principle, which is why [`StoredToolApproval`]
-/// repeats the tool name and the reader re-checks it.
-pub fn always_decision_storage_key(tool: &str) -> String {
-    format!("{TOOL_APPROVAL_KV_PREFIX}always/{}", fold_key_part(tool))
-}
-
-/// Session-storage key of a one-off answer for the call with `fingerprint`.
-pub fn one_off_decision_storage_key(fingerprint: &str) -> String {
-    format!(
-        "{TOOL_APPROVAL_KV_PREFIX}once/{}",
-        fold_key_part(fingerprint)
-    )
-}
-
-/// A person's answer, as the tool-approvals API records it.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StoredToolApproval {
-    /// Tool the answer is for, re-checked on read.
-    pub tool: String,
-    /// The approved call's [`approval_fingerprint`]; `None` for an "always"
-    /// rule, which covers every call of the tool in the session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fingerprint: Option<String>,
-    /// `true` lets the call run, `false` refuses it.
-    pub allow: bool,
-    /// When the person answered.
-    pub decided_at: DateTime<Utc>,
-    /// When a one-off answer lapses unused.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-impl StoredToolApproval {
-    /// An "always" rule for every call of `tool` in the session.
-    pub fn always(tool: &str, allow: bool, now: DateTime<Utc>) -> Self {
-        Self {
-            tool: tool.to_string(),
-            fingerprint: None,
-            allow,
-            decided_at: now,
-            expires_at: None,
-        }
-    }
-
-    /// A one-off answer for exactly the call with `fingerprint`.
-    pub fn one_off(tool: &str, fingerprint: &str, allow: bool, now: DateTime<Utc>) -> Self {
-        Self {
-            tool: tool.to_string(),
-            fingerprint: Some(fingerprint.to_string()),
-            allow,
-            decided_at: now,
-            expires_at: Some(now + chrono::Duration::seconds(ONE_OFF_DECISION_TTL_SECONDS)),
-        }
-    }
-}
+#[cfg(test)]
+use everruns_contracts::tool_approval_types::ONE_OFF_DECISION_TTL_SECONDS;
+use everruns_contracts::tool_approval_types::{
+    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
+};
 
 /// [`ToolApprover`] for hosted runtimes, backed by session storage.
 ///
@@ -208,6 +150,7 @@ impl DurableToolApprover {
         store: &dyn crate::session_services::SessionStorageStore,
         session_id: SessionId,
         tool_call: &ToolCall,
+        turn_id: Option<TurnId>,
     ) -> Result<ApprovalDecision, String> {
         if let Some(raw) = store
             .get_value(session_id, &always_decision_storage_key(&tool_call.name))
@@ -225,7 +168,7 @@ impl DurableToolApprover {
         }
 
         let fingerprint = approval_fingerprint(tool_call);
-        if consumed_one_off(session_id, &tool_call.id, &fingerprint) {
+        if consumed_one_off(session_id, turn_id, &tool_call.id, &fingerprint) {
             return Ok(ApprovalDecision::Allow);
         }
         // THREAT[TM-TOOL-008]: destructive read, so one approval lets exactly
@@ -238,14 +181,60 @@ impl DurableToolApprover {
             && record.tool == tool_call.name
             && record.fingerprint.as_deref() == Some(fingerprint.as_str())
             && record.expires_at.is_none_or(|expires| Utc::now() < expires)
+            && record.turn_id.is_none_or(|bound| Some(bound) == turn_id)
         {
             if !record.allow {
                 return Ok(ApprovalDecision::Reject);
             }
-            record_consumed_one_off(session_id, &tool_call.id, &fingerprint);
+            record_consumed_one_off(session_id, turn_id, &tool_call.id, &fingerprint);
             return Ok(ApprovalDecision::Allow);
         }
 
+        Ok(ApprovalDecision::Deferred)
+    }
+
+    /// [`decide`](Self::decide) without taking the one-off answer.
+    async fn peek(
+        store: &dyn crate::session_services::SessionStorageStore,
+        session_id: SessionId,
+        tool_call: &ToolCall,
+        turn_id: Option<TurnId>,
+    ) -> Result<ApprovalDecision, String> {
+        let read = |key: String| async move {
+            store
+                .get_value(session_id, &key)
+                .await
+                .map_err(|error| error.to_string())
+                .map(|raw| {
+                    raw.and_then(|raw| serde_json::from_str::<StoredToolApproval>(&raw).ok())
+                })
+        };
+        if let Some(record) = read(always_decision_storage_key(&tool_call.name)).await?
+            && record.tool == tool_call.name
+            && record.fingerprint.is_none()
+        {
+            return Ok(if record.allow {
+                ApprovalDecision::AllowAlways
+            } else {
+                ApprovalDecision::RejectAlways
+            });
+        }
+        let fingerprint = approval_fingerprint(tool_call);
+        if consumed_one_off(session_id, turn_id, &tool_call.id, &fingerprint) {
+            return Ok(ApprovalDecision::Allow);
+        }
+        if let Some(record) = read(one_off_decision_storage_key(&fingerprint)).await?
+            && record.tool == tool_call.name
+            && record.fingerprint.as_deref() == Some(fingerprint.as_str())
+            && record.expires_at.is_none_or(|expires| Utc::now() < expires)
+            && record.turn_id.is_none_or(|bound| Some(bound) == turn_id)
+        {
+            return Ok(if record.allow {
+                ApprovalDecision::Allow
+            } else {
+                ApprovalDecision::Reject
+            });
+        }
         Ok(ApprovalDecision::Deferred)
     }
 }
@@ -265,6 +254,26 @@ impl ToolApprover for DurableToolApprover {
 
     fn remembers_always_decisions(&self) -> bool {
         true
+    }
+
+    async fn peek_in_context(
+        &self,
+        session_id: SessionId,
+        tool_call: &ToolCall,
+        context: &ToolContext,
+    ) -> Option<ApprovalDecision> {
+        let store = context.storage_store.as_ref()?;
+        Self::peek(
+            store.as_ref(),
+            session_id,
+            tool_call,
+            context
+                .event_context
+                .as_ref()
+                .and_then(|event| event.turn_id),
+        )
+        .await
+        .ok()
     }
 
     async fn approve_in_context(
@@ -289,7 +298,17 @@ impl ToolApprover for DurableToolApprover {
             );
             return ApprovalDecision::Unavailable;
         };
-        match Self::decide(store.as_ref(), session_id, tool_call).await {
+        match Self::decide(
+            store.as_ref(),
+            session_id,
+            tool_call,
+            context
+                .event_context
+                .as_ref()
+                .and_then(|event| event.turn_id),
+        )
+        .await
+        {
             Ok(decision) => decision,
             Err(error) => {
                 tracing::warn!(
@@ -515,6 +534,40 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn a_one_off_approval_and_its_consumed_memo_cannot_authorize_another_turn() {
+            let store = Arc::new(MemoryStore::default());
+            let session = SessionId::new_random();
+            let original = TurnId::new();
+            let later = TurnId::new();
+            let call = send("scoped");
+            let fingerprint = approval_fingerprint(&call);
+            let mut record = StoredToolApproval::one_off("t", &fingerprint, true, Utc::now());
+            record.turn_id = Some(original);
+            store.put(one_off_decision_storage_key(&fingerprint), &record);
+            let mut original_context = context(session, &store);
+            original_context.event_context = Some(crate::events::EventContext::turn(
+                original,
+                crate::builtins::typed_id::MessageId::new(),
+            ));
+            assert!(matches!(
+                fresh_hook(ApprovalMode::Normal)
+                    .before_exec(call.clone(), &open_world_tool(), &original_context)
+                    .await,
+                PreToolUseDecision::Continue(_)
+            ));
+            let mut later_context = context(session, &store);
+            later_context.event_context = Some(crate::events::EventContext::turn(
+                later,
+                crate::builtins::typed_id::MessageId::new(),
+            ));
+            deferred_request(
+                fresh_hook(ApprovalMode::Normal)
+                    .before_exec(call, &open_world_tool(), &later_context)
+                    .await,
+            );
+        }
+
+        #[tokio::test]
         async fn one_answer_lets_a_call_through_two_durable_gates() {
             // Two `tool_approval` gates (agent-level and capability-level) can
             // both gate one call. One one-off answer must
@@ -715,6 +768,77 @@ mod tests {
                 )
                 .await;
             assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        }
+
+        #[tokio::test]
+        async fn a_preview_reports_the_request_without_using_up_an_answer() {
+            let store = Arc::new(MemoryStore::default());
+            let session = SessionId::new_random();
+            let hook = fresh_hook(ApprovalMode::Normal);
+
+            // Nothing recorded: the preview carries the same request a run
+            // of the call would raise.
+            let held = hook
+                .preview(&send("a"), &open_world_tool(), &context(session, &store))
+                .await
+                .expect("an unanswered open-world call is held");
+            let request = ToolApprovalRequired::from_tool_result(&held).expect("payload");
+            assert_eq!(request.fingerprint, approval_fingerprint(&send("a")));
+
+            // A one-off answer: the preview lets the call through and leaves
+            // the answer for the call itself.
+            store.put(
+                one_off_decision_storage_key(&request.fingerprint),
+                &StoredToolApproval::one_off("t", &request.fingerprint, true, Utc::now()),
+            );
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &store))
+                    .await
+                    .is_none()
+            );
+            assert!(store.has(&one_off_decision_storage_key(&request.fingerprint)));
+            let decision = hook
+                .before_exec(send("a"), &open_world_tool(), &context(session, &store))
+                .await;
+            assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+        }
+
+        #[tokio::test]
+        async fn a_preview_holds_nothing_that_would_run() {
+            let session = SessionId::new_random();
+            let allowed = Arc::new(MemoryStore::default());
+            allowed.put(
+                always_decision_storage_key("t"),
+                &StoredToolApproval::always("t", true, Utc::now()),
+            );
+            let hook = fresh_hook(ApprovalMode::Normal);
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &allowed))
+                    .await
+                    .is_none()
+            );
+            // An ungated tool, and a rejection (the call fails on its own;
+            // there is nobody to ask), are not held either.
+            let store = Arc::new(MemoryStore::default());
+            assert!(
+                hook.preview(
+                    &send("a"),
+                    &tool_with(ToolHints::default()),
+                    &context(session, &store)
+                )
+                .await
+                .is_none()
+            );
+            let fingerprint = approval_fingerprint(&send("a"));
+            store.put(
+                one_off_decision_storage_key(&fingerprint),
+                &StoredToolApproval::one_off("t", &fingerprint, false, Utc::now()),
+            );
+            assert!(
+                hook.preview(&send("a"), &open_world_tool(), &context(session, &store))
+                    .await
+                    .is_none()
+            );
         }
 
         #[test]

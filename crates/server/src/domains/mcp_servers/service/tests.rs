@@ -1,5 +1,5 @@
 use super::*;
-use crate::storage::{EncryptionService, StorageBackend, models::CreateMcpServerRow};
+use crate::storage::{CreateMcpServerRow, EncryptionService, StorageBackend};
 use everruns_core::{McpServerTransportType, OrgRole};
 
 fn test_caller(org_id: i64) -> Caller {
@@ -10,6 +10,7 @@ fn test_caller(org_id: i64) -> Caller {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -407,6 +408,7 @@ fn settings_from_row_defaults_auth_mode_for_legacy_api_key_servers() {
         api_key_set: true,
         headers: serde_json::json!({}),
         settings: serde_json::json!({}),
+        presentation: serde_json::json!({}),
         cached_tools: serde_json::json!([]),
         tools_cached_at: None,
         created_at: Utc::now(),
@@ -460,6 +462,7 @@ fn sample_row() -> McpServerRow {
         api_key_set: false,
         headers: serde_json::json!({}),
         settings: serde_json::json!({}),
+        presentation: serde_json::json!({}),
         cached_tools: serde_json::json!([]),
         tools_cached_at: None,
         created_at: Utc::now(),

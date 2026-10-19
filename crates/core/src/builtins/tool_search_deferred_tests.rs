@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::builtins::tools::ToolRegistry;
+use crate::builtins::typed_id::SessionId;
 use crate::host::InMemorySessionStorageStore;
 use crate::session_services::SessionStorageStore;
 
@@ -40,7 +41,14 @@ async fn search_matching_a_deferred_server_reveals_it_and_its_tools() {
     // The turn carries the placeholder only: no tools were listed.
     let placeholder = crate::deferred_mcp_server_definition("linear", Some("Issue tracking"));
     let mut registry = ToolRegistry::new();
-    for tool in crate::build_mcp_proxy_tools(&[placeholder], Arc::new(NeverCalled)) {
+    let definitions = [placeholder];
+    for tool in crate::build_mcp_proxy_tools(
+        &definitions,
+        Arc::new(crate::ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(NeverCalled),
+        )),
+    ) {
         registry.register_boxed(tool);
     }
     let mut ctx = ToolContext::with_storage_store(session, storage.clone());
@@ -61,10 +69,20 @@ async fn search_matching_a_deferred_server_reveals_it_and_its_tools() {
 
     // Next step: the server's listed tools keep their full schemas without a
     // second search, while other deferred tools stay stubbed.
-    let hooks = cap.tool_definition_hooks_with_context(
-        &SystemPromptContext::without_file_store(session),
-        &json!({}),
-    );
+    let mut prompt_ctx = SystemPromptContext::without_file_store(session);
+    let mut call = RuntimeMessage::assistant("");
+    call.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "call_1",
+            TOOL_SEARCH_TOOL_NAME,
+            json!({}),
+        ),
+    )];
+    prompt_ctx.tool_disclosure = tool_disclosure(&[
+        call,
+        RuntimeMessage::tool_result("call_1", Some(value), None),
+    ]);
+    let hooks = cap.tool_definition_hooks_with_context(&prompt_ctx, &json!({}));
     let next = hooks[0].transform(vec![
         mcp_tool("mcp_linear__create_issue"),
         mcp_tool("mcp_github__create_issue"),
@@ -95,9 +113,13 @@ async fn ordinary_matches_reveal_no_server() {
     let session = SessionId::new();
     let storage = Arc::new(InMemorySessionStorageStore::new());
     let mut registry = ToolRegistry::new();
+    let definitions = [mcp_tool("mcp_linear__create_issue")];
     for tool in crate::build_mcp_proxy_tools(
-        &[mcp_tool("mcp_linear__create_issue")],
-        Arc::new(NeverCalled),
+        &definitions,
+        Arc::new(crate::ScopedMcpToolInvoker::new(
+            &definitions,
+            Arc::new(NeverCalled),
+        )),
     ) {
         registry.register_boxed(tool);
     }

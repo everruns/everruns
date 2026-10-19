@@ -11,7 +11,6 @@
 //   - ANTHROPIC_API_KEY: For Anthropic tests
 //   - OPENAI_API_KEY: For OpenAI reasoning tests (GPT-5.2)
 //   - MODEL_API_KEY: For Meta Muse Spark Contributor tests
-//   - MISTRAL_API_KEY: For Mistral Large 4 tests
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -40,10 +39,10 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[tokio::test]
 async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -82,6 +81,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         // Trailing zeros of 2024! = floor(2024/5) + floor(2024/25) +
         // floor(2024/125) + floor(2024/625) = 404 + 80 + 16 + 3 = 503.
         let input = InputMessage {
+            external_actor: None,
             role: RuntimeMessageRole::User,
             content: vec![ContentPart::text(
                 "How many trailing zeros does 2024! (factorial) have? Work it out carefully, then state the final count as a plain number.",
@@ -231,6 +231,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[case::anthropic_sonnet5(ANTHROPIC_SONNET5)]
 #[case::anthropic_sonnet5_5(ANTHROPIC_SONNET55)]
+#[case::anthropic_haiku5_5(ANTHROPIC_HAIKU55)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
@@ -242,9 +243,6 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // Gemini binds a thoughtSignature to the function-call part it belongs to;
 // that binding only happens on a reasoning turn that calls a tool.
 #[case::gemini_flash(GEMINI_FLASH)]
-// Asked at `low`, which Mistral Large 4 does not take: the driver snaps it to
-// the model's one reasoning grade instead of failing the turn.
-#[case::mistral_large_4(MISTRAL_LARGE_4)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -262,16 +260,13 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
         |r: &TurnResult| r.success && r.tool_calls_count > 0,
         {
             let model = config.model().expect("model set (checked above)");
-            // Firm, tool-naming instruction: Fable 5.1 rejects forced
-            // `tool_choice`, and with adaptive thinking on, Fable 5.1 and
-            // Sonnet 5 answered the softer "use ... when asked about time"
-            // wording without calling the tool (3/3 clean sampling misses).
+            // Explicit tool request (TIME_TOOL_QUESTION): Fable 5.1 rejects
+            // forced `tool_choice`, and the `<facts>` block already carries
+            // the UTC time, so a softer time question is legitimately
+            // answered without the tool.
             let runner = InMemoryAgenticLoop::builder()
                 .agent_name("Thinking Time Agent")
-                .system_prompt(
-                    "You have no clock. When asked about the time, always call the \
-                     get_current_time tool first, then answer from its result.",
-                )
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
                 .model(model)
                 .driver_registry(all_providers_registry())
                 .capability(CurrentTimeCapability)
@@ -280,13 +275,9 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 .await
                 .unwrap();
             let input = InputMessage {
+                external_actor: None,
                 role: RuntimeMessageRole::User,
-                // The user turn also asks for a tool check: with the system
-                // instruction alone, Sonnet 5 still skipped the tool on ~2/7
-                // first attempts at low effort.
-                content: vec![ContentPart::text(
-                    "What's the current time in UTC? Check it with your tool rather than guessing.",
-                )],
+                content: vec![ContentPart::text(TIME_TOOL_QUESTION)],
                 controls: Some(Controls {
                     speed: None,
                     verbosity: None,

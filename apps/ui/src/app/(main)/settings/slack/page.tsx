@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/hooks";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
-import { ConnectSlackWorkspace, slackWorkspaceLabel } from "@/components/slack/slack-workspaces";
+import {
+  ConnectSlackWorkspaceChoice,
+  slackConnectFailureMessage,
+  slackWorkspaceLabel,
+} from "@/components/slack/slack-workspaces";
 import {
   useInvalidateSlackWorkspaces,
   useSlackInstallCapability,
@@ -25,9 +30,28 @@ export default function SlackWorkspacesPage() {
   const capability = useSlackInstallCapability();
   const supported = capability.data?.supported === true;
   const canManage = capability.data?.can_manage === true;
+  const managerApp = capability.data?.manager_app === true;
   const workspaces = useSlackWorkspaces(supported);
   const invalidate = useInvalidateSlackWorkspaces();
   const [connecting, setConnecting] = useState(false);
+  // Slack's consent returns here with `slack_connect=ok|failed` (and Slack's code on failure).
+  // Captured once on mount, then dropped from the address bar so a reload does not repeat it.
+  const searchParams = useSearchParams();
+  const [consentResult] = useState(() => {
+    const outcome = searchParams.get("slack_connect");
+    if (!outcome) return null;
+    return outcome === "ok"
+      ? { ok: true, text: "Slack workspace connected." }
+      : { ok: false, text: slackConnectFailureMessage(searchParams.get("slack_error")) };
+  });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("slack_connect")) return;
+    params.delete("slack_connect");
+    params.delete("slack_error");
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
 
   if (capability.isLoading || (supported && workspaces.isLoading)) {
     return <Skeleton className="h-40 w-full" />;
@@ -46,6 +70,12 @@ export default function SlackWorkspacesPage() {
         </p>
       </div>
 
+      {consentResult && (
+        <Notice variant={consentResult.ok ? "success" : "destructive"}>
+          <NoticeDescription>{consentResult.text}</NoticeDescription>
+        </Notice>
+      )}
+
       {!supported && (
         <Notice variant="info">
           <NoticeDescription>
@@ -62,6 +92,7 @@ export default function SlackWorkspacesPage() {
               key={workspace.id}
               workspace={workspace}
               canManage={canManage}
+              managerApp={managerApp}
               onChanged={invalidate}
             />
           ))}
@@ -82,10 +113,11 @@ export default function SlackWorkspacesPage() {
           <div className="space-y-1">
             <p className="text-sm font-medium">Connect a Slack workspace</p>
             <p className="text-xs text-muted-foreground">
-              About thirty seconds, once per workspace.
+              {managerApp ? "One Slack approval" : "About thirty seconds"}, once per workspace.
             </p>
           </div>
-          <ConnectSlackWorkspace
+          <ConnectSlackWorkspaceChoice
+            managerApp={managerApp}
             onConnected={async () => {
               setConnecting(false);
               await invalidate();
@@ -112,10 +144,12 @@ export default function SlackWorkspacesPage() {
 function WorkspaceRow({
   workspace,
   canManage,
+  managerApp,
   onChanged,
 }: {
   workspace: SlackWorkspace;
   canManage: boolean;
+  managerApp: boolean;
   onChanged: () => Promise<unknown>;
 }) {
   const [pending, setPending] = useState<"test" | "disconnect" | "reconnect" | null>(null);
@@ -154,6 +188,7 @@ function WorkspaceRow({
             <p className="text-sm font-medium">{slackWorkspaceLabel(workspace)}</p>
             <p className="text-xs text-muted-foreground">
               Connected {new Date(workspace.connected_at).toLocaleDateString()}
+              {workspace.connected_with === "manager_app" && " with Slack approval"}
             </p>
           </div>
           {needsReconnect ? (
@@ -197,8 +232,8 @@ function WorkspaceRow({
       </div>
       {needsReconnect && (
         <p className="text-xs text-muted-foreground">
-          Slack stopped accepting the saved token. Agents already in this workspace keep working;
-          new agents cannot be added until it is reconnected.
+          Slack stopped accepting the saved credential. Agents already in this workspace keep
+          working; new agents cannot be added until it is reconnected.
         </p>
       )}
       {confirming && (
@@ -227,7 +262,8 @@ function WorkspaceRow({
         </Notice>
       )}
       {pending === "reconnect" && (
-        <ConnectSlackWorkspace
+        <ConnectSlackWorkspaceChoice
+          managerApp={managerApp}
           reconnect
           onConnected={async () => {
             setPending(null);

@@ -21,3 +21,5 @@ mod session_schedules_policy_test;
 mod session_storage_policy_test;
 mod sse_replay_test;
 mod tool_approvals_test;
+
+mod database_isolation_test;

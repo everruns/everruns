@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::domains::common::{Command, CommandErrorKind, Ctx, dispatch};
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateSessionRow, UpsertSessionKeyValue, UpsertSessionSecret};
+use crate::storage::{CreateSessionRow, UpsertSessionKeyValue, UpsertSessionSecret};
 
 use super::{BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage};
 
@@ -50,6 +50,7 @@ fn owner() -> Caller {
         role: OrgRole::Owner,
         is_platform_user: false,
         is_internal: false,
+        read_only: false,
     }
 }
 
@@ -86,6 +87,7 @@ async fn seed() -> (Arc<StorageBackend>, SessionId) {
         session_id: session.id,
         name: SECRET_NAME.to_string(),
         value_encrypted: b"ciphertext".to_vec(),
+        binding: None,
     })
     .await
     .expect("seed user secret");
@@ -93,6 +95,7 @@ async fn seed() -> (Arc<StorageBackend>, SessionId) {
         session_id: session.id,
         name: INTERNAL_SECRET.to_string(),
         value_encrypted: b"sandbox".to_vec(),
+        binding: None,
     })
     .await
     .expect("seed internal secret");
@@ -209,6 +212,7 @@ async fn denied_caller_cannot_mutate_storage() {
         secrets: [("EXTRA_TOKEN".to_string(), "value".to_string())]
             .into_iter()
             .collect(),
+        bindings: Default::default(),
     }
     .run(&denied)
     .await

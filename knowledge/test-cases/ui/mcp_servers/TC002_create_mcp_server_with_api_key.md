@@ -29,7 +29,7 @@ Verify that an MCP server can be created with an API key for authentication.
 
 ## Steps
 
-1. Navigate to Settings > MCP Servers
+1. Navigate to Settings > Organization > MCP catalog
 2. Click "Add MCP Server" button
 3. Enter name: `secure-mcp-server`
 4. Enter URL: `https://secure.mcp.com/v1/mcp`

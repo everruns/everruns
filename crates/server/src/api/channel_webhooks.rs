@@ -19,7 +19,7 @@ use utoipa::ToSchema;
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
-use crate::domains::agent_channels::{WebhookInvocationRequest, invoke_channel_webhook};
+use crate::channels::host::ServerChannels;
 use crate::domains::agent_triggers::events::TriggerEventOutcome;
 use crate::domains::agent_triggers::{
     WebhookTriggerInvocationRequest, invoke_webhook_agent_trigger,
@@ -30,6 +30,7 @@ use crate::domains::sessions::SessionService;
 use crate::middleware::RequestId;
 use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_contracts::runtime::channel::{ChannelError, ChannelRequest};
 
 const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
 const SENSITIVE_WEBHOOK_HEADERS: &[&str] = &[
@@ -51,9 +52,23 @@ pub struct ChannelWebhookState {
     pub rate_limiter: ChannelRateLimiter,
     /// Verifies and routes inbound MCP Events callbacks (`mcp_event` triggers).
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// The channel host webhook channels run on.
+    pub channels: ServerChannels,
+    /// The deployment's shared Everruns GitHub App, for its webhook route.
+    pub everruns_app: Option<super::github_everruns_app_webhook::EverrunsAppWebhook>,
 }
 
 impl ChannelWebhookState {
+    /// Serve the shared Everruns App's webhook with this deployment's App.
+    pub fn with_everruns_app(
+        mut self,
+        config: Option<&crate::auth::config::GitHubConnectionConfig>,
+    ) -> Self {
+        self.everruns_app =
+            config.map(super::github_everruns_app_webhook::EverrunsAppWebhook::from);
+        self
+    }
+
     pub fn with_mcp_event_triggers(
         mut self,
         service: Arc<crate::domains::agent_triggers::McpEventTriggers>,
@@ -66,22 +81,25 @@ impl ChannelWebhookState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_core::host::TurnBackend>,
-        notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: crate::live_updates::event_delivery::EventDelivery,
         rate_limiter: ChannelRateLimiter,
     ) -> Self {
+        let session_service = Arc::new(SessionService::new(db.clone()));
+        let message_service = Arc::new(MessageService::new(db.clone(), runner, event_delivery));
         Self {
-            session_service: Arc::new(SessionService::new(db.clone())),
-            message_service: Arc::new(MessageService::new(
+            channels: ServerChannels::new(
                 db.clone(),
-                runner,
-                notifications_enabled,
-                event_delivery,
-            )),
+                encryption.clone(),
+                session_service.clone(),
+                message_service.clone(),
+            ),
+            session_service,
+            message_service,
             db,
             encryption,
             rate_limiter,
             mcp_event_triggers: None,
+            everruns_app: None,
         }
     }
 }
@@ -240,9 +258,9 @@ async fn invoke_webhook(
     // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
     // "app does not exist" apart from "app exists but is not published / the
     // channel is disabled / misconfigured". Every such case collapses to a
-    // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
+    // single generic 404 (matching the FCP channel in `channels/fcp.rs`); the real
     // reason is logged server-side only.
-    if channel.channel_type != crate::records::ChannelType::Webhook {
+    if channel.channel_type != crate::domains::agent_channels::record::ChannelType::Webhook {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous webhook ingress must never reach a
@@ -292,34 +310,55 @@ async fn invoke_webhook(
         }
     }
 
-    let json_payload = serde_json::from_slice(&body).ok();
-    let body = String::from_utf8_lossy(&body).into_owned();
-    let request_headers = flatten_headers(&headers);
-    let request_id = req_id.map(|axum::Extension(id)| id.0);
-
-    let result = invoke_channel_webhook(
-        &state.db,
-        state.encryption.as_ref(),
-        &state.session_service,
-        &state.message_service,
-        WebhookInvocationRequest {
-            legacy_app_id: app_id,
-            channel_id,
-            body,
-            json_payload,
-            headers: request_headers,
-        },
-        request_id,
-    )
-    .await
-    .map_err(command_error_response)?;
+    let Some(resolved) = state.channels.resolver.channel(&app, &channel) else {
+        tracing::error!(app_id = %app.public_id, "Webhook channel config did not deserialize");
+        return Err(not_found());
+    };
+    // Credential headers are redacted before the template can echo them.
+    let request = ChannelRequest {
+        path: String::new(),
+        headers: flatten_headers(&headers).into_iter().collect(),
+        body: body.to_vec(),
+    };
+    let response = state
+        .channels
+        .host
+        .try_handle(&resolved, &request)
+        .await
+        .map_err(channel_error_response)?;
+    if response.body["duplicate"] == true {
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(WebhookInvocationResponse {
+                accepted: true,
+                session_id: None,
+                created_session: false,
+                delivery: "duplicate".to_string(),
+            }),
+        ));
+    }
+    let session_id: everruns_contracts::typed_id::SessionId = response.body["session_id"]
+        .as_str()
+        .and_then(|id| id.parse().ok())
+        .ok_or_else(|| {
+            internal_error(anyhow::anyhow!("channel host answered without a session"))
+        })?;
+    let created_session = response.body["created"] == true;
+    crate::domains::agent_channels::emit_channel_invocation_audit_event(
+        state.db.clone(),
+        &app,
+        &channel,
+        session_id,
+        crate::domains::agent_channels::ChannelInvocationSource::Webhook,
+        created_session,
+    );
 
     Ok((
         StatusCode::ACCEPTED,
         Json(WebhookInvocationResponse {
             accepted: true,
-            session_id: Some(result.session_id),
-            created_session: result.created_session,
+            session_id: Some(session_id),
+            created_session,
             delivery: "dispatched".to_string(),
         }),
     ))
@@ -329,13 +368,14 @@ async fn invoke_webhook(
 async fn invoke_trigger_webhook(
     state: ChannelWebhookState,
     ingress_id: String,
-    trigger: crate::storage::models::AgentTriggerRow,
+    trigger: crate::storage::AgentTriggerRow,
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
-    if trigger.trigger_type != crate::records::AgentTriggerType::Webhook.to_string()
+    if trigger.trigger_type
+        != crate::domains::agent_triggers::record::AgentTriggerType::Webhook.to_string()
         || !trigger.enabled
     {
         return Err(not_found());
@@ -355,8 +395,8 @@ async fn invoke_trigger_webhook(
         trigger.config_encrypted.as_deref(),
         &trigger.config,
     );
-    let config: crate::records::WebhookTriggerConfig = serde_json::from_value(config_value)
-        .map_err(|error| {
+    let config: crate::domains::agent_triggers::record::WebhookTriggerConfig =
+        serde_json::from_value(config_value).map_err(|error| {
             tracing::error!(%error, %ingress_id, "Webhook trigger config did not deserialize");
             not_found()
         })?;
@@ -451,6 +491,14 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
                 .map(|value| (normalized_name, value.to_string()))
         })
         .collect()
+}
+
+fn channel_error_response(error: ChannelError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        ChannelError::NotFound(_) => not_found(),
+        ChannelError::Unauthorized(_) => unauthorized(),
+        error => crate::channels::host::channel_command_error(error).into(),
+    }
 }
 
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {

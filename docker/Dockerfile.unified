@@ -12,7 +12,7 @@
 # Stage 1: Builder base - Set up cross-compilation environment
 # Uses BUILDPLATFORM to run on host architecture for cross-compilation
 # ============================================================================
-FROM --platform=$BUILDPLATFORM rust:1.98.1-slim-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-bookworm AS builder-base
 
 # Install xx for cross-compilation support
 # Pinned by digest so a mutated tag can't slip a compromised toolchain into
@@ -53,9 +53,10 @@ WORKDIR /app
 
 # Copy source
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY vendor vendor
 COPY crates crates
-COPY integrations integrations
 COPY docs docs
+COPY skills skills
 # examples/ are workspace members so cargo metadata needs them present, even
 # though the server/worker targets below don't depend on any of them.
 COPY examples examples
@@ -78,6 +79,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     cp target/$(xx-cargo --print-target-triple)/release/everruns-server /app/everruns-server && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-migrate /app/everruns-migrate && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-egress-proxy /app/everruns-egress-proxy && \
     xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
@@ -88,6 +91,9 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57
 WORKDIR /app
 
 COPY --from=builder-all /app/everruns-server /app/everruns-server
+# Optional tenant egress proxy; run with `/app/everruns-egress-proxy` as the
+# command (ports 4750 proxy, 4751 health). See crates/server/src/egress_proxy.
+COPY --from=builder-all /app/everruns-egress-proxy /app/everruns-egress-proxy
 
 EXPOSE 9000
 EXPOSE 9001
@@ -149,6 +155,9 @@ COPY --from=builder-all /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 
 # Copy the reencrypt-secrets binary
 COPY --from=builder-all /app/reencrypt-secrets /app/reencrypt-secrets
+
+# Copy the migrate binary (adopts the migration baseline; sqlx-cli cannot)
+COPY --from=builder-all /app/everruns-migrate /app/everruns-migrate
 
 # Copy migrations
 COPY crates/server/migrations /app/migrations

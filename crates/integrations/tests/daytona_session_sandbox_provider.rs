@@ -94,6 +94,22 @@ struct MockConnectionResolver;
 
 #[async_trait]
 impl UserConnectionResolver for MockConnectionResolver {
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        provider: &str,
+        credential: &SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        assert_eq!(provider, "daytona");
+        assert_eq!(
+            credential.source,
+            SessionSandboxCredentialSource::SessionUser
+        );
+        assert_eq!(credential.virtual_user_id, Some(Uuid::nil()));
+        assert_eq!(credential.connection_id, None);
+        Ok(Some("test_api_key".to_string()))
+    }
+
     async fn get_connection_token(
         &self,
         _session_id: SessionId,
@@ -281,10 +297,38 @@ async fn daytona_provider_mounts_recovery_volume_for_logical_session() {
         body["volumes"][0]["subpath"],
         format!("sessions/{}", context.session_id)
     );
+    // The orphan scan only ever touches sandboxes carrying the managed label.
+    assert_eq!(body["labels"]["everruns"], "true");
+    assert_eq!(body["labels"]["everruns.managed"], "true");
+    assert_eq!(
+        body["labels"]["everruns.session_id"],
+        context.session_id.to_string()
+    );
 }
 
 #[tokio::test]
 async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
+    assert_lost_instance_is_replaced(
+        ResponseTemplate::new(404).set_body_string("sandbox not found"),
+    )
+    .await;
+}
+
+// Daytona keeps a deleted sandbox readable in `destroying` (and briefly
+// `destroyed`) before it answers 404; the nightly live test saw it linger past
+// a minute (EVE-1280). Such a sandbox is gone, not paused.
+#[tokio::test]
+async fn daytona_provider_treats_destroying_instance_as_lost() {
+    for state in ["destroying", "destroyed"] {
+        assert_lost_instance_is_replaced(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_lost",
+            "state": state
+        })))
+        .await;
+    }
+}
+
+async fn assert_lost_instance_is_replaced(lost_response: ResponseTemplate) {
     let mock_server = MockServer::start().await;
     let context = test_context();
     let mut config = test_config(&mock_server);
@@ -294,7 +338,7 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
 
     Mock::given(method("GET"))
         .and(path("/sandbox/sb_lost"))
-        .respond_with(ResponseTemplate::new(404).set_body_string("sandbox not found"))
+        .respond_with(lost_response)
         .mount(&mock_server)
         .await;
     Mock::given(method("POST"))
@@ -687,6 +731,110 @@ async fn daytona_provider_resume_tolerates_transition_conflicts() {
     let resumed = provider.resume(&context, &config, &paused).await.unwrap();
     assert_eq!(resumed.external_id, "sb_transition");
     assert_eq!(resumed.metadata["remote_state"], "started");
+}
+
+/// Mounts a stop endpoint that rejects with Daytona's "not in a stoppable state"
+/// 400 and a GET that walks through `states` (repeating the last one).
+async fn mount_not_stoppable_sandbox(
+    mock_server: &MockServer,
+    sandbox_id: &str,
+    states: &'static [&'static str],
+) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    Mock::given(method("POST"))
+        .and(path(format!("/sandbox/{sandbox_id}/stop")))
+        .respond_with(ResponseTemplate::new(400).set_body_string(
+            "{\"statusCode\":400,\"message\":\"Sandbox is not in a stoppable state\"}",
+        ))
+        .expect(1)
+        .mount(mock_server)
+        .await;
+
+    let get_count = Arc::new(AtomicUsize::new(0));
+    let id = sandbox_id.to_string();
+    Mock::given(method("GET"))
+        .and(path(format!("/sandbox/{sandbox_id}")))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = get_count.fetch_add(1, Ordering::SeqCst);
+            let state = states[n.min(states.len() - 1)];
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": id,
+                "name": "Managed Sandbox",
+                "state": state
+            }))
+        })
+        .mount(mock_server)
+        .await;
+}
+
+#[tokio::test]
+async fn daytona_provider_pause_treats_already_stopped_sandbox_as_paused() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    mount_not_stoppable_sandbox(&mock_server, "sb_auto_stopped", &["stopped"]).await;
+
+    let paused = provider
+        .pause(&context, &config, &managed_instance("sb_auto_stopped"))
+        .await
+        .unwrap();
+    assert_eq!(paused.external_id, "sb_auto_stopped");
+    assert_eq!(paused.metadata["remote_state"], "stopped");
+}
+
+#[tokio::test]
+async fn daytona_provider_pause_treats_archived_sandbox_as_paused() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    mount_not_stoppable_sandbox(&mock_server, "sb_archived", &["archived"]).await;
+
+    let paused = provider
+        .pause(&context, &config, &managed_instance("sb_archived"))
+        .await
+        .unwrap();
+    assert_eq!(paused.metadata["remote_state"], "archived");
+}
+
+#[tokio::test]
+async fn daytona_provider_pause_waits_for_in_flight_stop() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    mount_not_stoppable_sandbox(
+        &mock_server,
+        "sb_stopping",
+        &["stopping", "stopping", "stopped"],
+    )
+    .await;
+
+    let paused = provider
+        .pause(&context, &config, &managed_instance("sb_stopping"))
+        .await
+        .unwrap();
+    assert_eq!(paused.metadata["remote_state"], "stopped");
+}
+
+#[tokio::test]
+async fn daytona_provider_pause_reports_not_stoppable_running_sandbox() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    mount_not_stoppable_sandbox(&mock_server, "sb_still_started", &["started"]).await;
+
+    let err = provider
+        .pause(&context, &config, &managed_instance("sb_still_started"))
+        .await
+        .unwrap_err();
+    let everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) = err else {
+        panic!("expected tool error");
+    };
+    assert!(message.contains("not in a stoppable state"), "{message}");
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow};
+use crate::storage::{CreateBudgetLedgerRow, CreateBudgetRow};
 use everruns_contracts::typed_id::BudgetId;
 use std::sync::Arc;
 

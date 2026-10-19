@@ -1,8 +1,7 @@
 //! Runtime adapter for the provider-neutral managed sandbox service interface.
 
 use crate::session_sandbox::{
-    SessionSandboxContext, SessionSandboxCredential, SessionSandboxCredentialSource,
-    SessionSandboxLease,
+    SessionSandboxContext, SessionSandboxCredential, SessionSandboxLease,
 };
 use crate::tools::ToolExecutionResult;
 use async_trait::async_trait;
@@ -27,6 +26,22 @@ impl SessionSandboxContext for ToolContext {
         let Some(resolver) = &self.connection_resolver else {
             return Ok(None);
         };
+        if provider == "github" {
+            // THREAT[TM-GITHUB-006]: GitHub goes through the one declared-use
+            // request: the person when they connected GitHub, else the agent.
+            // A sandbox may call the API as well as git, and which repositories
+            // it needs is not known here, so the token is not narrowed yet;
+            // sandbox repositories on the template narrow it (github-model step 6).
+            let access = crate::runtime::GitHubAccess::new(
+                crate::runtime::mcp_server::McpServerActsAs::UserOrService,
+                &[],
+            );
+            return resolver
+                .get_github_token(self.session_id, &access)
+                .await
+                .map(|credential| credential.map(|credential| credential.token))
+                .map_err(ToolExecutionResult::internal_error);
+        }
         let token = resolver
             .get_connection_token(self.session_id, provider)
             .await;
@@ -41,29 +56,9 @@ impl SessionSandboxContext for ToolContext {
         let Some(resolver) = &self.connection_resolver else {
             return Ok(None);
         };
-        let token = match credential.source {
-            SessionSandboxCredentialSource::None => Ok(None),
-            SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
-                match credential.virtual_user_id {
-                    Some(owner) => {
-                        resolver
-                            .get_connection_token_for_user(owner, provider)
-                            .await
-                    }
-                    None => Ok(None),
-                }
-            }
-            SessionSandboxCredentialSource::Organization => {
-                match (credential.connection_id, credential.virtual_user_id) {
-                    (Some(connection), Some(owner)) => {
-                        resolver
-                            .get_connection_token_for_connection(connection, owner, provider)
-                            .await
-                    }
-                    _ => Ok(None),
-                }
-            }
-        };
+        let token = resolver
+            .get_sandbox_connection_token(self.session_id, provider, credential)
+            .await;
         token.map_err(ToolExecutionResult::internal_error)
     }
 

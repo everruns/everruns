@@ -2,8 +2,24 @@
 //! engine-planned loop in the parent module.
 
 use super::*;
+use crate::host::turn_loop::turn_entry_plan;
+
+// Kept beside turn entry because `runtime.rs` is at its size limit.
+#[path = "attachments.rs"]
+mod attachments;
 
 impl InProcessRuntime {
+    /// Clone the normal task wake observer for an embedder-owned recovery path.
+    ///
+    /// Recovery may update a bare registry under an atomic ownership guard, without
+    /// traversing the observing registry again. Delivering its persisted terminal
+    /// wake here preserves the runtime's wake policy and avoids registry recursion.
+    pub fn task_wake_observer(&self) -> Option<Arc<dyn crate::TaskTransitionObserver>> {
+        self.session_wake_queue
+            .as_ref()
+            .map(|queue| queue.clone() as Arc<dyn crate::TaskTransitionObserver>)
+    }
+
     /// Execute one turn for an existing session.
     ///
     /// The input message is appended as the canonical `input.message` event;
@@ -83,76 +99,23 @@ impl InProcessRuntime {
         steering: TurnSteering,
     ) -> Result<TurnResult> {
         let org_id = in_process_internal_org_id(&snapshot.organization_id);
-
-        // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
-        // decision comes from `everruns_core::engine`; this loop only executes the
-        // host operation each plan names and performs the lifecycle effects the
-        // engine returns as data. There is no second copy of the planning brain
-        // in the runtime.
-        let state = TurnState {
-            org_id,
+        let drive = TurnDrive {
             session_id,
+            org_id,
+            turn_id,
+            input_message_id,
             harness_id: snapshot.harness_id,
             agent_id: snapshot.agent_id,
-            input_message_id,
-            turn_id: None,
-            previous_response_id: None,
-            iteration: 1,
-            request_id: None,
-            started_at: None,
-            cumulative_usage: None,
-            tool_call_count: 0,
-            llm_call_count: 0,
-            time_to_first_token_ms: None,
-            final_message_id: None,
-            final_answer_preview: None,
+            workspace_id: snapshot.workspace_id,
         };
-
-        let base_context = |exec: bool| {
-            let context = ExecutionContext::new(session_id, turn_id, input_message_id)
-                .with_workspace_id(snapshot.workspace_id);
-            if exec { context.next_exec() } else { context }
-        };
-
-        // `process_input` is the turn's fixed entry step: the durable host
-        // enqueues it before any planning, and it is what mints the turn id the
-        // planner then carries.
-        execute_input_activity(
-            self,
-            org_id,
-            InputAtomInput {
-                context: base_context(false),
-            },
-        )
-        .await?;
-        let mut execution = InProcessExecution::new(state);
-        let transition = execution.advance(
-            ActivityOutcome::ProcessInput {
-                turn_id: Some(turn_id),
-            },
-            0,
-            Utc::now(),
-            HostFacts::default(),
-        );
-        crate::host::turn_strategy::perform_effects(self, org_id, session_id, transition.effects)
-            .await?;
+        // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
+        // decision comes from `everruns_core::engine`; this runtime only
+        // executes the host operation each plan names. The entry step is the
+        // host-generic one every host opens a turn with.
+        let (execution, plan) = turn_entry_plan(self, &drive).await?;
         // A new turn supersedes one parked on client-side tool calls; its
         // calls stay unanswered in history.
         self.take_parked_turn(session_id);
-        self.drive_turn_plan(
-            TurnDrive {
-                session_id,
-                org_id,
-                turn_id,
-                input_message_id,
-                harness_id: snapshot.harness_id,
-                agent_id: snapshot.agent_id,
-                workspace_id: snapshot.workspace_id,
-            },
-            execution,
-            transition.plan,
-            steering,
-        )
-        .await
+        self.drive_turn_plan(drive, execution, plan, steering).await
     }
 }

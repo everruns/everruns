@@ -14,7 +14,7 @@ overrides:
   nanoid: 3.3.18
   postcss: 8.5.23
   prismjs: 1.30.0
-  sharp: 0.35.4
+  sharp: 0.35.5
   uuid: 11.1.1
   ws: ^8.21.0
 onlyBuiltDependencies:
@@ -25,8 +25,8 @@ onlyBuiltDependencies:
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security fixes for GHSA advisories remain pinned to exact patched versions via
-# the overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.4
-# (GHSA-rgj7-g3m4-5g8c — libheif GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545,
+# the overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.5
+# (GHSA-wq5f-xc86-pv6w, superseding the 0.35.4 pin for GHSA-rgj7-g3m4-5g8c — libheif GHSA-g89c-p67h-r497 and GHSA-2jg2-4ch7-h545,
 # reached through next's optional image pipeline; supersedes the earlier 0.35.3
 # pin, which the advisory covers), js-yaml 4.3.2 (GHSA-2883-xcg3-v3hh —
 # maxTotalMergeKeys does not bound CPU for empty merge sources, so 4.3.1, pinned

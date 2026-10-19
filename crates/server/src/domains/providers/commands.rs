@@ -3,8 +3,8 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
+use crate::domains::providers::record::Provider;
 use crate::kernel_imports::{contracts::provider::DriverId, contracts::provider::ProviderStatus};
-use crate::records::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -15,10 +15,12 @@ pub struct DeleteProviderResult {
 
 fn sync_service(
     ctx: &Ctx,
-) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
+) -> Result<&std::sync::Arc<crate::domains::models::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
-        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
+        // A transport whose context lacks the service is a deployment gap, not
+        // an internal fault: answer 503 rather than paging on a 500.
+        .ok_or_else(|| CommandError::unavailable("Model sync is not available on this endpoint"))
 }
 
 /// Make a provider that just gained a credential immediately usable: discover
@@ -42,7 +44,7 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
             // key may be wrong. Its message is an upstream string, so it is
             // logged at the same level and shape as any other sync failure
             // rather than folded into a success line.
-            Ok(Ok(crate::services::SyncResult::Failed { error })) => tracing::warn!(
+            Ok(Ok(crate::domains::models::SyncResult::Failed { error })) => tracing::warn!(
                 org_id = ctx.org_id(),
                 provider_id = %provider.id,
                 %error,
@@ -66,6 +68,14 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
                 "Model sync after provider credential change timed out (non-fatal)"
             ),
         }
+    } else {
+        // Every composed surface attaches the service (EVE-1234); a context
+        // without it must say so rather than leave the org silently model-less.
+        tracing::warn!(
+            org_id = ctx.org_id(),
+            provider_id = %provider.id,
+            "Model sync unavailable in this command context; skipped model discovery"
+        );
     }
 
     if let Some(models) = ctx.model_service.as_ref()
@@ -91,13 +101,17 @@ const PROVISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20
 pub struct CreateProvider {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
+    /// Provider driver, e.g. `openai` or `anthropic`.
     pub provider_type: DriverId,
+    /// Custom API endpoint.
     pub base_url: Option<String>,
+    /// Credential for the provider.
     pub api_key: Option<String>,
     /// Trace/observability link configuration override (driver defaults apply
     /// when omitted).
     #[serde(default)]
     pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    /// Extra options applied to every request sent to this provider.
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
@@ -106,6 +120,7 @@ pub struct CreateProvider {
     category = "providers",
     description = "Create a new LLM provider.",
     method = "POST",
+    cli = CliRoute::new(&["providers"], "create").with_examples(&[CliExample::new("Connect an LLM provider with its API key", "everruns providers create --name openai-prod --provider-type openai --api-key \"$OPENAI_API_KEY\" --reason 'Enable OpenAI models'")]),
     path = "/v1/providers",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -120,7 +135,7 @@ impl Command for CreateProvider {
         let provider = q::service(ctx)
             .create(
                 &ctx.caller,
-                crate::api::providers::CreateProviderRequest {
+                crate::domains::providers::types::CreateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -152,6 +167,7 @@ pub struct ListProviders {}
     category = "providers",
     description = "List all LLM providers.",
     method = "GET",
+    cli = CliRoute::new(&["providers"], "list").with_examples(&[CliExample::new("See which LLM providers are connected", "everruns providers list")]),
     path = "/v1/providers",
     policy = LLM_PROVIDER_VIEW,
 )]
@@ -173,6 +189,7 @@ impl Command for ListProviders {
 /// (setup) or before an edit overwrites a working one. Nothing is persisted.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckProviderCredentials {
+    /// Provider driver, e.g. `openai` or `anthropic`.
     pub provider_type: DriverId,
     /// The credential to probe. Typed multi-field credentials are assembled
     /// into this single document at the HTTP boundary, as for create.
@@ -188,6 +205,7 @@ pub struct CheckProviderCredentials {
     category = "providers",
     description = "Check a provider API key without storing it.",
     method = "POST",
+    cli = CliRoute::new(&["providers", "check-credentials"], "check").with_examples(&[CliExample::new("Verify an API key works before saving a provider", "everruns providers check-credentials check --provider-type openai --api-key \"$OPENAI_API_KEY\"")]),
     path = "/v1/providers/check-credentials",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -216,7 +234,7 @@ impl Command for CheckProviderCredentials {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -225,6 +243,7 @@ pub struct GetProvider {
     category = "providers",
     description = "Get a specific LLM provider.",
     method = "GET",
+    cli = CliRoute::new(&["providers"], "get").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Show a provider's type and status", "everruns providers get provider_01h9")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_VIEW,
     positional = "id",
@@ -243,12 +262,15 @@ impl Command for GetProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
+    /// Replacement provider driver.
     pub provider_type: Option<DriverId>,
+    /// Replacement API endpoint.
     pub base_url: Option<String>,
+    /// Replacement credential.
     pub api_key: Option<String>,
     /// Current lifecycle status.
     pub status: Option<ProviderStatus>,
@@ -256,6 +278,7 @@ pub struct UpdateProvider {
     /// settings, preserving other keys).
     #[serde(default)]
     pub trace: Option<everruns_contracts::provider::ProviderTraceConfig>,
+    /// Replacement request options for this provider.
     pub request_options: Option<everruns_contracts::provider::ProviderRequestOptions>,
 }
 
@@ -264,6 +287,7 @@ pub struct UpdateProvider {
     category = "providers",
     description = "Update an LLM provider.",
     method = "PATCH",
+    cli = CliRoute::new(&["providers"], "update").with_examples(&[CliExample::new("Rotate a provider's API key", "everruns providers update --id provider_01h9 --api-key \"$OPENAI_API_KEY\" --reason 'Scheduled key rotation'")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -277,7 +301,7 @@ impl Command for UpdateProvider {
             .update(
                 &ctx.caller,
                 provider_id,
-                crate::api::providers::UpdateProviderRequest {
+                crate::domains::providers::types::UpdateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -304,7 +328,7 @@ impl Command for UpdateProvider {
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -313,6 +337,7 @@ pub struct DeleteProvider {
     category = "providers",
     description = "Delete an LLM provider.",
     method = "DELETE",
+    cli = CliRoute::new(&["providers"], "delete").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Remove a provider and stop using its models", "everruns providers delete provider_01h9 --reason 'Account closed'")]),
     path = "/v1/providers/{id}",
     policy = LLM_PROVIDER_MANAGE,
     positional = "id",
@@ -331,8 +356,44 @@ impl Command for DeleteProvider {
 }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ReviewProviderModels {
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
+    pub id: String,
+}
+
+#[command(
+    name = "review_provider_models",
+    category = "providers",
+    description = "Mark a provider's discovered models as reviewed, clearing their new flag.",
+    method = "POST",
+    path = "/v1/providers/{id}/models/review",
+    policy = LLM_PROVIDER_MANAGE,
+    cli = CliRoute::new(&["providers", "models"], "review").with_examples(&[CliExample::new("Clear the new flag once you have looked at a provider's newly discovered models", "everruns providers models review --id provider_01h9 --reason 'Checked new models'",)]),
+)]
+impl Command for ReviewProviderModels {
+    type Output = Provider;
+
+    async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
+        let provider_id = q::parse_provider_id(&self.id)?;
+        let service = q::service(ctx);
+        if !service
+            .mark_models_reviewed(&ctx.caller, provider_id)
+            .await
+            .map_err(classify_anyhow)?
+        {
+            return Err(CommandError::not_found("Provider"));
+        }
+        service
+            .get(&ctx.caller, provider_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Provider"))
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncProviderModels {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    /// Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
     pub id: String,
 }
 
@@ -341,6 +402,7 @@ pub struct SyncProviderModels {
     category = "providers",
     description = "Discover and sync models from a provider.",
     method = "POST",
+    cli = CliRoute::new(&["providers", "sync-models"], "sync").with_examples(&[CliExample::new("Pull a provider's current model list after it ships new models", "everruns providers sync-models sync --id provider_01h9 --reason 'New models released'")]),
     path = "/v1/providers/{id}/sync-models",
     policy = LLM_PROVIDER_MANAGE,
 )]
@@ -373,7 +435,7 @@ impl Command for SyncProviderModels {
         }
 
         match result {
-            crate::services::SyncResult::Success {
+            crate::domains::models::SyncResult::Success {
                 created,
                 updated,
                 stale,
@@ -382,10 +444,87 @@ impl Command for SyncProviderModels {
                 updated,
                 stale,
             }),
-            crate::services::SyncResult::NotSupported => Ok(SyncModelsResponse::NotSupported),
-            crate::services::SyncResult::Failed { error } => {
-                Err(CommandError::internal(anyhow::anyhow!(error)))
+            crate::domains::models::SyncResult::NotSupported => {
+                Ok(SyncModelsResponse::NotSupported)
+            }
+            // EVE-1239: `Failed` means the provider could not be listed (no key,
+            // rejected key, provider error). The caller can fix that, so it is a
+            // 422 with the reason, not a 500 that logs at error level and pages.
+            // The reason may quote an upstream body, so it is length-capped.
+            crate::domains::models::SyncResult::Failed { error } => {
+                let error: String = error.chars().take(500).collect();
+                Err(CommandError::unprocessable(error).with_code("provider_sync_failed"))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::models::ModelSyncService;
+    use crate::kernel_imports::contracts::driver_registry::DriverRegistry;
+    use crate::services::CapabilityService;
+    use crate::storage::{CreateProviderRow, StorageBackend};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
+    use std::sync::Arc;
+
+    fn owner() -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".to_string(),
+            user_id: Some(uuid::Uuid::nil()),
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        }
+    }
+
+    // EVE-1239: a provider-side sync failure is a configuration problem the
+    // caller can fix, so it must not surface as an internal (500) error.
+    #[tokio::test]
+    async fn sync_failure_is_unprocessable_not_internal() {
+        let db = Arc::new(StorageBackend::test_database());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let mut ctx = Ctx::new(
+            owner(),
+            db.clone(),
+            Arc::new(CapabilityService::new(db.clone(), None)),
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        );
+        ctx.model_sync_service = Some(Arc::new(ModelSyncService::new(
+            db,
+            Arc::new(DriverRegistry::new()),
+            None,
+        )));
+
+        let err = SyncProviderModels {
+            id: provider.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+
+        assert_eq!(err.status(), axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(err.code.as_deref(), Some("provider_sync_failed"));
+        assert!(
+            err.message().contains("No API key configured"),
+            "{}",
+            err.message()
+        );
     }
 }

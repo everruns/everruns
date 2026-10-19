@@ -119,6 +119,7 @@ Closed `event:` vocabulary on this endpoint:
 | `voice.output_transcript.completed` | `Event` (`data` = `VoiceTranscriptData`)                               |
 | `voice.session.ended`           | `Event` (`data` = `VoiceSessionEndedData`)                                 |
 | `voice.session.failed`          | `Event` (`data` = `VoiceSessionFailedData`)                                |
+| `voice.output.interrupted`      | `Event` (`data` = `VoiceOutputInterruptedData`)                            |
 
 The authoritative event-type → payload mapping is the `EventData`
 enum in [`crates/contracts/src/runtime/events/mod.rs`](../../crates/contracts/src/runtime/events/mod.rs)

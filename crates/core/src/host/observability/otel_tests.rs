@@ -130,6 +130,7 @@ fn generation(success: bool) -> LlmGenerationData {
         arguments: json!({ "city": "Paris" }),
     };
     LlmGenerationData {
+        request_body: None,
         messages: vec![
             RuntimeMessage::system("You are a weather assistant."),
             RuntimeMessage::user("What is the weather in Paris?"),
@@ -154,6 +155,7 @@ fn generation(success: bool) -> LlmGenerationData {
             model: "claude-sonnet-4-6".to_string(),
             provider: Some("anthropic".to_string()),
             response_model: None,
+            provider_id: None,
             usage: Some(usage(120, 30)),
             duration_ms: Some(500),
             time_to_first_token_ms: Some(250),
@@ -175,6 +177,7 @@ fn generation(success: bool) -> LlmGenerationData {
             tool_calls_dropped: 0,
             tool_calls_truncated_executed: 0,
             truncation_gate: None,
+            tool_changes: None,
         },
     }
 }
@@ -189,6 +192,7 @@ fn tool_started() -> ToolStartedData {
         tool_call_fingerprint: None,
         display_name: None,
         narration: None,
+        side_effect_class: None,
     }
 }
 
@@ -289,6 +293,8 @@ async fn run_full_turn(h: &OtelHarness) {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
+            issue_count: None,
             turn_id: h.turn,
             iterations: 1,
             duration_ms: Some(800),
@@ -420,7 +426,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
     );
     assert_eq!(
         attr(turn, "gen_ai.usage.input_tokens"),
-        Some(&Value::I64(120))
+        Some(&Value::I64(168))
     );
     assert_eq!(
         attr(turn, "gen_ai.usage.output_tokens"),
@@ -436,7 +442,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
         Some("Weather Helper")
     );
     assert_eq!(attr_str(turn, "session.id"), Some(h.session.to_string()));
-    assert_eq!(attr(turn, "llm.token_count.total"), Some(&Value::I64(150)));
+    assert_eq!(attr(turn, "llm.token_count.total"), Some(&Value::I64(198)));
 
     // chat attributes.
     assert_eq!(
@@ -461,7 +467,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
     );
     assert_eq!(
         attr(chat, "gen_ai.usage.input_tokens"),
-        Some(&Value::I64(120))
+        Some(&Value::I64(168))
     );
     assert_eq!(
         attr(chat, "gen_ai.usage.cache_read.input_tokens"),
@@ -502,7 +508,7 @@ async fn full_turn_nests_spans_per_the_conventions() {
         Some("claude-sonnet-4-6")
     );
     assert_eq!(attr_str(chat, "llm.provider").as_deref(), Some("anthropic"));
-    assert_eq!(attr(chat, "llm.token_count.prompt"), Some(&Value::I64(120)));
+    assert_eq!(attr(chat, "llm.token_count.prompt"), Some(&Value::I64(168)));
     assert_eq!(
         attr(chat, "llm.token_count.prompt_details.cache_read"),
         Some(&Value::I64(40))
@@ -785,9 +791,7 @@ async fn failures_carry_error_type_status_and_exception_event() {
     let spans = h.spans();
     let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(attr_str(chat, "error.type").as_deref(), Some("503"));
-    assert!(
-        matches!(&chat.status, Status::Error { description } if description == "provider returned 503")
-    );
+    assert!(matches!(&chat.status, Status::Error { description } if description == "503"));
     let exception = chat.events.iter().find(|e| e.name == "exception").unwrap();
     assert!(
         exception
@@ -811,7 +815,7 @@ async fn failures_carry_error_type_status_and_exception_event() {
         Some("budget_exhausted")
     );
     assert!(
-        matches!(&turn.status, Status::Error { description } if description == "budget exhausted")
+        matches!(&turn.status, Status::Error { description } if description == "budget_exhausted")
     );
 
     // The reason span never completed: the turn end closed it.
@@ -926,9 +930,7 @@ async fn pending_chat_is_closed_when_no_generation_record_arrives() {
     let spans = h.spans();
     let chat = by_name(&spans, "chat claude-sonnet-4-6");
     assert_eq!(chat.end_time, SystemTime::from(h.at(500)));
-    assert!(
-        matches!(&chat.status, Status::Error { description } if description == "stream dropped")
-    );
+    assert!(matches!(&chat.status, Status::Error { description } if description == "_OTHER"));
     let reason = by_name(&spans, "reason");
     assert!(matches!(&reason.status, Status::Error { .. }));
     let thinking = by_name(&spans, "thinking");
@@ -955,6 +957,8 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
         800,
         h.context(None, None, None),
         TurnCompletedData {
+            termination_reason: None,
+            issue_count: None,
             turn_id: h.turn,
             iterations: 1,
             duration_ms: Some(800),
@@ -988,6 +992,8 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
             50,
             other.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
+                issue_count: None,
                 turn_id: other.turn,
                 iterations: 2,
                 duration_ms: Some(50),
@@ -1204,6 +1210,7 @@ async fn truncation_details_reach_chat_and_turn_spans() {
             800,
             h.context(None, None, None),
             TurnCompletedData {
+                termination_reason: None,
                 turn_id: h.turn,
                 iterations: 1,
                 status: Some("completed".into()),
@@ -1267,3 +1274,6 @@ async fn truncation_details_reach_chat_and_turn_spans() {
             .all(|span| attr(span, "everruns.turn.stop_reason").is_none())
     );
 }
+
+#[path = "otel_regression_tests.rs"]
+mod regressions;

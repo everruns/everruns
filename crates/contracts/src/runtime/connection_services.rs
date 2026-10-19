@@ -58,6 +58,8 @@ pub struct McpResolvedCredential {
     pub token: String,
     /// Identity whose grant the token came from.
     pub acted_as: crate::runtime::mcp_server::McpServerActsAs,
+    /// Trusted installation-mint evidence; absent for MCP, personal and legacy tokens.
+    pub github_installation_scope: Option<crate::runtime::GitHubInstallationScope>,
 }
 
 impl std::fmt::Debug for McpResolvedCredential {
@@ -66,6 +68,59 @@ impl std::fmt::Debug for McpResolvedCredential {
             .field("token", &"<redacted>")
             .field("acted_as", &self.acted_as)
             .finish()
+    }
+}
+
+impl McpResolvedCredential {
+    /// A host-side credential with no installation-mint evidence.
+    pub fn unscoped(token: String, acted_as: crate::runtime::mcp_server::McpServerActsAs) -> Self {
+        Self {
+            token,
+            acted_as,
+            github_installation_scope: None,
+        }
+    }
+}
+
+/// What one GitHub use asks for: who it acts as, and the least access it needs.
+///
+/// The resolver mints an installation token limited to `repositories` and
+/// `permissions`, so a tool that only reads a diff never holds write access.
+/// Empty `repositories` means every repository the installation covers; empty
+/// `permissions` means everything the installation was granted. A person's own
+/// login cannot be narrowed by GitHub and answers with its full reach.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GitHubAccess {
+    /// Whose GitHub identity answers. `none` resolves nothing.
+    pub acts_as: crate::runtime::mcp_server::McpServerActsAs,
+    /// Repositories as `owner/repo`, all under one owner.
+    #[serde(default)]
+    pub repositories: Vec<String>,
+    /// GitHub App permission name to level (`read` or `write`).
+    #[serde(default)]
+    pub permissions: std::collections::BTreeMap<String, String>,
+}
+
+impl GitHubAccess {
+    /// Access acting as `acts_as`, limited to `permissions`.
+    pub fn new(
+        acts_as: crate::runtime::mcp_server::McpServerActsAs,
+        permissions: &[(&str, &str)],
+    ) -> Self {
+        Self {
+            acts_as,
+            repositories: Vec::new(),
+            permissions: permissions
+                .iter()
+                .map(|(name, level)| ((*name).to_string(), (*level).to_string()))
+                .collect(),
+        }
+    }
+
+    /// The same access, limited to one repository.
+    pub fn for_repository(mut self, repository: impl Into<String>) -> Self {
+        self.repositories = vec![repository.into()];
+        self
     }
 }
 
@@ -170,6 +225,7 @@ pub trait UserConnectionResolver: Send + Sync {
                 return Ok(Some(McpResolvedCredential {
                     token,
                     acted_as: *identity,
+                    github_installation_scope: None,
                 }));
             }
         }
@@ -191,6 +247,43 @@ pub trait UserConnectionResolver: Send + Sync {
         _session_id: SessionId,
         _provider: &str,
     ) -> Result<Option<ServiceApiKeyConnection>> {
+        Ok(None)
+    }
+
+    /// Resolve a GitHub token for one use, as `access.acts_as` says and
+    /// limited to `access.repositories` and `access.permissions`.
+    ///
+    /// Neither identity falls back to the other except under
+    /// `user_or_service`, and the returned `acted_as` names the one that
+    /// answered. `Ok(None)` means that identity has no GitHub connection.
+    /// Personal tokens cannot be narrowed and carry no installation evidence.
+    /// A sandbox caller must validate `github_installation_scope` before delivery;
+    /// the access request alone does not attest the returned token's scope.
+    ///
+    /// THREAT[TM-GITHUB-006]: fail-closed by default, like
+    /// [`Self::get_mcp_connection_token`]; a resolver that has not opted in
+    /// must not substitute the identity-preferring lookup.
+    async fn get_github_token(
+        &self,
+        _session_id: SessionId,
+        _access: &GitHubAccess,
+    ) -> Result<Option<McpResolvedCredential>> {
+        Ok(None)
+    }
+
+    /// Resolve a GitHub token for work done on behalf of one virtual user
+    /// outside a session (a memory or knowledge source sync), limited to
+    /// `access.repositories` and `access.permissions`. `access.acts_as` is
+    /// not consulted: the owner is the identity.
+    ///
+    /// THREAT[TM-GITHUB-006]: fail-closed by default, like
+    /// [`Self::get_github_token`].
+    async fn get_github_token_for_owner(
+        &self,
+        _org_id: i64,
+        _owner: Uuid,
+        _access: &GitHubAccess,
+    ) -> Result<Option<String>> {
         Ok(None)
     }
 
@@ -222,6 +315,18 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve a sandbox credential only after authorizing it against the
+    /// server-pinned sandbox of this session. Identity-only cleanup lookups
+    /// must never serve caller-authored sandbox configuration.
+    async fn get_sandbox_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+        _credential: &crate::session_sandbox::SessionSandboxCredential,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Resolve a provider token for a specific user.
     ///
     /// Cleanup workers use this to avoid "first org member wins" behavior when
@@ -234,14 +339,37 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
-    /// Resolve one exact connection owned by the given virtual user. Sandbox
-    /// lifecycle uses this for organization accounts so provisioning and later
-    /// cleanup cannot drift to a different account for the same provider.
+    /// Cleanup-only lookup of one exact connection owned by a virtual user.
+    /// Sandbox lifecycle must use the session-authorized lookup instead.
     async fn get_connection_token_for_connection(
         &self,
         _connection_id: Uuid,
         _virtual_user_id: Uuid,
         _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    /// The session's organization web search defaults and search accounts
+    /// (no keys). `Ok(None)` means the host has no organization settings, and
+    /// web search uses the built-in defaults.
+    async fn get_web_search_settings(
+        &self,
+        _session_id: SessionId,
+    ) -> Result<Option<crate::runtime::web_search::WebSearchOrgSettings>> {
+        Ok(None)
+    }
+
+    /// Decrypt one organization search account's key for this session.
+    ///
+    /// THREAT[TM-TOOL-041]: fail-closed by default. An implementation answers
+    /// only for an account of the session's own organization whose provider
+    /// has a search driver, never for another kind of organization account
+    /// (for example a sandbox provider key).
+    async fn get_web_search_account_key(
+        &self,
+        _session_id: SessionId,
+        _account_id: Uuid,
     ) -> Result<Option<String>> {
         Ok(None)
     }

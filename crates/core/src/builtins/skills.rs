@@ -2,14 +2,12 @@
 // COMMAND-SUBSTITUTION TRUST GATE (see also `knowledge/project/skills-registry.md`
 // "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
 // SKILL.md may contain ``!`command` `` placeholders that, when expanded by
-// `preprocess_command_injections`, spawn a shell on the worker host. That is
-// RCE if the SKILL.md was authored by an untrusted party. There is currently
-// no platform-controlled provenance signal on `SessionFile` that proves a
-// SKILL.md was placed by the capability/registry mount layer as opposed to by
-// a user-facing path (session-files API, agent/session `initial_files`,
-// runtime `write_file`). In particular, `SessionFile::is_readonly` is NOT
-// such a signal: both the session-files API and `InitialFile` accept
-// `is_readonly = true` from user input.
+// `preprocess_command_injections`, spawn a shell on the worker host. That is RCE if the SKILL.md
+// was authored by an untrusted party. There is currently no platform-controlled provenance signal
+// on `SessionFile` that proves a SKILL.md was placed by the capability/registry mount layer as
+// opposed to by a user-facing path (session-files API, agent/session `initial_files`, runtime
+// `write_file`). In particular, `SessionFile::is_readonly` is NOT such a signal: both the
+// session-files API and `InitialFile` accept `is_readonly = true` from user input.
 //
 // Therefore `ActivateSkillFromVfsTool::execute_with_context` never invokes
 // `preprocess_command_injections`; command placeholders remain literal. This
@@ -490,6 +488,7 @@ impl Tool for ActivateSkillFromVfsTool {
 
     fn hints(&self) -> ToolHints {
         ToolHints::default()
+            .with_stays_direct(true)
             .with_readonly(true)
             .with_idempotent(true)
     }
@@ -1681,11 +1680,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1713,11 +1709,8 @@ mod tests {
         let store = Arc::new(MockFileStore::new());
 
         let ctx = SystemPromptContext {
-            session_id: SessionId::new(),
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(SessionId::new())
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1780,11 +1773,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1821,11 +1811,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1856,11 +1843,8 @@ mod tests {
         }
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store.clone()),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2088,11 +2072,8 @@ mod tests {
         // SkillsCapability dynamic prompt should include the mounted skill
         let skills_cap = SkillsCapability;
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
         let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("pdf-tool"));
@@ -2350,11 +2331,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2382,11 +2360,8 @@ mod tests {
         );
 
         let ctx = SystemPromptContext {
-            session_id,
-            locale: None,
             file_store: Some(store),
-            model: None,
-            session_storage: None,
+            ..SystemPromptContext::without_file_store(session_id)
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();

@@ -3,7 +3,7 @@
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { AgentAvatar } from "./agent-types";
-import type { AvatarPreset, AvatarPresetSelection } from "./schema-types";
+import type { AvatarPreset, AvatarPresetSelection, Communication } from "./schema-types";
 import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -106,6 +106,8 @@ export interface AgentPackagePreview {
   channels?: Record<string, { type: string; enabled: boolean; config: unknown }>;
   max_iterations?: number;
   parallel_tool_calls?: boolean;
+  max_output_tokens?: number;
+  communication?: Communication | null;
   tools?: { name: string; description: string; parameters: unknown }[];
   network_access?: unknown;
   environments?: unknown;
@@ -212,10 +214,17 @@ export async function listHealthCheckRuns(agentId: string): Promise<HealthCheckR
   return response.data;
 }
 
+/// Either an MCP tool parameter (`mcp_server_name`, `tool_name`,
+/// `parameter_name`) or an HTTP API the agent's shell calls (`env_name`,
+/// `url`, `auth`, `header_name`).
 export interface CreateAgentCredentialBindingRequest {
-  mcp_server_name: string;
-  tool_name: string;
-  parameter_name: string;
+  mcp_server_name?: string;
+  tool_name?: string;
+  parameter_name?: string;
+  env_name?: string;
+  url?: string;
+  auth?: "bearer" | "header";
+  header_name?: string;
   label: string;
   description?: string;
 }

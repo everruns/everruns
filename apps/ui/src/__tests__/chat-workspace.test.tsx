@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { useChatThreads } from "@/hooks/use-chat-threads";
@@ -33,6 +35,26 @@ jest.mock("@/hooks/use-session-tasks", () => ({
         state: "awaiting_input",
         display_name: "Approve deployment",
         input_request: { prompt: "May I deploy?" },
+        updated_at: "2026-10-03T00:00:00Z",
+      },
+      {
+        id: "task_first",
+        kind: "assignment",
+        state: "succeeded",
+        state_detail: "resolved",
+        display_name: "Draft the plan",
+        links: { child_session_id: "thread_child" },
+        created_at: "2026-10-02T00:00:00Z",
+        updated_at: "2026-10-02T00:00:00Z",
+      },
+      {
+        id: "task_followup",
+        kind: "assignment",
+        state: "succeeded",
+        display_name: "Fix the login bug",
+        summary: "Opened the PR",
+        links: { child_session_id: "thread_child" },
+        created_at: "2026-10-03T00:00:00Z",
         updated_at: "2026-10-03T00:00:00Z",
       },
     ],
@@ -104,6 +126,17 @@ it("starts in permanent Chat and opens creation and history inside Threads", () 
   expect(screen.getByTestId("conversation-permanent")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Threads" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Threads" }));
+  // The conversation column clips and the threads pane stacks above it, so a
+  // thread row cannot paint across the transcript.
+  expect(screen.getByTestId("conversation-permanent").parentElement).toHaveClass(
+    "overflow-hidden",
+    "isolate",
+  );
+  expect(screen.getByRole("region", { name: "Threads" })).toHaveClass(
+    "overflow-hidden",
+    "z-10",
+    "bg-background",
+  );
   expect(screen.getByRole("link", { name: "New thread" })).toHaveAttribute("href", "/chats/new");
   expect(screen.getByRole("link", { name: /Investigate latency/ })).toHaveAttribute(
     "href",
@@ -114,6 +147,13 @@ it("starts in permanent Chat and opens creation and history inside Threads", () 
     "href",
     "/chats?task=task_owned",
   );
+  // A coordinator thread is one row, grouped by its latest assignment. It keeps
+  // the name it started with; the current assignment leads the preview.
+  expect(screen.getByText("Ready for review")).toBeInTheDocument();
+  const threadRow = screen.getByRole("link", { name: /Draft the plan/ });
+  expect(threadRow).toHaveAttribute("href", "/chats/thread_child");
+  expect(threadRow).toHaveTextContent("Fix the login bug · Opened the PR");
+  expect(screen.getAllByRole("link", { name: /Fix the login bug/ })).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   expect(useChatThreads).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 20 }));
   fireEvent.change(screen.getByRole("textbox", { name: "Search threads" }), {
@@ -134,6 +174,13 @@ it("preserves the permanent conversation while opening and expanding a separate 
   expect(screen.getByRole("button", { name: "Restore split view" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close threads" }));
   expect(mockPush).toHaveBeenLastCalledWith("/chats");
+});
+it("keeps transcript rows from remembering an inline size", () => {
+  const css = readFileSync(join(process.cwd(), "src/app/design-system.css"), "utf8");
+  const block = css.slice(css.indexOf(".chat-transcript-row"));
+  const rule = block.slice(0, block.indexOf("}"));
+  expect(rule).toContain("contain-intrinsic-block-size: auto 4rem");
+  expect(rule).not.toContain("contain-intrinsic-size:");
 });
 it("opens bookmarked drafts beside permanent Chat", () => {
   mockPath = "/chats/new";

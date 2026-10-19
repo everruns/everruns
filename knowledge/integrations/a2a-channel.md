@@ -38,7 +38,7 @@ References:
 - A2A protocol: <https://a2aproject.github.io/A2A>
 - `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
 - `knowledge/integrations/agent-exposure.md`, channel ownership and agent identity binding
-- `crates/server/specs/slack-integration.md`, sibling messaging channel
+- `knowledge/integrations/slack-integration.md`, sibling messaging channel
 
 ## Goals
 
@@ -141,7 +141,7 @@ shapes; 1.0 drops the `kind` discriminators and `final`, uses ProtoJSON enum
 names (`TASK_STATE_COMPLETED`, `ROLE_AGENT`), flattens parts to
 `{ "text" }` / `{ "data" }`, and wraps results (`{ "task": ... }` for
 send, `StreamResponse` objects for streaming frames). Source:
-[`crates/server/src/api/channel_a2a/wire.rs`](../../crates/server/src/api/channel_a2a/wire.rs).
+[`crates/server/src/channels/a2a/wire.rs`](../../crates/server/src/channels/a2a/wire.rs).
 
 #### Blocking send
 
@@ -150,7 +150,7 @@ terminal or parked on an `ask_user` question, with the task's outputs, unless
 `configuration.returnImmediately` is `true`. A 0.3 send blocks only when
 `configuration.blocking` is `true`. A turn that outlasts the server's bound
 (`BLOCKING_SEND_TIMEOUT` in
-[`task_view.rs`](../../crates/server/src/api/channel_a2a/task_view.rs)) returns
+[`task_view.rs`](../../crates/server/src/channels/a2a/task_view.rs)) returns
 in its current state and the caller polls.
 
 #### Multi-turn
@@ -233,7 +233,7 @@ HTTP errors (401, 404, 429) are the same as on JSON-RPC.
 
 The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
 `VERSION_NOT_SUPPORTED`. Source:
-[`crates/server/src/api/channel_a2a/http_json.rs`](../../crates/server/src/api/channel_a2a/http_json.rs).
+[`crates/server/src/channels/a2a/http_json.rs`](../../crates/server/src/channels/a2a/http_json.rs).
 
 ### Inbound PACT Identity profile
 
@@ -241,8 +241,8 @@ The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
 Instinct, 2026-10) is a profile on A2A 1.0 HTTP+JSON for personal agents: a
 person's own agent calling a company's agent for one user. A channel with
 `pact` in its config (`PactProfileConfig` in
-[`records/agent_channel.rs`](../../crates/server/src/records/agent_channel.rs))
-is also served at `/v1/a2a/{channel_id}`.
+[`domains/agent_channels/record/mod.rs`](../../crates/server/src/domains/agent_channels/record/mod.rs))
+is also served at `/v1/channels/{channel_id}/a2a/pact`.
 
 Design decisions:
 
@@ -267,8 +267,8 @@ Design decisions:
   `platformJwt` (the conformance suite's name), each alone in a requirement.
 
 Source:
-[`crates/server/src/api/channel_a2a/pact.rs`](../../crates/server/src/api/channel_a2a/pact.rs),
-[`pact_identity.rs`](../../crates/server/src/api/channel_a2a/pact_identity.rs).
+[`crates/server/src/channels/a2a/pact.rs`](../../crates/server/src/channels/a2a/pact.rs),
+[`pact_identity.rs`](../../crates/server/src/channels/a2a/pact_identity.rs).
 PACT's own suite runs with `scripts/pact-conformance.sh` (10/10 at the pinned
 commit).
 
@@ -277,10 +277,10 @@ commit).
 PACT's optional Delegated profile (§5) lets the personal agent act on the
 user's account with the company behind the endpoint. `pact.delegation`
 (`PactDelegationConfig` in
-[`records/pact_delegation.rs`](../../crates/server/src/records/pact_delegation.rs))
+[`domains/agent_channels/record/pact_delegation.rs`](../../crates/server/src/domains/agent_channels/record/pact_delegation.rs))
 names the company's login page, the key it signs sign-in assertions with, and
 the scopes it offers. The endpoint then runs an OAuth 2.0 device-code
-authorization server (RFC 8628) under `/v1/a2a/{channel_id}/oauth/` and the
+authorization server (RFC 8628) under `/v1/channels/{channel_id}/a2a/pact/oauth/` and the
 card adds a `userDelegation` scheme beside the JWT-only requirements.
 
 Design decisions:
@@ -327,9 +327,9 @@ Delegated `message:send` (§5.5, §5.6) sends the token in
 - Login and connected pages may be plain HTTP on a loopback host, for local
   development; the JWKS URL stays HTTPS-only.
 
-Source: [`pact_oauth.rs`](../../crates/server/src/api/channel_a2a/pact_oauth.rs),
-[`pact_delegated.rs`](../../crates/server/src/api/channel_a2a/pact_delegated.rs),
-[`pact_keys.rs`](../../crates/server/src/api/channel_a2a/pact_keys.rs).
+Source: [`pact_oauth.rs`](../../crates/server/src/channels/a2a/pact_oauth.rs),
+[`pact_delegated.rs`](../../crates/server/src/channels/a2a/pact_delegated.rs),
+[`pact_keys.rs`](../../crates/server/src/channels/a2a/pact_keys.rs).
 PACT's own Delegated suite runs with `scripts/pact-conformance.sh` against
 its reference company.
 
@@ -540,7 +540,7 @@ is no answer shape at all, and an `everruns/ask_user_answer` against a task
 parked on a secret question is refused at the channel boundary rather than
 downstream.
 
-Source: [`crates/server/src/api/channel_a2a.rs`](../../crates/server/src/api/channel_a2a.rs).
+Source: [`crates/server/src/channels/a2a/mod.rs`](../../crates/server/src/channels/a2a/mod.rs).
 
 ### Agent Card
 
@@ -597,14 +597,22 @@ header values, or the channel internal id.
 
 ## Session Routing
 
-`SessionBinding` determines session reuse. Routing tags reuse the
-shared app-channel set:
+A2A runs on the shared channel host (`knowledge/integrations/channels.md`,
+"Server on the host"). `SessionBinding` determines session reuse: a
+`shared_session` channel's callers share one conversation, bound to its
+session in `channel_bindings` under `a2a:shared`, so two first messages
+cannot start two sessions. Every other mode, and every PACT caller, opens a
+session of its own. A message naming a task or context the channel owns
+continues that session; the A2A task and context ids are session ids.
 
-- `app:{app_id}`
-- `app_channel:{channel_id}`
-- `app_channel_type:a2a`
-- `__internal:app_invocation`
-- per-invocation mode adds `app_invocation:{uuid}`
+Sessions keep the app-channel tags (`app:{app_id}`, `app_channel:{channel_id}`,
+`app_channel_type:a2a`), which task reads still check (TM-A2A-012), plus a
+PACT caller's tag. Tags no longer route: the binding does.
+
+The host streams the turn to a blocking send or a `message/stream`. A turn
+that parks on an approval waits on someone other than the caller, so the
+channel follows the session past the park from the last sequence it saw; a
+parked `ask_user` question is the caller's and ends the wait.
 
 Template context:
 
@@ -622,9 +630,9 @@ If no `text` part is present the channel rejects the request with
 
 ## Audit Logging
 
-A2A uses the shared app-channel invocation path with webhook and schedule
-channels. After a request successfully resolves a session and dispatches the
-rendered user message, the server emits one audit log entry:
+After a request resolves a session and sends the rendered user message,
+the server emits one audit log entry, the same one webhook and schedule
+channels emit:
 
 - domain/action: `agent` / `agent.app_invocation.started`
 - target: `app_channel:{channel_id}`
@@ -634,9 +642,6 @@ rendered user message, the server emits one audit log entry:
   `app_channel_type = "a2a"`, `session_id`, `created_session`, and the app
   owner principal id; `virtual_user_id` is also present when the invocation
   uses an explicit runtime account
-
-This mirrors webhook/schedule coverage because the event is emitted by the
-common app-channel invocation helper, not by the A2A HTTP adapter.
 
 ## Lifecycle
 
@@ -760,7 +765,7 @@ Headers (sent by the client):
   prevents cross-channel replay when operators share the same
   `signing_secret` across multiple A2A channels.
 
-Verification is performed in `crates/server/src/api/a2a_signing.rs` and
+Verification is performed in `crates/server/src/channels/a2a/signing.rs` and
 called from `channel_a2a::authenticate_request` **after** primary
 authentication so unauthenticated callers cannot probe channel existence
 from signing-related signals or grow the in-memory replay store. The

@@ -22,9 +22,14 @@ import type {
   PublicChatChannelConfig,
   ScheduleChannelConfig,
   SlackChannelConfig,
+  VoiceChannelConfig,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getChannelLifecyclePresentation } from "@/lib/channel-display";
+import {
+  channelPublishControl,
+  getChannelTypeDisplayName,
+  getChannelLifecyclePresentation,
+} from "@/lib/channel-display";
 
 function relativeTime(value?: string | null): string {
   if (!value) return "never";
@@ -49,6 +54,7 @@ function channelName(channel: AgentChannel): string {
   if (channel.channel_type === "webhook") return "Webhook channel";
   if (channel.channel_type === "ag_ui") return "AG-UI channel";
   if (channel.channel_type === "fcp") return "FCP channel";
+  if (channel.channel_type === "voice") return "Voice channel";
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
     return config.branding?.display_name?.trim() || "Public Chat";
@@ -116,6 +122,11 @@ function detailText(channel: AgentChannel): string {
     const captcha = config.captcha?.enabled ? " · Turnstile" : "";
     return `Access: ${access}${captcha}`;
   }
+  if (channel.channel_type === "voice") {
+    const config = channel.channel_config as VoiceChannelConfig;
+    const interruption = config.interruption === "cancel" ? "cancel" : "steer";
+    return `Voice: ${config.voice ?? "marin"} · Interruptions ${interruption}`;
+  }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelConfig;
     return `Session strategy: ${config.session_strategy ?? "per_thread"}`;
@@ -147,6 +158,7 @@ export function ChannelRow({
 }) {
   const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
+  const publishControl = channelPublishControl(channel);
   const canRunNow = !!onRunNow && channel.channel_type === "schedule" && isLive;
   const panelId = `channel-panel-${channel.id}`;
   const inlineConfiguration = channel.channel_type === "slack" && !!configureHref;
@@ -207,13 +219,13 @@ export function ChannelRow({
           </div>
           <div className="flex items-center justify-end gap-1">
             {onPublishChange && (
-              <label className="flex items-center gap-2 text-xs">
-                {isLive ? "Published" : "Draft"}
+              <label className="flex items-center gap-2 text-xs" title={publishControl.hint}>
+                {publishControl.label}
                 <Switch
                   checked={isLive}
                   onCheckedChange={onPublishChange}
-                  disabled={publishPending || !channel.enabled}
-                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+                  disabled={publishPending}
+                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}. ${publishControl.hint}`}
                 />
               </label>
             )}

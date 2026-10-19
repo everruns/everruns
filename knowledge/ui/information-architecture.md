@@ -57,7 +57,7 @@ authoring is the activity that brings the user to the page.
 | **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
-| **Registers** | Reusable entries and curated resources, including Sandbox Templates, Knowledge indexes, and Memory. |
+| **Registers** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
 | **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
@@ -73,8 +73,13 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 * **Memory and Knowledge indexes are Registers.** They are curated resources referenced
   by agents; keeping them with the other reusable entries leaves Building focused on
   composing and trying agents.
-* **Sandboxes is Building; Sandbox Templates is Registers.** Live execution environments
-  sit beside agents and harnesses, while their reusable definitions stay in Registers.
+* **Sandboxes is Building, one entry with tabs.** Live execution environments sit beside
+  agents and harnesses. Their Templates and provider accounts are tabs of the same page,
+  organized like Models, rather than separate sidebar entries.
+* **Page tabs are paths.** A registry page with tabs (Models, Web search, Sandboxes) gives
+  each tab its own URL (`/models/providers`, `/sandboxes/templates`) so a tab can be linked,
+  opened in a new browser tab and kept in history; filters stay query params. Retired
+  `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
 * **Reports is Quality.** Reporting sits with Evals and Observers, leaving Operational
   focused on recordings and external exposure. Approvals stays within its session.
 * **Identities is Building, not Registers.** An identity is authored per agent
@@ -180,8 +185,8 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   the tab does not scan the event log just to paint a number. An empty tab renders with no badge
   rather than a `0`, so absence reads as absence. The counts ride on the session payload
   the page already fetches — never a per-tab request — and are served from denormalized
-  counters maintained by trigger (`sessions.event_count`, `sessions.task_count`,
-  `workspaces.file_count`), so opening a session never scans `events`. They are a
+  counters (`sessions.task_count`, `workspaces.file_count`, and the event count derived from
+  the session's event sequence, see [Session Counts](../operations/session-counts.md)), so opening a session never scans `events`. They are a
   snapshot at load; a live session's badges refresh when the session query does. A count
   the server cannot produce cheaply is omitted, and an absent badge is the honest
   answer — see [session counts](../operations/session-counts.md).

@@ -184,3 +184,12 @@ assert_rejected \
   "$mismatched_identifier_bundle" \
   "test case title identifier TC003 must match filename identifier TC001" \
   "test case H1 identifier TC003 must match filename identifier TC001"
+
+crate_specs_root="$TMP_DIR/crate-specs"
+write_bundle \
+  "$crate_specs_root/knowledge" "TC001: Create a widget" "TC002" "TC002: Delete a widget"
+mkdir -p "$crate_specs_root/crates/demo/specs"
+echo "# Demo" > "$crate_specs_root/crates/demo/specs/demo.md"
+assert_rejected \
+  "$crate_specs_root/knowledge" \
+  "crates/demo/specs/demo.md: specs belong in knowledge/, not in a crate"

@@ -27,6 +27,8 @@ fn tester() -> Agent {
             sim::call("shout", json!({ "text": "hi" })),
             sim::reply("shouted"),
             sim::call("guarded", json!({})),
+            // Durable approval returns control to the model; retry the exact action after the decision.
+            sim::call("guarded", json!({})),
             sim::reply("guarded done"),
         ]))
         .build()
@@ -75,13 +77,13 @@ fn hook() -> Webhook {
     Webhook::new()
 }
 
-struct Server {
+pub(crate) struct Server {
     base: String,
     client: reqwest::Client,
     _task: tokio::task::JoinHandle<()>,
 }
 
-async fn serve(host: Arc<Host>) -> Server {
+pub(crate) async fn serve(host: Arc<Host>) -> Server {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let task = tokio::spawn(async move {
@@ -96,7 +98,7 @@ async fn serve(host: Arc<Host>) -> Server {
     }
 }
 
-fn app() -> App {
+pub(crate) fn app() -> App {
     let app = App::builder().discover().build();
     assert!(app.errors().is_empty(), "{:?}", app.errors());
     app
@@ -110,12 +112,12 @@ fn sdk(server: &Server) -> Everruns {
         .unwrap()
 }
 
-fn text_message(text: &str) -> Value {
+pub(crate) fn text_message(text: &str) -> Value {
     json!({ "message": { "role": "user", "content": [{ "type": "text", "text": text }] } })
 }
 
 impl Server {
-    async fn post(&self, path: &str, body: Value) -> reqwest::Response {
+    pub(crate) async fn post(&self, path: &str, body: Value) -> reqwest::Response {
         self.client
             .post(format!("{}{path}", self.base))
             .json(&body)
@@ -124,7 +126,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn get(&self, path: &str) -> reqwest::Response {
+    pub(crate) async fn get(&self, path: &str) -> reqwest::Response {
         self.client
             .get(format!("{}{path}", self.base))
             .send()
@@ -132,7 +134,7 @@ impl Server {
             .unwrap()
     }
 
-    async fn session(&self, id: &str) -> Value {
+    pub(crate) async fn session(&self, id: &str) -> Value {
         self.get(&format!("/v1/sessions/{id}"))
             .await
             .json()
@@ -151,7 +153,7 @@ impl Server {
     }
 
     /// Poll the session until `check` holds.
-    async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
+    pub(crate) async fn wait_until(&self, id: &str, check: impl Fn(&Value) -> bool) -> Value {
         for _ in 0..400 {
             let session = self.session(id).await;
             if check(&session) {
@@ -163,7 +165,7 @@ impl Server {
     }
 
     /// Poll the log until `count` terminal turn events are in it.
-    async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
+    pub(crate) async fn wait_turns(&self, id: &str, count: usize) -> Vec<Value> {
         for _ in 0..400 {
             let events = self.events(id, "").await;
             if events.iter().filter(|e| terminal(e)).count() >= count {
@@ -464,10 +466,10 @@ async fn an_approval_gates_the_tool_until_a_person_decides() {
     let call = pending["tool_call_id"].as_str().unwrap().to_string();
     let before = server.events(&id, "").await;
     assert!(
-        !before
-            .iter()
-            .any(|e| e["type"] == "tool.completed" && e["data"]["tool_name"] == "guarded"),
-        "ran before approval"
+        !before.iter().any(|e| e["type"] == "tool.completed"
+            && e["data"]["tool_name"] == "guarded"
+            && e["data"]["success"] == true),
+        "tool effect succeeded before approval"
     );
 
     let unknown = server
@@ -513,7 +515,7 @@ async fn a_denied_call_reaches_the_model_as_a_tool_error() {
             break view.tool_call_id;
         }
     };
-    host.resolve_approval(&id, &call, false).unwrap();
+    host.resolve_approval(&id, &call, false).await.unwrap();
     assert!(turn.wait().await.unwrap().success);
     let events = host.events_after(&id, 0).await.unwrap();
     let completed = events
@@ -633,9 +635,14 @@ async fn cancel_stops_a_turn_waiting_for_approval() {
         .json()
         .await
         .unwrap();
-    assert_eq!(cancelled["status"], "cancelled");
+    assert_eq!(cancelled["status"], "accepted");
     let events = server.wait_turns(&id, 2).await;
-    assert_eq!(kinds(&events).last(), Some(&"turn.cancelled"));
+    assert_eq!(
+        kinds(&events)
+            .into_iter()
+            .rfind(|kind| kind.starts_with("turn.")),
+        Some("turn.cancelled")
+    );
     let after = server.wait_until(&id, |s| s["status"] == "idle").await;
     assert_eq!(after["pending_approvals"], json!([]));
 
@@ -706,12 +713,12 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
             break (session_id, to);
         }
     };
-    assert_eq!(delivered, (id.clone(), "hook:log:t1".to_string()));
+    assert_eq!(delivered, (id.clone(), "hook:webhook/t1".to_string()));
 
     let again: Value = server
         .post(
             "/v1/channels/hook",
-            json!({ "thread": "t1", "text": "more" }),
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
         )
         .await
         .json()
@@ -722,10 +729,39 @@ async fn a_channel_thread_maps_to_one_session_and_gets_the_reply() {
         id.as_str(),
         "same thread, same session"
     );
+    // A platform retry of the same message is dropped, not sent again.
+    let retry: Value = server
+        .post(
+            "/v1/channels/hook",
+            json!({ "thread": "t1", "text": "more", "id": "m2" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(retry["duplicate"], true, "{retry}");
     let bad = server
         .post("/v1/channels/hook", json!({ "thread": "t1" }))
         .await;
     assert_eq!(bad.status(), 400);
+}
+
+#[tokio::test]
+async fn a_session_started_from_code_posts_its_reply_to_a_channel() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let mut notices = host.notices.subscribe();
+    crate::cx::Cx::app(&host)
+        .start_session("weekly numbers")
+        .deliver_to(hook::channel("room"))
+        .await
+        .unwrap();
+    let to = loop {
+        if let Notice::Delivered { to, error, .. } = notices.recv().await.unwrap() {
+            assert!(error.is_none(), "{error:?}");
+            break to;
+        }
+    };
+    assert_eq!(to, "hook:room");
 }
 
 #[tokio::test]
@@ -758,24 +794,131 @@ async fn a_session_and_its_log_survive_a_restart_of_the_host() {
 }
 
 #[tokio::test]
-async fn production_refuses_a_session_pinned_to_another_build() {
+async fn boot_resumes_a_turn_a_restart_cut_off_while_it_waited() {
     let dir = tempfile::tempdir().unwrap();
-    let id = {
+    let first = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    let id = first.create_session(NewSession::default()).await.unwrap();
+    let turn = first.send(&id, "first".into()).await.unwrap().wait().await;
+    assert!(turn.unwrap().success);
+    // The second turn calls `guarded`, which waits on a person.
+    let _waiting = first.send(&id, "second".into()).await.unwrap();
+    wait_for_approval(&first, &id).await;
+
+    // A new process: same data dir, nothing in memory, and nobody reads the
+    // session. Boot alone puts the approval back.
+    let host = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
+    host.spawn_resume_interrupted();
+    let call = wait_for_approval(&host, &id).await;
+    host.resolve_approval(&id, &call, true).await.unwrap();
+    let server = serve(host).await;
+    let events = server.wait_turns(&id, 2).await;
+    assert!(
+        events.iter().any(|e| e["type"] == "tool.completed"
+            && e["data"]["tool_name"] == "approve_tool_call"
+            && e["data"]["status"] == "success"),
+        "{events:?}"
+    );
+}
+
+async fn wait_for_approval(host: &Host, id: &str) -> String {
+    for _ in 0..400 {
+        let status = host
+            .engine
+            .session_status(id.parse().unwrap())
+            .await
+            .unwrap();
+        if let Some(call) = status
+            .waiting
+            .iter()
+            .find(|call| call.name == "approve_tool_call")
+        {
+            return call.id.clone();
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("approval never became pending");
+}
+
+#[tokio::test]
+async fn catalog_projection_cannot_rebind_the_authoritative_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let (id, retained) = {
         let host = Host::new(app(), Mode::Dev, Some(dir.path().to_path_buf())).unwrap();
-        host.create_session(NewSession::default()).await.unwrap()
+        (
+            host.create_session(NewSession::default()).await.unwrap(),
+            host.build_id.clone(),
+        )
     };
     let store = crate::store::Store::open(&dir.path().join("serve.db")).unwrap();
     store.repin_for_test(&id, "b-older");
     drop(store);
+    everruns::sqlite::open(dir.path().join("serve.db"))
+        .unwrap()
+        .execute("UPDATE sessions SET agent='asker' WHERE id=?", [&id])
+        .unwrap();
     let host = Host::new(app(), Mode::Start, Some(dir.path().to_path_buf())).unwrap();
     let server = serve(host).await;
     let response = server
         .post(&format!("/v1/sessions/{id}/messages"), text_message("hi"))
         .await;
-    assert_eq!(response.status(), 409);
-    assert_eq!(response.headers()["x-serve-build"], "b-older");
-    // Reading the catalog row does not need the build.
-    assert_eq!(server.session(&id).await["build_id"], "b-older");
+    assert_eq!(response.status(), 201);
+    assert_eq!(server.session(&id).await["build_id"], retained);
+    assert_eq!(server.session(&id).await["agent_id"], "tester");
+    assert_eq!(
+        server
+            .get(&format!("/v1/channels/asker/sessions/{id}"))
+            .await
+            .status(),
+        404
+    );
+    assert_eq!(
+        server
+            .get(&format!("/v1/channels/tester/sessions/{id}"))
+            .await
+            .status(),
+        200
+    );
+}
+
+#[tokio::test]
+async fn hosted_history_remains_readable_when_the_agent_was_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let host = Host::new(app(), Mode::Eval, Some(dir.path().to_path_buf())).unwrap();
+        let id = host.create_session(NewSession::default()).await.unwrap();
+        assert!(
+            host.send(&id, "hello".into())
+                .await
+                .unwrap()
+                .wait()
+                .await
+                .unwrap()
+                .success
+        );
+        id
+    };
+    let mut replacement = app();
+    Arc::get_mut(&mut replacement.inner)
+        .unwrap()
+        .agents
+        .retain(|agent| agent.name != "tester");
+    let server =
+        serve(Host::new(replacement, Mode::Eval, Some(dir.path().to_path_buf())).unwrap()).await;
+    let session = server.get(&format!("/v1/sessions/{id}")).await;
+    assert_eq!(session.status(), 200);
+    assert_eq!(
+        session.json::<Value>().await.unwrap()["agent_name"],
+        "tester"
+    );
+    let events = server.get(&format!("/v1/sessions/{id}/events")).await;
+    assert_eq!(events.status(), 200);
+    assert!(
+        events.json::<Value>().await.unwrap()["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["type"] == "turn.completed")
+    );
 }
 
 #[tokio::test]
@@ -823,6 +966,37 @@ async fn in_process_evals_see_tools_and_approvals() {
         .unwrap()
         .asked_approval("guarded")
         .unwrap();
+}
+
+#[tokio::test]
+async fn outcome_observers_and_approval_answers_progress_under_contention() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let mut conversations = tokio::task::JoinSet::new();
+    for _ in 0..16 {
+        let host = host.clone();
+        conversations.spawn(async move {
+            let mut eval = crate::eval::EvalCx::local_for_test(host);
+            eval.send("one").await.unwrap();
+            eval.send("two").await.unwrap();
+            eval.completed().unwrap().asked_approval("guarded").unwrap();
+        });
+    }
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(result) = conversations.join_next().await {
+            result.unwrap();
+        }
+    })
+    .await
+    .expect("outcome observation must not reserve authority behind its own approval query");
+}
+
+#[test]
+fn unrelated_secret_declarations_cannot_change_a_retained_app_build() {
+    let application = app();
+    let before = application.manifest();
+    let _ = crate::connection::Secret::named("UNRELATED_BUILD_ID_REGRESSION");
+    assert_eq!(application.manifest(), before);
+    assert_eq!(app().manifest(), before);
 }
 
 #[tokio::test]
@@ -924,6 +1098,7 @@ mod ag_ui {
     }
 
     async fn run_at(server: &Server, base: &str, agent: &str, body: Value) -> Vec<Value> {
+        let run_id = body["runId"].clone();
         let response = server.post(&format!("{base}/{agent}/ag-ui"), body).await;
         assert_eq!(response.status(), 200);
         assert!(
@@ -932,10 +1107,40 @@ mod ag_ui {
                 .unwrap()
                 .starts_with("text/event-stream")
         );
-        let body = tokio::time::timeout(Duration::from_secs(10), response.text())
-            .await
-            .expect("the run ends")
-            .unwrap();
+        let body = match tokio::time::timeout(Duration::from_secs(10), response.text()).await {
+            Ok(body) => body.unwrap(),
+            Err(error) => {
+                let list: Value = server
+                    .get(&format!("/v1/channels/{agent}/sessions"))
+                    .await
+                    .json()
+                    .await
+                    .unwrap();
+                for row in list["data"].as_array().into_iter().flatten().take(4) {
+                    if let Some(id) = row["id"].as_str() {
+                        let state = server.session(id).await;
+                        let events = server.events(id, "").await;
+                        let tail: Vec<_> = events
+                            .iter()
+                            .rev()
+                            .take(20)
+                            .map(|event| {
+                                (
+                                    &event["type"],
+                                    &event["data"]["tool_name"],
+                                    &event["data"]["status"],
+                                )
+                            })
+                            .collect();
+                        eprintln!(
+                            "AG-UI timeout: session {id} status {} pending {} tail {tail:?}",
+                            state["status"], state["pending_approvals"]
+                        );
+                    }
+                }
+                panic!("AG-UI {run_id} did not end: {error}");
+            }
+        };
         let events: Vec<Value> = body
             .lines()
             .filter_map(|line| line.strip_prefix("data:"))
@@ -1200,6 +1405,10 @@ mod ag_ui {
 #[cfg(feature = "a2a")]
 #[path = "a2a_tests.rs"]
 mod a2a;
+
+#[cfg(feature = "voice")]
+#[path = "voice_tests.rs"]
+mod voice;
 
 #[tokio::test]
 async fn a_file_package_serves_a_real_session_and_pins_assets() {

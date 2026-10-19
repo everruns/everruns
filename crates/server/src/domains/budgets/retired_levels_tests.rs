@@ -14,8 +14,9 @@
 // of what reads them — that list is append-only.
 
 use crate::domains::budgets::BudgetService;
+use crate::storage::CreateBudgetRow;
 use crate::storage::StorageBackend;
-use crate::storage::models::*;
+use crate::storage::*;
 use everruns_contracts::typed_id::{PrincipalId, TriggerId};
 use std::sync::Arc;
 
@@ -34,7 +35,7 @@ async fn create_session(
     let mut session = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: crate::records::SessionSource::Api,
+            source: crate::domains::sessions::record::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,

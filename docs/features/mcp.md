@@ -13,11 +13,45 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
-- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`; and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
+- **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
 - **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.
+
+### Skills for MCP clients
+
+The endpoint serves public workflow guidance through the official
+[MCP Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
+With protocol `2026-07-28`, `server/discover` advertises
+`io.modelcontextprotocol/skills` with directory reading enabled. Use `skills/list`
+to discover complete entries or `skills/get` to look up a known `SKILL.md` URI
+directly, then read instructions and supporting files with `resources/read`.
+
+| Skill | Use it for |
+|---|---|
+| `skill://everruns/SKILL.md` | Product concepts, getting started, and documentation links |
+| `skill://everruns-cli/SKILL.md` | Command usage and examples across CLI, session shell, and MCP |
+| `skill://everruns-mcp/SKILL.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
+
+Each entry preserves all authored frontmatter and includes every file's URI,
+SHA-256 digest, and byte size. Supporting references resolve relative to the
+skill directory. `resources/directory/read` lists direct children of a directory,
+for example `skill://everruns-mcp`, without a trailing slash. Unknown
+skills, files, directories, and cursors return JSON-RPC `-32602`.
+
+These files ship with the server and are identical for every organization.
+They use public cache hints, while organization data resources remain private.
+Requests still require MCP authentication. Organization-managed Skills registry
+entries, the Rust Framework skill, and repository contributor workflows are not
+published in this catalog or accessible through its skill resource reads.
+
+Reading a resource does not itself activate a skill. A host supporting the
+extension loads it through its skill loader, checks the manifest and frontmatter,
+and applies its approval policy. Older clients can read a known skill URI as an
+ordinary resource but receive no Skills extension capability.
 
 ### In ChatGPT and Codex
 
@@ -40,12 +74,24 @@ state, not message content: read the session with `session_get_status`.
 
 People can also add MCP servers for themselves; agents with the User MCP Servers capability use them while that person chats. See [User MCP Servers](/features/user-mcp-servers/).
 
+A server the agent adds for one conversation only ([`"scope": "chat"`](/capabilities/user-mcp-servers/#this-conversation-only)) shows under the **MCP** button in that conversation's header, where you can see whether you have signed in and remove it; its tools leave from the next message. Over the API: `GET /v1/sessions/{session_id}/mcp-servers` and `DELETE /v1/sessions/{session_id}/mcp-servers/{name}`.
+
 Register a remote MCP server and its tools appear as a **virtual capability**: auto-discovered, namespaced, and executed alongside built-in capabilities. No code changes are needed to give an agent new tools.
 
-- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts.
+- **Org-managed servers**: organization-scoped `McpServer` records connect over remote HTTP (Streamable HTTP). `stdio` is rejected by the hosted control plane and is only available to single-tenant runtime/CLI hosts. People who manage MCP servers keep these presets in **Settings > Organization > MCP catalog**; a preset does nothing until an agent or a person adds it. MCP sign-ins you authorized for agent servers that act as you are listed in **Settings > My agent experience**.
 - **Scoped `mcpServers`**: harnesses, agents, and sessions can embed remote MCP config directly (the remote-server subset of `.mcp.json`) for session-local or agent-local wiring without creating an org-global record.
+- **Restricted egress**: on deployments that limit where requests that send data may go (such as Everruns Cloud), MCP traffic only reaches approved services. Once a platform administrator allows it, org admins can add their own MCP hosts under **Settings > Organization > Outbound allowlist**.
 - **Tool naming**: discovered tools are namespaced per server so they never collide with built-in capabilities.
-- **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
+- **Protocol compatibility**: the client negotiates the MCP protocol era per server. By default (`auto`) it issues a session-less `2026-07-28` request and transparently falls back to the stateful `initialize` handshake (`2025-11-25`, then `2025-06-18` / `2025-03-26`) for servers that require it, caching the verdict per server. Set the protocol mode to `legacy`, `stable`, or `rc` to pin a specific era and skip negotiation. No setting is needed for the common case.
+
+### Reading a server's resources
+
+Many MCP servers publish context as [resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources): files, schemas, documents. Whenever a conversation has an MCP server attached, the agent gets two read-only tools:
+
+- `list_mcp_resources` lists a server's resources and resource templates, one page at a time.
+- `read_mcp_resource` reads one resource by URI, including a URI the agent filled in from a template.
+
+Text is returned to the agent as is, images arrive as images, and other binary content is saved to the session's files (or only described, where the session has no files) instead of being pasted into the conversation. Content a server marks as meant only for the user stays out of the agent's context. Resources are read with the same sign-in as the server's tools, and only servers attached to the conversation can be reached. A server that publishes no resources says so when asked.
 
 ### Who a server acts as
 
@@ -64,6 +110,20 @@ sheet):
 triggers) always use the agent's account, since nobody is chatting. Every MCP
 tool call records which account it used in its `tool.completed` event
 (`acted_as`: `user` or `service`), so a fallback to the agent is visible.
+
+When someone adds an OAuth server to the catalog, Everruns checks right away
+that it can reach the server's sign-in service and register with it. The
+catalog row then says **Ready to connect**, or why not, for example "Can't
+reach mcp.linear.app: this host is not on the allowed network list". Saving
+works either way; **Check again** re-runs the check after you change the
+network list.
+
+An OAuth server from the catalog can be attached before anyone has signed in
+to it. The first **Authorize** or **Connect** registers Everruns with the
+server and signs in; until then the attachment shows **Connection required**
+and its tools are unavailable. If a sign-in fails, you return to the page you
+started from with the reason, for example that the server's host is not on the
+organization's allowed network list.
 
 An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
@@ -104,7 +164,9 @@ description, and loads the server's tools when it needs them, by finding it
 with `tool_search` or calling that line. The tools are callable from the
 agent's next step and stay loaded for the rest of the conversation. Off is the
 default, so existing agents are unchanged. A person's own servers
-([User MCP servers](/capabilities/user-mcp-servers/)) always load on demand.
+([User MCP servers](/capabilities/user-mcp-servers/)) load on demand by
+default; a person can turn that off for one of their servers with its **Load
+tools on demand** switch in **Settings > My MCP servers**.
 
 ```json
 {
@@ -121,6 +183,12 @@ in the catalog form). The seeded `github` entry
 with a GitHub App needs no second GitHub login. A connection is only accepted
 for servers on its provider's own hosts, so its tokens cannot be sent anywhere
 else.
+
+GitHub's MCP server accepts the App's installation token, but that token acts as
+the App, not a person. It reaches only the repositories the App is installed on,
+with the App's permissions, and tools about a person (`get_me`, notifications,
+starred repositories, "my" issues and pull requests) fail. For those, attach the
+server acting as `user` so the person signs in.
 
 ### Waking an agent on a server's events (experimental)
 
@@ -142,13 +210,79 @@ curl -X POST "$EVERRUNS_API/v1/agents/$AGENT_ID/triggers" \
   }'
 ```
 
-Everruns subscribes with the server's own credentials for that attachment, a
-signing secret it generates, and a callback URL of its own; the server must
+Everruns subscribes with the agent's credential for that attachment (its
+sign-in to the server, or the connection a catalog entry such as `github` names),
+a signing secret it generates, and a callback URL of its own; the server must
 accept webhook delivery. Each signed event starts a run with the event's `data`
 as `{{payload}}`. Subscriptions are renewed before they expire and cancelled
 when the trigger is disabled or deleted. The attachment must act as the agent
 (`service` or `user_or_service`), not only as the calling user, since a trigger
 runs as the agent.
+
+## Which tools ask before they run
+
+In the normal approval mode, a tool that can change something asks a person
+before it runs. Everruns can't see inside a remote tool, so most MCP tools ask
+by default, even ones that only read. You can tell Everruns what each tool does:
+
+- **Read only**: the tool only looks things up. It never asks.
+- **Changes**: the tool changes or sends something. It always asks.
+
+Your label wins over what the server says about its own tools, and it stays when
+the server's tool list changes. A tool with no label follows what the server
+says about it.
+
+In the app, open **Settings > MCP catalog** and click **Tools** on a server. Each
+tool shows its description, what the server says about it, and a choice:
+**Default**, **Read only**, or **Changes things**.
+
+**Suggest labels** asks a decision model to judge every tool that has no label
+yet. It only fills in a suggestion, such as "Suggested: read only". Nothing
+changes until a person picks a choice or clicks **Use suggestion**.
+
+The deployment's decision model judges, unless your organization set **System
+decisions** to **This organization's model**: then your organization's default
+decision model judges, on your provider account. If that model is not usable,
+the button reports an error rather than using the deployment's.
+
+List a server's tools with their labels, then set or clear one:
+
+```bash
+curl "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools"
+curl -X PUT "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/search_docs/label" \
+  -H "Content-Type: application/json" -d '{"label": "read_only"}'
+```
+
+Send `{"label": "changes"}` to always ask, or `{"label": null}` to remove the
+label. Setting a label needs the same permission as editing the server, and it
+removes the tool's suggestion. To get suggestions, which come back with the
+tool list:
+
+```bash
+curl -X POST "$EVERRUNS_API/v1/mcp-servers/mcp_01h9/tools/suggest-labels"
+```
+
+Labels work on the other places an MCP server can live too:
+
+- **An agent's or harness's own server** (one added by URL): put the labels in
+  the server's `tool_labels`, keyed by the tool's own name. They win over a
+  catalog server's saved labels when the entry uses one.
+
+  ```json
+  "mcpServers": {
+    "notes": {
+      "url": "https://notes.example.com/mcp",
+      "tool_labels": { "search": "read_only", "publish": "changes" }
+    }
+  }
+  ```
+
+- **Your own server** (one you added by URL under **My MCP servers**): click
+  **Tools** on it. Everruns asks the server for its tools with your sign-in.
+  A server you added from the catalog uses the catalog's labels.
+
+Servers added during a conversation never carry labels, because the agent can
+add them itself and a label only ever lets a tool run without asking.
 
 ## When a tool needs a person
 
@@ -168,7 +302,7 @@ eliciting at all.
 
 ## Use Everruns from your AI tools
 
-To connect Claude Code, Codex, or Cursor to a deployment via the `everruns` plugin, see [Use in AI tools](/getting-started/use-in-ai-tools/).
+To give Claude Code, Codex, Cursor or Gemini CLI the MCP server plus skills for building, debugging and shipping agents, install the [`everruns` plugin](https://github.com/everruns/plugins); see [Use in AI tools](/getting-started/use-in-ai-tools/).
 
 ## Related
 

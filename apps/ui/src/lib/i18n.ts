@@ -16,22 +16,48 @@ const messages = {
     jump_to_turn: "Jump to turn",
     no_messages_yet: "No messages yet",
     start_with_prompt: "Start with a prompt, screenshot, or slash command.",
-    session_transcript_empty_description:
-      "This read-only transcript records the session as it runs. Fork it into a chat to talk to the agent.",
     fork_into_chat: "Fork into chat",
     fork_session_error: "Could not fork this session",
     loading_older_messages: "Loading older messages...",
     waiting_on_tools: "Waiting on tools",
     scheduled: "Scheduled",
+    automatic_update: "Automatic update",
+    from_chat: "From Chat",
+    new_assignment: "New assignment: {title}",
+    task_update_done: "{title} is done",
+    task_update_failed: "{title} failed",
+    task_update_canceled: "{title} was cancelled",
+    task_update_needs_input: "{title} needs input",
+    task_update_message: "{title} sent an update",
     worked_for: "Worked for {duration}",
     working_for: "Working for {duration}",
+    turn_sending: "Sending…",
+    turn_still_connecting: "Still connecting…",
+    turn_queued: "Queued",
+    turn_queued_status: "Joins the current turn",
+    turn_starting: "Starting",
+    turn_thinking: "Thinking",
+    turn_stopped_after: "Stopped after {duration}",
+    turn_not_delivered: "Not delivered",
+    turn_retry_send: "Retry",
+    day_today: "Today",
+    day_yesterday: "Yesterday",
+    copy_message: "Copy message",
+    good_response: "Good response",
+    bad_response: "Bad response",
+    branch_into_new_chat: "Branch into new chat",
+    branch_chat_error: "Could not branch this chat",
     show_earlier_steps: "Show {count} earlier steps",
     work_log_errors_one: "{count} error",
     work_log_errors_few: "{count} errors",
     work_log_errors_many: "{count} errors",
+    work_log_issues_one: "{count} issue",
+    work_log_issues_few: "{count} issues",
+    work_log_issues_many: "{count} issues",
     type_message_or_commands: "Type a message or / for commands... (Enter to send)",
     type_message: "Type a message... (Enter to send)",
     reply_to: "Reply to {name}... (Enter to send)",
+    reply_in_thread: "Reply in this thread... (Enter to send)",
     choose_model: "Choose a model",
     type_message_pick_model: "Type a message — pick a model to send",
     attach_images: "Attach images (PNG, JPEG, GIF, WebP)",
@@ -130,10 +156,20 @@ const messages = {
     runtime_error_provider_rate_limited: "Rate limited by the AI provider. Please wait a moment.",
     runtime_error_provider_rate_limited_retry_after:
       "Rate limited by the AI provider. Please wait {retry_after}s and try again.",
+    runtime_error_provider_rate_limited_auto_retry:
+      "Rate limited by the AI provider. Retrying automatically in about {retry_after}s.",
+    runtime_error_provider_in_flight_limit:
+      "The AI provider's in-flight spending limit is reached. Please wait a moment.",
+    runtime_error_provider_in_flight_limit_retry_after:
+      "The AI provider's in-flight spending limit is reached. Please wait {retry_after}s and try again.",
+    runtime_error_provider_in_flight_limit_auto_retry:
+      "The AI provider's in-flight spending limit is reached. Retrying automatically in about {retry_after}s.",
     runtime_error_provider_misconfigured:
       "There is a misconfiguration with the AI provider. Please contact support.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    runtime_error_provider_quota_exhausted_affordable:
+      "The AI provider account is out of credits for this request: it asked for up to {requested_max_tokens} output tokens, but the balance covers {affordable_tokens}. Add credits or lower the max output tokens to continue.",
     runtime_error_provider_attestation_required:
       "The AI provider account has not completed a confirmation this model requires. Complete it at {confirm_url}, then try again.",
     runtime_error_provider_attestation_required_types:
@@ -257,22 +293,48 @@ const messages = {
     jump_to_turn: "Перейти до ходу",
     no_messages_yet: "Повідомлень ще немає",
     start_with_prompt: "Почніть із запиту, скриншота або slash-команди.",
-    session_transcript_empty_description:
-      "Ця розшифровка доступна лише для читання й записує перебіг сесії. Створіть чат-відгалуження, щоб поговорити з агентом.",
     fork_into_chat: "Відгалузити в чат",
     fork_session_error: "Не вдалося відгалузити цю сесію",
     loading_older_messages: "Завантажую старіші повідомлення...",
     waiting_on_tools: "Очікування інструментів",
     scheduled: "За розкладом",
+    automatic_update: "Автоматичне оновлення",
+    from_chat: "Від Чату",
+    new_assignment: "Нове завдання: {title}",
+    task_update_done: "{title}: готово",
+    task_update_failed: "{title}: не вдалося",
+    task_update_canceled: "{title}: скасовано",
+    task_update_needs_input: "{title}: потрібна відповідь",
+    task_update_message: "{title}: нове оновлення",
     worked_for: "Працював {duration}",
     working_for: "Працюю {duration}",
+    turn_sending: "Надсилаю…",
+    turn_still_connecting: "Досі з'єднуюсь…",
+    turn_queued: "У черзі",
+    turn_queued_status: "Приєднається до поточного ходу",
+    turn_starting: "Починаю",
+    turn_thinking: "Думаю",
+    turn_stopped_after: "Зупинено через {duration}",
+    turn_not_delivered: "Не доставлено",
+    turn_retry_send: "Повторити",
+    day_today: "Сьогодні",
+    day_yesterday: "Учора",
+    copy_message: "Скопіювати повідомлення",
+    good_response: "Хороша відповідь",
+    bad_response: "Погана відповідь",
+    branch_into_new_chat: "Відгалузити в новий чат",
+    branch_chat_error: "Не вдалося відгалузити цей чат",
     show_earlier_steps: "Показати попередні кроки ({count})",
     work_log_errors_one: "{count} помилка",
     work_log_errors_few: "{count} помилки",
     work_log_errors_many: "{count} помилок",
+    work_log_issues_one: "{count} проблема",
+    work_log_issues_few: "{count} проблеми",
+    work_log_issues_many: "{count} проблем",
     type_message_or_commands: "Введіть повідомлення або / для команд... (Enter, щоб надіслати)",
     type_message: "Введіть повідомлення... (Enter, щоб надіслати)",
     reply_to: "Відповісти {name}... (Enter, щоб надіслати)",
+    reply_in_thread: "Відповісти в цій гілці... (Enter, щоб надіслати)",
     choose_model: "Оберіть модель",
     type_message_pick_model: "Введіть повідомлення — оберіть модель, щоб надіслати",
     attach_images: "Додати зображення (PNG, JPEG, GIF, WebP)",
@@ -373,10 +435,20 @@ const messages = {
       "AI-провайдер тимчасово обмежив запити. Зачекайте трохи й спробуйте ще раз.",
     runtime_error_provider_rate_limited_retry_after:
       "AI-провайдер тимчасово обмежив запити. Зачекайте {retry_after} с і спробуйте ще раз.",
+    runtime_error_provider_rate_limited_auto_retry:
+      "AI-провайдер тимчасово обмежив запити. Автоматична повторна спроба приблизно через {retry_after} с.",
+    runtime_error_provider_in_flight_limit:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Зачекайте трохи.",
+    runtime_error_provider_in_flight_limit_retry_after:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Зачекайте {retry_after} с і спробуйте ще раз.",
+    runtime_error_provider_in_flight_limit_auto_retry:
+      "Досягнуто ліміту одночасних витрат AI-провайдера. Автоматична повторна спроба приблизно через {retry_after} с.",
     runtime_error_provider_misconfigured:
       "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
+    runtime_error_provider_quota_exhausted_affordable:
+      "На обліковому записі AI-провайдера бракує кредитів для цього запиту: запитано до {requested_max_tokens} вихідних токенів, а баланс покриває {affordable_tokens}. Поповніть рахунок або зменште максимальну кількість вихідних токенів, щоб продовжити.",
     runtime_error_provider_attestation_required:
       "Обліковий запис AI-провайдера не пройшов підтвердження, якого вимагає ця модель. Завершіть його на {confirm_url} і спробуйте ще раз.",
     runtime_error_provider_attestation_required_types:
@@ -567,6 +639,17 @@ export function formatWorkLogErrorCount(locale: SupportedLocale, count: number):
   }
 
   return formatMessage(locale, count === 1 ? "work_log_errors_one" : "work_log_errors_many", {
+    count,
+  });
+}
+
+export function formatWorkLogIssueCount(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    return formatMessage(locale, `work_log_issues_${form}`, { count });
+  }
+
+  return formatMessage(locale, count === 1 ? "work_log_issues_one" : "work_log_issues_many", {
     count,
   });
 }
