@@ -225,6 +225,7 @@ impl SqliteHosting {
             tracing::warn!(%error, "task recovery at startup failed");
         }
         self.services.recovery.start_maintenance();
+        let schedules = self.start_schedules(&engine)?;
         let mut running = tokio::task::JoinSet::new();
         loop {
             let sessions: Vec<SessionId> = {
@@ -249,7 +250,14 @@ impl SqliteHosting {
             }
             while running.try_join_next().is_some() {}
             tokio::select! {
-                () = shutdown.cancelled() => { running.abort_all(); while running.join_next().await.is_some() {} return Ok(()); }
+                () = shutdown.cancelled() => {
+                    running.abort_all();
+                    while running.join_next().await.is_some() {}
+                    if let Err(error) = schedules.shutdown().await {
+                        tracing::warn!(%error, "schedule runner shutdown failed");
+                    }
+                    return Ok(());
+                }
                 () = everruns_contracts::rt::sleep(Duration::from_millis(100)) => {}
             }
         }

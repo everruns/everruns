@@ -572,6 +572,22 @@ pub trait EventLog: EventReader {
 
 /// Non-blocking destination for already-finalized canonical envelopes.
 pub trait EventSink: Send + Sync {
+    fn prepare_causal_context(&self, _request: &EventRequest) -> Option<String> {
+        None
+    }
+    fn turn_causal_context(
+        &self,
+        _context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        Default::default()
+    }
+    fn restore_turn_context(
+        &self,
+        _context: &crate::events::EventContext,
+        _metadata: Option<&serde_json::Value>,
+    ) {
+    }
+
     /// Attempt immediate observational delivery without delaying execution.
     fn try_send(&self, event: Event) -> Result<(), EventSinkError>;
 }
@@ -677,10 +693,28 @@ impl HostEventEmitter {
 
 #[async_trait]
 impl EventEmitter for HostEventEmitter {
-    async fn emit(&self, request: EventRequest) -> CoreResult<Event> {
+    fn turn_causal_context(
+        &self,
+        context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        self.sink.turn_causal_context(context)
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        self.sink.restore_turn_context(context, metadata)
+    }
+    async fn emit(&self, mut request: EventRequest) -> CoreResult<Event> {
         let session_id = request.session_id;
         let lock = self.session_lock(session_id).await;
         let _guard = lock.lock().await;
+        if let Ok(Some(carrier)) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.sink.prepare_causal_context(&request)
+        })) {
+            crate::causal::attach_turn_trace(&mut request, &carrier);
+        }
         let event = if request.is_ephemeral() {
             ephemeral_event(request)
         } else {

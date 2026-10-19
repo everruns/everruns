@@ -193,7 +193,9 @@ impl InProcessRuntime {
         let mut message_ids = Vec::with_capacity(wakes.len());
         for wake in wakes {
             // Append one canonical input event; history is reconstructed from it.
-            let message = message_from_input(InputMessage::user(wake.text));
+            let message = message_from_input(
+                InputMessage::user(wake.text).with_causal_context(&wake.causal_context),
+            );
             message_ids.push(message.id);
             self.event_emitter
                 .emit(EventRequest::new(

@@ -44,6 +44,44 @@ impl CompositeEventListener {
 
 #[async_trait]
 impl EventListener for CompositeEventListener {
+    fn prepare_causal_context(&self, request: &crate::events::EventRequest) -> Option<String> {
+        for listener in &self.listeners {
+            if let Ok(Some(carrier)) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.prepare_causal_context(request)
+                }))
+            {
+                return Some(carrier);
+            }
+        }
+        None
+    }
+    fn turn_causal_context(
+        &self,
+        context: &crate::events::EventContext,
+    ) -> crate::causal::CausalContext {
+        let mut causes = crate::causal::CausalContext::default();
+        for listener in &self.listeners {
+            if let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.turn_causal_context(context)
+            })) {
+                causes.merge(&value);
+            }
+        }
+        causes
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        for listener in &self.listeners {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.restore_turn_context(context, metadata)
+            }));
+        }
+    }
+
     /// Forward event to all inner listeners with error isolation.
     ///
     /// Each listener is called in isolation - if a listener panics,

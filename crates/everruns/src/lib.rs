@@ -476,3 +476,6 @@ pub mod batteries;
 /// Deployment-owned utility LLM bootstrap wiring.
 #[cfg(feature = "utility-llm")]
 pub mod utility_llm;
+
+/// Bounded durable causal identities, independent of any exporter.
+pub use everruns_contracts::runtime::causal::{CausalContext, CausalLink};

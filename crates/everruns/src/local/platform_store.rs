@@ -79,6 +79,16 @@ pub trait LocalSessionRunner: Send + Sync {
     /// Deliver a user message and run a turn to completion.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
 
+    /// Deliver a message with durable causal metadata when supported.
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        _causes: &crate::CausalContext,
+    ) -> Result<()> {
+        self.send_message(session_id, content).await
+    }
+
     /// List sessions known to the runner. Optionally filtered by agent.
     async fn list_sessions(
         &self,
@@ -153,6 +163,16 @@ impl PlatformStore for LocalPlatformStore {
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
         self.runner.send_message(session_id, content).await
+    }
+    async fn send_message_with_causal_context(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        causes: &crate::CausalContext,
+    ) -> Result<()> {
+        self.runner
+            .send_message_with_causal_context(session_id, content, causes)
+            .await
     }
 
     async fn get_messages(

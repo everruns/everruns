@@ -435,8 +435,9 @@ fails before the authority commits, the session stays frozen until you retry or
 call `Engine::abandon_legacy_cutover`.
 
 The session must be quiescent. A cutover refuses, without writing anything to
-the authority, while a legacy turn is running or while the session has
-an active schedule, or a task still running under its legacy owner. Tasks whose
+the authority, while a legacy turn is running or while the session has a task
+still running under its legacy owner. Schedules move with the session and fire
+from `SqliteHosting::supervise`; the legacy lane no longer delivers them. Tasks whose
 owner is gone move with the session; the authority re-attaches or settles them
 on the next activation without re-running uncertain work. Session secrets move only when the
 authority has secret keys (`SqliteHosting::with_secret_keys`, the same

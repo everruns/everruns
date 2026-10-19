@@ -141,10 +141,43 @@ The framework never installs a global tracer or `tracing` subscriber on its own.
   each individual session stream remains isolated to its own session. A missing
   or failing listener never creates, rolls back, or reorders history (the
   contract in `crates/everruns/src/events.rs`).
-- Nothing is replayed on resume. The first event after `session.resumed` opens a
-  new turn span.
+- History is not replayed into observers on resume. A committed turn trace anchor
+  is restored before execution continues, so a recovered phase can link to its
+  original turn even when no live parent span remains.
 - Sessions spawned through the Engine (subagents, tasks) inherit the dispatcher.
-  Each OTel turn remains its own trace; conversation/session attributes correlate events within each session. Child-turn causal links are not emitted.
+  Each OTel turn remains its own trace. Child delivery and task wakes carry
+  bounded causal links to real exporter-created turn anchors; they do not force
+  parent and child turns into one trace.
+
+### Durable causal context
+
+The exporter reserves a short `durable.turn` anchor and the host retains its carrier
+with the committed turn start. The invocation span belongs to that turn trace;
+input causes are links rather than remote parents. OTel 0.33 owns span ID generation,
+so anchors use the configured tracer directly rather than synthesizing identities.
+No exporter/provider or sampler is installed or replaced by this path.
+
+The neutral [carrier contract](../../crates/contracts/src/runtime/causal.rs)
+accepts only validated, nonzero W3C identities, inspects and retains at most sixteen
+entries, and deduplicates causes. It carries no baggage, tracestate, content, or
+remote sampling decisions. Observer hooks can return only an anchor carrier; they
+cannot edit execution data. New metadata is optional and old journals remain readable.
+
+[Shared host boundaries](../../crates/core/src/host/host/causal.rs) transfer input
+causes onto turn/reason events. Reasons include visible batched and steered inputs
+since the original input, bounded to the original plus 255 recent messages. The
+original admission wins on duplicate message IDs even if retry telemetry changes.
+Framework work requests and wakes retain the same bounded value through delivery
+leases; idempotency comparisons exclude telemetry while retaining the first context.
+Task registries retain bounded causal identities beside their existing internal
+origin, including recovery outboxes, while preserving the existing event hierarchy;
+child delegates and wake delivery reuse those identities. Custom delegate/observer adapters
+must forward the optional causal methods to retain links across their own boundaries.
+
+Anchor completion/export occurs after commit, off the admission path. Observer
+loss never replays work or changes its identity. Missing/disabled/sampled-out
+observers and queue overflow can leave incomplete traces or unresolved links. The anchor registry is bounded to
+4096 live/abandoned turns per listener. History is not re-exported to repair gaps.
 
 ### 7. Features and stability
 

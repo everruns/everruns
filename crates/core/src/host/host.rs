@@ -531,58 +531,6 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         self.adapter.event_emitter().emit(request).await.map(|_| ())
     }
 
-    pub async fn turn_started(
-        &self,
-        turn_id: TurnId,
-        input_message_id: MessageId,
-    ) -> everruns_contracts::error::Result<()> {
-        // The input read is independent of the status write; run them
-        // together, since each is a store round trip on the turn's path to its
-        // first model call. The agent identity reads the session, so it
-        // follows the write rather than racing it.
-        let input_content = async {
-            self.adapter
-                .message_store()
-                .get(self.session_id, input_message_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|message| message.content_to_llm_string())
-        };
-        let activated = async {
-            self.set_session_status(SessionExecutionState::Active, "turn_started")
-                .await?;
-            Ok::<_, everruns_contracts::error::AgentLoopError>(self.agent_identity().await)
-        };
-        let (input_content, agent) = futures::join!(input_content, activated);
-        let agent = agent?;
-
-        self.emit_event(EventRequest::new(
-            self.session_id,
-            EventContext::turn(turn_id, input_message_id),
-            SessionActivatedData {
-                turn_id,
-                input_message_id,
-            },
-        ))
-        .await?;
-
-        self.emit_event(EventRequest::new(
-            self.session_id,
-            EventContext::turn(turn_id, input_message_id),
-            TurnStartedData {
-                turn_id,
-                input_message_id,
-                input_content,
-                agent_id: agent.id,
-                agent_name: agent.name,
-                agent_description: agent.description,
-            },
-        ))
-        .await?;
-        Ok(())
-    }
-
     /// Agent identity for the turn root event, resolved best-effort: a store
     /// miss or failure yields `None` fields rather than failing the turn, since
     /// the identity only labels traces.
@@ -1185,12 +1133,14 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,
     };
+    let causes = causal::reason_causes(&turn_inputs.messages, input.context.input_message_id);
     let mut atom = ReasonAtom::new(
         context_resolver,
         adapter.message_store(),
         reason_capability_registry.clone(),
         adapter.event_emitter(),
-    );
+    )
+    .with_causal_context(causes);
     // A host without an upload store keeps attachments in the session's own
     // files; read them back from there.
     let session_attachments = || {
@@ -1498,3 +1448,6 @@ use execution_capabilities::load_execution_capabilities;
 #[path = "host/reason_surface.rs"]
 mod reason_surface;
 pub(crate) use reason_surface::reason_turn_context;
+
+#[path = "host/causal.rs"]
+mod causal;

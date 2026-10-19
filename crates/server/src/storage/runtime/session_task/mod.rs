@@ -36,6 +36,15 @@ use std::sync::Arc;
 #[async_trait]
 pub trait SessionTaskWaker: Send + Sync {
     async fn wake(&self, session_id: SessionId, text: &str) -> anyhow::Result<()>;
+
+    async fn wake_with_causal_context(
+        &self,
+        session_id: SessionId,
+        text: &str,
+        _causes: &everruns_core::causal::CausalContext,
+    ) -> anyhow::Result<()> {
+        self.wake(session_id, text).await
+    }
 }
 
 /// Wakes a session by recording a user-role message and starting a turn, the
@@ -50,6 +59,16 @@ pub(crate) struct InjectedMessageWaker {
 #[async_trait]
 impl SessionTaskWaker for InjectedMessageWaker {
     async fn wake(&self, session_id: SessionId, text: &str) -> anyhow::Result<()> {
+        self.wake_with_causal_context(session_id, text, &Default::default())
+            .await
+    }
+
+    async fn wake_with_causal_context(
+        &self,
+        session_id: SessionId,
+        text: &str,
+        causes: &everruns_core::causal::CausalContext,
+    ) -> anyhow::Result<()> {
         // Unscoped lookup: the waker only learns a session id, and needs its
         // org and harness to start the turn.
         let session = self
@@ -78,6 +97,8 @@ impl SessionTaskWaker for InjectedMessageWaker {
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to record wake invocation: {e}"))?;
+        let mut metadata = Some(everruns_core::message::task_wake_message_metadata());
+        causes.write_metadata(&mut metadata);
         let core_message = everruns_core::RuntimeMessage {
             id: message_id,
             role: everruns_core::RuntimeMessageRole::User,
@@ -85,7 +106,7 @@ impl SessionTaskWaker for InjectedMessageWaker {
             phase: None,
             phase_source: None,
             controls: None,
-            metadata: Some(everruns_core::message::task_wake_message_metadata()),
+            metadata,
             external_actor: None,
             created_at: Utc::now(),
         };
@@ -207,11 +228,19 @@ impl DbSessionTaskRegistry {
     }
 
     /// Deliver a wake message to the owning session (best-effort, log on error).
-    async fn try_wake(&self, session_id: SessionId, text: &str) {
+    async fn try_wake(&self, task: &SessionTask, text: &str) {
+        let session_id = task.session_id;
         let Some(waker) = &self.waker else {
             return;
         };
-        if let Err(e) = waker.wake(session_id, text).await {
+        if let Err(e) = waker
+            .wake_with_causal_context(
+                session_id,
+                text,
+                &everruns_core::causal::task_causal_context(task),
+            )
+            .await
+        {
             tracing::warn!(
                 session_id = %session_id,
                 "SessionTaskWaker failed (best-effort): {e}"
@@ -242,7 +271,7 @@ impl DbSessionTaskRegistry {
                 if let Some(result_path) = &task.result_path {
                     parts.push(format!("- result_path: {result_path}"));
                 }
-                self.try_wake(task.session_id, &parts.join("\n")).await;
+                self.try_wake(task, &parts.join("\n")).await;
             }
         }
     }
@@ -267,7 +296,7 @@ impl DbSessionTaskRegistry {
             "Task \"{}\" ({}) is awaiting input: {}",
             task.display_name, task.id, prompt
         );
-        self.try_wake(task.session_id, &text).await;
+        self.try_wake(task, &text).await;
     }
 
     /// Wake on an outbound message (OnActivity only).
@@ -285,7 +314,7 @@ impl DbSessionTaskRegistry {
             "Task \"{}\" ({}) sent a message: {}",
             task.display_name, task.id, message_text
         );
-        self.try_wake(task.session_id, &text).await;
+        self.try_wake(task, &text).await;
     }
 
     /// Notify all registered observers of a task transition (best-effort).
