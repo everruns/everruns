@@ -2,6 +2,10 @@
 
 ## 2026-10-19
 
+* **Hosted AG-UI threads.** `AgUiThreads::hosted` serves threads from a
+  coherent authority; threads of cut-over sessions keep their sessions. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
 * **Authority schedules.** Imported and native schedules of coherent SQLite
   sessions fire from the supervisor as admissions; the rewind proposal awaits
   an owner decision. See
