@@ -1,3 +1,4 @@
+#![allow(deprecated)] // Exercises the legacy facade lane until its retirement (EVE-1298).
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
