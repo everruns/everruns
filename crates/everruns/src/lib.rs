@@ -230,9 +230,10 @@ pub use observers::{
 };
 pub use plugin::PluginError;
 pub use session::{
-    AttachError, CancelError, CapabilityChange, CapabilityRegistrationError, CommandOutput,
-    EnvironmentSessionBuilder, InterruptedTurn, RunError, SendDisposition, SentMessage, Session,
-    SessionControlError, Turn, TurnHandle,
+    AttachError, COMPLETION_PURPOSE_KEY, CancelError, CapabilityChange,
+    CapabilityRegistrationError, CommandOutput, CompletionRequest, EnvironmentSessionBuilder,
+    InterruptedTurn, MAX_COMPLETION_MESSAGES, MAX_COMPLETION_SYSTEM_PROMPTS, RunError,
+    SendDisposition, SentMessage, Session, SessionControlError, Turn, TurnHandle,
 };
 pub use session_environment::SessionEnvironmentError;
 pub use tool::{

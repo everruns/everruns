@@ -226,6 +226,23 @@ a second turn loop beside Engine's, so these are curated
   host services or `Engine::register_capability`), never deserialized.
   Activation is separate and persists only the session overlay of id plus
   validated configuration.
+- Host review policies own their envelope (EVE-1303). `Session::complete`
+  takes a curated request of host system prompts and bounded user or
+  assistant messages, and sends exactly that, tool-less, through the
+  session's command host: the session contributes only its effective
+  provider and model, call settings, attachment resolution and errors, never
+  its instructions, conversation, filters or model views. A host that wants
+  session context reduces `command_context` itself; the context-appending
+  `complete_out_of_band` stays as the convenience. Exposing the command host
+  or its `SessionCompletionRequest` instead would hand downstream the
+  model-override controls and unbounded metadata the curated request leaves
+  out.
+- Completion metadata has one assembly,
+  [`completion_metadata`](../../crates/contracts/src/runtime/command_host.rs):
+  host request metadata, then the request's (its `purpose` is more specific
+  than a host-wide default, so it wins), then authority keys nothing
+  overrides. Request metadata naming an authority key is rejected rather
+  than dropped, so a caller learns it cannot set it.
 - A live model selection is a credential-free provider key and model id the
   Agent already serves; it never brings provider code, and unavailable
   selections fail without fallback or state change.
@@ -240,8 +257,10 @@ a second turn loop beside Engine's, so these are curated
 The [facade tests](../../crates/everruns/tests/facade/session_controls.rs)
 cover dispatch from a running turn, hot install through deactivation,
 ordering against sends, cancellation and teardown, and coherent reconstruction;
-the external host-services fixture drives the same surface with only
-`everruns`.
+[completion tests](../../crates/everruns/tests/facade/session_completions.rs)
+check the exact curated envelope on both lanes through a recording driver,
+across reentrant turns, provider changes, timeouts and reconstruction. The
+external host-services fixture drives the same surface with only `everruns`.
 
 ## Deliberately low-level host concerns
 

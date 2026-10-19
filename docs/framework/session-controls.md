@@ -125,8 +125,63 @@ let verdict = session
 # }
 ```
 
-Neither appends to history, takes execution ownership or resumes interrupted
-work. `history()` remains the bounded way to page the canonical conversation.
+When the host owns the review policy and its token budget, `complete` sends a
+request the host curates instead. The provider receives exactly its system
+prompts and messages, with no tools. The session adds none of its own
+instructions or conversation, and no message filters or model views apply.
+What the session does contribute is what it owns: the provider and model its
+next model call would use (live selections included), the Agent's call
+settings, attachment resolution and provider errors.
+
+```rust
+use std::time::Duration;
+use everruns::{CompletionRequest, ReasoningEffort};
+
+# async fn review(session: &everruns::Session, evidence: String)
+# -> Result<(), everruns::SessionControlError> {
+let verdict = session
+    .complete(
+        CompletionRequest::new()
+            .system_prompt("Decide whether the task is complete. Answer yes or no.")
+            .user(evidence)
+            .purpose("completion_review")
+            .reasoning_effort(ReasoningEffort::Low)
+            .timeout(Duration::from_secs(60)),
+    )
+    .await?;
+# let _ = verdict;
+# Ok(())
+# }
+```
+
+To review with filtered session context, read `command_context` and reduce it
+into your own bounded messages. A request carries 1 to 64 user or assistant
+messages and up to 8 system prompts. System, tool-call and tool-result
+messages are rejected.
+
+- **Metadata.** `purpose` and `metadata` add provider metadata: up to 8
+  entries, keys of lowercase ASCII letters, digits, `_`, `-` or `.`, and values
+  up to 256 bytes. Keys the session stamps from its own authority
+  (`session_id`, `harness_id`, `turn_id`, `exec_id`, `org_id`, `agent_id`,
+  `model_id`) are rejected, not overwritten. When the host also sets request
+  metadata for every model call, the request's keys win over the host's, and
+  `session_id` always comes from the session.
+- **Reasoning effort.** Without `reasoning_effort` the request uses the
+  session's current selection. A per-request effort applies to that request
+  only, and an effort the model's curated profile cannot honor is rejected.
+- **No fallback.** A selected provider the session can no longer serve fails
+  the request instead of reaching another provider.
+- **Timeouts.** `timeout` ends the request with `SessionControlError::TimedOut`.
+  Dropping the future abandons it as well.
+
+`complete_out_of_band` remains the convenience form: it is a request whose
+system prompts are the session's instructions plus yours, and whose messages
+are the filtered conversation plus your prompt.
+
+None of these append to history, start a turn, take execution ownership or
+resume interrupted work, and all of them are answered during an active turn,
+including from a tool of that turn. `history()` remains the bounded way to page
+the canonical conversation.
 
 ## Where the state lives
 
