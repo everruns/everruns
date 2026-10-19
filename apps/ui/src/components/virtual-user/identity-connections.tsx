@@ -1,5 +1,23 @@
 "use client";
 import { ConnectionsPanel } from "@/components/connections/connections-panel";
-export function IdentityConnections({ identityId }: { identityId: string }) {
-  return <ConnectionsPanel identityId={identityId} />;
+import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
+export function IdentityConnections({
+  identityId,
+  usage,
+}: {
+  identityId: string;
+  usage: "service" | "end_user";
+}) {
+  return (
+    <div className="space-y-6">
+      <ConnectionsPanel identityId={identityId} />
+      <ScopedCredentialsPanel
+        owner={{
+          scope: "virtual_user",
+          owner_id: identityId,
+          usage: usage === "end_user" ? "user" : "service",
+        }}
+      />
+    </div>
+  );
 }

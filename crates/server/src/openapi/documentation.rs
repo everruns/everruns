@@ -80,6 +80,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         &[
             "users",
             "virtual-users",
+            "credentials",
             "Organizations",
             "organization invitations",
         ],

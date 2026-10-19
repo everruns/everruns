@@ -992,6 +992,7 @@ pub async fn agent_api_submit_tool_approvals(
         &outcomes,
         ApprovalOutcome::NotApproved,
         "api_channel",
+        None,
     )
     .await
     {

@@ -1,7 +1,7 @@
 ---
 type: Design
 title: "Scoped Resource Ownership and Access"
-description: "Proposed common ownership, grants, and runtime authorization for connections, credential bindings, and GitHub access, extensible to future resources."
+description: "Common ownership, grants, and runtime authorization for connections, credential bindings, and GitHub access, extensible to future resources."
 tags:
   - everruns
   - security
@@ -10,9 +10,8 @@ tags:
 ---
 # Scoped Resource Ownership and Access
 
-Status: **Proposed; awaiting approval.** This document records a common approach
-for the credential-capture design and related integrations. It does not change
-the current contracts or claim a shared resolver is implemented.
+Status: **Approved for implementation 2026-10-19; qualification in progress.**
+This contract governs the scoped credential and connection access implementation.
 
 Current scope: connections, credential bindings, and GitHub integration.
 **Memory is deferred for a separate design and rebuild from scratch.** Its

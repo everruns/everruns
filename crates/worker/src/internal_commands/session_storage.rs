@@ -18,12 +18,14 @@ use serde_json::json;
 
 /// The session storage tools use, on either transport.
 pub struct CommandSessionStorageStore<T> {
-    transport: T,
+    pub(super) transport: std::sync::Arc<T>,
 }
 
 impl<T: InternalCommandTransport> CommandSessionStorageStore<T> {
     pub fn new(transport: T) -> Self {
-        Self { transport }
+        Self {
+            transport: std::sync::Arc::new(transport),
+        }
     }
 }
 
@@ -45,10 +47,19 @@ fn secret(session_id: SessionId, name: &str) -> serde_json::Value {
 }
 
 #[async_trait]
-impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageStore<T> {
+impl<T: InternalCommandTransport + 'static> SessionStorageStore for CommandSessionStorageStore<T> {
+    fn credential_service(
+        &self,
+    ) -> Option<
+        std::sync::Arc<dyn everruns_contracts::runtime::credential_services::CredentialService>,
+    > {
+        Some(std::sync::Arc::new(CommandSessionStorageStore {
+            transport: self.transport.clone(),
+        }))
+    }
     async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Set storage value",
             "worker_set_session_storage_value",
             json!({ "session_id": session_id.to_string(), "key": key, "value": value }),
@@ -58,7 +69,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Get storage value",
             "worker_get_session_storage_value",
             entry(session_id, key),
@@ -70,7 +81,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
     /// must not take the trait's get-then-delete default.
     async fn take_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Take storage value",
             "worker_take_session_storage_value",
             entry(session_id, key),
@@ -80,7 +91,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Delete storage value",
             "worker_delete_session_storage_value",
             entry(session_id, key),
@@ -90,7 +101,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_keys(&self, session_id: SessionId) -> Result<Vec<KeyInfo>> {
         let keys: Vec<Listed> = call(
-            &self.transport,
+            self.transport.as_ref(),
             "List storage keys",
             "worker_list_session_storage_keys",
             json!({ "session_id": session_id.to_string() }),
@@ -108,7 +119,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Set secret",
             "worker_set_session_secret",
             json!({ "session_id": session_id.to_string(), "name": name, "value": value }),
@@ -118,7 +129,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Get secret",
             "worker_get_session_secret",
             secret(session_id, name),
@@ -128,7 +139,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "Delete secret",
             "worker_delete_session_secret",
             secret(session_id, name),
@@ -138,7 +149,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_secrets(&self, session_id: SessionId) -> Result<Vec<SecretInfo>> {
         let secrets: Vec<Listed> = call(
-            &self.transport,
+            self.transport.as_ref(),
             "List secrets",
             "worker_list_session_secrets",
             json!({ "session_id": session_id.to_string() }),
@@ -156,7 +167,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
 
     async fn list_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecretInfo>> {
         call(
-            &self.transport,
+            self.transport.as_ref(),
             "List bound secrets",
             "worker_list_bound_secrets",
             json!({ "session_id": session_id.to_string() }),
@@ -168,7 +179,7 @@ impl<T: InternalCommandTransport> SessionStorageStore for CommandSessionStorageS
     /// them out of failure messages.
     async fn resolve_bound_secrets(&self, session_id: SessionId) -> Result<Vec<BoundSecret>> {
         call_secret(
-            &self.transport,
+            self.transport.as_ref(),
             "Resolve bound secrets",
             "worker_resolve_bound_secrets",
             json!({ "session_id": session_id.to_string() }),

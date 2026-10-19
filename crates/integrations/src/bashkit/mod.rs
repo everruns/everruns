@@ -20,6 +20,7 @@
 
 pub mod cli;
 
+mod credential_egress;
 mod egress_transport;
 pub mod hook_dispatch;
 mod http;
@@ -334,7 +335,9 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        TOOL_INPUT_SCHEMA.clone()
+        let mut schema = TOOL_INPUT_SCHEMA.clone();
+        schema["properties"]["credential_usage"] = json!({"type":"string","enum":["user","service"],"default":"service","description":"Use authorized service credentials, or the verified invoking user’s private credentials. No identity fallback."});
+        schema
     }
 
     fn hints(&self) -> ToolHints {
@@ -426,7 +429,17 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
+        let (builder, redactor) = match http::configure(
+            builder,
+            self.enable_http,
+            context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        {
+            Ok(configured) => configured,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
@@ -652,7 +665,14 @@ impl BackgroundExecutableTool for BashTool {
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
+        let (builder, redactor) = http::configure(
+            builder,
+            self.enable_http,
+            &context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
         let builder = install_cli_tree(builder, &context);
         let mut bash = builder.cpython().build();
 

@@ -52,6 +52,10 @@ pub enum Permission {
     OrgVirtualUsersView,
     /// CRUD on virtual users
     OrgVirtualUsersManage,
+    /// View metadata for credentials the caller owns or manages.
+    OrgCredentialsView,
+    /// Provision and manage authorized scoped credential bindings.
+    OrgCredentialsManage,
     /// Test as another end user in Playground (owner/admin).
     OrgPlaygroundImpersonate,
     /// View marketplaces and installed plugins (read-only)
@@ -108,6 +112,8 @@ impl Permission {
             Permission::OrgCapabilitiesManage => "org:capabilities:manage",
             Permission::OrgVirtualUsersView => "org:virtual-users:view",
             Permission::OrgVirtualUsersManage => "org:virtual-users:manage",
+            Permission::OrgCredentialsView => "org:credentials:view",
+            Permission::OrgCredentialsManage => "org:credentials:manage",
             Permission::OrgPlaygroundImpersonate => "org:playground:impersonate",
             Permission::OrgPluginsView => "org:plugins:view",
             Permission::OrgPluginsManage => "org:plugins:manage",
@@ -146,6 +152,8 @@ impl Permission {
         Permission::OrgCapabilitiesManage,
         Permission::OrgVirtualUsersView,
         Permission::OrgVirtualUsersManage,
+        Permission::OrgCredentialsView,
+        Permission::OrgCredentialsManage,
         Permission::OrgPlaygroundImpersonate,
         Permission::OrgPluginsView,
         Permission::OrgPluginsManage,
@@ -194,6 +202,8 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
@@ -228,6 +238,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     Permission::OrgPlaygroundImpersonate,
     Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
@@ -261,6 +273,8 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgCapabilitiesManage,
     Permission::OrgVirtualUsersView,
     Permission::OrgVirtualUsersManage,
+    Permission::OrgCredentialsView,
+    Permission::OrgCredentialsManage,
     // Members can view plugins but NOT manage them: PLUGIN_MANAGE has always
     // required OrgPluginsManage, which Members never held (Admin+ only). (EVE-656)
     Permission::OrgPluginsView,
@@ -1135,6 +1149,18 @@ mod tests {
             (
                 Permission::OrgVirtualUsersManage,
                 "org:virtual-users:manage",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgCredentialsView,
+                "org:credentials:view",
+                true,
+                true,
+            ),
+            (
+                Permission::OrgCredentialsManage,
+                "org:credentials:manage",
                 true,
                 true,
             ),

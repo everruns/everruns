@@ -15,7 +15,6 @@ import {
   previewAgent,
   listAgentCredentials,
   createAgentCredentialBinding,
-  setAgentCredentialValue,
   deleteAgentCredentialBinding,
   suspendAgentExposures,
   resumeAgentExposures,
@@ -94,15 +93,6 @@ export function useCreateAgentCredentialBinding(agentId: string) {
   return useMutation({
     mutationFn: (request: CreateAgentCredentialBindingRequest) =>
       createAgentCredentialBinding(agentId, request),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
-  });
-}
-
-export function useSetAgentCredentialValue(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ bindingId, value }: { bindingId: string; value: string }) =>
-      setAgentCredentialValue(agentId, bindingId, value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
   });
 }

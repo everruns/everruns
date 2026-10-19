@@ -147,6 +147,12 @@ where
     E: PhaseEffectSink + 'static,
 {
     let mut tool_context = ToolContext::from_services(context.session_id, &atom.context_services);
+    tool_context.extensions.insert(Arc::new(
+        everruns_contracts::runtime::credential_services::CredentialInvocation {
+            session_id: context.session_id,
+            input_message_id: context.input_message_id.uuid(),
+        },
+    ));
     if let Some(resolver) = tool_context.connection_resolver.as_ref()
         && let Some(bound) = resolver.for_execution(context.input_message_id.uuid())
     {

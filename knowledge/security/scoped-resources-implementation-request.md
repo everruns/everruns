@@ -10,13 +10,13 @@ tags:
 ---
 # Implementation Request: Scoped Resources and Credential Capture
 
-Status: **Request prepared for review; implementation awaits approval.**
+Status: **Approved for implementation and shipping 2026-10-19; qualification in progress.**
 Start work in the existing Everruns checkout and follow its `AGENTS.md` and
 relevant knowledge. This file is the execution plan; the proposed common
 contract is owned by [Scoped Resource Ownership and Access](resource-access.md).
 The HTTP requirements are owned by the
 [web_fetch implementation request](../execution/web-fetch-credentials-request.md).
-Do not treat this document's presence as authorization to deploy or merge.
+The user authorized implementation and shipping in the active workspace task.
 
 ## Objective
 

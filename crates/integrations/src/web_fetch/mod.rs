@@ -37,6 +37,7 @@ use serde_json::Value;
 use std::result::Result;
 use std::sync::Arc;
 
+mod credentials;
 mod egress_transport;
 mod fetch_error;
 #[cfg(test)]
@@ -1965,3 +1966,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod credential_tests;

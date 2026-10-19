@@ -346,6 +346,7 @@ pub(crate) async fn resume(
             &outcomes,
             ApprovalOutcome::NotApproved,
             "ag_ui_resume",
+            None,
         )
         .await
         .map_err(approval_error)?;

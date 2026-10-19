@@ -9,6 +9,13 @@
   [Engine sessions](framework/engine-durable-sessions.md) and
   [Wasm artifacts](framework/wasm-kernel.md).
 
+* **Scoped credentials implementation.** Implement typed ownership and explicit
+  grants, one binding domain, invocation-based HTTP/MCP use, bounded atomic
+  response capture and exact-request consent, and shared credential UI. Keep
+  GitHub's provider shape and memory's existing behavior. Qualification is in
+  progress. See [Resource access](security/resource-access.md) and
+  [Bound secrets](security/bound-secrets.md).
+
 ## 2026-10-18
 
 * **Memory deferred.** Remove memory adoption, compatibility migration, and mount

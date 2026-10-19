@@ -975,14 +975,18 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
-        let mut runtime_agent_id = None;
+        let credential_invocation = session_id.zip(self.input_message_id).map(|(s, i)| {
+            everruns_contracts::runtime::credential_services::CredentialInvocation {
+                session_id: s.into(),
+                input_message_id: i,
+            }
+        });
         if let Some(session_id) = session_id
             && let Some(session) = self.get_turn_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
         {
-            runtime_agent_id = session.agent_id;
             let agent = match session.agent_id {
                 Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
@@ -998,7 +1002,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         org_id,
-                        runtime_agent_id,
+                        credential_invocation,
+                        resolved.acts_as,
                         &resolved.name,
                         &resolved.url,
                     )
@@ -1025,7 +1030,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.db.as_ref(),
             self.encryption.as_deref(),
             org_id,
-            runtime_agent_id,
+            credential_invocation,
+            resolved.acts_as,
             &resolved.name,
             &resolved.url,
         )
@@ -1158,8 +1164,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
             self.db.as_ref(),
             org_id,
-            session.agent_id,
-            None,
+            self.input_message_id.map(|i| {
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session.id,
+                    input_message_id: i,
+                }
+            }),
         )
         .await
         .map_err(|e| store_error(format!("Failed to load MCP credential metadata: {e}")))?;

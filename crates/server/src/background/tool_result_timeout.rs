@@ -416,6 +416,7 @@ async fn resolve_expired_approvals(
         &std::collections::HashMap::new(),
         ApprovalOutcome::Expired,
         "tool_approval_timeout",
+        None,
     )
     .await
     {

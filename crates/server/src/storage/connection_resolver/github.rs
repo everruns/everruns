@@ -173,7 +173,12 @@ impl DbConnectionResolver {
                 continue;
             };
             if let Some((token, github_installation_scope)) = self
-                .scoped_github_credential(OAuthScope::Session(session), row, &token_scope)
+                .scoped_github_credential(
+                    OAuthScope::Session(session),
+                    row,
+                    &token_scope,
+                    Some(access),
+                )
                 .await?
             {
                 return Ok(Some(McpResolvedCredential {
@@ -245,7 +250,7 @@ impl DbConnectionResolver {
         token_scope: &TokenScope,
     ) -> Result<Option<String>> {
         Ok(self
-            .scoped_github_credential(scope, row, token_scope)
+            .scoped_github_credential(scope, row, token_scope, None)
             .await?
             .map(|(token, _)| token))
     }
@@ -255,7 +260,11 @@ impl DbConnectionResolver {
         scope: OAuthScope,
         row: VirtualUserConnectionRow,
         token_scope: &TokenScope,
+        request: Option<&GitHubAccess>,
     ) -> Result<Option<ScopedGitHubToken>> {
+        if !self.authorize_connection(scope, &row, request).await? {
+            return Ok(None);
+        }
         let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
             (GitHubIdentityKind::Person, _) => {
                 // A person's own token cannot be narrowed; it reaches what
@@ -346,26 +355,18 @@ impl DbConnectionResolver {
                 .encrypt_string(value)
                 .map_err(|e| AgentLoopError::store(format!("Failed to encrypt GitHub token: {e}")))
         };
-        self.db
-            .upsert_virtual_user_connection(crate::storage::CreateVirtualUserConnectionRow {
-                virtual_user_id: row.virtual_user_id,
-                provider: row.provider,
-                connection_type: row.connection_type,
-                provider_user_id: row.provider_user_id,
-                provider_username: row.provider_username,
-                access_token_encrypted: Some(encrypt(&token.access_token)?),
-                // GitHub always rotates it; keep the old one only if it did not.
-                refresh_token_encrypted: match token.refresh_token.as_deref() {
-                    Some(value) => Some(encrypt(value)?),
-                    None => row.refresh_token_encrypted,
-                },
-                scopes: row.scopes,
-                expires_at: token.expires_at,
-                installation_id: None,
-                provider_metadata: row.provider_metadata,
-            })
-            .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to store GitHub token: {e}")))?;
+        // Compare the encrypted snapshot after the exchange. A disconnect or
+        // reconnect during refresh must never recreate the old connection.
+        let fresh_access = encrypt(&token.access_token)?;
+        let fresh_refresh = match token.refresh_token.as_deref() {
+            Some(v) => Some(encrypt(v)?),
+            None => row.refresh_token_encrypted.clone(),
+        };
+        let updated=sqlx::query("UPDATE virtual_user_connections SET access_token_encrypted=$2,refresh_token_encrypted=$3,expires_at=$4,updated_at=now() WHERE id=$1 AND access_token_encrypted=$5 AND refresh_token_encrypted IS NOT DISTINCT FROM $6 AND EXISTS(SELECT 1 FROM resource_access r WHERE r.id=$1 AND r.revoked_at IS NULL)")
+        .bind(row.id).bind(fresh_access).bind(fresh_refresh).bind(token.expires_at).bind(row.access_token_encrypted).bind(row.refresh_token_encrypted).execute(self.db.pool()).await.map_err(|_|AgentLoopError::store("Failed to persist refreshed GitHub connection"))?;
+        if updated.rows_affected() != 1 {
+            return Ok(None);
+        }
         Ok(Some(token.access_token))
     }
 }

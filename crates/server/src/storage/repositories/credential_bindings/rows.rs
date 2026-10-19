@@ -8,7 +8,7 @@ use sqlx::types::Json;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
-pub struct AgentMcpSecretBindingRow {
+pub struct CredentialBindingRow {
     pub id: Uuid,
     pub org_id: i64,
     pub agent_id: AgentId,
@@ -29,7 +29,7 @@ pub struct AgentMcpSecretBindingRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpsertAgentMcpSecretBindingRow {
+pub struct UpsertCredentialBindingRow {
     pub org_id: i64,
     pub agent_id: AgentId,
     pub mcp_server_name: String,

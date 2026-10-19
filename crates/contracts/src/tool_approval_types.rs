@@ -233,6 +233,9 @@ pub fn one_off_decision_storage_key(fingerprint: &str) -> String {
 /// A person's answer, as the tool-approvals API records it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoredToolApproval {
+    /// Verified management principal that consented, recorded by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorizer_user_id: Option<uuid::Uuid>,
     /// Logical turn authorized by a one-off decision. Absent on legacy
     /// records and session-wide rules.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,6 +260,7 @@ impl StoredToolApproval {
     pub fn always(tool: &str, allow: bool, now: DateTime<Utc>) -> Self {
         Self {
             turn_id: None,
+            authorizer_user_id: None,
             tool: tool.to_string(),
             fingerprint: None,
             allow,
@@ -269,6 +273,7 @@ impl StoredToolApproval {
     pub fn one_off(tool: &str, fingerprint: &str, allow: bool, now: DateTime<Utc>) -> Self {
         Self {
             turn_id: None,
+            authorizer_user_id: None,
             tool: tool.to_string(),
             fingerprint: Some(fingerprint.to_string()),
             allow,

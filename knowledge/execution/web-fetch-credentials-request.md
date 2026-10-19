@@ -11,9 +11,9 @@ tags:
 ---
 # Implementation Request: Secure web_fetch Credentials
 
-Status: **Implementation request for review; runtime work has not started.**
+Status: **Approved for implementation 2026-10-19; qualification in progress.**
 This is stage 4 of the scoped resource access plan. The shared ownership/grant
-contract is proposed in [Scoped Resource Ownership and Access](../security/resource-access.md).
+contract is defined in [Scoped Resource Ownership and Access](../security/resource-access.md).
 Do not introduce a second credential store or scope resolver to bypass that
 dependency. This document describes the requested behavior; implementation
 source and exported schemas will own the exact API and field shapes.

@@ -18,6 +18,7 @@ use everruns_internal_protocol::proto;
 use serde_json::Value;
 
 mod connections;
+mod credentials;
 mod leased_resources;
 mod org_egress_allowlist;
 mod poppy;

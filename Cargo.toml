@@ -226,6 +226,7 @@ clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 eventsource-stream = "0.2"
 regex = "1.11"
+aho-corasick = "1.1"
 globset = "0.4"
 time = "0.3"
 parking_lot = "0.12"

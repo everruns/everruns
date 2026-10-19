@@ -1,5 +1,6 @@
 "use client";
 
+import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -439,6 +440,9 @@ export default function OrganizationPage() {
             <EgressAllowlistSettings />
 
             {canManage && <EverrunsGitHubAppSettings />}
+            {canManage && (
+              <ScopedCredentialsPanel owner={{ scope: "organization", usage: "service" }} />
+            )}
           </div>
         )}
       </section>

@@ -1,117 +1,144 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
-
-const setValue = jest.fn();
-const remove = jest.fn();
-const create = jest.fn();
-
-jest.mock("@/hooks/use-agents", () => ({
-  useAgentCredentials: () => ({
-    data: [
-      {
-        id: "binding-1",
-        agent_id: "agent-1",
-        mcp_server_name: "visti",
-        mcp_server_url: "https://example.com/mcp",
-        tool_name: "visti_send",
-        parameter_name: "channel_key",
-        label: "Visti channel key",
-        configured: false,
-        created_at: "2026-08-08T00:00:00Z",
-        updated_at: "2026-08-08T00:00:00Z",
-        setup_url: "/agents/agent-1?tab=credentials",
-      },
-      {
-        id: "binding-2",
-        agent_id: "agent-1",
-        kind: "http",
-        env_name: "JEV_API_KEY",
-        binding: { url: "https://api.typesafe.ai", auth: { type: "bearer" } },
-        label: "Jev API key",
-        configured: true,
-        created_at: "2026-10-12T00:00:00Z",
-        updated_at: "2026-10-12T00:00:00Z",
-        setup_url: "/agents/agent-1?tab=credentials",
-      },
-    ],
-    isLoading: false,
-    error: null,
-  }),
-  useCreateAgentCredentialBinding: () => ({ mutateAsync: create, isPending: false }),
-  useDeleteAgentCredentialBinding: () => ({ mutateAsync: remove, isPending: false }),
-  useSetAgentCredentialValue: () => ({ mutateAsync: setValue, isPending: false }),
+import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
+import * as api from "@/lib/api/credential-bindings";
+import type { ScopedCredential } from "@/lib/api/credential-bindings";
+jest.mock("@/lib/api/credential-bindings");
+let mockOrg = "org_a";
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ currentOrg: { public_id: mockOrg } }),
 }));
-
-describe("AgentCredentialsPanel", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    setValue.mockResolvedValue({ configured: true });
+jest.mock("@/components/agent/agent-select", () => ({
+  AgentSelect: () => <div>Agent picker</div>,
+}));
+const credential: ScopedCredential = {
+  id: "binding-1",
+  name: "MAIL_TOKEN",
+  label: "Mail account",
+  kind: "http",
+  binding: { url: "https://mail.example/api", auth: { type: "bearer" } },
+  mcp_server_url: null,
+  tool_name: null,
+  parameter_name: null,
+  scope: "agent",
+  configured: false,
+  expires_at: null,
+  revision: 7,
+  last_used_at: null,
+  last_used_agent_id: null,
+  last_used_agent_name: null,
+  source_connection_id: null,
+};
+function setup(element = <AgentCredentialsPanel agentId="agent-1" />) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    client,
+    ...render(<QueryClientProvider client={client}>{element}</QueryClientProvider>),
+  };
+}
+beforeEach(() => {
+  jest.resetAllMocks();
+  mockOrg = "org_a";
+  jest.mocked(api.listScopedCredentials).mockResolvedValue([credential]);
+  jest.mocked(api.saveCredentialValue).mockResolvedValue();
+  jest.mocked(api.createScopedCredential).mockResolvedValue({ id: "new-binding" });
+  jest.mocked(api.revokeScopedCredential).mockResolvedValue();
+});
+it("shows exact destination and placement without prefilling a secret", async () => {
+  setup();
+  await screen.findByText("Mail account");
+  expect(screen.getByText("https://mail.example/api")).toBeInTheDocument();
+  expect(screen.getByText("Authorization: Bearer")).toBeInTheDocument();
+  expect(screen.getByText("$MAIL_TOKEN")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+  const input = screen.getByLabelText("Credential value") as HTMLInputElement;
+  expect(input.type).toBe("password");
+  expect(input.autocomplete).toBe("new-password");
+  expect(input.value).toBe("");
+});
+it("clears plaintext on success without caching it", async () => {
+  const { client } = setup();
+  await screen.findByText("Mail account");
+  fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+  const secret = "ui-secret-sentinel";
+  fireEvent.change(screen.getByLabelText("Credential value"), { target: { value: secret } });
+  fireEvent.click(screen.getByRole("button", { name: "Save value" }));
+  await waitFor(() =>
+    expect(api.saveCredentialValue).toHaveBeenCalledWith("binding-1", secret, 7, undefined),
+  );
+  await waitFor(() => expect(screen.queryByDisplayValue(secret)).not.toBeInTheDocument());
+  expect(document.body.textContent).not.toContain(secret);
+  expect(
+    JSON.stringify(
+      client
+        .getQueryCache()
+        .getAll()
+        .map((q) => q.state.data),
+    ),
+  ).not.toContain(secret);
+  expect(client.getMutationCache().getAll()).toHaveLength(0);
+});
+it("clears plaintext after a failed save and explains recovery", async () => {
+  jest
+    .mocked(api.saveCredentialValue)
+    .mockRejectedValue(new Error("Credential changed; refresh before replacing it"));
+  setup();
+  await screen.findByText("Mail account");
+  fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+  fireEvent.change(screen.getByLabelText("Credential value"), {
+    target: { value: "failed-secret-sentinel" },
   });
-
-  it("renders metadata without a credential value or prefill", () => {
-    render(<AgentCredentialsPanel agentId="agent-1" />);
-
-    expect(screen.getByText("Visti channel key")).toBeInTheDocument();
-    expect(screen.getByText("Setup required")).toBeInTheDocument();
-    const input = screen.getByLabelText("Value") as HTMLInputElement;
-    expect(input.type).toBe("password");
-    expect(input.autocomplete).toBe("new-password");
-    expect(input.value).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Save value" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Credential changed");
+  expect(screen.getByLabelText("Credential value")).toHaveValue("");
+});
+it("declares metadata separately from the secure value step", async () => {
+  setup();
+  await screen.findByText("Mail account");
+  fireEvent.click(screen.getByRole("button", { name: "Add binding" }));
+  fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Another service" } });
+  fireEvent.change(screen.getByLabelText("Reference name"), { target: { value: "OTHER_TOKEN" } });
+  fireEvent.change(screen.getByLabelText("Allowed HTTPS URL"), {
+    target: { value: "https://other.example/v1" },
   });
-
-  it("clears and removes plaintext client state after submission", async () => {
-    const sentinel = "ui-sentinel-must-not-remain";
-    render(<AgentCredentialsPanel agentId="agent-1" />);
-    const input = screen.getByLabelText("Value");
-
-    fireEvent.change(input, { target: { value: sentinel } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(setValue).toHaveBeenCalledWith({ bindingId: "binding-1", value: sentinel }),
-    );
-    await waitFor(() => expect(screen.queryByDisplayValue(sentinel)).not.toBeInTheDocument());
-    expect(document.body.textContent).not.toContain(sentinel);
+  expect(screen.queryByLabelText("Credential value")).not.toBeInTheDocument();
+  fireEvent.submit(screen.getByLabelText("Label").closest("form")!);
+  await waitFor(() =>
+    expect(api.createScopedCredential).toHaveBeenCalledWith(
+      { scope: "agent", owner_id: "agent-1", usage: "service" },
+      {
+        name: "OTHER_TOKEN",
+        label: "Another service",
+        binding: { url: "https://other.example/v1", auth: { type: "bearer" } },
+      },
+    ),
+  );
+  expect(api.saveCredentialValue).not.toHaveBeenCalled();
+});
+it("requires confirmation and the observed revision for revocation", async () => {
+  setup();
+  await screen.findByText("Mail account");
+  fireEvent.click(screen.getByRole("button", { name: "Revoke Mail account" }));
+  expect(api.revokeScopedCredential).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Revoke credential" }));
+  await waitFor(() => expect(api.revokeScopedCredential).toHaveBeenCalledWith("binding-1", 7));
+});
+it("drops secure input when organization or owner changes", async () => {
+  const { rerender, client } = setup(
+    <ScopedCredentialsPanel owner={{ scope: "virtual_user", owner_id: "me", usage: "user" }} />,
+  );
+  await screen.findByText("Mail account");
+  fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+  fireEvent.change(screen.getByLabelText("Credential value"), {
+    target: { value: "old-org-secret" },
   });
-
-  it("shows where an HTTP API credential may be sent", () => {
-    render(<AgentCredentialsPanel agentId="agent-1" />);
-
-    expect(screen.getByText("Jev API key")).toBeInTheDocument();
-    expect(
-      screen.getByText("$JEV_API_KEY → https://api.typesafe.ai (Authorization: Bearer)"),
-    ).toBeInTheDocument();
-  });
-
-  it("declares an HTTP API credential, then stores its value", async () => {
-    create.mockResolvedValue({ id: "binding-3" });
-    render(<AgentCredentialsPanel agentId="agent-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Add binding/ }));
-    fireEvent.change(screen.getByLabelText("Shell variable"), {
-      target: { value: "JEV_API_KEY" },
-    });
-    fireEvent.change(screen.getByLabelText("Sent only to (HTTPS URL prefix)"), {
-      target: { value: "https://api.typesafe.ai" },
-    });
-    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Jev API key" } });
-    fireEvent.change(screen.getByLabelText("Value", { selector: "#credential-new-value" }), {
-      target: { value: "jev-secret" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save binding" }));
-
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({
-        env_name: "JEV_API_KEY",
-        url: "https://api.typesafe.ai",
-        auth: "bearer",
-        header_name: undefined,
-        label: "Jev API key",
-        description: undefined,
-      }),
-    );
-    await waitFor(() =>
-      expect(setValue).toHaveBeenCalledWith({ bindingId: "binding-3", value: "jev-secret" }),
-    );
-  });
+  mockOrg = "org_b";
+  rerender(
+    <QueryClientProvider client={client}>
+      <ScopedCredentialsPanel owner={{ scope: "virtual_user", owner_id: "me", usage: "user" }} />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.queryByDisplayValue("old-org-secret")).not.toBeInTheDocument());
+  expect(api.saveCredentialValue).not.toHaveBeenCalled();
 });

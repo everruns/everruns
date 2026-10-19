@@ -7,13 +7,13 @@ use rows::*;
 use uuid::Uuid;
 
 impl Database {
-    pub async fn upsert_agent_mcp_secret_binding(
+    pub async fn upsert_credential_binding(
         &self,
-        input: UpsertAgentMcpSecretBindingRow,
-    ) -> Result<AgentMcpSecretBindingRow> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+        input: UpsertCredentialBindingRow,
+    ) -> Result<CredentialBindingRow> {
+        sqlx::query_as::<_, CredentialBindingRow>(sql!(
             r#"
-            INSERT INTO agent_mcp_secret_bindings
+            INSERT INTO credential_bindings
                 (org_id, agent_id, mcp_server_name, mcp_server_url, tool_name,
                  parameter_name, label, description)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -23,12 +23,12 @@ impl Database {
                 label = EXCLUDED.label,
                 description = EXCLUDED.description,
                 value_encrypted = CASE
-                    WHEN agent_mcp_secret_bindings.mcp_server_url = EXCLUDED.mcp_server_url
-                    THEN agent_mcp_secret_bindings.value_encrypted
+                    WHEN credential_bindings.mcp_server_url = EXCLUDED.mcp_server_url
+                    THEN credential_bindings.value_encrypted
                     ELSE NULL
                 END,
                 updated_at = NOW()
-            RETURNING {AgentMcpSecretBindingRow}
+            RETURNING {CredentialBindingRow}
             "#
         ))
         .bind(input.org_id)
@@ -50,10 +50,10 @@ impl Database {
     pub async fn upsert_agent_http_credential(
         &self,
         input: UpsertAgentHttpCredentialRow,
-    ) -> Result<AgentMcpSecretBindingRow> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+    ) -> Result<CredentialBindingRow> {
+        sqlx::query_as::<_, CredentialBindingRow>(sql!(
             r#"
-            INSERT INTO agent_mcp_secret_bindings
+            INSERT INTO credential_bindings
                 (org_id, agent_id, kind, env_name, binding, label, description)
             VALUES ($1, $2, 'http', $3, $4, $5, $6)
             ON CONFLICT (agent_id, env_name) WHERE kind = 'http'
@@ -62,12 +62,12 @@ impl Database {
                 label = EXCLUDED.label,
                 description = EXCLUDED.description,
                 value_encrypted = CASE
-                    WHEN agent_mcp_secret_bindings.binding = EXCLUDED.binding
-                    THEN agent_mcp_secret_bindings.value_encrypted
+                    WHEN credential_bindings.binding = EXCLUDED.binding
+                    THEN credential_bindings.value_encrypted
                     ELSE NULL
                 END,
                 updated_at = NOW()
-            RETURNING {AgentMcpSecretBindingRow}
+            RETURNING {CredentialBindingRow}
             "#
         ))
         .bind(input.org_id)
@@ -81,15 +81,15 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn list_agent_mcp_secret_bindings(
+    pub async fn list_credential_bindings(
         &self,
         org_id: i64,
         agent_id: AgentId,
-    ) -> Result<Vec<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+    ) -> Result<Vec<CredentialBindingRow>> {
+        sqlx::query_as::<_, CredentialBindingRow>(sql!(
             r#"
-            SELECT {AgentMcpSecretBindingRow}
-            FROM agent_mcp_secret_bindings
+            SELECT {CredentialBindingRow}
+            FROM credential_bindings
             WHERE org_id = $1 AND agent_id = $2
             ORDER BY kind, mcp_server_name, tool_name, parameter_name, env_name
             "#
@@ -101,16 +101,16 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn get_agent_mcp_secret_binding(
+    pub async fn get_credential_binding(
         &self,
         org_id: i64,
         agent_id: AgentId,
         binding_id: Uuid,
-    ) -> Result<Option<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+    ) -> Result<Option<CredentialBindingRow>> {
+        sqlx::query_as::<_, CredentialBindingRow>(sql!(
             r#"
-            SELECT {AgentMcpSecretBindingRow}
-            FROM agent_mcp_secret_bindings
+            SELECT {CredentialBindingRow}
+            FROM credential_bindings
             WHERE org_id = $1 AND agent_id = $2 AND id = $3
             "#
         ))
@@ -122,19 +122,20 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn set_agent_mcp_secret_binding_value(
+    #[cfg(test)]
+    pub async fn set_credential_binding_value(
         &self,
         org_id: i64,
         agent_id: AgentId,
         binding_id: Uuid,
         value_encrypted: Vec<u8>,
-    ) -> Result<Option<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
+    ) -> Result<Option<CredentialBindingRow>> {
+        sqlx::query_as::<_, CredentialBindingRow>(sql!(
             r#"
-            UPDATE agent_mcp_secret_bindings
+            UPDATE credential_bindings
             SET value_encrypted = $4, updated_at = NOW()
             WHERE org_id = $1 AND agent_id = $2 AND id = $3
-            RETURNING {AgentMcpSecretBindingRow}
+            RETURNING {CredentialBindingRow}
             "#
         ))
         .bind(org_id)
@@ -146,14 +147,14 @@ impl Database {
         .map_err(Into::into)
     }
 
-    pub async fn delete_agent_mcp_secret_binding(
+    pub async fn delete_credential_binding(
         &self,
         org_id: i64,
         agent_id: AgentId,
         binding_id: Uuid,
     ) -> Result<bool> {
         let result = sqlx::query(
-            "DELETE FROM agent_mcp_secret_bindings WHERE org_id = $1 AND agent_id = $2 AND id = $3",
+            "DELETE FROM credential_bindings WHERE org_id = $1 AND agent_id = $2 AND id = $3",
         )
         .bind(org_id)
         .bind(agent_id)

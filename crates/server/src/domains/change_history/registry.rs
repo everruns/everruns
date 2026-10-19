@@ -665,6 +665,15 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("session resources are the session's working state")
         }
 
+        "create_scoped_credential"
+        | "revoke_scoped_credential"
+        | "grant_resource_access"
+        | "revoke_resource_grant" => Change::Exempt(
+            "credential ownership and grants have atomic payload-free resource_access_audit entries",
+        ),
+        "worker_credentials" => Change::Exempt(
+            "runtime credential operations are write-only and use payload-free resource audit",
+        ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
         "check_health_issue" | "snooze_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")

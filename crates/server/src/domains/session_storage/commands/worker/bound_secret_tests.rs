@@ -85,83 +85,98 @@ fn sid(session_id: SessionId) -> Value {
     json!({ "session_id": session_id.to_string() })
 }
 
-#[tokio::test]
-async fn a_bound_session_secret_resolves_for_the_shell_and_never_reads_back() {
-    let db = Arc::new(StorageBackend::test_database());
-    let session_id = session(&db, None).await;
-    let ctx = ctx(&db);
-
-    run(
-        &ctx,
-        "batch_set_session_secrets",
-        json!({
-            "session_id": session_id.to_string(),
-            "secrets": { "JEV_API_KEY": KEY, "PLAIN": "readable" },
-            "bindings": { "JEV_API_KEY": jev_binding() },
-        }),
-    )
-    .await
-    .expect("set");
-
-    // The public listing shows the binding, normalized, and no value.
-    let listed = run(&ctx, "list_session_secrets", sid(session_id))
-        .await
-        .unwrap();
-    let jev = listed
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|s| s["name"] == "JEV_API_KEY")
-        .unwrap();
-    assert_eq!(jev["binding"]["url"], "https://api.typesafe.ai");
-    assert!(!listed.to_string().contains(KEY));
-
-    // THREAT[TM-BASH-030]: the runtime cannot read or swap the bound value.
-    let get = json!({ "session_id": session_id.to_string(), "name": "JEV_API_KEY" });
-    let error = run(&ctx, "worker_get_session_secret", get.clone())
-        .await
-        .expect_err("bound get");
-    assert!(error.to_string().contains("$JEV_API_KEY"), "{error}");
-    let swap =
-        json!({ "session_id": session_id.to_string(), "name": "JEV_API_KEY", "value": "attacker" });
-    run(&ctx, "worker_set_session_secret", swap)
-        .await
-        .expect_err("bound set");
-    // An ordinary secret still reads back.
-    let plain = json!({ "session_id": session_id.to_string(), "name": "PLAIN" });
-    assert_eq!(
-        run(&ctx, "worker_get_session_secret", plain).await.unwrap(),
-        json!("readable")
-    );
-
-    let infos = run(&ctx, "worker_list_bound_secrets", sid(session_id))
-        .await
-        .unwrap();
-    assert_eq!(infos.as_array().unwrap().len(), 1);
-    assert_eq!(infos[0]["scope"], "session");
-    assert!(!infos.to_string().contains(KEY));
-
-    let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(session_id))
-        .await
-        .unwrap();
-    assert_eq!(resolved[0]["name"], "JEV_API_KEY");
-    assert_eq!(resolved[0]["value"], KEY);
-
-    // Setting the name again without a binding makes it ordinary again: an
-    // explicit act by someone who holds the value.
-    run(
-        &ctx,
-        "batch_set_session_secrets",
-        json!({ "session_id": session_id.to_string(), "secrets": { "JEV_API_KEY": "new" } }),
+async fn invocation(
+    db: &StorageBackend,
+    session: SessionId,
+    responder: Option<AgentId>,
+) -> everruns_contracts::runtime::credential_services::CredentialInvocation {
+    let input = uuid::Uuid::now_v7();
+    db.record_runtime_invocation(
+        DEFAULT_ORG_ID,
+        session,
+        input,
+        None,
+        None,
+        responder.map(|v| v.uuid()),
     )
     .await
     .unwrap();
-    assert_eq!(
+    everruns_contracts::runtime::credential_services::CredentialInvocation {
+        session_id: session,
+        input_message_id: input,
+    }
+}
+async fn resolve(
+    ctx: &Ctx,
+    inv: everruns_contracts::runtime::credential_services::CredentialInvocation,
+) -> Result<Value, CommandError> {
+    crate::domains::credentials::service::execute(
+        ctx,
+        inv,
+        "resolve",
+        json!({"usage":"service","names":["JEV_API_KEY"]}),
+    )
+    .await
+}
+#[tokio::test]
+async fn legacy_session_entry_adapts_to_one_binding_store_and_old_workers_fail_closed() {
+    let db = Arc::new(StorageBackend::test_database());
+    let session_id = session(&db, None).await;
+    let ctx = ctx(&db);
+    run(&ctx,"batch_set_session_secrets",json!({"session_id":session_id.to_string(),"secrets":{"JEV_API_KEY":KEY,"PLAIN":"readable"},"bindings":{"JEV_API_KEY":jev_binding()}})).await.unwrap();
+    let old: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM session_secrets WHERE binding IS NOT NULL")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(old, 0);
+    let listed = run(&ctx, "list_session_secrets", sid(session_id))
+        .await
+        .unwrap();
+    assert!(!listed.to_string().contains(KEY));
+    assert!(listed.as_array().unwrap().iter().any(|r|r["name"]=="JEV_API_KEY"&&r["binding"]["url"]=="https://api.typesafe.ai"));
+    for command in [
+        "worker_get_session_secret",
+        "worker_set_session_secret",
+        "worker_delete_session_secret",
+    ] {
+        assert!(
+            run(
+                &ctx,
+                command,
+                json!({"session_id":session_id.to_string(),"name":"JEV_API_KEY","value":"attacker"})
+            )
+            .await
+            .is_err()
+        );
+    }
+    assert!(
         run(&ctx, "worker_resolve_bound_secrets", sid(session_id))
             .await
-            .unwrap(),
-        json!([])
+            .is_err()
     );
+    let inv = invocation(&db, session_id, None).await;
+    let resolved = resolve(&ctx, inv).await.unwrap();
+    assert_eq!(resolved[0]["info"]["scope"], "session");
+    assert_eq!(resolved[0]["value"], KEY);
+    assert_eq!(
+        run(
+            &ctx,
+            "worker_get_session_secret",
+            json!({"session_id":session_id.to_string(),"name":"PLAIN"})
+        )
+        .await
+        .unwrap(),
+        json!("readable")
+    );
+    run(
+        &ctx,
+        "batch_set_session_secrets",
+        json!({"session_id":session_id.to_string(),"secrets":{"JEV_API_KEY":"newly-provided"}}),
+    )
+    .await
+    .unwrap();
+    assert!(resolve(&ctx, inv).await.is_err());
 }
 
 /// Declare an HTTP credential on the agent (no value), as Platform Chat or
@@ -185,7 +200,7 @@ async fn agent_credential(ctx: &Ctx, agent: &AgentRow, env_name: &str, value: &s
     let id: uuid::Uuid = declared["id"].as_str().unwrap().parse().unwrap();
     let encrypted = encryption().encrypt_string(value).unwrap();
     ctx.db
-        .set_agent_mcp_secret_binding_value(DEFAULT_ORG_ID, agent.id, id, encrypted)
+        .set_credential_binding_value(DEFAULT_ORG_ID, agent.id, id, encrypted)
         .await
         .unwrap()
         .unwrap();
@@ -193,123 +208,35 @@ async fn agent_credential(ctx: &Ctx, agent: &AgentRow, env_name: &str, value: &s
 }
 
 #[tokio::test]
-async fn agent_http_credentials_reach_every_session_of_the_agent_and_sessions_shadow_them() {
+async fn agent_credentials_follow_the_actual_responder_and_never_use_scope_precedence() {
     let db = Arc::new(StorageBackend::test_database());
     let agent = agent(&db).await;
     let first = session(&db, Some(&agent)).await;
     let second = session(&db, Some(&agent)).await;
-    let unrelated = session(&db, None).await;
     let ctx = ctx(&db);
-
-    // Declared without a value: nothing for the shell yet.
-    let declared = run(
-        &ctx,
-        "create_agent_credential_binding",
-        json!({
-            "agent_id": agent.id.to_string(),
-            "env_name": "JEV_API_KEY",
-            "url": "https://api.typesafe.ai/",
-            "label": "Jev API key",
-        }),
-    )
-    .await
-    .unwrap();
-    assert_eq!(declared["binding"]["url"], "https://api.typesafe.ai");
-    assert_eq!(declared["binding"]["auth"]["type"], "bearer");
-    assert_eq!(
-        run(&ctx, "worker_resolve_bound_secrets", sid(first))
-            .await
-            .unwrap(),
-        json!([])
-    );
-
     agent_credential(&ctx, &agent, "JEV_API_KEY", KEY).await;
-    for session_id in [first, second] {
-        let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(session_id))
-            .await
-            .unwrap();
-        assert_eq!(resolved[0]["name"], "JEV_API_KEY");
+    for session in [first, second] {
+        let inv = invocation(&db, session, Some(agent.id)).await;
+        let resolved = resolve(&ctx, inv).await.unwrap();
         assert_eq!(resolved[0]["value"], KEY);
-        assert_eq!(resolved[0]["scope"], "agent");
+        assert_eq!(resolved[0]["info"]["scope"], "agent");
     }
-    assert_eq!(
-        run(&ctx, "worker_resolve_bound_secrets", sid(unrelated))
-            .await
-            .unwrap(),
-        json!([])
+    let guest = invocation(&db, first, None).await;
+    assert!(resolve(&ctx, guest).await.is_err());
+    let inv = invocation(&db, first, Some(agent.id)).await;
+    run(&ctx,"batch_set_session_secrets",json!({"session_id":first.to_string(),"secrets":{"JEV_API_KEY":"session-key"},"bindings":{"JEV_API_KEY":jev_binding()}})).await.unwrap();
+    assert!(
+        resolve(&ctx, inv).await.is_err(),
+        "ambiguous names must never silently shadow another owner"
     );
-
-    // THREAT[TM-BASH-030]: the runtime cannot overwrite the agent's key.
-    let swap =
-        json!({ "session_id": first.to_string(), "name": "JEV_API_KEY", "value": "attacker" });
-    run(&ctx, "worker_set_session_secret", swap)
-        .await
-        .expect_err("bound set");
-
-    // Re-declaring with the same binding keeps the value; pointing it at
-    // another host drops it, so the person has to paste it again.
-    let same = run(
-        &ctx,
-        "create_agent_credential_binding",
-        json!({
-            "agent_id": agent.id.to_string(),
-            "env_name": "JEV_API_KEY",
-            "url": "https://api.typesafe.ai",
-            "label": "Jev API key (renamed)",
-        }),
-    )
-    .await
-    .unwrap();
-    assert_eq!(same["configured"], true);
-    let moved = run(
-        &ctx,
-        "create_agent_credential_binding",
-        json!({
-            "agent_id": agent.id.to_string(),
-            "env_name": "JEV_API_KEY",
-            "url": "https://attacker.example",
-            "label": "Jev API key",
-        }),
-    )
-    .await
-    .unwrap();
+    let moved=run(&ctx,"create_agent_credential_binding",json!({"agent_id":agent.id.to_string(),"env_name":"JEV_API_KEY","url":"https://other.example","label":"Moved key"})).await.unwrap();
     assert_eq!(moved["configured"], false);
-    assert_eq!(
-        run(&ctx, "worker_resolve_bound_secrets", sid(second))
-            .await
-            .unwrap(),
-        json!([])
-    );
-
-    // A session secret of the same name wins in that session only.
-    agent_credential(&ctx, &agent, "JEV_API_KEY", KEY).await;
-    run(
-        &ctx,
-        "batch_set_session_secrets",
-        json!({
-            "session_id": first.to_string(),
-            "secrets": { "JEV_API_KEY": "session-key" },
-            "bindings": { "JEV_API_KEY": jev_binding() },
-        }),
-    )
-    .await
-    .unwrap();
-    let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(first))
-        .await
-        .unwrap();
-    assert_eq!(resolved.as_array().unwrap().len(), 1);
-    assert_eq!(resolved[0]["value"], "session-key");
-    let resolved = run(&ctx, "worker_resolve_bound_secrets", sid(second))
-        .await
-        .unwrap();
-    assert_eq!(resolved[0]["value"], KEY);
-
-    // HTTP credentials never reach MCP tool argument injection.
     let mcp = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
         &db,
         Some(&encryption()),
         DEFAULT_ORG_ID,
-        Some(agent.id),
+        Some(inv),
+        everruns_core::McpServerActsAs::Service,
         "jev",
         "https://api.typesafe.ai",
     )

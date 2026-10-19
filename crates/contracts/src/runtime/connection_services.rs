@@ -90,6 +90,7 @@ impl McpResolvedCredential {
 /// `permissions` means everything the installation was granted. A person's own
 /// login cannot be narrowed by GitHub and answers with its full reach.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GitHubAccess {
     /// Whose GitHub identity answers. `none` resolves nothing.
     pub acts_as: crate::runtime::mcp_server::McpServerActsAs,

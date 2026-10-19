@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
 import Link from "next/link";
 import { useVirtualUser, useUpdateVirtualUser } from "@/hooks/use-virtual-users";
 import { usePageTitle } from "@/hooks";
@@ -78,6 +79,10 @@ export default function AgentExperiencePage() {
       <PendingConnectionMigrations />
       <UserMcpServersPanel />
       <ConnectedClientsPanel />
+      <ScopedCredentialsPanel
+        key={user.id}
+        owner={{ scope: "virtual_user", owner_id: "me", usage: "user" }}
+      />
       <ConnectionsPanel />
     </div>
   );

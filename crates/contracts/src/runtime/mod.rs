@@ -142,6 +142,9 @@ pub use self::decisions::{
     DecisionsService, DisabledDecisionsService,
 };
 pub use self::delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
+pub mod credential_http;
+pub mod credential_services;
+pub mod resource_access;
 pub use self::dependency_blocker::DependencyBlocker;
 pub use self::deployment::DeploymentGrade;
 pub use self::egress::{
