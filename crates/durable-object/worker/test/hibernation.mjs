@@ -70,7 +70,14 @@ try {
   // No requests to the object or client wake during this interval. Only its
   // durable alarm may resume it; the open observer must remain passive.
   await Promise.race([observing,delay(18000).then(()=>{throw new Error("alarm did not resume the original admission");})]);
-  const resumed=await internal("probe");
+  // turn.completed precedes Framework finalization/release. After the alarm's
+  // autonomous progress is visible, read-only probes may await that boundary.
+  let resumed;
+  for(let attempt=0;attempt<100;attempt++) {
+    resumed=await internal("probe");
+    if(!resumed.state.holder)break;
+    await delay(20);
+  }
   assert.notEqual(resumed.instance,parked.instance,"the alarm opened a new object instance");
   assert.equal(resumed.state.holder,null);
   const outcome=await (await api(`/${id}/admissions/${message}`)).json();
