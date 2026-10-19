@@ -522,7 +522,17 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
     let retry = lease.ttl / 10;
     let mut failing = false;
     loop {
-        let wait = if failing { retry } else { period };
+        // Decision: while renews fail, the last retry lands on the TTL itself
+        // (where `renew`'s bound is zero and flips `lost`), not up to a retry
+        // period past it. The control plane's expiry is at least that late
+        // (its `now()` is read after `started`), so the turn stops before the
+        // next holder can start (chaos harness: a worker cut off from a killed
+        // server kept running 0.9 s past expiry, 0.5 s beside the next holder).
+        let wait = if failing {
+            retry.min(lease.ttl.saturating_sub(lease.since_renewed()))
+        } else {
+            period
+        };
         tokio::select! {
             _ = everruns_contracts::rt::sleep(wait) => {}
             _ = poke.notified() => {}
