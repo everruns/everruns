@@ -58,6 +58,10 @@ pub(crate) async fn run(
             .negotiate(&environment)
             .map_err(|e| AgentLoopError::config(e.to_string()))?;
     }
+    let backends = engine
+        .profile()?
+        .prepare_activation(engine, session, &environment, backends)
+        .await?;
     let live = engine.hosted_live_controls(session).await?;
     let runtime = match everruns_contracts::rt::timeout(
         config.lease_ttl,

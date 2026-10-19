@@ -56,6 +56,15 @@ the shared actor driver. No second authority, planner or turn loop.
   secrets when the authority has no secret keys, a missing Harness for a
   session that ran with one, and a durable workspace without a retained
   Environment factory.
+- **Tasks and child sessions move with the session.** The authority reuses
+  the local task registry and recovery over its own database file. Child
+  sessions (subagents, coordination threads) are hosted sessions of the parent's
+  build whose parent link is in the immutable binding; a session may read only
+  its ancestors' records. A wake is an admission whose identity derives from
+  task, attempt and transition, so a repeated delivery replays. On activation,
+  running tasks whose owner is proved gone get one fenced re-attach when their
+  executor re-verifies it is safe, and are otherwise settled as failed with a
+  wake; uncertain work is never re-run.
 - **Secrets stay encrypted.** With `SqliteHosting::with_secret_keys`, the
   authority [seals each secret](../../crates/everruns/src/hosting/sqlite/secrets.rs)
   with the platform's envelope scheme and key format, bound to its session and
@@ -82,7 +91,7 @@ noted.
 | --- | --- | --- | --- |
 | Lossless, idempotent import: identity, journal, tool call/result associations | JSONL or caller event log | Verbatim journal, receipts, assignments, outcomes | **passes** for custom and `LocalConfig` |
 | Active and abandoned branches | No branch model in the Framework journal; superseded outputs stay in the log | Verbatim copy keeps every event | **passes** for Framework stores; branch semantics depend on rewind below |
-| Task/child links | Task registry records, `parent_session_id` | Terminal task records and messages imported; links kept in records | **partial**: non-terminal tasks refuse cutover |
+| Task/child links | Task registry records, `parent_session_id` | Every task and its message channel imported into the authority's task registry; links kept | **passes**; tasks still running under a live legacy owner refuse |
 | Workspace metadata | Binding store | Imported binding, exact-head factory, mismatch refused | **passes** |
 | Session secrets | Legacy secret store | Sealed under authority secret keys | **passes** |
 | Compatible compaction checkpoints | Latest per provider/model/format | Imported when within the journal | **passes** |
@@ -90,7 +99,7 @@ noted.
 | Interrupted/retried/conflicting cutover, no duplicate work, no automatic fallback | Frozen by marker and lease fence | One transaction, replay on retry | **passes** |
 | Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | None | **missing** |
 | Workspace restore keeps its own confirmation and snapshot policy | Separate workspace checkpoint API | Unchanged | not affected; restore stays separate |
-| Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | Epoch ports carry no task registry, schedule store or subagent delegate | **missing** |
+| Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | [Authority task services](../../crates/everruns/src/hosting/sqlite/services.rs): the local task registry and recovery over the authority file, child sessions of the same build with a durable parent link, wakes as task-derived admissions, fenced re-attach or conservative settlement after owner loss | **passes** for tasks, child sessions and coordination; **partial**: schedules refuse cutover |
 | JSONL is the legacy authority before cutover or a rebuildable export after | JSONL is the authority | Never written after cutover; [rebuilt from one authority snapshot](../../crates/everruns/src/hosting/sqlite/export.rs) in the `JsonlEventLog` format | **passes** |
 | Probe: admission before response loss | | Retried id replays; supervision completes | **passes** |
 | Probe: activation/restart | | New connection and Engine reopen identical state | **passes** |
@@ -113,12 +122,10 @@ only when each item holds on the revision being released:
    (rewind lives in the downstream consumer), so this needs a canonical
    event/command design across the contracts crate, the conversation fold and
    the SQLite and memory reducers.
-2. **Background and child obligations through Engine.** Epoch ports that carry a
-   fenced task registry, schedule store and subagent/coordination delegate, so
-   non-terminal tasks and active schedules can cut over instead of refusing.
-   Blocker: coherent epoch backends start from in-memory defaults
-   ([SQLite ports](../../crates/everruns/src/hosting/sqlite/ports.rs)); task and
-   schedule state needs authority tables and fencing first.
+2. **Schedules through Engine.** A schedule store and runner over the
+   authority, firing as admissions, so sessions with active schedules cut over
+   instead of refusing. Tasks, child sessions and coordination already run
+   through the authority.
 3. **Every host surface on Engine.** serve, AG-UI threads and the coordination
    hub reach sessions only through hosting.
 

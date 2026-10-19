@@ -1097,3 +1097,207 @@ async fn jsonl_is_a_rebuildable_export_of_the_authority_after_cutover() {
         );
     }
 }
+
+mod obligations {
+    use super::*;
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
+        TASK_KIND_BACKGROUND_TOOL, TaskWakePolicy,
+    };
+
+    /// A PID that belonged to a process which has exited.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        pid
+    }
+
+    fn owner(pid: u32) -> String {
+        format!("background-tool:{pid}:{}", uuid::Uuid::new_v4().simple())
+    }
+
+    async fn running_task(
+        registry: &dyn SessionTaskRegistry,
+        session: SessionId,
+        worker: String,
+        reattachable: bool,
+    ) -> String {
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: session,
+                id: None,
+                kind: TASK_KIND_BACKGROUND_TOOL.into(),
+                display_name: "Background clock".into(),
+                spec: serde_json::json!({
+                    "tool": "get_current_time",
+                    "args": {},
+                    "reattachable": reattachable,
+                }),
+                state: SessionTaskState::Running,
+                links: Default::default(),
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+        registry
+            .update(
+                session,
+                &task.id,
+                SessionTaskUpdate {
+                    worker_id: Some(worker),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        task.id
+    }
+
+    fn legacy_with_tasks() -> (HostBackends, Arc<everruns::local::LocalSessionTaskRegistry>) {
+        let registry = Arc::new(
+            everruns::local::LocalSessionTaskRegistry::new(
+                everruns::local::SqliteDb::open_in_memory().unwrap(),
+            )
+            .unwrap(),
+        );
+        (
+            HostBackends::in_memory().with_session_task_registry(registry.clone()),
+            registry,
+        )
+    }
+
+    async fn wait_for_task(
+        profile: &SqliteHosting,
+        session: SessionId,
+        task: &str,
+        done: impl Fn(&everruns_core::session_task::SessionTask) -> bool,
+    ) -> everruns_core::session_task::SessionTask {
+        let registry = profile.reader(session).session_task_registry.unwrap();
+        tokio::time::timeout(WAIT, async {
+            loop {
+                if let Some(found) = registry.get(session, task).await.unwrap()
+                    && done(&found)
+                {
+                    return found;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Background work whose legacy owner died moves with the session; the
+    /// first activation settles it conservatively (never re-running a
+    /// side-effecting tool) and wakes the session exactly once, durably.
+    #[tokio::test]
+    async fn orphaned_legacy_background_task_is_settled_and_wakes_once() {
+        let (backends, registry) = legacy_with_tasks();
+        let legacy = legacy_agent(&backends);
+        let session = Engine::new().create(legacy.clone());
+        let id = session.session_id();
+        session.run("first").await.unwrap();
+        let task = running_task(registry.as_ref(), id, owner(dead_pid()), false).await;
+
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+        let engine = hosting_engine(profile.clone(), agent());
+        let report = engine
+            .cut_over_legacy_session(id, &legacy, &target_build())
+            .await
+            .unwrap();
+        assert_eq!(report.tasks, 1);
+
+        let hosted = engine.resume(id).await.unwrap();
+        let next = hosted.send("continue").await.unwrap();
+        tokio::time::timeout(WAIT, next.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        let settled = wait_for_task(&profile, id, &task, |task| task.state.is_terminal()).await;
+        assert_eq!(settled.state, SessionTaskState::Failed);
+        assert_eq!(
+            settled.error.as_ref().map(|error| error.kind.as_str()),
+            Some("execution_status_unknown")
+        );
+        // The wake is an admission with a task-derived identity: it runs once.
+        tokio::time::timeout(WAIT, async {
+            loop {
+                let inputs = hosted
+                    .events_after(0)
+                    .await
+                    .unwrap()
+                    .iter()
+                    .filter(|event| {
+                        event.event_type() == "input.message"
+                            && event
+                                .canonical_json()
+                                .to_string()
+                                .contains("Background clock")
+                    })
+                    .count();
+                if inputs == 1 && !engine.session_status(id).await.unwrap().runnable {
+                    break;
+                }
+                assert!(inputs <= 1, "wake delivered twice");
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    /// A task that claims to be safe to run again gets one fenced re-attach
+    /// under the authority. The executor re-verifies the claim against the
+    /// live tool (the default clock tool is not background-capable), refuses,
+    /// and the task settles once, conservatively, on the new attempt.
+    #[tokio::test]
+    async fn reattach_is_fenced_and_falls_back_conservatively_after_owner_loss() {
+        let (backends, registry) = legacy_with_tasks();
+        let legacy = legacy_agent(&backends);
+        let session = Engine::new().create(legacy.clone());
+        let id = session.session_id();
+        session.run("first").await.unwrap();
+        let task = running_task(registry.as_ref(), id, owner(dead_pid()), true).await;
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+        let engine = hosting_engine(profile.clone(), agent());
+        engine
+            .cut_over_legacy_session(id, &legacy, &target_build())
+            .await
+            .unwrap();
+        let hosted = engine.resume(id).await.unwrap();
+        tokio::time::timeout(WAIT, hosted.send("continue").await.unwrap().wait())
+            .await
+            .unwrap()
+            .unwrap();
+        let resumed = wait_for_task(&profile, id, &task, |task| task.state.is_terminal()).await;
+        assert_eq!(resumed.state, SessionTaskState::Failed, "{resumed:?}");
+        assert_eq!(resumed.attempt, 2, "exactly one re-attach claim");
+        assert_eq!(resumed.worker_id.as_deref(), Some("authority"));
+        assert_eq!(
+            resumed.error.as_ref().map(|error| error.kind.as_str()),
+            Some("orphaned_execution")
+        );
+    }
+
+    /// Work still owned by a live legacy process cannot move.
+    #[tokio::test]
+    async fn task_owned_by_a_live_process_refuses_cutover() {
+        let (backends, registry) = legacy_with_tasks();
+        let legacy = legacy_agent(&backends);
+        let session = Engine::new().create(legacy.clone());
+        let id = session.session_id();
+        session.run("first").await.unwrap();
+        running_task(registry.as_ref(), id, owner(std::process::id()), false).await;
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+        let error = hosting_engine(profile.clone(), agent())
+            .cut_over_legacy_session(id, &legacy, &target_build())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("still running"), "{error}");
+        assert!(profile.status(id).await.is_err());
+    }
+}
