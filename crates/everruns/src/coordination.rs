@@ -237,9 +237,7 @@ fn thread_status(task: &SessionTask) -> ThreadStatus {
     }
 }
 
-// =============================================================================
-// Engine wiring
-// =============================================================================
+// Engine wiring.
 
 /// Engines sharing one local backend bundle. Threads and wakes reach a session
 /// through whichever engine holds it.
@@ -330,6 +328,8 @@ pub(crate) struct EngineSessionRunner {
     hub: Arc<EngineHub>,
     sessions: Arc<dyn RuntimeSessionStore>,
     registry: Arc<dyn SessionTaskRegistry>,
+    /// Legacy deliveries (schedules, wakes) never reach a cut-over session.
+    cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
 }
 
 impl EngineSessionRunner {
@@ -337,11 +337,13 @@ impl EngineSessionRunner {
         hub: Arc<EngineHub>,
         sessions: Arc<dyn RuntimeSessionStore>,
         registry: Arc<dyn SessionTaskRegistry>,
+        cutover: Arc<dyn crate::engine::LegacyCutoverStore>,
     ) -> Self {
         Self {
             hub,
             sessions,
             registry,
+            cutover,
         }
     }
 
@@ -433,6 +435,13 @@ impl LocalSessionRunner for EngineSessionRunner {
         content: &str,
         causes: &crate::CausalContext,
     ) -> Result<()> {
+        // A cut-over session belongs to its authority, which delivers its
+        // schedules and wakes itself (EVE-1298).
+        if self.cutover.load_cutover(session_id).await?.is_some() {
+            return Err(AgentLoopError::tool(
+                "the session moved to a coherent session authority; the legacy lane does not deliver to it",
+            ));
+        }
         let engine = self.owner(session_id)?;
         let session = engine
             .resume(session_id)

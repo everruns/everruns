@@ -1301,3 +1301,77 @@ mod obligations {
         assert!(profile.status(id).await.is_err());
     }
 }
+
+mod schedules {
+    use super::*;
+
+    /// An active legacy schedule moves with the session; after cutover the
+    /// authority's supervisor fires it as an ordinary admission, without
+    /// client traffic, and the legacy lane never runs it.
+    #[tokio::test]
+    async fn active_legacy_schedule_fires_under_the_authority_after_cutover() {
+        let db = everruns::local::SqliteDb::open_in_memory().unwrap();
+        let owner = everruns_contracts::typed_id::PrincipalId::from_seed(1);
+        let store = everruns::local::LocalScheduleStore::new(db.clone(), 1, owner).unwrap();
+        let backends =
+            HostBackends::in_memory().with_schedule_store_factory(Arc::new(move |org| {
+                Arc::new(everruns::local::LocalScheduleStore::new(db.clone(), org, owner).unwrap())
+                    as Arc<dyn everruns_core::session_services::SessionScheduleStore>
+            }));
+        let legacy = legacy_agent(&backends);
+        let session = Engine::new().create(legacy.clone());
+        let id = session.session_id();
+        session.run("first").await.unwrap();
+        use everruns_core::session_services::SessionScheduleStore;
+        let scheduled = store
+            .create_schedule(
+                id,
+                "scheduled check-in".into(),
+                None,
+                Some(chrono::Utc::now() + chrono::Duration::seconds(2)),
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        assert!(scheduled.enabled);
+
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+        let engine = hosting_engine(profile.clone(), agent());
+        let report = engine
+            .cut_over_legacy_session(id, &legacy, &target_build())
+            .await
+            .unwrap();
+        assert_eq!(report.schedules, 1);
+
+        let stop = everruns::CancellationToken::new();
+        let supervisor = {
+            let engine = engine.clone();
+            let profile = profile.clone();
+            let stop = stop.clone();
+            tokio::spawn(async move { profile.supervise(engine, stop).await })
+        };
+        let hosted = engine.resume(id).await.unwrap();
+        tokio::time::timeout(WAIT, async {
+            loop {
+                let fired = hosted.events_after(0).await.unwrap().iter().any(|event| {
+                    event.event_type() == "input.message"
+                        && event
+                            .canonical_json()
+                            .to_string()
+                            .contains("scheduled check-in")
+                });
+                let status = engine.session_status(id).await.unwrap();
+                if fired && !status.runnable && !status.executing {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        stop.cancel();
+        supervisor.await.unwrap().unwrap();
+        assert_eq!(hosted.history().page().await.unwrap().messages.len(), 4);
+    }
+}

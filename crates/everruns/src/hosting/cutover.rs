@@ -65,6 +65,8 @@ pub struct CutoverReport {
     pub volatile_workspace: bool,
     /// Imported session secrets, sealed under the authority's secret keys.
     pub secrets: usize,
+    /// Imported schedules; the authority's supervisor fires them.
+    pub schedules: usize,
 }
 
 /// One quiescent legacy session, ready for a single authority transaction.
@@ -84,6 +86,11 @@ pub struct LegacySessionImage {
     pub(crate) tasks: Vec<(SessionTask, Vec<TaskMessage>)>,
     /// Plaintext legacy secrets, sealed by the authority before its commit.
     pub(crate) secrets: Vec<(String, String)>,
+    /// Legacy schedules with their journal metadata.
+    pub(crate) schedules: Vec<(
+        everruns_core::session_schedule::SessionSchedule,
+        serde_json::Value,
+    )>,
     pub(crate) workspace: Option<WorkspaceBinding>,
 }
 

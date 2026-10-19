@@ -19,7 +19,8 @@
 //!   executor re-attaches only work it declares safe to run again.
 use super::*;
 use crate::local::{
-    LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, LocalTaskRecovery, SqliteDb,
+    LocalPlatformStore, LocalScheduleRunner, LocalScheduleRunnerHandle, LocalScheduleStore,
+    LocalSessionRunner, LocalSessionTaskRegistry, LocalTaskRecovery, SqliteDb,
 };
 use everruns_capabilities::capabilities::coordination::{
     THREAD_RESOLVED_DETAIL, ThreadTurn, settle_thread_turn,
@@ -40,8 +41,17 @@ const MAX_REATTACH_ATTEMPTS: i32 = 3;
 /// Stable namespace for wake admission identities.
 const WAKE_NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x6576_6572_7275_6e73_7461_736b_7761_6b65);
 
-/// Task services sharing the authority database file.
+/// Internal org of hosted sessions; the runtime scopes schedules by it.
+pub(crate) const AUTHORITY_ORG: i64 = everruns_contracts::runtime::organization::DEFAULT_ORG_ID;
+
+/// Principal stamped on schedules, as for the default local profile.
+fn schedule_owner() -> everruns_contracts::typed_id::PrincipalId {
+    everruns_contracts::typed_id::PrincipalId::from_seed(1)
+}
+
+/// Task and schedule services sharing the authority database file.
 pub(super) struct AuthorityServices {
+    db: SqliteDb,
     pub(super) registry: Arc<LocalSessionTaskRegistry>,
     pub(super) recovery: Arc<LocalTaskRecovery>,
 }
@@ -50,8 +60,29 @@ impl AuthorityServices {
     pub(super) fn open(path: &Path) -> Result<Self> {
         let db = SqliteDb::open(path).map_err(AgentLoopError::from)?;
         let registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
-        let recovery = Arc::new(LocalTaskRecovery::new(db, registry.clone()));
-        Ok(Self { registry, recovery })
+        let recovery = Arc::new(LocalTaskRecovery::new(db.clone(), registry.clone()));
+        // Creates the schedule tables, so a cutover can write rows into them.
+        LocalScheduleStore::new(db.clone(), AUTHORITY_ORG, schedule_owner())?;
+        Ok(Self {
+            db,
+            registry,
+            recovery,
+        })
+    }
+
+    /// Schedules of one org. With a journal, the store records timers in the
+    /// session log; the runner's store has none, since a delivery is itself
+    /// an admission in that log.
+    fn schedules(
+        &self,
+        org: i64,
+        journal: Option<Arc<dyn everruns_core::host::EventLog>>,
+    ) -> LocalScheduleStore {
+        let store = LocalScheduleStore::scoped(self.db.clone(), org, schedule_owner());
+        match journal {
+            Some(journal) => store.with_journal(journal),
+            None => store,
+        }
     }
 }
 
@@ -114,9 +145,31 @@ impl SqliteHosting {
         self.reattach(session, environment, registry.clone(), store.clone())
             .await?;
         self.services.recovery.recover_session(session).await?;
+        // Schedule timers are journaled through this epoch's fenced log.
+        let services = self.services.clone();
+        let journal = backends.event_log.clone();
         Ok(backends
             .with_session_task_registry(registry)
-            .with_platform_store_factory(Arc::new(move |_, _| store.clone())))
+            .with_platform_store_factory(Arc::new(move |_, _| store.clone()))
+            .with_schedule_store_factory(Arc::new(move |org| {
+                Arc::new(services.schedules(org, Some(journal.clone())))
+                    as Arc<dyn everruns_core::session_services::SessionScheduleStore>
+            })))
+    }
+
+    /// Fire due schedules of hosted sessions as ordinary admissions.
+    pub(super) fn start_schedules(
+        &self,
+        engine: &crate::Engine,
+    ) -> Result<LocalScheduleRunnerHandle> {
+        let runner: Arc<dyn LocalSessionRunner> = Arc::new(HostedSessionRunner {
+            engine: engine.downgrade(),
+            hosting: self.clone(),
+            registry: self.task_registry(),
+        });
+        LocalScheduleRunner::new(self.services.schedules(AUTHORITY_ORG, None), runner)
+            .start()
+            .map_err(AgentLoopError::from)
     }
 
     /// Re-attach running tasks whose owner is proved gone, when their
