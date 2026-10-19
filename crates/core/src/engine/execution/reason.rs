@@ -43,6 +43,7 @@ use crate::engine::{
     image_services::ImageResolver,
     image_services::ResolvedImage,
 };
+use everruns_contracts::durable_retry;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod background_call;
@@ -312,6 +313,26 @@ impl ReasonAtom {
         input: ReasonInput,
         assembled: Option<AssembledTurnContext>,
     ) -> Result<ReasonResult> {
+        let operation = format!("{}/{}", input.context.turn_id, input.iteration);
+        let retry_error = durable_retry::prepare(&operation).await?;
+        // Keep the portable host's already large phase future off the caller's
+        // stack, including ordinary native embedding with no retry host.
+        durable_retry::attempt(Box::pin(self.execute_once(
+            input,
+            assembled,
+            retry_error,
+            &operation,
+        )))
+        .await
+    }
+
+    async fn execute_once(
+        &self,
+        input: ReasonInput,
+        assembled: Option<AssembledTurnContext>,
+        retry_error: Option<AgentLoopError>,
+        retry_operation: &str,
+    ) -> Result<ReasonResult> {
         let ReasonInput {
             context,
             harness_id,
@@ -381,9 +402,10 @@ impl ReasonAtom {
         // Assemble the turn context up-front so the error path below knows
         // the resolved provider/model and the error-disclosure mode even when
         // the LLM call (or the assembly itself) fails.
-        let assembled = match assembled {
-            Some(assembled) => Ok(assembled),
-            None => {
+        let assembled = match (retry_error, assembled) {
+            (Some(error), _) => Err(error),
+            (None, Some(assembled)) => Ok(assembled),
+            (None, None) => {
                 self.context_resolver
                     .resolve_turn_context(TurnContextRequest {
                         session_id: context.session_id,
@@ -430,6 +452,27 @@ impl ReasonAtom {
                 Vec::new(),
                 Err(error),
             ),
+        };
+
+        let call_result = match call_result {
+            Err(error) => match durable_retry::take_retryable_start(error) {
+                Ok((error, policy)) => {
+                    let error = durable_retry::retry(
+                        retry_operation,
+                        policy.as_ref().unwrap_or(&self.provider_retry_config),
+                        error,
+                    )
+                    .await;
+                    // Persistence failures and parking are host control flow.
+                    if durable_retry::is_parked(&error) || !matches!(error, AgentLoopError::Llm(_))
+                    {
+                        return Err(error);
+                    }
+                    Err(error)
+                }
+                Err(error) => Err(error),
+            },
+            result => result,
         };
 
         // Handle LLM call errors gracefully
@@ -1154,18 +1197,22 @@ impl ReasonAtom {
                 &mut llm_messages_for_call,
                 &mut llm_config,
             )
-            .await?;
+            .await
+            .map_err(durable_retry::retryable_start)?;
         }
 
         // 14. Process stream, batching output.message.delta every 100ms. The
         // host's execution slot is free while we wait on the model (model_wait).
         let model_wait = super::model_wait::begin();
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
-        let retry_config = self.provider_retry_config.clone();
         let has_provider_executed_tools =
             hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
-        let mut stream_retry_metadata = RetryMetadata::default();
-        let mut retry_started_at = None;
+        let (retry_config, mut stream_retry_metadata, mut retry_started_at) =
+            durable_retry::restore(
+                &format!("{}/{}", context.turn_id, iteration),
+                &self.provider_retry_config,
+            )
+            .await?;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
@@ -1223,6 +1270,13 @@ impl ReasonAtom {
                     )
                     .await
             };
+            let stream_result = stream_result.map_err(|error| {
+                if has_provider_executed_tools {
+                    durable_retry::without_retry(error)
+                } else {
+                    error
+                }
+            });
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
@@ -1261,7 +1315,8 @@ impl ReasonAtom {
                     .await;
                     let outcome = failed_generation
                         .result(outcome, &stream_retry_metadata)
-                        .await?;
+                        .await
+                        .map_err(durable_retry::retryable_start)?;
                     let Some(outcome) = outcome else {
                         return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
@@ -1278,7 +1333,22 @@ impl ReasonAtom {
                         .await;
                     failed_generation
                         .result(stream, &stream_retry_metadata)
-                        .await?
+                        .await
+                        .map_err(|error| {
+                            if has_provider_executed_tools {
+                                error
+                            } else {
+                                durable_retry::retryable_start(error)
+                            }
+                        })?
+                }
+                Err(error)
+                    if durable_retry::single_attempt()
+                        && error.is_transient_llm_error()
+                        && !error.llm_retry_handled()
+                        && !has_provider_executed_tools =>
+                {
+                    return Err(durable_retry::retryable_start(error));
                 }
                 Err(e)
                     if e.is_transient_llm_error()
@@ -1413,6 +1483,13 @@ impl ReasonAtom {
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
                         ) {
+                            if durable_retry::single_attempt() {
+                                if !matches!(replay_state, StreamReplayState::Replayable) {
+                                    return Err(AgentLoopError::llm(stall_error.message));
+                                }
+                                return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
+                                    crate::engine::error::LlmErrorKind::Unavailable, stall_error.message)));
+                            }
                             let proposed_wait = retry_config
                                 .calculate_backoff(stream_retry_metadata.attempts);
                             let Some(wait_duration) = reserve_retry_wait(
@@ -1760,13 +1837,23 @@ impl ReasonAtom {
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
+                        if durable_retry::single_attempt()
+                            && matches!(replay_state, StreamReplayState::Replayable)
+                            && everruns_contracts::llm_retry::is_transient_stream_error(&err)
+                        {
+                            return Err(durable_retry::retryable_start(AgentLoopError::llm_kind(
+                                err.kind(),
+                                err.to_string(),
+                            )));
+                        }
                         // Keep tool calls (a trailing server_error can follow them) as
                         // a partial success, and text once no retry is left.
-                        let can_retry = replay_state.should_retry(
-                            &err,
-                            stream_retry_metadata.attempts,
-                            retry_config.max_retries,
-                        );
+                        let can_retry = !durable_retry::single_attempt()
+                            && replay_state.should_retry(
+                                &err,
+                                stream_retry_metadata.attempts,
+                                retry_config.max_retries,
+                            );
                         let retry_wait = can_retry.then(|| {
                             let proposed =
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);

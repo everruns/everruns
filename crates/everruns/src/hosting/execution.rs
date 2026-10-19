@@ -91,6 +91,11 @@ pub(crate) async fn run(
         }
     };
     let store = epoch.actor_store();
+    let retries = Arc::new(super::retry::ProviderRetries {
+        engine: engine.clone(),
+        session,
+        epoch: epoch.clone(),
+    });
     let renew_poke = epoch.renew_poke();
     let hosts = Arc::new(FrameworkHosts {
         engine: engine.clone(),
@@ -104,7 +109,8 @@ pub(crate) async fn run(
     if let Some(poke) = renew_poke {
         driver = driver.with_renew_poke(poke);
     }
-    driver.run_actor(activation.actor).await;
+    everruns_contracts::durable_retry::scope(retries, Box::pin(driver.run_actor(activation.actor)))
+        .await;
     Ok(())
 }
 

@@ -209,7 +209,10 @@ where
             })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_stream_error(e));
-        if reconnectable && retry_metadata.attempts < retry_config.max_retries {
+        if reconnectable
+            && !crate::durable_retry::single_attempt()
+            && retry_metadata.attempts < retry_config.max_retries
+        {
             let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
             let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
             else {
@@ -236,14 +239,14 @@ where
         }
 
         if reconnectable {
-            return Err(AgentLoopError::llm_kind(
+            return Err(crate::durable_retry::retryable_start_with_policy(AgentLoopError::llm_kind(
                 crate::error::LlmErrorKind::Unavailable,
                 format!(
                     "{driver_name} stream transport failed after {} retries; the turn is safe to resume",
                     retry_metadata.attempts
                 ),
             )
-            .with_retry_metadata(&retry_metadata));
+            .with_retry_metadata(&retry_metadata), retry_config));
         }
 
         if retry_metadata.had_retries() {
@@ -346,7 +349,10 @@ where
             })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_reqwest_error(e));
-        if reconnectable && retry_metadata.attempts < retry_config.max_retries {
+        if reconnectable
+            && !crate::durable_retry::single_attempt()
+            && retry_metadata.attempts < retry_config.max_retries
+        {
             let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
             let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
             else {
@@ -373,14 +379,14 @@ where
         }
 
         if reconnectable {
-            return Err(AgentLoopError::llm_kind(
+            return Err(crate::durable_retry::retryable_start_with_policy(AgentLoopError::llm_kind(
                 crate::error::LlmErrorKind::Unavailable,
                 format!(
                     "{driver_name} stream transport failed after {} retries; the turn is safe to resume",
                     retry_metadata.attempts
                 ),
             )
-            .with_retry_metadata(&retry_metadata));
+            .with_retry_metadata(&retry_metadata), retry_config));
         }
 
         if retry_metadata.had_retries() {

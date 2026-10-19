@@ -170,6 +170,10 @@ pub(super) async fn try_apply_native_compaction(
         Ok(Some(response)) => response,
         Ok(None) => return Ok(None),
         Err(error) => {
+            if everruns_contracts::durable_retry::single_attempt() && error.is_transient_llm_error()
+            {
+                return Err(everruns_contracts::durable_retry::retryable_start(error));
+            }
             tracing::warn!(
                 session_id = %session_id,
                 error = %error,

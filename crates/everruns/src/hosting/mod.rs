@@ -22,6 +22,7 @@ pub use everruns_contracts::execution_api::ToolApprovalDecision;
 pub use everruns_core::session_commands::{ApprovalCommit, SessionConfiguration};
 pub(crate) mod execution;
 mod memory;
+mod retry;
 pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
@@ -193,7 +194,35 @@ pub struct HostingStatus {
     pub waiting: Vec<crate::ToolCall>,
 }
 
+/// Whether a host needs compute now, at a retained deadline, or only after a
+/// new external event. This is derived state, not another scheduling authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WakeState {
+    /// Execution is running or runnable now.
+    Active,
+    /// No active compute is needed until this authority-clock deadline.
+    At(i64),
+    /// No scheduled compute; external input or intervention is required.
+    Dormant,
+}
+
 impl HostingStatus {
+    /// Derive the compute requirement without claiming or activating execution.
+    pub fn wake(&self) -> WakeState {
+        if self.suspended {
+            WakeState::Dormant
+        } else if self.executing
+            || self.runnable
+            || self.wake_at.is_some_and(|at| at <= self.now_ms)
+        {
+            WakeState::Active
+        } else if let Some(at) = self.wake_at {
+            WakeState::At(at)
+        } else {
+            WakeState::Dormant
+        }
+    }
+
     /// Stable execution API phase, derived from authoritative obligations.
     pub fn phase(&self) -> &'static str {
         if self.suspended {
