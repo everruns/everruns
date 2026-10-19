@@ -6,6 +6,7 @@ members = [
     "capability-pack",
     "event-log",
     "execution-contracts",
+    "host-services",
     "provider-pack",
     "platform-store",
     "workspace-backend",

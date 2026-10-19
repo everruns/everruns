@@ -53,6 +53,8 @@ use capability_implementation::CapabilityImplementation;
 pub struct Model {
     id: String,
     bundled_provider: Option<Provider>,
+    /// Provider named by [`Model::on`]; resolved by key rather than carried.
+    provider_key: Option<everruns_contracts::runtime_provider::ProviderKey>,
 }
 
 impl Model {
@@ -90,10 +92,28 @@ impl Model {
         )
     }
 
+    /// Select a model served by the provider registered under `provider`.
+    ///
+    /// The key is credential-free. Host provider services
+    /// ([`HostProviders`](crate::hosting::services::HostProviders)) resolve it,
+    /// or a separately configured [`AgentBuilder::provider`] with the same key
+    /// serves it. A provider under any other key is a
+    /// [`BuildError::ConflictingProviders`]; nothing falls back to another one.
+    pub fn on(provider: impl Into<String>, id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            bundled_provider: None,
+            provider_key: Some(everruns_contracts::runtime_provider::ProviderKey::from(
+                provider.into(),
+            )),
+        }
+    }
+
     fn bundled(id: impl Into<String>, provider: Provider) -> Self {
         Self {
             id: id.into(),
             bundled_provider: Some(provider),
+            provider_key: None,
         }
     }
 
@@ -115,6 +135,7 @@ impl From<&str> for Model {
         Self {
             id: id.to_string(),
             bundled_provider: None,
+            provider_key: None,
         }
     }
 }
@@ -124,6 +145,7 @@ impl From<String> for Model {
         Self {
             id,
             bundled_provider: None,
+            provider_key: None,
         }
     }
 }
@@ -190,6 +212,7 @@ impl fmt::Debug for Model {
         f.debug_struct("Model")
             .field("id", &self.id)
             .field("bundled_provider", &self.bundled_provider)
+            .field("provider_key", &self.provider_key)
             .finish()
     }
 }
@@ -241,6 +264,14 @@ pub enum BuildError {
     },
     /// A live model was selected without a provider.
     MissingProvider,
+    /// The model, Agent and host services name different providers, or a
+    /// host-resolved model also carries an Agent-owned provider.
+    ConflictingProviders {
+        /// Provider named by the model.
+        model: String,
+        /// Provider supplied by the Agent or `"host"` for host services.
+        provider: String,
+    },
     /// More than one provider was attached to the agent.
     MultipleProviders {
         /// Stable keys of the providers attached to the agent.
@@ -304,6 +335,10 @@ impl fmt::Display for BuildError {
                 write!(f, "duplicate capability id {id:?}")
             }
             BuildError::MissingProvider => write!(f, "agent requires a provider for a live model"),
+            BuildError::ConflictingProviders { model, provider } => write!(
+                f,
+                "model provider {model:?} conflicts with provider {provider:?}"
+            ),
             BuildError::MultipleProviders { registered } => write!(
                 f,
                 "agent accepts one provider; registered providers: [{}]",
@@ -340,7 +375,8 @@ pub struct Agent {
     name: String,
     instructions: String,
     model: ModelSpec,
-    provider: Provider,
+    /// `None` exactly when host provider services resolve the model.
+    provider: Option<Provider>,
     capabilities: Vec<everruns_contracts::CapabilityRef>,
     capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
@@ -359,6 +395,8 @@ pub struct Agent {
     lifecycle_hooks: crate::hooks::LifecycleHooks,
     client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
     client_questions: bool,
+    /// See [`AgentBuilder::host_services`].
+    host_services: Option<crate::hosting::services::HostServices>,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
     pub(crate) state: Arc<AgentState>,
@@ -387,6 +425,7 @@ impl fmt::Debug for Agent {
             .field("workspace_root", &self.workspace_root)
             .field("mcp_servers", &self.mcp_servers)
             .field("plugin_warnings", &self.plugin_warnings)
+            .field("host_services", &self.host_services)
             .field("state", &self.state)
             .finish_non_exhaustive()
     }
@@ -691,6 +730,15 @@ impl Agent {
         everruns_contracts::error::AgentLoopError,
     > {
         backends = crate::batteries::runtime_backends(backends);
+        let host_services = self.host_services.as_ref();
+        if let Some(providers) = host_services.and_then(|services| services.providers.as_ref()) {
+            // Resolve before execution: an unknown host provider is a
+            // configuration failure, never a fallback to another provider.
+            providers.ensure_serves(&self.model.provider).await?;
+            backends.provider_store = Arc::new(crate::hosting::services::HostProviderStore::new(
+                providers.clone(),
+            ));
+        }
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
@@ -878,8 +926,40 @@ impl Agent {
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }
-        Ok(builder.provider(self.provider.clone()))
+        if let Some(services) = host_services {
+            builder = apply_host_services(builder, services);
+        }
+        Ok(match &self.provider {
+            Some(provider) => builder.provider(provider.clone()),
+            None => builder,
+        })
     }
+}
+
+/// Apply host services after the Framework selected the Environment-backed
+/// composition. Nothing here replaces the session filesystem, egress, stores or
+/// the turn runner; capability ids were collision-checked at Agent build time.
+fn apply_host_services(
+    mut builder: InProcessRuntimeBuilder,
+    services: &crate::hosting::services::HostServices,
+) -> InProcessRuntimeBuilder {
+    for capability in &services.capabilities {
+        builder = builder.shared_capability(capability.implementation.clone());
+    }
+    if let Some(providers) = &services.providers {
+        builder = builder.driver_registry(providers.drivers.clone());
+    }
+    if let Some(retry) = &services.retry {
+        builder = builder.provider_retry_config(retry.clone());
+    }
+    if let Some(timeout) = services.stall_timeout {
+        builder = builder.provider_stall_timeout(timeout);
+    }
+    #[cfg(feature = "mcp")]
+    if let Some(auth) = &services.mcp_auth {
+        builder = builder.mcp_auth_provider(auth.clone());
+    }
+    builder
 }
 
 /// Fluent builder behind [`Agent::builder`].
@@ -924,6 +1004,7 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    host_services: Option<crate::hosting::services::HostServices>,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
 }

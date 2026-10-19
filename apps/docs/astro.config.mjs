@@ -349,6 +349,7 @@ export default defineConfig({
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Portable vs Hosted", slug: "framework/capability-boundaries" },
                     { label: "Agent Blueprints", slug: "framework/agent-blueprints" },
+                    { label: "Host Services", slug: "framework/host-services" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
                   ],

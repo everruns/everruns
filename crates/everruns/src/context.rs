@@ -24,6 +24,18 @@ pub struct SessionContext {
     pub locale: Option<String>,
     /// Non-fatal warnings produced while loading local plugins.
     pub plugin_warnings: Vec<String>,
+    /// Slash commands contributed by the session's active capabilities, in
+    /// capability resolution order and deduplicated by name.
+    pub commands: Vec<CommandInfo>,
+}
+
+/// A slash command contributed by an active capability.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandInfo {
+    /// Command name, invoked as `/name`.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
 }
 
 /// One message in an inspected session context.
@@ -50,6 +62,7 @@ impl SessionContext {
     pub(crate) fn from_runtime(
         context: AssembledTurnContext,
         plugin_warnings: Vec<String>,
+        commands: Vec<everruns_core::command::CommandDescriptor>,
     ) -> Self {
         let model = ModelSpec::on(context.model.provider.clone(), context.model.model.clone());
         let messages = context
@@ -78,6 +91,13 @@ impl SessionContext {
             instructions: context.runtime_agent.system_prompt,
             locale: context.resolved_locale,
             plugin_warnings,
+            commands: commands
+                .into_iter()
+                .map(|command| CommandInfo {
+                    name: command.name,
+                    description: command.description,
+                })
+                .collect(),
         }
     }
 }

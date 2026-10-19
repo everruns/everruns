@@ -9,7 +9,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use everruns_contracts::rt::JoinHandle;
-#[cfg(any(feature = "otel", feature = "braintrust"))]
 use everruns_core::EventListener as CoreEventListener;
 use everruns_core::events::Event as CoreEvent;
 use tokio::sync::{mpsc, watch};
@@ -88,7 +87,6 @@ pub trait EventListener: Send + Sync + 'static {
 
 pub(crate) enum ListenerRegistration {
     App(Arc<dyn EventListener>),
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     Host(Arc<dyn CoreEventListener>),
 }
 
@@ -101,7 +99,6 @@ pub(crate) enum ListenerRegistration {
 /// rather than O(n), and the per-listener byte budget below is what bounds what
 /// a slow listener can pin.
 struct DispatchEvent {
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     core: Option<CoreEvent>,
     facade: SessionEvent,
 }
@@ -110,12 +107,9 @@ impl DispatchEvent {
     fn retained_bytes(&self) -> usize {
         let facade = self.facade.as_json().to_string().len()
             + self.facade.canonical_json().to_string().len();
-        #[cfg(any(feature = "otel", feature = "braintrust"))]
         let core = self.core.as_ref().map_or(0, |core| {
             serde_json::to_vec(core).map_or(0, |value| value.len())
         });
-        #[cfg(not(any(feature = "otel", feature = "braintrust")))]
-        let core = 0;
         facade.saturating_add(core)
     }
 }
@@ -144,7 +138,6 @@ fn reserve_retained_bytes(retained: &AtomicUsize, bytes: usize, capacity: usize)
 
 enum ListenerTarget {
     App(Arc<dyn EventListener>),
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     Host(Arc<dyn CoreEventListener>),
 }
 
@@ -154,7 +147,6 @@ impl ListenerTarget {
             Self::App(listener) => listener.on_event(&event.facade).await,
             // `dispatch` clones the core half whenever a host listener matched,
             // so a host listener can only be handed an event that carries one.
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(listener) => {
                 if let Some(core) = event.core.as_ref() {
                     listener.on_event(core).await;
@@ -169,7 +161,6 @@ impl ListenerTarget {
                 listener.flush().await;
                 Ok(())
             }
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(listener) => listener.flush().await,
         }
     }
@@ -177,7 +168,6 @@ impl ListenerTarget {
 
 enum ListenerFilter {
     App(EventFilter),
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     Host(Option<Vec<&'static str>>),
 }
 
@@ -185,16 +175,13 @@ impl ListenerFilter {
     fn matches(&self, _core: &CoreEvent, facade: &SessionEvent) -> bool {
         match self {
             Self::App(filter) => filter.matches(facade),
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(None) => true,
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             Self::Host(Some(types)) => types.contains(&_core.event_type.as_str()),
         }
     }
 
     /// Whether this listener consumes the raw `CoreEvent` half of a dispatch.
     /// `dispatch` uses it to decide whether cloning that half is worth anything.
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     fn is_host(&self) -> bool {
         matches!(self, Self::Host(_))
     }
@@ -368,7 +355,6 @@ impl ListenerSlot {
                 ListenerFilter::App(listener.filter()),
                 ListenerTarget::App(listener),
             ),
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             ListenerRegistration::Host(listener) => (
                 listener.name().to_string(),
                 ListenerFilter::Host(listener.event_types()),
@@ -577,12 +563,10 @@ impl ObserverDispatcher {
         // an allocation per dispatched event would cost more than re-running the
         // compare.
         let mut any_match = false;
-        #[cfg(any(feature = "otel", feature = "braintrust"))]
         let mut wants_core = false;
         for slot in &self.slots {
             if slot.filter.matches(core, facade) {
                 any_match = true;
-                #[cfg(any(feature = "otel", feature = "braintrust"))]
                 if slot.filter.is_host() {
                     wants_core = true;
                 }
@@ -593,7 +577,6 @@ impl ObserverDispatcher {
         }
 
         Some(Arc::new(DispatchEvent {
-            #[cfg(any(feature = "otel", feature = "braintrust"))]
             core: wants_core.then(|| core.clone()),
             facade: facade.clone(),
         }))
@@ -679,7 +662,6 @@ mod tests {
     use everruns_contracts::typed_id::EventId;
     use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
     use everruns_core::event_emitter::EventEmitter;
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     use everruns_core::events::EventData;
     use everruns_core::events::OutputMessageDeltaData;
     use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
@@ -687,7 +669,6 @@ mod tests {
     use serde_json::json;
     use tokio::sync::Notify;
 
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     use super::{CoreEvent, CoreEventListener};
     use super::{
         EventFilter, EventListener, ListenerRegistration, OBSERVER_QUEUE_CAPACITY,
@@ -790,10 +771,8 @@ mod tests {
 
     /// An unfiltered host listener, for asserting that the core half is still
     /// cloned when something consumes it.
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     struct CoreRecorder;
 
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     #[async_trait]
     impl CoreEventListener for CoreRecorder {
         async fn on_event(&self, _event: &CoreEvent) {}
@@ -824,7 +803,6 @@ mod tests {
     /// An app-only dispatcher must not clone the `CoreEvent` at all: nobody is
     /// there to read it, and it is the half that carries the growing
     /// `accumulated` prefix (TM-DOS-037).
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     #[test]
     fn app_only_dispatch_does_not_clone_the_core_event() {
         let accumulated = "x".repeat(1024 * 1024);
@@ -859,7 +837,6 @@ mod tests {
 
     /// A host listener still gets its core half, so the laziness above cannot be
     /// implemented by simply never cloning.
-    #[cfg(any(feature = "otel", feature = "braintrust"))]
     #[test]
     fn a_host_listener_still_receives_the_core_event() {
         let core = output_delta_with_accumulated("prefix");
@@ -1120,6 +1097,61 @@ mod tests {
             .expect("turn runs");
         assert!(turn.success);
         assert!(engine.observer_stats().dropped() > 0);
+
+        release.notify_waiters();
+        let report = engine.shutdown(Duration::from_secs(5)).await;
+        assert!(!report.timed_out);
+    }
+
+    struct SlowHostListener {
+        blocked: AtomicBool,
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait]
+    impl CoreEventListener for SlowHostListener {
+        async fn on_event(&self, _event: &CoreEvent) {
+            if !self.blocked.swap(true, Ordering::AcqRel) {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+        }
+
+        fn name(&self) -> &'static str {
+            "slow-host"
+        }
+    }
+
+    /// EVE-1296: a full host observer queue drops envelopes; it never delays
+    /// or fails the turn.
+    #[tokio::test]
+    async fn full_host_listener_never_blocks_turn_and_overflow_is_counted() {
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let engine = Engine::builder()
+            .observer_queue_capacity(1)
+            .host_listener(SlowHostListener {
+                blocked: AtomicBool::new(false),
+                entered: entered.clone(),
+                release: release.clone(),
+            })
+            .build();
+        let session = engine.create(simple_agent());
+        let run = everruns_contracts::rt::spawn(async move { session.run("hello").await });
+
+        everruns_contracts::rt::timeout(Duration::from_secs(5), entered.notified())
+            .await
+            .expect("host listener receives an event");
+        let turn = everruns_contracts::rt::timeout(Duration::from_secs(5), run)
+            .await
+            .expect("full host listener does not delay the turn")
+            .expect("turn task remains healthy")
+            .expect("turn runs");
+        assert!(turn.success);
+        let stats = engine.observer_stats();
+        assert!(stats.dropped() > 0);
+        assert_eq!(stats.listeners[0].name, "slow-host");
 
         release.notify_waiters();
         let report = engine.shutdown(Duration::from_secs(5)).await;

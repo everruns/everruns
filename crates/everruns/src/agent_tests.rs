@@ -204,7 +204,7 @@ fn build_resolves_plain_model_id_against_provider() {
         .expect("valid agent");
 
     assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
-    assert_eq!(agent.provider.id().as_str(), "acme");
+    assert_eq!(agent.provider.as_ref().unwrap().id().as_str(), "acme");
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn build_accepts_a_model_with_its_provider() {
         .expect("valid agent");
 
     assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
-    assert_eq!(agent.provider.id().as_str(), "acme");
+    assert_eq!(agent.provider.as_ref().unwrap().id().as_str(), "acme");
 }
 
 #[test]

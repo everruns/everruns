@@ -54,6 +54,19 @@ impl AgentBuilder {
         self
     }
 
+    /// Compose host capability, provider, recovery and MCP credential services
+    /// into every runtime Engine constructs for this Agent.
+    ///
+    /// See [`hosting::services`](crate::hosting::services). Services never
+    /// replace Engine session authority or the Environment filesystem, and a
+    /// host capability that collides with a Framework capability, alias or
+    /// tool fails [`build`](Self::build). A later call replaces earlier
+    /// services. Stability: experimental.
+    pub fn host_services(mut self, services: crate::hosting::services::HostServices) -> Self {
+        self.host_services = Some(services);
+        self
+    }
+
     /// Set a human-readable name. Optional; defaults to `"agent"`.
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
@@ -499,19 +512,48 @@ impl AgentBuilder {
         if let Some(provider) = model.bundled_provider {
             providers.push(provider);
         }
-        if providers.is_empty() {
-            return Err(BuildError::MissingProvider);
-        }
-        if providers.len() > 1 {
-            let mut registered = providers
-                .iter()
-                .map(|provider| provider.id().to_string())
-                .collect::<Vec<_>>();
-            registered.sort();
-            return Err(BuildError::MultipleProviders { registered });
-        }
-        let provider = providers.pop().expect("provider count checked above");
-        let model = ModelSpec::on(provider.id().clone(), model.id);
+        let host_providers = self
+            .host_services
+            .as_ref()
+            .is_some_and(|services| services.providers.is_some());
+        let (model, provider) = if host_providers {
+            // One owner per model: host-resolved models carry no Agent provider.
+            if let Some(provider) = providers.first() {
+                return Err(BuildError::ConflictingProviders {
+                    model: model
+                        .provider_key
+                        .map_or_else(|| provider.id().to_string(), |key| key.to_string()),
+                    provider: "host".to_string(),
+                });
+            }
+            let key = model.provider_key.ok_or(BuildError::MissingProvider)?;
+            (ModelSpec::on(key, model.id), None)
+        } else {
+            if providers.is_empty() {
+                return Err(BuildError::MissingProvider);
+            }
+            if providers.len() > 1 {
+                let mut registered = providers
+                    .iter()
+                    .map(|provider| provider.id().to_string())
+                    .collect::<Vec<_>>();
+                registered.sort();
+                return Err(BuildError::MultipleProviders { registered });
+            }
+            let provider = providers.pop().expect("provider count checked above");
+            if let Some(key) = &model.provider_key
+                && key != provider.id()
+            {
+                return Err(BuildError::ConflictingProviders {
+                    model: key.to_string(),
+                    provider: provider.id().to_string(),
+                });
+            }
+            (
+                ModelSpec::on(provider.id().clone(), model.id),
+                Some(provider),
+            )
+        };
         let name = self.name.unwrap_or_else(|| "agent".to_string());
 
         // Function tools retain their own public entrypoint. Privately they are
@@ -564,6 +606,15 @@ impl AgentBuilder {
         let mut capability_implementations = Vec::new();
         // Neutral duplicate/collision rejection shared with product registries.
         let mut activated_capabilities = everruns_contracts::ActivationSet::new();
+        if let Some(services) = &self.host_services {
+            services.validate(&capability_registry, &mut seen_tool_names)?;
+        }
+        let host_capability = |id: &str| {
+            self.host_services
+                .as_ref()
+                .and_then(|services| services.resolves(id))
+                .map(str::to_string)
+        };
 
         for input in self.capabilities {
             let parts = input.into_parts();
@@ -585,8 +636,9 @@ impl AgentBuilder {
 
             let canonical_id = capability_registry
                 .canonical_id(&input_id)
-                .unwrap_or(&input_id)
-                .to_string();
+                .map(str::to_string)
+                .or_else(|| host_capability(&input_id))
+                .unwrap_or_else(|| input_id.clone());
             if activated_capabilities.contains(&canonical_id) {
                 return Err(BuildError::DuplicateCapability { id: canonical_id });
             }
@@ -599,7 +651,9 @@ impl AgentBuilder {
                         id: input_id.clone(),
                         reason: error.reason(),
                     })?;
-                if capability_registry.get(definition.id()).is_some() {
+                if capability_registry.get(definition.id()).is_some()
+                    || host_capability(definition.id()).is_some()
+                {
                     return Err(BuildError::DuplicateCapability {
                         id: definition.id().to_string(),
                     });
@@ -632,6 +686,9 @@ impl AgentBuilder {
                 &canonical_id,
                 parts.reference.config_value(),
             )?;
+            if let Some(services) = &self.host_services {
+                services.validate_reference(&canonical_id, parts.reference.config_value())?;
+            }
             activated_capabilities
                 .activate(canonical_id.clone())
                 .map_err(|error| BuildError::DuplicateCapability {
@@ -641,6 +698,26 @@ impl AgentBuilder {
                 canonical_id,
                 parts.reference.config_value().clone(),
             ));
+        }
+
+        // Host-activated capabilities follow the Agent's own references, in
+        // registration order, so instruction order is deterministic.
+        if let Some(services) = &self.host_services {
+            for capability in &services.capabilities {
+                let Some(config) = &capability.activation else {
+                    continue;
+                };
+                let id = capability.implementation.id().to_string();
+                activated_capabilities
+                    .activate(id.clone())
+                    .map_err(|error| BuildError::DuplicateCapability {
+                        id: error.id().to_string(),
+                    })?;
+                capabilities.push(everruns_contracts::CapabilityRef::with_config(
+                    id,
+                    config.clone(),
+                ));
+            }
         }
 
         // Approval-gated function tools share one host gate whose policy names
@@ -701,6 +778,7 @@ impl AgentBuilder {
                 }
             })?;
             if capability_registry.get(&id).is_some()
+                || host_capability(&id).is_some()
                 || activated_capabilities.activate(id.clone()).is_err()
             {
                 return Err(BuildError::DuplicateCapability { id });
@@ -736,6 +814,7 @@ impl AgentBuilder {
             lifecycle_hooks: self.lifecycle_hooks,
             client_tools: self.client_tools,
             client_questions: self.client_questions,
+            host_services: self.host_services,
             backends: self.backends,
             state: Arc::new(AgentState::new(workspace_backends)),
         })
