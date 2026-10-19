@@ -2577,6 +2577,7 @@ dependencies = [
 name = "everruns"
 version = "0.48.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "async-trait",
  "axum",
@@ -2595,6 +2596,7 @@ dependencies = [
  "futures",
  "libc",
  "parking_lot",
+ "rand 0.10.3",
  "rusqlite",
  "schemars",
  "serde",

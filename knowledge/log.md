@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **Native authority secrets.** `SqliteHosting` stores session secrets sealed
+  with the platform envelope scheme when given secret keys, and cutover moves
+  legacy secrets under them. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
 * **Legacy session cutover.** Legacy local/custom-backend sessions import into
   the SQLite authority in one transaction with a recorded source boundary and
   ownership decision; the legacy executor is frozen, never a fallback. Custom
