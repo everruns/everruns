@@ -304,6 +304,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
+| [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
 | AG-UI Agent Delegation | Session Tasks |
