@@ -11,6 +11,34 @@
 
 ## 2026-10-18
 
+* **Memory deferred.** Remove memory adoption, compatibility migration, and mount
+  authorization changes from the scoped-resource implementation. Memory needs a
+  separate design and rebuild from scratch; current behavior and data stay
+  unchanged. The active plan has six stages. See
+  [Scoped Resources Implementation Request](security/scoped-resources-implementation-request.md).
+
+* **GitHub compatibility constraint.** Stage 5 preserves the recently refactored
+  GitHub identities, explicit org-installation choices, narrowed token requests,
+  setup surfaces, and webhook routing. Integrate shared access through adapters;
+  do not redesign GitHub or absorb its unfinished roadmap. See
+  [Scoped Resources Implementation Request](security/scoped-resources-implementation-request.md).
+
+* **Scoped resources implementation request.** Record the seven-stage delivery
+  order, migration and authority constraints, adapter dependencies, and acceptance
+  bar. See [Scoped Resources Implementation Request](security/scoped-resources-implementation-request.md).
+
+* **web_fetch credential implementation request.** Define the stage-4 boundary
+  between raw HTTP/capture processing, shared credential authorization/storage,
+  egress, and durable consent; require bounded reading, atomic capture, redaction,
+  and end-to-end acceptance tests. See
+  [Secure web_fetch Credentials](execution/web-fetch-credentials-request.md).
+
+* **Scoped resource access proposal.** Define common org, virtual-user, agent,
+  and session ownership, explicit sharing grants, invocation-based authorization,
+  and revocation for connections, credential bindings, memory, and GitHub uses.
+  Design only; implementation awaits approval. See
+  [Scoped Resource Ownership and Access](security/resource-access.md).
+
 * **Tenant egress proxy in OSS.** The proxy moves from SaaS into the server
   crate as `everruns-egress-proxy`; core owns the token on both sides; caps are
   off unless configured; hosts plug in limits and usage over two traits or an

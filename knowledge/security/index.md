@@ -9,6 +9,8 @@
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).
 * [Multitenancy](multitenancy.md) - Organization-based multitenancy.
 * [Permissions Model](permissions.md) - Fine-grained permissions model.
+* [Scoped Resource Ownership and Access](resource-access.md) - Proposed shared ownership, grants, and runtime authorization for connections, credential bindings, and GitHub; memory deferred.
+* [Scoped Resources Implementation Request](scoped-resources-implementation-request.md) - Six-stage implementation handoff for common access, credential capture, and GitHub compatibility; memory excluded.
 * [Feature Flags](feature-flags.md) - Feature flags system.
 * [Budgeting Specification](budgeting.md) - Extensible budgeting system.
 * [Usage Tracking Specification](usage-tracking.md) - LLM token usage tracking.
