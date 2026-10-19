@@ -339,6 +339,7 @@ impl Engine {
             image.values.len(),
         );
         let secret_count = image.secrets.len();
+        let schedule_count = image.schedules.len();
         let volatile_workspace = image.source["volatile_workspace"].as_bool() == Some(true);
         let replayed = profile
             .import_legacy(session, image)
@@ -366,6 +367,7 @@ impl Engine {
             values: counts.2,
             volatile_workspace,
             secrets: secret_count,
+            schedules: schedule_count,
         })
     }
 
@@ -495,14 +497,26 @@ impl Engine {
                 tasks.push((task, messages));
             }
         }
-        // The schedule store is a native host service.
+        // Schedules move with their journal metadata; the authority's runner
+        // fires them from here on. The schedule store is a native service.
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+        let mut schedules = Vec::new();
         #[cfg(not(target_arch = "wasm32"))]
         if let (Some(factory), Some(record)) = (&host.schedule_store_factory, &record) {
             let org = everruns_core::host::in_process_internal_org_id(&record.organization_id);
-            if factory(org).count_active_schedules(session).await? > 0 {
-                return Err(AgentLoopError::config(
-                    "the legacy session has active schedules; cancel them before cutover",
-                ));
+            for schedule in factory(org).list_schedules(session).await? {
+                let metadata = events
+                    .iter()
+                    .rev()
+                    .find_map(|event| match &event.data {
+                        EventData::TimerSet(set) if set.timer_id == schedule.id.to_string() => {
+                            Some(set.metadata.clone())
+                        }
+                        _ => None,
+                    })
+                    .filter(|metadata| !metadata.is_null())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                schedules.push((schedule, metadata));
             }
         }
 
@@ -574,6 +588,7 @@ impl Engine {
             values,
             tasks,
             secrets,
+            schedules,
             workspace,
         })
     }

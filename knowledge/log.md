@@ -2,6 +2,11 @@
 
 ## 2026-10-19
 
+* **Authority schedules.** Imported and native schedules of coherent SQLite
+  sessions fire from the supervisor as admissions; the rewind proposal awaits
+  an owner decision. See
+  [Local authority cutover](framework/local-authority-cutover.md).
+
 * **Authority task services.** Coherent SQLite sessions get the durable task
   registry, child sessions and coordination wakes; cutover carries tasks, and
   lost executions are re-attached or settled on activation. See
