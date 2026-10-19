@@ -108,6 +108,23 @@ impl LlmRetryConfig {
 
         Duration::from_secs_f64((capped_backoff + jitter).max(0.0))
     }
+
+    /// How far recovery got before the retry time budget ran out, for error
+    /// text: time actually spent since the first transient failure next to the
+    /// budget. Printing only the budget made a failure that gave up within
+    /// milliseconds read as "over 30.0s" (production, 2026-10-16).
+    pub fn budget_exhausted_detail(
+        &self,
+        started_at: Option<crate::rt::Instant>,
+        attempts: u32,
+    ) -> String {
+        let elapsed = started_at.map(|s| s.elapsed()).unwrap_or_default();
+        format!(
+            "after {attempts} retries in {:.1}s of a {:.1}s budget",
+            elapsed.as_secs_f64(),
+            self.max_retry_elapsed.as_secs_f64()
+        )
+    }
 }
 
 /// Reserve one retry wait inside the configured elapsed-time budget.
@@ -609,7 +626,7 @@ where
     let mut retry_metadata = RetryMetadata::default();
     let mut retry_started_at = None;
 
-    let budget_exhausted = |metadata: &RetryMetadata| {
+    let budget_exhausted = |metadata: &RetryMetadata, started_at: Option<crate::rt::Instant>| {
         crate::llm_telemetry::warn_retry_exhausted(
             driver_name,
             metadata.attempts,
@@ -619,9 +636,8 @@ where
         AgentLoopError::llm_kind(
             crate::error::LlmErrorKind::Unavailable,
             format!(
-                "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
-                metadata.attempts,
-                config.max_retry_elapsed.as_secs_f64()
+                "{driver_name} retry time budget exhausted {}",
+                config.budget_exhausted_detail(started_at, metadata.attempts)
             ),
         )
         .with_retry_metadata(metadata)
@@ -633,11 +649,11 @@ where
             // sending again. None here means expired, not an initial request.
             let remaining = remaining_retry_time(config, retry_started_at).unwrap_or_default();
             if remaining.is_zero() {
-                return Err(budget_exhausted(&retry_metadata));
+                return Err(budget_exhausted(&retry_metadata, retry_started_at));
             }
             match crate::rt::timeout(remaining, send()).await {
                 Ok(result) => result,
-                Err(_) => return Err(budget_exhausted(&retry_metadata)),
+                Err(_) => return Err(budget_exhausted(&retry_metadata, retry_started_at)),
             }
         } else {
             send().await
@@ -695,8 +711,22 @@ where
                 wait,
                 rate_limit_info,
             } => {
-                let Some(wait) = reserve_retry_wait(config, &mut retry_started_at, wait) else {
-                    return Err(budget_exhausted(&retry_metadata));
+                // The classifier's wait is usually the provider's Retry-After.
+                // When it cannot fit the remaining budget, fall back to backoff
+                // (as `next_retry_wait` does) rather than giving up with zero
+                // retries: a 45s Retry-After against the 30s budget used to
+                // fail the turn within milliseconds (production, 2026-10-16).
+                let attempt = retry_metadata.attempts;
+                let Some(wait) =
+                    reserve_retry_wait(config, &mut retry_started_at, wait).or_else(|| {
+                        reserve_retry_wait(
+                            config,
+                            &mut retry_started_at,
+                            config.calculate_backoff(attempt),
+                        )
+                    })
+                else {
+                    return Err(budget_exhausted(&retry_metadata, retry_started_at));
                 };
                 // The provider's own Retry-After next to the wait actually
                 // used, so an operator can see when the hint was capped or
@@ -747,6 +777,10 @@ where
 // ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+#[path = "llm_retry_budget_tests.rs"]
+mod budget_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1414,68 +1448,5 @@ mod tests {
                 }
             );
         }
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn retry_wait_reservations_enforce_strict_remaining_time() {
-        let config = LlmRetryConfig {
-            max_retry_elapsed: Duration::from_secs(3),
-            ..Default::default()
-        };
-        let mut started = None;
-        assert_eq!(remaining_retry_time(&config, started), None);
-        assert_eq!(
-            reserve_retry_wait(&config, &mut started, Duration::from_secs(3)),
-            None
-        );
-        assert_eq!(
-            reserve_retry_wait(&config, &mut started, Duration::from_secs(2)),
-            Some(Duration::from_secs(2))
-        );
-        tokio::time::advance(Duration::from_secs(2)).await;
-        assert_eq!(
-            remaining_retry_time(&config, started),
-            Some(Duration::from_secs(1))
-        );
-        assert_eq!(
-            reserve_retry_wait(&config, &mut started, Duration::from_secs(1)),
-            None
-        );
-        assert_eq!(
-            reserve_retry_wait(&config, &mut started, Duration::from_millis(999)),
-            Some(Duration::from_millis(999))
-        );
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert_eq!(
-            reserve_retry_wait(&config, &mut started, Duration::ZERO),
-            None
-        );
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert_eq!(remaining_retry_time(&config, started), None);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn next_retry_wait_honors_retry_after_only_within_budget() {
-        let config = LlmRetryConfig {
-            initial_backoff: Duration::from_millis(100),
-            jitter_factor: 0.0,
-            max_retry_elapsed: Duration::from_secs(30),
-            ..LlmRetryConfig::default()
-        };
-        let backoff = config.calculate_backoff(0);
-        assert_eq!(next_retry_wait(&config, None, 0, None), backoff);
-        assert_eq!(
-            next_retry_wait(&config, None, 0, Some(7)),
-            Duration::from_secs(7)
-        );
-        assert_eq!(next_retry_wait(&config, None, 0, Some(120)), backoff);
-
-        let started = Some(crate::rt::Instant::now());
-        tokio::time::advance(Duration::from_secs(25)).await;
-        assert_eq!(next_retry_wait(&config, started, 0, Some(7)), backoff);
-        assert_eq!(
-            next_retry_wait(&config, started, 0, Some(4)),
-            Duration::from_secs(4)
-        );
     }
 }

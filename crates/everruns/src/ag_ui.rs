@@ -205,6 +205,8 @@
 // message. A run that sees the calls requested waits for the turn to record
 // the park before it ends, so the next run always finds it.
 
+mod stream;
+
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -799,7 +801,20 @@ pub enum ResumeOutcome {
 /// let options = AgUiOptions::new().interrupts(Nothing(broadcast::channel(8).0));
 /// # let _ = options;
 /// ```
+#[async_trait::async_trait]
 pub trait InterruptSource: Send + Sync + 'static {
+    /// Read durable interrupts from a remote or transactional authority.
+    async fn query(&self, session_id: SessionId) -> Result<Vec<Interrupt>, AgUiError> {
+        Ok(self.interrupts(session_id))
+    }
+    /// Apply resume commands through an authority, preserving the local gate default.
+    async fn resume_commands(
+        &self,
+        session_id: SessionId,
+        entries: &[ResumeEntry],
+    ) -> Result<ResumeOutcome, AgUiError> {
+        self.resume(session_id, entries)
+    }
     /// The interrupts open on `session_id`, oldest first. Empty when the
     /// session waits on nothing.
     fn interrupts(&self, session_id: SessionId) -> Vec<Interrupt>;
@@ -995,7 +1010,7 @@ impl AgUiStream {
     /// };
     /// let run = session.ag_ui(input).await?;
     /// let sent = run.sent().expect("a user message starts a turn");
-    /// assert_eq!(sent.disposition, SendDisposition::Started);
+    /// assert_eq!(sent.disposition, SendDisposition::Pending);
     /// assert!(sent.wait().await?.success);
     /// # Ok(())
     /// # }
@@ -1147,6 +1162,7 @@ impl Session {
             seed_history,
         } = options;
         let session_id = self.session_id();
+        self.refresh_hosted_calls().await?;
         let frontend_tools = frontend_definitions(&input.tools)?;
         let frontend: HashSet<String> = input.tools.iter().map(|tool| tool.name.clone()).collect();
         let results = trailing_results(&input.messages);
@@ -1204,14 +1220,14 @@ impl Session {
         };
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
-        let events = self.events();
+        let events = self.protocol_events().await?;
         let parked = gate.as_ref().map(|gate| gate.subscribe());
         let parked_calls = self.watch_parked_tool_calls();
-        let open_interrupts = || {
-            gate.as_ref()
-                .map(|gate| gate.interrupts(session_id))
-                .unwrap_or_default()
+        let initial_interrupts = match &gate {
+            Some(gate) => gate.query(session_id).await?,
+            None => Vec::new(),
         };
+        let open_interrupts = || initial_interrupts.clone();
 
         let mut sent = None;
         let start = if let Some((_, text)) = trigger {
@@ -1241,7 +1257,7 @@ impl Session {
                 );
             }
             match &gate {
-                Some(gate) => match gate.resume(session_id, &input.resume)? {
+                Some(gate) => match gate.resume_commands(session_id, &input.resume).await? {
                     ResumeOutcome::NothingOpen => Start::Empty,
                     ResumeOutcome::StillOpen(interrupts) => Start::Park(Vec::new(), interrupts),
                     ResumeOutcome::Resumed => Start::Follow,
@@ -1280,7 +1296,7 @@ impl Session {
             parked_calls,
             awaiting: None,
         };
-        let run = futures::stream::unfold(state, next_event);
+        let run = futures::stream::unfold(state, stream::next_event);
         let stream = futures::stream::once(async move { Event::RunStarted(started) }).chain(run);
         Ok(AgUiStream {
             inner: Box::pin(stream),
@@ -1322,156 +1338,5 @@ impl Session {
                 }
             }
         }
-    }
-}
-
-async fn next_event(mut state: RunState) -> Option<(Event, RunState)> {
-    loop {
-        if let Some(event) = state.projector.pop() {
-            return Some((event, state));
-        }
-        if state.projector.is_finished() {
-            return None;
-        }
-        let session_id = state.session.session_id();
-        tokio::select! {
-            next = state.events.recv() => match next {
-                Ok(Some(event)) => state.project(&event),
-                Ok(None) => state.projector.fail(RunErrorEvent::new(
-                    "the session closed before the run finished",
-                )),
-                Err(EventStreamError::Lagged { .. }) => state.recover().await,
-            },
-            () = parked_on(&mut state.parked, session_id) => state.interrupt_if_parked(),
-            () = parked_with(&mut state.parked_calls, state.awaiting.as_deref()) => {
-                state.park_frontend_calls();
-            }
-        }
-    }
-}
-
-/// Resolves once the session has parked on every call in `awaiting`, which
-/// it records as the turn ends. Pending while nothing is awaited.
-async fn parked_with(
-    parked: &mut watch::Receiver<Option<ParkedToolCalls>>,
-    awaiting: Option<&[WireToolCall]>,
-) {
-    let Some(calls) = awaiting else {
-        return std::future::pending().await;
-    };
-    let covered = parked.wait_for(|parked| {
-        parked.as_ref().is_some_and(|parked| {
-            calls
-                .iter()
-                .all(|call| parked.tool_calls.iter().any(|made| made.id == call.id))
-        })
-    });
-    if covered.await.is_err() {
-        std::future::pending::<()>().await;
-    }
-}
-
-/// Resolves when a request parks on `session_id`, or the gate's notices
-/// lagged (the open interrupts are re-read either way).
-async fn parked_on(parked: &mut Option<broadcast::Receiver<SessionId>>, session_id: SessionId) {
-    let Some(rx) = parked else {
-        return std::future::pending().await;
-    };
-    loop {
-        match rx.recv().await {
-            Ok(id) if id == session_id => return,
-            Ok(_) => continue,
-            Err(broadcast::error::RecvError::Lagged(_)) => return,
-            Err(broadcast::error::RecvError::Closed) => return std::future::pending().await,
-        }
-    }
-}
-
-impl RunState {
-    fn project(&mut self, event: &crate::SessionEvent) {
-        if let Some(sequence) = event.sequence() {
-            self.last_sequence = Some(self.last_sequence.map_or(sequence, |s| s.max(sequence)));
-        }
-        let data = event
-            .canonical_json()
-            .get("data")
-            .cloned()
-            .unwrap_or(Value::Null);
-        // Calls to this run's frontend tools are the consumer's to run: the
-        // turn parks on them and the run ends naming them, once it has.
-        if event.event_type() == "tool.call_requested" {
-            let calls: Vec<WireToolCall> = serde_json::from_value::<ToolCallRequestedData>(data)
-                .map(|requested| {
-                    requested
-                        .tool_calls
-                        .into_iter()
-                        .filter(|call| self.frontend.contains(&call.name))
-                        .map(|call| {
-                            WireToolCall::function(call.id, call.name, call.arguments.to_string())
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            if !calls.is_empty() {
-                self.awaiting = Some(calls);
-            }
-            return;
-        }
-        self.projector.project(event.event_type(), &data);
-    }
-
-    /// The turn parked on the frontend calls it requested: flush what it
-    /// emitted, then end the run with them, beside any open interrupt.
-    fn park_frontend_calls(&mut self) {
-        let Some(calls) = self.awaiting.take() else {
-            return;
-        };
-        while let Ok(Some(event)) = self.events.try_recv() {
-            self.project(&event);
-            if self.projector.is_finished() {
-                return;
-            }
-        }
-        let interrupts = self
-            .gate
-            .as_ref()
-            .map(|gate| gate.interrupts(self.session.session_id()))
-            .unwrap_or_default();
-        self.projector.park(calls, interrupts);
-    }
-
-    /// The run fell behind the live feed: replay the durable log after the
-    /// last durable event seen. Ephemeral deltas in the gap are lost, which
-    /// only shortens streamed text; completions are durable.
-    async fn recover(&mut self) {
-        let Some(after) = self.last_sequence else {
-            self.projector.fail(RunErrorEvent::new(
-                "the run fell behind the session's event stream",
-            ));
-            return;
-        };
-        match self.session.events_from(after).await {
-            Ok(events) => self.events = events,
-            Err(error) => self.projector.fail(RunErrorEvent::new(format!(
-                "the run fell behind the session's event stream: {error}"
-            ))),
-        }
-    }
-
-    /// A request parked: flush what the turn already emitted, then end the
-    /// run with every open interrupt.
-    fn interrupt_if_parked(&mut self) {
-        let Some(gate) = &self.gate else { return };
-        let interrupts = gate.interrupts(self.session.session_id());
-        if interrupts.is_empty() {
-            return;
-        }
-        while let Ok(Some(event)) = self.events.try_recv() {
-            self.project(&event);
-            if self.projector.is_finished() {
-                return;
-            }
-        }
-        self.projector.interrupt(interrupts);
     }
 }

@@ -80,6 +80,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
     cp target/$(xx-cargo --print-target-triple)/release/everruns-worker /app/everruns-worker && \
     cp target/$(xx-cargo --print-target-triple)/release/reencrypt-secrets /app/reencrypt-secrets && \
     cp target/$(xx-cargo --print-target-triple)/release/everruns-migrate /app/everruns-migrate && \
+    cp target/$(xx-cargo --print-target-triple)/release/everruns-egress-proxy /app/everruns-egress-proxy && \
     xx-cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
 
 # ============================================================================
@@ -90,6 +91,9 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57
 WORKDIR /app
 
 COPY --from=builder-all /app/everruns-server /app/everruns-server
+# Optional tenant egress proxy; run with `/app/everruns-egress-proxy` as the
+# command (ports 4750 proxy, 4751 health). See crates/server/src/egress_proxy.
+COPY --from=builder-all /app/everruns-egress-proxy /app/everruns-egress-proxy
 
 EXPOSE 9000
 EXPOSE 9001

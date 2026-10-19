@@ -6,8 +6,8 @@ use super::{
     is_model_unavailable, is_quota_exhausted, is_transient_transport_error,
     is_upstream_shared_pool_rate_limited, live_retry_backoff,
 };
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::TurnId;
-use everruns_core::turn::TurnStopReason;
 use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
 /// Label for the synthetic retry/skip tests below. Deliberately not a real

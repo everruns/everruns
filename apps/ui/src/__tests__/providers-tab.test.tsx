@@ -41,10 +41,11 @@ jest.mock("@/hooks/use-providers", () => ({
   }),
 }));
 
+const mockUpdateOrganization = jest.fn().mockResolvedValue({});
 let mockOrg: Record<string, unknown> = {};
 jest.mock("@/hooks/use-organizations", () => ({
   useOrganization: () => ({ data: mockOrg, isLoading: false, error: null }),
-  useUpdateOrganization: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useUpdateOrganization: () => ({ mutateAsync: mockUpdateOrganization, isPending: false }),
 }));
 
 jest.mock("@/lib/api/providers", () => ({
@@ -169,6 +170,7 @@ describe("ProvidersTab", () => {
 describe("DefaultsTab", () => {
   beforeEach(() => {
     window.HTMLElement.prototype.scrollIntoView = jest.fn();
+    mockUpdateOrganization.mockClear();
     mockOrg = { id: "org_1", default_model_id: "model-1", default_provider_per_service: {} };
   });
 
@@ -201,6 +203,51 @@ describe("DefaultsTab", () => {
     render(<DefaultsTab models={[model({})]} providers={providers} canManage />);
     expect(screen.getByText(/no fallback to deployment keys/)).toBeInTheDocument();
     expect(screen.getByText(/No decision model is set/)).toBeInTheDocument();
+  });
+
+  it("selects and clears the small model without changing the main model", () => {
+    const { rerender } = render(
+      <DefaultsTab models={[model({})]} providers={providers} canManage />,
+    );
+    fireEvent.click(within(screen.getByLabelText("Small model")).getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "GPT-5.2 (OpenAI Production)" }));
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ small_model_id: "model-1" });
+    mockOrg = { ...mockOrg, small_model_id: "model-1" };
+    rerender(<DefaultsTab models={[model({})]} providers={providers} canManage />);
+    fireEvent.click(within(screen.getByLabelText("Small model")).getByRole("button"));
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({ small_model_id: null });
+  });
+
+  it("retains an unavailable small selection with repair guidance", () => {
+    mockOrg = { ...mockOrg, small_model_id: "small" };
+    render(
+      <DefaultsTab
+        models={[model({}), model({ id: "small", display_name: "Small", enabled: false })]}
+        providers={providers}
+        canManage
+      />,
+    );
+    expect(within(screen.getByLabelText("Small model")).getByRole("combobox")).toHaveTextContent(
+      "Small (OpenAI Production)",
+    );
+    expect(screen.getByText(/This model is disabled/)).toBeInTheDocument();
+  });
+
+  it("offers shared chat models for the small default", () => {
+    render(
+      <DefaultsTab
+        models={[
+          model({}),
+          model({ id: "personal", display_name: "Personal", provider_type: "chatgpt" }),
+          model({ id: "decision", display_name: "Decision", service: "decisions" }),
+        ]}
+        providers={providers}
+        canManage
+      />,
+    );
+    fireEvent.click(within(screen.getByLabelText("Small model")).getByRole("combobox"));
+    expect(screen.queryByRole("option", { name: /Personal|Decision/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "GPT-5.2 (OpenAI Production)" })).toBeInTheDocument();
   });
 
   it("explains why a default cannot be used", () => {

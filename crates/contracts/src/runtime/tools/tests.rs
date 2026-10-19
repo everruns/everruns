@@ -373,7 +373,7 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
         (
             ToolExecutionResult::connection_required("daytona"),
             (false, false, true),
-            json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona"},"error":null,"connection_required":"daytona"}),
+            json!({"tool_call_id":"variant-id","result":{"connection_required":"daytona","error":"This tool did not run: its daytona connection is not set up. The person has to connect daytona, then try again."},"error":"This tool did not run: its daytona connection is not set up. The person has to connect daytona, then try again.","connection_required":"daytona"}),
         ),
         (
             ToolExecutionResult::connection_required_with_setup(
@@ -382,7 +382,7 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
                 "/agents/agent_123?tab=mcp",
             ),
             (false, false, true),
-            json!({"tool_call_id":"variant-id","result":{"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}},"error":null,"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}}),
+            json!({"tool_call_id":"variant-id","result":{"connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"},"error":"This tool did not run: its mcp_oauth_linear connection is not set up. An admin has to connect the agent's mcp_oauth_linear account at /agents/agent_123?tab=mcp, then try again."},"error":"This tool did not run: its mcp_oauth_linear connection is not set up. An admin has to connect the agent's mcp_oauth_linear account at /agents/agent_123?tab=mcp, then try again.","connection_required":{"provider":"mcp_oauth_linear","subject":"agent","setup_url":"/agents/agent_123?tab=mcp"}}),
         ),
         (
             ToolExecutionResult::tool_error("visible"),

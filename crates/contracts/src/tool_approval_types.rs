@@ -7,6 +7,7 @@
 //! answers it, and none of the three depends on another.
 
 use crate::tool_types::{ToolCall, ToolResult};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// `result.code` marking a tool result that stopped on a hard approval gate:
@@ -90,6 +91,11 @@ pub struct ToolApprovalRequired {
 }
 
 impl ToolApprovalRequired {
+    /// Invalid or elapsed deadlines cannot authorize a tool effect.
+    pub fn is_expired(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        chrono::DateTime::parse_from_rfc3339(&self.expires_at)
+            .map_or(true, |expires| expires <= now)
+    }
     /// Recover the payload from a tool result, if that is what it carries.
     pub fn from_tool_result(result: &ToolResult) -> Option<Self> {
         let value = result.result.as_ref()?;
@@ -187,5 +193,87 @@ mod tests {
         assert!(preview.as_str().unwrap().len() <= TOOL_ARGUMENTS_PREVIEW_BYTES);
         let small = json!({ "body": "x" });
         assert_eq!(preview_tool_arguments(&small), (small, false));
+    }
+}
+
+/// Reserved durable approval records, unavailable to model-facing KV tools.
+pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+
+/// Maximum lifetime of an unused one-off approval.
+pub const ONE_OFF_DECISION_TTL_SECONDS: i64 = 3_600;
+
+fn fold_key_part(part: &str) -> String {
+    part.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Session-storage key of the "always" rule for `tool`.
+///
+/// Folding can collide in principle, which is why [`StoredToolApproval`]
+/// repeats the tool name and the reader re-checks it.
+pub fn always_decision_storage_key(tool: &str) -> String {
+    format!("{TOOL_APPROVAL_KV_PREFIX}always/{}", fold_key_part(tool))
+}
+
+/// Session-storage key of a one-off answer for the call with `fingerprint`.
+pub fn one_off_decision_storage_key(fingerprint: &str) -> String {
+    format!(
+        "{TOOL_APPROVAL_KV_PREFIX}once/{}",
+        fold_key_part(fingerprint)
+    )
+}
+
+/// A person's answer, as the tool-approvals API records it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoredToolApproval {
+    /// Logical turn authorized by a one-off decision. Absent on legacy
+    /// records and session-wide rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<crate::typed_id::TurnId>,
+    /// Tool the answer is for, re-checked on read.
+    pub tool: String,
+    /// The approved call's canonical fingerprint; `None` for an "always"
+    /// rule, which covers every call of the tool in the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    /// `true` lets the call run, `false` refuses it.
+    pub allow: bool,
+    /// When the person answered.
+    pub decided_at: DateTime<Utc>,
+    /// When a one-off answer lapses unused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+impl StoredToolApproval {
+    /// An "always" rule for every call of `tool` in the session.
+    pub fn always(tool: &str, allow: bool, now: DateTime<Utc>) -> Self {
+        Self {
+            turn_id: None,
+            tool: tool.to_string(),
+            fingerprint: None,
+            allow,
+            decided_at: now,
+            expires_at: None,
+        }
+    }
+
+    /// A one-off answer for exactly the call with `fingerprint`.
+    pub fn one_off(tool: &str, fingerprint: &str, allow: bool, now: DateTime<Utc>) -> Self {
+        Self {
+            turn_id: None,
+            tool: tool.to_string(),
+            fingerprint: Some(fingerprint.to_string()),
+            allow,
+            decided_at: now,
+            expires_at: Some(now + chrono::Duration::seconds(ONE_OFF_DECISION_TTL_SECONDS)),
+        }
     }
 }

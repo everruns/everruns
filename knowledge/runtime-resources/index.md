@@ -13,6 +13,7 @@
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.
 * [Subagents Specification](subagents.md) - Subagent orchestration.
+* [Session titles](session-titles.md) - Automatic naming, sparse admission, model defaults, and explicit ownership.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
 * [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).

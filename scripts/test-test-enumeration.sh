@@ -64,5 +64,12 @@ with tempfile.TemporaryDirectory(prefix="everruns-enumeration-") as directory:
           ["library-only: driver library has no unit-test invocation"])
     # Complete crate runs cover libraries and integration targets together.
     check("    cargo test -p first -p second -p library-only --all-features\n", [])
-print("Test enumeration: six isolated workflow scenarios passed.")
+    # Independently resolved hosts run through their own manifest paths.
+    check("    cargo test --locked --manifest-path crates/drivers/first/Cargo.toml\n"
+          "    cargo test --manifest-path crates/drivers/second/Cargo.toml\n"
+          "    cargo test --manifest-path crates/drivers/library-only/Cargo.toml\n", [])
+    check("    cargo check --manifest-path crates/drivers/first/Cargo.toml\n"
+          "    cargo test -p second -p library-only\n",
+          ["first: driver library has no unit-test invocation", "first: crates/drivers/first/tests/chat_wire.rs"])
+print("Test enumeration: eight isolated workflow scenarios passed.")
 PY

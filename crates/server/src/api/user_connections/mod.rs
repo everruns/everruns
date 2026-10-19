@@ -434,12 +434,13 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
     let mut providers = Vec::new();
     let feature_flags = org_feature_flags(state, org_id).await;
 
-    // Hardcoded GitHub OAuth provider (only if configured)
+    // GitHub: a person's own sign-in (D1); the shared App's installations are
+    // linked by org admins in Settings > Organization instead.
     if state.auth_config.github_connection.is_some() {
         providers.push(ProviderResponse {
             provider_id: "github".to_string(),
             display_name: "GitHub".to_string(),
-            description: "Access private repositories for agent sessions".to_string(),
+            description: "Act on GitHub as yourself".to_string(),
             icon: "github".to_string(),
             icon_url: None,
             icons: Vec::new(),

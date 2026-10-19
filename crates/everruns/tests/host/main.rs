@@ -16,3 +16,6 @@ mod openai_agents_api_policy;
 
 #[cfg(feature = "openai-agents-api")]
 mod agents_api_support;
+
+#[cfg(feature = "hosting-conformance")]
+mod hosting_conformance;

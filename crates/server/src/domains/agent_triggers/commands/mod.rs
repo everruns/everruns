@@ -406,6 +406,30 @@ impl Command for CreateAgentTrigger {
             super::script_target::validate(ctx, &agent, run).await?;
         }
 
+        let target = match super::channel_target::requested(
+            req.target_channel_id.clone(),
+            req.target_binding_key.clone(),
+        )? {
+            Some(Some((channel_id, binding_key))) => {
+                if req.script.is_some() {
+                    return Err(CommandError::bad_request(
+                        "A schedule that runs in a channel conversation cannot run a saved script",
+                    ));
+                }
+                Some(
+                    super::channel_target::validate(
+                        ctx,
+                        req.trigger_type,
+                        &agent,
+                        &channel_id,
+                        &binding_key,
+                    )
+                    .await?,
+                )
+            }
+            _ => None,
+        };
+
         // GitHub events always carry a subject (repository, pull request).
         let has_subject = req.trigger_type == AgentTriggerType::GitHub
             || matches!(
@@ -439,6 +463,7 @@ impl Command for CreateAgentTrigger {
                     session_mode: req.session_mode,
                     message: req.message,
                     script: req.script,
+                    target,
                 };
                 (None, build_schedule_config_value(&config)?, None)
             }
@@ -703,6 +728,13 @@ impl Command for UpdateAgentTriggerCmd {
                 "Only schedule and webhook triggers can run a saved script",
             ));
         }
+        if (req.target_channel_id.is_some() || req.target_binding_key.is_some())
+            && trigger.trigger_type != AgentTriggerType::Schedule
+        {
+            return Err(CommandError::bad_request(
+                "Only schedule triggers can run in a channel conversation",
+            ));
+        }
         let new_enabled = req.enabled.unwrap_or(existing.enabled);
         webhook::require_publication_permission(
             ctx,
@@ -738,6 +770,30 @@ impl Command for UpdateAgentTriggerCmd {
                 }
                 config.script =
                     super::script_target::updated(ctx, &agent, req.script, config.script).await?;
+                match super::channel_target::requested(
+                    req.target_channel_id,
+                    req.target_binding_key,
+                )? {
+                    Some(Some((channel_id, binding_key))) => {
+                        config.target = Some(
+                            super::channel_target::validate(
+                                ctx,
+                                trigger.trigger_type,
+                                &agent,
+                                &channel_id,
+                                &binding_key,
+                            )
+                            .await?,
+                        );
+                    }
+                    Some(None) => config.target = None,
+                    None => {}
+                }
+                if config.target.is_some() && config.script.is_some() {
+                    return Err(CommandError::bad_request(
+                        "A schedule that runs in a channel conversation cannot run a saved script",
+                    ));
+                }
                 config.cron_expression =
                     validate_schedule_config(&config.cron_expression, &config.message)?;
                 (build_schedule_config_value(&config)?, None)
@@ -920,6 +976,8 @@ impl Command for TriggerAgentTriggerNow {
             &ctx.db,
             session_service,
             message_service,
+            ctx.channels.as_deref(),
+            ctx.encryption.as_ref(),
             ctx.org_id(),
             &agent.public_id,
             &trigger_id.to_string(),
@@ -966,10 +1024,17 @@ pub struct AgentTriggerInvocationResult {
 /// Resolve a trigger + its agent, render the schedule message, create-or-reuse
 /// the agent's session, and dispatch. The trigger is the source of truth; the
 /// `agent_id` argument scopes/validates the relationship.
+///
+/// A trigger with a target runs in that channel conversation through
+/// `channels`; without the host there (a surface that does not run channels)
+/// such a run fails and records why.
+#[allow(clippy::too_many_arguments)]
 pub async fn invoke_agent_trigger(
     db: &Arc<StorageBackend>,
     session_service: &SessionService,
     message_service: &MessageService,
+    channels: Option<&crate::channels::host::ServerChannels>,
+    encryption: Option<&Arc<crate::storage::EncryptionService>>,
     org_id: i64,
     agent_id: &str,
     trigger_id: &str,
@@ -1033,6 +1098,11 @@ pub async fn invoke_agent_trigger(
             session_source: crate::domains::sessions::record::SessionSource::Schedule,
             webhook_compat: None,
             script: config.script.as_ref(),
+            channel: config.target.as_ref().map(|target| events::ChannelRun {
+                target,
+                channels,
+                encryption,
+            }),
         },
         events::TriggerEvent {
             source: "schedule",

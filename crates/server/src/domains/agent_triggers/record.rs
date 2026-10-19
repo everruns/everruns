@@ -78,6 +78,27 @@ pub struct ScheduleTriggerConfig {
     /// is then the line the run is recorded under.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<ScriptRun>,
+    /// Conversation of one of the agent's own channels each run speaks in,
+    /// instead of a session of the trigger's own. `session_mode` then does
+    /// not apply: the conversation's binding picks the session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<ScheduleTriggerTarget>,
+}
+
+/// A conversation a schedule trigger runs in: the session a message from that
+/// conversation would land in, created and bound on the first run.
+///
+/// Slack only. `binding_key` names the conversation the way the channel binds
+/// it: `slack:user:{user_id}` (a direct message with that person) on a
+/// `per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a
+/// `per_channel` one.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+pub struct ScheduleTriggerTarget {
+    /// The agent's channel the conversation belongs to.
+    #[schema(value_type = String)]
+    pub channel_id: AgentChannelId,
+    /// The conversation's binding key on that channel.
+    pub binding_key: String,
 }
 
 /// Typed configuration for a `Webhook` trigger.

@@ -79,6 +79,27 @@ impl Session {
             media_type: verified_media_type(media_type, &data),
             data,
         };
+        if self.inner.execution.hosting().is_some() {
+            self.start()
+                .await
+                .map_err(|error| AttachError::Refused(error.to_string()))?;
+            let head = self
+                .workspace_head()
+                .ok_or_else(|| AttachError::Refused("retained workspace unavailable".into()))?;
+            let files = everruns_contracts::runtime::mount_fs::scoped_prompt_file_store(
+                head.file_system(),
+                head.workspace_id(),
+            );
+            return everruns_core::host::stage_attachment(
+                files.as_ref(),
+                self.session_id(),
+                &request.name,
+                &request.media_type,
+                &request.data,
+            )
+            .await
+            .map_err(AttachError::Refused);
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?

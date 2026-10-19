@@ -27,7 +27,7 @@ fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
 /// The Slack conversation `(channel, thread_ts)` a persisted input came from,
 /// when its server-authored provenance binds it to this app and endpoint.
 /// `Ok(None)` is a bound input without a thread reference.
-fn slack_target(
+pub(crate) fn slack_target(
     input: &crate::storage::EventRow,
     app_public_id: &str,
     endpoint_public_id: &str,

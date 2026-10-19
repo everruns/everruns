@@ -7,6 +7,7 @@
 
 mod cancels;
 mod resolutions;
+mod stalls;
 mod store;
 mod turns;
 mod wakeups;
@@ -223,6 +224,13 @@ struct Probe {
     /// Runs (once) where a fresh turn's host is built: after its input was
     /// taken, before its `turn.started`.
     at_turn_host: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// Hold the next fresh turn's input assignment (a pre-turn control-plane
+    /// write that writes no event) forever, once.
+    hang_inputs_consumed: AtomicBool,
+    checkpoints: AtomicUsize,
+    /// The checkpoint (1-based) that never returns; 0 = none. The lease's
+    /// first is its setup's, the second the one before its release.
+    hang_at_checkpoint: AtomicUsize,
 }
 
 #[derive(Clone)]
@@ -249,6 +257,35 @@ impl ActorHosts for TestHosts {
             self.probe.overlapped.store(true, Ordering::SeqCst);
         }
         self.runtime.clone()
+    }
+
+    async fn checkpoint(
+        &self,
+        _host: &InProcessRuntime,
+        _tail: &[Event],
+    ) -> everruns_contracts::error::Result<()> {
+        let checkpoint = self.probe.checkpoints.fetch_add(1, Ordering::SeqCst) + 1;
+        if checkpoint == self.probe.hang_at_checkpoint.load(Ordering::SeqCst) {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
+    async fn inputs_consumed(
+        &self,
+        _drive: &TurnDrive,
+        _inputs: &[MessageId],
+    ) -> everruns_contracts::error::Result<()> {
+        if self
+            .probe
+            .hang_inputs_consumed
+            .swap(false, Ordering::SeqCst)
+        {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
     }
 
     async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
@@ -295,6 +332,7 @@ struct Fixture {
     gate: Arc<ToolGate>,
     model: Arc<ModelGate>,
     poison_attempts: u32,
+    stall_timeout: Duration,
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -371,6 +409,7 @@ impl Fixture {
             gate,
             model: model_gate,
             poison_attempts: 3,
+            stall_timeout: crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
         }
     }
 
@@ -394,6 +433,7 @@ impl Fixture {
             // Small pages, so the journal reads page.
             journal_page: 3,
             max_leased_per_org: None,
+            stall_timeout: self.stall_timeout,
         };
         (ActorRuntime::new(hosts, self.store.clone(), config), probe)
     }

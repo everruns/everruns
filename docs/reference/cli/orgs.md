@@ -20,6 +20,7 @@ Organizations you belong to, and which one is active.
 | [`orgs egress-allowlist get`](#orgs-egress-allowlist-get) | Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. |
 | [`orgs egress-allowlist set`](#orgs-egress-allowlist-set) | Replace the organization's outbound allowlist extension. |
 | [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). |
+| [`orgs provider-accounts list`](#orgs-provider-accounts-list) | List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. |
 
 ## orgs select
 
@@ -168,4 +169,23 @@ everruns orgs egress-allowlist grant set --org org_01h9 --granted true --reason 
 
 # Give a verified organization open egress (platform administrators)
 everruns orgs egress-allowlist grant set --org org_01h9 --open true --reason 'Paid account, verified card'
+```
+
+## orgs provider-accounts list
+
+List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.
+
+```bash
+everruns orgs provider-accounts list [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. Organization public ID. |
+
+Example:
+
+```bash
+# Find the sandbox provider account to point a Sandbox Template at
+everruns orgs provider-accounts list --org org_01h9
 ```

@@ -4,3 +4,5 @@
 node_modules/
 test/*.generated.json
 test/*.generated.js
+
+/pkg/

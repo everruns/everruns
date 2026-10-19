@@ -5,6 +5,7 @@
 //! - [`install`]: one-click OAuth install handlers and router.
 //! - [`delivery`]: posting replies, streams, status and titles to Slack.
 //! - [`host`]: Slack as a driver of the shared channel host.
+//! - [`scheduled`]: Slack conversations a schedule trigger runs in.
 //! - [`actions`]: Slack actions an agent invokes through the worker seam.
 //! - [`approvals`]: approval cards and their button decisions.
 //! - [`provisioning`]: creating and configuring Slack apps for endpoints.
@@ -20,7 +21,8 @@ pub mod delivery;
 pub mod events;
 pub(crate) mod host;
 #[cfg(test)]
-mod host_tests;
+pub(crate) mod host_tests;
 pub mod install;
 mod manager_connect;
 pub mod provisioning;
+pub(crate) mod scheduled;

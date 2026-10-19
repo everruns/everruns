@@ -138,6 +138,7 @@ pub async fn invoke_webhook_agent_trigger(
             session_source: crate::domains::sessions::record::SessionSource::Webhook,
             webhook_compat: webhook_context.as_ref(),
             script: config.script.as_ref(),
+            channel: None,
         },
         event,
         request_id,

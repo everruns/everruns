@@ -1,10 +1,10 @@
 # An ordinary Rust agent inside a Durable Object
 
-This source-only example compiles the shared Everruns host, actor recovery driver,
-capability API and tool loop to Wasm. JavaScript supplies authority storage, alarms
-and model fetch; it contains no agent planning. Cloudflare Workers and celld use
-the same module. The older `celld-engine` example demonstrates a smaller custom
-step machine; this example exercises the ordinary runtime composition.
+This shared Agent module imports `everruns` and uses ordinary `Agent`, tools and
+`Engine` session APIs on native and Wasm. `ObjectHosting` supplies coherent
+session authority and activation. Rust owns lifecycle, planning and recovery;
+JavaScript supplies storage, alarms and provider fetch. The
+[celld bootstrap](../celld-engine) imports this same application.
 
 ## Run with a real model
 
@@ -17,17 +17,18 @@ cd crates/durable-object/worker && npm ci && cd ../../..
 bash examples/durable-object-agent/build.sh
 cd examples/durable-object-agent
 umask 077
-printf 'AUTHORITY_TOKEN=%s\n' "$(openssl rand -hex 32)" > .dev.vars
+printf 'AUTHORITY_TOKEN=%s\nAPI_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .dev.vars
 # Add OPENAI_API_KEY to .dev.vars without committing it.
 ../../crates/durable-object/worker/node_modules/.bin/wrangler dev
 ```
 
 The default provider is OpenAI with `gpt-6-luna`. `MODEL` and `OPENAI_BASE_URL`
-are deployment settings. Authenticate and authorize users in your application;
-the authority token is a privileged server credential. Bind a typed session to
-the agent/build in generated `worker/build.json`, then admit an `input.message`
-through the authority API described by the adapter source. Retain that message
-identity when retrying an uncertain acknowledgement.
+are deployment settings. `API_TOKEN` authenticates `/v1`; `AUTHORITY_TOKEN` is a
+separate privileged server credential. Use `/v1/sessions` with a stable `id`,
+then `/v1/sessions/{id}/messages` with a stable `message_id` and ordinary message
+content. Retain identities across uncertain replies. Read `/events`, `/sse` and
+`/admissions/{message_id}` through the same Engine path. No application sends
+raw canonical `input.message` events or constructs runtime backends.
 
 The `bump_counter` tool updates session KV. Its at-most-once recovery policy
 interrupts an operation whose effect may already have happened; it never blindly

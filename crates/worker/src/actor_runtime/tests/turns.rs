@@ -898,6 +898,7 @@ async fn died_before_idling(fixture: &Fixture, terminal: &str, committed: bool) 
             fixture.session_id,
             context,
             crate::core::events::TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations: 1,
                 status: Some("completed".to_string()),

@@ -11258,6 +11258,20 @@ export interface components {
        */
       subject_template?: string | null;
       /**
+       * @description Schedule only: the conversation on `target_channel_id`, keyed the way
+       *     the channel binds sessions: `slack:user:{user_id}` (a direct message)
+       *     or `slack:channel:{channel_id}` (top-level posts).
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Schedule only: the agent's channel whose conversation each run speaks
+       *     in, instead of a session of the trigger's own. Needs
+       *     `target_binding_key`.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
+      /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
        */
@@ -17341,6 +17355,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
          *     or `organization` (the org's default decision model).
@@ -20675,6 +20691,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
        *     or `organization` (the org's default decision model).
@@ -24098,8 +24116,24 @@ export interface components {
       script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
+      target?: components["schemas"]["ScheduleTriggerTarget"] | null;
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
+    };
+    /**
+     * @description A conversation a schedule trigger runs in: the session a message from that
+     *     conversation would land in, created and bound on the first run.
+     *
+     *     Slack only. `binding_key` names the conversation the way the channel binds
+     *     it: `slack:user:{user_id}` (a direct message with that person) on a
+     *     `per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a
+     *     `per_channel` one.
+     */
+    ScheduleTriggerTarget: {
+      /** @description The conversation's binding key on that channel. */
+      binding_key: string;
+      /** @description The agent's channel the conversation belongs to. */
+      channel_id: string;
     };
     /** @description Schedules list response */
     SchedulesListResponse: {
@@ -27334,6 +27368,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -27430,6 +27465,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
@@ -27687,6 +27733,17 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Replacement target conversation; given with `target_channel_id`.
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Replacement target channel. An empty string removes the target, so
+       *     runs use a session of the trigger's own again.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description Replacement IANA timezone identifier.
        * @example UTC
@@ -28216,6 +28273,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Shared small chat model for lightweight work. Omit to preserve the selection;
+       *     pass null to clear it. Does not change the main chat or decision default.
+       */
+      small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };

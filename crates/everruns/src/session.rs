@@ -10,6 +10,7 @@ use std::future::Future;
 use std::sync::{Arc, OnceLock};
 
 use everruns_contracts::error::AgentLoopError;
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
@@ -17,7 +18,6 @@ use everruns_core::host::{
     AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnResult,
     TurnSteering, TurnSteeringPushError, TurnTicket,
 };
-use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
 use crate::engine::SessionExecution;
@@ -28,6 +28,8 @@ use crate::hooks::{
 use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
+mod actor;
+use actor::SessionActor;
 mod attach;
 #[cfg(test)]
 mod backend_tests;
@@ -75,7 +77,7 @@ pub struct Session {
 pub(crate) struct SessionInner {
     pub(crate) execution: Arc<dyn SessionExecution>,
     session_id: SessionId,
-    event_bus: Arc<FacadeEventBus>,
+    pub(crate) event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
     pub(crate) harness: OnceLock<Harness>,
     environment: OnceLock<everruns_core::host::Environment>,
@@ -102,6 +104,255 @@ const SESSION_COMMAND_CAPACITY: usize = 64;
 const CLIENT_ANSWERS_PAUSES_HINT: &str = "setup_connection";
 
 impl Session {
+    /// Answer a durable approval request by its synthetic request call id.
+    /// Retain `command` when retrying after an uncertain transport response.
+    pub async fn approve_tool(
+        &self,
+        command: uuid::Uuid,
+        turn_id: crate::TurnId,
+        request_id: &str,
+        decision: crate::hosting::ToolApprovalDecision,
+    ) -> Result<(), RunError> {
+        self.approve_tools(
+            command,
+            vec![crate::hosting::ApprovalCommit {
+                turn_id,
+                request_id: request_id.into(),
+                decision,
+            }],
+        )
+        .await
+    }
+
+    /// Commit all decisions atomically. Invalid or stale members reject the
+    /// entire batch; retries retain the same command identity and decisions.
+    pub async fn approve_tools(
+        &self,
+        command: uuid::Uuid,
+        approvals: Vec<crate::hosting::ApprovalCommit>,
+    ) -> Result<(), RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        profile
+            .approve_many(self.session_id(), command, approvals)
+            .await?;
+        self.inner.execution.activate();
+        Ok(())
+    }
+    /// Atomically answer a question set. Retain the command, turn and call ids
+    /// for retries; the entire mixed batch commits or is refused.
+    pub async fn resolve_waits(
+        &self,
+        command: uuid::Uuid,
+        turn: crate::TurnId,
+        approvals: Vec<crate::hosting::ApprovalCommit>,
+        results: Vec<crate::ToolAnswer>,
+    ) -> Result<(), RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        profile
+            .resolve_waits(
+                self.session_id(),
+                command,
+                turn,
+                approvals,
+                results
+                    .into_iter()
+                    .map(|answer| answer.into_event_data())
+                    .collect(),
+            )
+            .await?;
+        self.inner.execution.activate();
+        Ok(())
+    }
+    /// Atomically answer a question set. Retain the command, turn and call ids
+    /// for retries; deduplication precedes validation against current waits.
+    pub async fn answer_questions(
+        &self,
+        request: crate::hosting::QuestionAnswersRequest,
+    ) -> Result<(), RunError> {
+        use everruns_core::builtins::ask_user::{AskUserAnsweredBy, AskUserResult, AskUserStatus};
+        if !matches!(
+            request.status,
+            AskUserStatus::Answered | AskUserStatus::Declined
+        ) {
+            return Err(AgentLoopError::config("invalid client question status").into());
+        }
+        if request.command_id.is_some()
+            && (request.turn_id.is_none() || request.tool_call_id.is_none())
+        {
+            return Err(
+                AgentLoopError::config("command_id requires turn_id and tool_call_id").into(),
+            );
+        }
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        let (turn, call) = match (request.turn_id, request.tool_call_id) {
+            (Some(turn), Some(call)) => (turn, call),
+            (target, requested) => {
+                let status = profile.status(self.session_id()).await?;
+                let turn = target
+                    .or(status.open_turn)
+                    .ok_or_else(|| AgentLoopError::config("no open turn"))?;
+                let mut pending = status.waiting.iter().filter(|call| {
+                    call.name == "ask_user" && requested.as_ref().is_none_or(|id| id == &call.id)
+                });
+                let call = pending
+                    .next()
+                    .ok_or_else(|| AgentLoopError::config("question set is no longer pending"))?;
+                if pending.next().is_some() {
+                    return Err(AgentLoopError::config(
+                        "several question sets are pending; supply tool_call_id",
+                    )
+                    .into());
+                }
+                (turn, call.id.clone())
+            }
+        };
+        self.resolve_tools(
+            request.command_id.unwrap_or_else(uuid::Uuid::new_v4),
+            turn,
+            vec![crate::ToolAnswer {
+                tool_call_id: call,
+                tool_name: "ask_user".into(),
+                result: serde_json::to_value(AskUserResult {
+                    status: request.status,
+                    answered_by: AskUserAnsweredBy::User,
+                    answers: request.answers,
+                })
+                .map_err(|error| AgentLoopError::config(error.to_string()))?,
+                error: None,
+            }],
+        )
+        .await
+    }
+    /// Submit an Execution API batch, atomically rejecting omitted approvals.
+    pub async fn submit_approvals(
+        &self,
+        command: uuid::Uuid,
+        turn: crate::TurnId,
+        decisions: Vec<everruns_contracts::execution_api::ToolApprovalAnswer>,
+    ) -> Result<everruns_contracts::execution_api::SubmitToolApprovalsResponse, RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        let response = profile
+            .submit_approvals(self.session_id(), command, turn, decisions)
+            .await?;
+        self.inner.execution.activate();
+        Ok(response)
+    }
+    /// Read the outstanding durable client calls without activating execution.
+    pub async fn pending_tools(&self) -> Result<Vec<crate::ToolCall>, RunError> {
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        Ok(profile.status(self.session_id()).await?.waiting)
+    }
+
+    /// Atomically resolve matching durable client calls. A retry after a lost
+    /// reply must reuse `command`. Partial results leave other calls parked.
+    pub async fn resolve_tools(
+        &self,
+        command: uuid::Uuid,
+        turn_id: crate::TurnId,
+        results: Vec<crate::ToolAnswer>,
+    ) -> Result<(), RunError> {
+        if results.iter().any(|answer| {
+            answer.tool_name == everruns_contracts::tool_types::APPROVE_TOOL_CALL_TOOL
+        }) {
+            return Err(AgentLoopError::config("approval requests require approve_tool").into());
+        }
+        let profile = self
+            .inner
+            .execution
+            .hosting()
+            .ok_or_else(|| AgentLoopError::config("Engine has no session authority"))?;
+        let results = results
+            .into_iter()
+            .map(|answer| answer.into_event_data())
+            .collect();
+        profile
+            .resolve(self.session_id(), command, turn_id, results)
+            .await?;
+        self.inner.execution.activate();
+        Ok(())
+    }
+    /// Resolve an exact canonical event identity to its session sequence using
+    /// bounded pages. Event identifiers need not be time ordered.
+    pub async fn event_sequence(&self, event_id: &str) -> Result<Option<i32>, crate::HistoryError> {
+        if let Some(profile) = self.inner.execution.hosting() {
+            return profile
+                .event_sequence(self.session_id(), event_id)
+                .await
+                .map_err(|_| crate::HistoryError::Unavailable);
+        }
+        let mut cursor = None;
+        loop {
+            let page = self.event_page(cursor, 256).await?;
+            if let Some(event) = page.events.iter().find(|event| event.event_id == event_id) {
+                return Ok(event.sequence());
+            }
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => return Ok(None),
+            }
+        }
+    }
+
+    /// Read one bounded, snapshot-consistent canonical event page. Persist the
+    /// returned cursor to resume after frontend loss. A cursor is scoped to
+    /// this session and is validated by the authority.
+    pub async fn event_page(
+        &self,
+        cursor: Option<crate::SessionEventCursor>,
+        limit: usize,
+    ) -> Result<crate::SessionEventPage, crate::HistoryError> {
+        use everruns_core::host::{EventReadLimit, EventReadRequest};
+        self.inner.execution.ensure_cataloged().await?;
+        let limit = EventReadLimit::new(limit).map_err(|_| crate::HistoryError::InvalidLimit {
+            requested: limit,
+            maximum: 1024,
+        })?;
+        let mut request = EventReadRequest::new(self.session_id(), limit);
+        if let Some(cursor) = cursor {
+            request = request.with_cursor(cursor);
+        }
+        let backends = self
+            .inner
+            .execution
+            .backends()
+            .await
+            .map_err(|error| error.history_error())?;
+        let page = backends
+            .host
+            .event_log
+            .read_page(request)
+            .await
+            .map_err(|_| crate::HistoryError::Unavailable)?;
+        Ok(crate::SessionEventPage {
+            high_watermark: page.snapshot_high_watermark(),
+            events: page
+                .events
+                .iter()
+                .map(crate::SessionEvent::from_core_event)
+                .collect(),
+            next_cursor: page.next_cursor,
+        })
+    }
     pub(crate) fn from_inner(inner: Arc<SessionInner>) -> Self {
         Self { inner }
     }
@@ -120,8 +371,11 @@ impl Session {
         observers: Arc<ObserverDispatcher>,
     ) -> Self {
         let session_id = execution.session_id();
-        let agent = execution.agent_snapshot();
-        let hook_state = HookRunState::new(agent.lifecycle_hooks());
+        let hook_state = HookRunState::new(if execution.hosting().is_some() {
+            Default::default()
+        } else {
+            execution.agent_snapshot().lifecycle_hooks()
+        });
         let session = Self {
             inner: Arc::new(SessionInner {
                 execution,
@@ -185,6 +439,9 @@ impl Session {
         &self,
         harness: Harness,
     ) -> Result<(), SessionEnvironmentError> {
+        if self.inner.execution.hosting().is_some() && !self.inner.execution.provisional() {
+            return Err(SessionEnvironmentError::AlreadyBound);
+        }
         let _environment_guard = self.inner.environment_gate.lock().await;
         if self.inner.commands.initialized() {
             return Err(SessionEnvironmentError::AlreadyStarted);
@@ -324,6 +581,18 @@ impl Session {
     pub async fn events_from(&self, after: i32) -> Result<EventStream, crate::HistoryError> {
         let live = self.inner.event_bus.subscribe();
         let backlog = self.events_after(after).await?;
+        if let Some(profile) = self.inner.execution.hosting() {
+            let through = backlog
+                .last()
+                .and_then(crate::SessionEvent::sequence)
+                .unwrap_or(after)
+                .max(after);
+            return Ok(live.with_replay(after.max(0), backlog).with_authority(
+                profile,
+                self.session_id(),
+                through,
+            ));
+        }
         Ok(live.with_replay(after.max(0), backlog))
     }
 
@@ -335,6 +604,91 @@ impl Session {
     /// be [`wait`](SentMessage::wait)ed.
     pub async fn send(&self, input: impl Into<InputMessage>) -> Result<SentMessage, RunError> {
         self.send_internal(input.into(), None).await
+    }
+
+    /// Admit input under a caller-retained message identity. Use the same id
+    /// and content after an uncertain reply, including after frontend loss.
+    pub async fn send_with_id(
+        &self,
+        message_id: MessageId,
+        input: impl Into<InputMessage>,
+    ) -> Result<SentMessage, RunError> {
+        self.admit_with_id(message_id, input.into(), false).await
+    }
+
+    async fn admit_with_id(
+        &self,
+        message_id: MessageId,
+        input: InputMessage,
+        cancelled: bool,
+    ) -> Result<SentMessage, RunError> {
+        let profile =
+            self.inner.execution.hosting().ok_or_else(|| {
+                AgentLoopError::config("stable admission requires Engine hosting")
+            })?;
+        if self.inner.execution.frontend_environment() {
+            self.start().await.map_err(RunError::Environment)?;
+        }
+        self.inner
+            .execution
+            .ensure_cataloged()
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        let mut message = AcceptedTurnInput::new(input).into_message();
+        message.id = message_id;
+        let already_accepted = profile
+            .receipt(self.session_id(), message_id)
+            .await?
+            .is_some();
+        let receipt = profile.admit(self.session_id(), message, cancelled).await?;
+        // Admission commits outside the runtime emitter. Publish its canonical
+        // envelope before activating, just as runtime events publish after commit.
+        if !already_accepted {
+            use everruns_core::host::{EventCursor, EventReadLimit, EventReadRequest, EventSink};
+            let page = profile
+                .reader(self.session_id())
+                .event_log
+                .read_page(EventReadRequest::from_cursor(
+                    EventCursor::continuation(
+                        self.session_id(),
+                        receipt.sequence - 1,
+                        receipt.sequence,
+                    )
+                    .map_err(|error| AgentLoopError::store(error.to_string()))?,
+                    EventReadLimit::new(1)
+                        .map_err(|error| AgentLoopError::store(error.to_string()))?,
+                ))
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+            for event in page.events {
+                let _ = self.inner.event_bus.try_send(event);
+            }
+        }
+        let admission = crate::hosting::Admission {
+            hosting: profile,
+            session: self.session_id(),
+            receipt,
+        };
+        self.inner.execution.activate();
+        Ok(SentMessage::admitted(self.clone(), admission))
+    }
+
+    /// Reconstruct an accepted handle without resending its content.
+    pub async fn admission(
+        &self,
+        message: MessageId,
+    ) -> Result<Option<crate::hosting::Admission>, RunError> {
+        let hosting = self.inner.execution.hosting().ok_or_else(|| {
+            AgentLoopError::config("Engine has no authoritative admission profile")
+        })?;
+        Ok(hosting
+            .receipt(self.session_id(), message)
+            .await?
+            .map(|receipt| crate::hosting::Admission {
+                hosting,
+                session: self.session_id(),
+                receipt,
+            }))
     }
 
     /// Send a message and wait for the turn that accepted it.
@@ -401,7 +755,7 @@ impl Session {
             } => cancel_turn.await,
             () = async {
                 match timeout {
-                    Some(timeout) => tokio::time::sleep(timeout).await,
+                    Some(timeout) => everruns_contracts::rt::sleep(timeout).await,
                     None => std::future::pending().await,
                 }
             } => cancel_turn.await,
@@ -415,6 +769,17 @@ impl Session {
     /// selection use the same runtime assembly path as execution. Inspection
     /// materializes the runtime but does not run any lifecycle handler.
     pub async fn inspect(&self) -> Result<crate::SessionContext, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            if self.inner.execution.frontend_environment() {
+                self.start().await.map_err(RunError::Environment)?;
+            }
+            self.inner
+                .execution
+                .ensure_cataloged()
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+            return Ok(self.inner.execution.inspect_context().await?);
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -439,6 +804,29 @@ impl Session {
             .client_tools
             .as_ref()
             .map(|tools| !tools.is_empty());
+        if let Some(profile) = self.inner.execution.hosting() {
+            self.inner
+                .execution
+                .ensure_cataloged()
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+            profile
+                .configure(
+                    self.session_id(),
+                    uuid::Uuid::new_v4(),
+                    crate::hosting::SessionConfiguration {
+                        instructions: overrides.instructions,
+                        client_tools: overrides.client_tools,
+                    },
+                )
+                .await?;
+            if let Some(declared) = declared {
+                self.inner
+                    .client_tools_declared
+                    .store(declared, std::sync::atomic::Ordering::SeqCst);
+            }
+            return Ok(());
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -465,6 +853,46 @@ impl Session {
             .load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    #[cfg(feature = "ag-ui")]
+    pub(crate) async fn refresh_hosted_calls(&self) -> Result<(), RunError> {
+        let Some(profile) = self.inner.execution.hosting() else {
+            return Ok(());
+        };
+        self.inner
+            .execution
+            .ensure_cataloged()
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        let snapshot = profile.query_snapshot(self.session_id()).await?;
+        if let Some(tools) = snapshot.configuration.client_tools {
+            self.inner
+                .client_tools_declared
+                .store(!tools.is_empty(), std::sync::atomic::Ordering::SeqCst);
+        }
+        let status = profile.status(self.session_id()).await?;
+        let parked = status
+            .open_turn
+            .filter(|_| !status.waiting.is_empty())
+            .map(|turn_id| everruns_core::host::ParkedToolCalls::new(turn_id, status.waiting));
+        self.inner.parked_calls.send_replace(parked);
+        Ok(())
+    }
+
+    #[cfg(any(feature = "ag-ui", feature = "channels"))]
+    pub(crate) async fn protocol_events(&self) -> Result<EventStream, RunError> {
+        if let Some(profile) = self.inner.execution.hosting() {
+            let live = self.inner.event_bus.subscribe();
+            let snapshot = profile.query_snapshot(self.session_id()).await?;
+            return Ok(live.with_authority(profile, self.session_id(), snapshot.high_watermark));
+        }
+        Ok(self.events())
+    }
+
+    #[cfg(any(feature = "ag-ui", feature = "channels"))]
+    pub(crate) fn has_hosted_execution(&self) -> bool {
+        self.inner.execution.hosting().is_some()
+    }
+
     /// The client-side tool calls the session's last turn parked on, if it
     /// parked and has not been resumed or superseded since.
     #[cfg(feature = "ag-ui")]
@@ -489,6 +917,19 @@ impl Session {
         &self,
         results: Vec<everruns_core::events::ToolCompletedData>,
     ) -> Result<(), RunError> {
+        if let Some(profile) = self.inner.execution.hosting() {
+            let target = profile
+                .status(self.session_id())
+                .await?
+                .open_turn
+                .ok_or_else(|| AgentLoopError::config("session has no parked turn"))?;
+            profile
+                .resolve(self.session_id(), uuid::Uuid::new_v4(), target, results)
+                .await?;
+            self.inner.parked_calls.send_replace(None);
+            self.inner.execution.activate();
+            return Ok(());
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -509,6 +950,16 @@ impl Session {
         if messages.is_empty() {
             return Ok(false);
         }
+        if let Some(profile) = self.inner.execution.hosting() {
+            self.inner
+                .execution
+                .ensure_cataloged()
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+            return Ok(profile
+                .seed_history(self.session_id(), uuid::Uuid::new_v4(), messages)
+                .await?);
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -523,6 +974,17 @@ impl Session {
         input: InputMessage,
         cancel: Option<crate::CancellationToken>,
     ) -> Result<SentMessage, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            return self
+                .admit_with_id(
+                    MessageId::new(),
+                    input,
+                    cancel
+                        .as_ref()
+                        .is_some_and(crate::CancellationToken::is_cancelled),
+                )
+                .await;
+        }
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await?
@@ -538,6 +1000,12 @@ impl Session {
     }
 
     async fn command_sender(&self) -> Result<mpsc::Sender<Command>, RunError> {
+        if self.inner.execution.hosting().is_some() {
+            return Err(AgentLoopError::config(
+                "this operation requires a hosting query or command port",
+            )
+            .into());
+        }
         self.start().await.map_err(RunError::Environment)?;
         let _environment_guard = self.inner.environment_gate.lock().await;
         Ok(self
@@ -545,7 +1013,7 @@ impl Session {
             .commands
             .get_or_init(|| async {
                 let (sender, receiver) = mpsc::channel(SESSION_COMMAND_CAPACITY);
-                tokio::spawn(SessionActor::new(&self.inner).run(receiver));
+                everruns_contracts::rt::spawn(SessionActor::new(&self.inner).run(receiver));
                 sender
             })
             .await
@@ -649,522 +1117,6 @@ enum TurnCompletion {
     Ready(Result<Turn, RunError>),
 }
 
-struct SessionActor {
-    execution: Arc<dyn SessionExecution>,
-    agent: Agent,
-    session_id: SessionId,
-    event_bus: Arc<FacadeEventBus>,
-    hook_state: Arc<HookRunState>,
-    harness: Option<Harness>,
-    environment: Option<everruns_core::host::Environment>,
-    runtime: Option<InProcessRuntime>,
-    /// Runs the turns, built with `runtime`, under the session's lease.
-    backend: Option<Arc<dyn TurnBackend>>,
-    agent_started: bool,
-    deferred: VecDeque<Command>,
-    parked_calls: watch::Sender<Option<everruns_core::host::ParkedToolCalls>>,
-}
-
-impl SessionActor {
-    fn new(inner: &SessionInner) -> Self {
-        Self {
-            execution: inner.execution.clone(),
-            agent: inner.execution.agent_snapshot(),
-            session_id: inner.session_id,
-            event_bus: inner.event_bus.clone(),
-            hook_state: inner.hook_state.clone(),
-            harness: inner.harness.get().cloned(),
-            environment: inner.environment.get().cloned(),
-            runtime: None,
-            backend: None,
-            agent_started: false,
-            deferred: VecDeque::new(),
-            parked_calls: inner.parked_calls.clone(),
-        }
-    }
-
-    async fn run(mut self, mut commands: mpsc::Receiver<Command>) {
-        loop {
-            let command = match self.deferred.pop_front() {
-                Some(command) => command,
-                None => match commands.recv().await {
-                    Some(command) => command,
-                    None => break,
-                },
-            };
-            match command {
-                Command::Send {
-                    input,
-                    cancel,
-                    response,
-                } => {
-                    if !self
-                        .start_turn(input, cancel, response, &mut commands)
-                        .await
-                    {
-                        break;
-                    }
-                }
-                Command::Inspect { response } => {
-                    let result = self.inspect().await;
-                    let _ = response.send(result);
-                }
-                Command::Attach { request, response } => {
-                    let _ = response.send(self.attach(request).await);
-                }
-                Command::Cancel { response, .. } => {
-                    let _ = response.send(false);
-                }
-                Command::Interrupted { response } => {
-                    let _ = response.send(self.interrupted_turn().await);
-                }
-                Command::ResumeInterrupted { response } => {
-                    if !self.resume_interrupted(response, &mut commands).await {
-                        break;
-                    }
-                }
-                #[cfg(feature = "ag-ui")]
-                Command::Override {
-                    overrides,
-                    response,
-                } => {
-                    let _ = response.send(self.apply_overrides(overrides).await);
-                }
-                #[cfg(feature = "ag-ui")]
-                Command::Resume { results, response } => {
-                    if !self.resume_turn(results, response, &mut commands).await {
-                        break;
-                    }
-                }
-                #[cfg(feature = "ag-ui")]
-                Command::Seed { messages, response } => {
-                    let _ = response.send(self.seed_history(messages).await);
-                }
-            }
-        }
-    }
-
-    /// Continue the turn parked on client-side tool calls. Lifecycle
-    /// turn-start handlers do not run again: it is the same turn.
-    #[cfg(feature = "ag-ui")]
-    async fn resume_turn(
-        &mut self,
-        results: Vec<everruns_core::events::ToolCompletedData>,
-        response: oneshot::Sender<Result<(), RunError>>,
-        commands: &mut mpsc::Receiver<Command>,
-    ) -> bool {
-        let parked = self
-            .runtime
-            .as_ref()
-            .and_then(|runtime| runtime.parked_tool_calls(self.session_id));
-        let Some(parked) = parked else {
-            let _ = response.send(Err(AgentLoopError::store(format!(
-                "session {} has no turn waiting for tool results",
-                self.session_id
-            ))
-            .into()));
-            return true;
-        };
-        let _ = response.send(Ok(()));
-        self.hook_state.begin_turn();
-        let (completion_tx, _) = watch::channel(TurnCompletion::Pending);
-        self.drive_turn(
-            TurnEntry::Resume(results),
-            parked.turn_id,
-            TurnSteering::new(),
-            completion_tx,
-            commands,
-        )
-        .await
-    }
-
-    /// Append `messages` as canonical history events, user messages as
-    /// `input.message` and assistant ones as `output.message.completed`, the
-    /// events history is projected from. Only while the session has no
-    /// message yet, so a retried or replayed seed never duplicates history.
-    #[cfg(feature = "ag-ui")]
-    async fn seed_history(
-        &mut self,
-        messages: Vec<everruns_core::RuntimeMessage>,
-    ) -> Result<bool, RunError> {
-        use everruns_core::events::{
-            EventContext, EventRequest, InputMessageData, OutputMessageCompletedData,
-        };
-        use everruns_core::message::RuntimeMessageRole;
-
-        self.ensure_runtime().await?;
-        let backends = self
-            .execution
-            .backends()
-            .await
-            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let page = everruns_core::host::EventHistory::new(backends.host.event_log.clone())
-            .read_page(everruns_core::host::EventHistoryReadRequest::new(
-                self.session_id,
-                everruns_core::host::EventHistoryReadLimit::new(1)
-                    .map_err(|error| AgentLoopError::store(error.to_string()))?,
-            ))
-            .await
-            .map_err(|error| AgentLoopError::store(error.to_string()))?;
-        if !page.messages.is_empty() {
-            return Ok(false);
-        }
-        let emitter = self
-            .runtime
-            .as_ref()
-            .expect("runtime built above")
-            .host_event_emitter();
-        for message in messages {
-            let request = match message.role {
-                RuntimeMessageRole::Agent => EventRequest::new(
-                    self.session_id,
-                    EventContext::empty(),
-                    OutputMessageCompletedData::new(message),
-                ),
-                _ => EventRequest::new(
-                    self.session_id,
-                    EventContext::empty(),
-                    InputMessageData::new(message),
-                ),
-            };
-            emitter.emit(request).await?;
-        }
-        Ok(true)
-    }
-
-    #[cfg(feature = "ag-ui")]
-    async fn apply_overrides(&mut self, overrides: SessionOverrides) -> Result<(), RunError> {
-        self.ensure_runtime().await?;
-        let backends = self
-            .execution
-            .backends()
-            .await
-            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
-        let store = &backends.host.session_store;
-        let mut record = store.get_session(self.session_id).await?.ok_or_else(|| {
-            AgentLoopError::store(format!("session not found: {}", self.session_id))
-        })?;
-        if let Some(instructions) = overrides.instructions {
-            record.system_prompt = instructions;
-        }
-        if let Some(tools) = overrides.client_tools {
-            // A plain client-side call parks the turn only when the session
-            // declares its client can answer a pause, which the runtime
-            // reads from the `setup_connection` hint (see
-            // `everruns_core::engine::act_pauses_turn`). Declare it while the
-            // session has client-side tools; without them nothing would
-            // answer the pause.
-            let hints = record.hints.get_or_insert_with(Default::default);
-            if tools.is_empty() {
-                hints.remove(CLIENT_ANSWERS_PAUSES_HINT);
-            } else {
-                hints.insert(CLIENT_ANSWERS_PAUSES_HINT.to_string(), true.into());
-            }
-            if hints.is_empty() {
-                record.hints = None;
-            }
-            record.tools = tools;
-        }
-        // Read-modify-write without a store-level lock: the actor serializes
-        // overrides, a running turn is not polled while one applies, and the
-        // in-process runtime keeps no status in the record.
-        store.add_session(record).await?;
-        Ok(())
-    }
-
-    async fn start_turn(
-        &mut self,
-        input: Box<AcceptedTurnInput>,
-        cancel: Option<crate::CancellationToken>,
-        response: oneshot::Sender<Result<ActorSentMessage, RunError>>,
-        commands: &mut mpsc::Receiver<Command>,
-    ) -> bool {
-        let input = *input;
-        let turn_id = TurnId::new();
-        let message_id = input.message_id();
-        let steering = TurnSteering::new();
-        let (completion_tx, completion_rx) = watch::channel(TurnCompletion::Pending);
-        let _ = response.send(Ok(ActorSentMessage {
-            message_id,
-            turn_id,
-            disposition: SendDisposition::Started,
-            completion: completion_rx,
-        }));
-
-        match self
-            .prepare_turn(input.input().clone(), cancel.as_ref())
-            .await
-        {
-            HookRun::Cancelled => {
-                steering.close();
-                self.hook_state.take_failures();
-                let result = self.emit_cancelled(turn_id).await;
-                let _ = completion_tx.send(TurnCompletion::Ready(result));
-                return true;
-            }
-            HookRun::Completed(Err(error)) => {
-                steering.close();
-                let _ = completion_tx.send(TurnCompletion::Ready(Err(error)));
-                return true;
-            }
-            HookRun::Completed(Ok(())) => {}
-        }
-
-        self.drive_turn(
-            TurnEntry::Input(Box::new(input)),
-            turn_id,
-            steering,
-            completion_tx,
-            commands,
-        )
-        .await
-    }
-
-    async fn prepare_turn(
-        &mut self,
-        input: InputMessage,
-        cancel: Option<&crate::CancellationToken>,
-    ) -> HookRun<Result<(), RunError>> {
-        self.hook_state.begin_turn();
-        if !self.agent_started {
-            let context = AgentStartContext {
-                agent_name: self.agent.name().to_string(),
-                session_id: self.session_id,
-            };
-            match cancellable(cancel, self.hook_state.hooks().run_agent_start(context)).await {
-                HookRun::Cancelled => return HookRun::Cancelled,
-                HookRun::Completed(Err(failure)) => {
-                    return HookRun::Completed(Err(RunError::Hook(failure)));
-                }
-                HookRun::Completed(Ok(())) => self.agent_started = true,
-            }
-        }
-
-        let context = TurnStartContext {
-            agent_name: self.agent.name().to_string(),
-            session_id: self.session_id,
-            input,
-        };
-        match cancellable(cancel, self.hook_state.hooks().run_turn_start(context)).await {
-            HookRun::Cancelled => return HookRun::Cancelled,
-            HookRun::Completed(Err(failure)) => {
-                return HookRun::Completed(Err(RunError::Hook(failure)));
-            }
-            HookRun::Completed(Ok(())) => {}
-        }
-        HookRun::Completed(self.ensure_runtime().await)
-    }
-
-    async fn drive_turn(
-        &mut self,
-        entry: TurnEntry,
-        turn_id: TurnId,
-        steering: TurnSteering,
-        completion: watch::Sender<TurnCompletion>,
-        commands: &mut mpsc::Receiver<Command>,
-    ) -> bool {
-        let runtime = self.runtime.as_ref().expect("runtime built above").clone();
-        let backend = self
-            .backend
-            .clone()
-            .expect("backend built with the runtime");
-        // The turn this drives parks anew or not at all.
-        self.parked_calls.send_replace(None);
-        let (outcome, cancelled) = {
-            let input = match entry {
-                TurnEntry::Input(input) => TurnInput::Message(input),
-                TurnEntry::Interrupted => TurnInput::ResumeInterrupted,
-                #[cfg(feature = "ag-ui")]
-                TurnEntry::Resume(results) => TurnInput::ToolResults(results),
-            };
-            let request =
-                TurnRequest::new(self.session_id, turn_id, input).with_steering(steering.clone());
-            // A turn that cannot start fails like one that fails at once.
-            let mut run = match backend.start_turn(request).await {
-                Ok(ticket) => ticket,
-                Err(error) => {
-                    TurnTicket::new(self.session_id, turn_id, std::future::ready(Err(error)))
-                }
-            };
-            let mut cancelled = false;
-            let outcome = loop {
-                tokio::select! {
-                    biased;
-                    result = &mut run => break Some(result.map(Turn::from).map_err(RunError::from)),
-                    command = commands.recv(), if self.deferred.len() < SESSION_COMMAND_CAPACITY => match command {
-                        None => {
-                            steering.close();
-                            return false;
-                        }
-                        Some(Command::Send { input, cancel, response }) => {
-                            let message_id = input.message_id();
-                            match steering.try_push(*input) {
-                                Ok(()) => {
-                                    let _ = response.send(Ok(ActorSentMessage {
-                                        message_id,
-                                        turn_id,
-                                        disposition: SendDisposition::Steered,
-                                        completion: completion.subscribe(),
-                                    }));
-                                }
-                                Err(TurnSteeringPushError::Closed(input)) => self.deferred.push_back(Command::Send {
-                                    input,
-                                    cancel,
-                                    response,
-                                }),
-                                Err(TurnSteeringPushError::Full(_)) => {
-                                    let _ = response.send(Err(RunError::SteeringQueueFull));
-                                }
-                            }
-                        }
-                        Some(Command::Inspect { response }) => {
-                            self.deferred.push_back(Command::Inspect { response });
-                        }
-                        // The runtime is built while a turn runs.
-                        Some(Command::Attach { request, response }) => {
-                            let _ = response.send(self.attach(request).await);
-                        }
-                        // A running turn is not interrupted, whatever the log says.
-                        Some(Command::Interrupted { response }) => {
-                            let _ = response.send(Ok(None));
-                        }
-                        Some(Command::ResumeInterrupted { response }) => {
-                            let _ = response.send(Ok(None));
-                        }
-                        #[cfg(feature = "ag-ui")]
-                        Some(Command::Override { overrides, response }) => {
-                            let _ = response.send(self.apply_overrides(overrides).await);
-                        }
-                        // Nothing parks while a turn runs; answer once it ends.
-                        #[cfg(feature = "ag-ui")]
-                        Some(Command::Resume { results, response }) => {
-                            self.deferred.push_back(Command::Resume { results, response });
-                        }
-                        // A running turn means the session has a conversation.
-                        #[cfg(feature = "ag-ui")]
-                        Some(Command::Seed { response, .. }) => {
-                            let _ = response.send(Ok(false));
-                        }
-                        Some(Command::Cancel { turn_id: requested, response }) => {
-                            if requested == turn_id {
-                                steering.close();
-                                let _ = response.send(true);
-                                self.hook_state.take_failures();
-                                cancelled = true;
-                                // The turn takes no further step; `run` drops
-                                // it before finalization records the cancel.
-                                if let Err(error) = backend.cancel(self.session_id).await {
-                                    tracing::warn!(error = %error, "turn backend failed to cancel a turn");
-                                }
-                                break Some(Ok(Turn::cancelled(turn_id)));
-                            }
-                            let _ = response.send(false);
-                        }
-                    },
-                }
-            };
-            (outcome, cancelled)
-        };
-
-        let finalization = async {
-            let remaining = steering.close_and_drain();
-            runtime
-                .append_accepted_inputs(self.session_id, turn_id, remaining)
-                .await?;
-            if cancelled {
-                let (_, request) = self
-                    .event_bus
-                    .cancellation_request_for_turn(self.session_id, turn_id);
-                runtime.host_event_emitter().emit(request).await?;
-            }
-            Ok::<_, RunError>(())
-        }
-        .await;
-        let result = match (finalization, outcome.expect("turn outcome set")) {
-            (Err(error), _) => Err(error),
-            (Ok(()), Ok(turn)) if turn.stop_reason == TurnStopReason::Cancelled => Ok(turn),
-            (Ok(()), Ok(mut turn)) => {
-                turn.hook_failures.extend(self.hook_state.take_failures());
-                let context = CompletionContext {
-                    agent_name: self.agent.name().to_string(),
-                    session_id: self.session_id,
-                    turn: turn.clone(),
-                };
-                turn.hook_failures
-                    .extend(self.hook_state.hooks().run_completion(context).await);
-                Ok(turn)
-            }
-            (Ok(()), Err(error)) => Err(error),
-        };
-        // Before the completion: whoever saw the turn end sees what it
-        // parked on.
-        self.parked_calls
-            .send_replace(runtime.parked_tool_calls(self.session_id));
-        let _ = completion.send(TurnCompletion::Ready(result));
-        true
-    }
-
-    async fn inspect(&mut self) -> Result<crate::SessionContext, RunError> {
-        self.ensure_runtime().await?;
-        let context = self
-            .runtime
-            .as_ref()
-            .expect("runtime built above")
-            .load_context(self.session_id)
-            .await?;
-        Ok(crate::SessionContext::from_runtime(
-            context,
-            self.agent.plugin_warnings(),
-        ))
-    }
-
-    async fn ensure_runtime(&mut self) -> Result<(), RunError> {
-        if self.runtime.is_none() {
-            self.execution
-                .ensure_harness_requirement()
-                .await
-                .map_err(|error| {
-                    everruns_contracts::error::AgentLoopError::store(error.to_string())
-                })?;
-            let host = self
-                .execution
-                .backends()
-                .await
-                .map_err(crate::agent::BackendInitError::into_agent_loop)?
-                .host
-                .clone();
-            let leases = host.session_leases.clone();
-            let runtime = self
-                .agent
-                .build_runtime_with_event_sink(
-                    host,
-                    self.session_id,
-                    self.environment.clone(),
-                    self.harness.as_ref(),
-                    self.event_bus.clone(),
-                    self.hook_state.clone(),
-                )
-                .await?;
-            // The session runs as an actor: each turn holds the session's
-            // lease, so a process sharing these backends cannot run it at
-            // the same time.
-            self.backend = Some(self.execution.turn_backend(runtime.clone(), leases)?);
-            self.runtime = Some(runtime);
-        }
-        Ok(())
-    }
-
-    async fn emit_cancelled(&mut self, turn_id: TurnId) -> Result<Turn, RunError> {
-        self.ensure_runtime().await?;
-        let runtime = self.runtime.as_ref().expect("runtime built above");
-        let (_, request) = self
-            .event_bus
-            .cancellation_request_for_turn(self.session_id, turn_id);
-        runtime.host_event_emitter().emit(request).await?;
-        Ok(Turn::cancelled(turn_id))
-    }
-}
-
 /// A not-yet-running Session with its Environment selected.
 pub struct EnvironmentSessionBuilder {
     pub(crate) session: Session,
@@ -1225,6 +1177,8 @@ async fn cancellable<T>(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SendDisposition {
+    /// Durably admitted; consumption has not yet assigned a turn.
+    Pending,
     /// The session was idle and started a new turn.
     Started,
     /// The message joined the currently running turn.
@@ -1237,7 +1191,7 @@ pub struct SentMessage {
     /// Opaque id of the accepted user message.
     pub message_id: String,
     /// Opaque id of the turn that accepted the message.
-    pub turn_id: String,
+    pub turn_id: Option<String>,
     /// Whether acceptance started a turn or steered the active one.
     pub disposition: SendDisposition,
     turn: TurnHandle,
@@ -1247,14 +1201,39 @@ impl SentMessage {
     fn new(session: Session, message: ActorSentMessage) -> Self {
         let turn = TurnHandle {
             session,
-            turn_id: message.turn_id,
-            completion: message.completion,
+            source: TurnHandleSource::Local {
+                turn_id: message.turn_id,
+                completion: message.completion,
+            },
         };
         Self {
             message_id: message.message_id.to_string(),
-            turn_id: message.turn_id.to_string(),
+            turn_id: Some(message.turn_id.to_string()),
             disposition: message.disposition,
             turn,
+        }
+    }
+
+    fn admitted(session: Session, admission: crate::hosting::Admission) -> Self {
+        Self {
+            message_id: admission.message_id().to_string(),
+            turn_id: None,
+            disposition: SendDisposition::Pending,
+            turn: TurnHandle {
+                session,
+                source: TurnHandleSource::Admission(admission),
+            },
+        }
+    }
+
+    /// Read the authoritative assignment, which can be pending at admission.
+    pub async fn assignment(&self) -> Result<Option<crate::hosting::TurnAssignment>, RunError> {
+        match &self.turn.source {
+            TurnHandleSource::Admission(admission) => Ok(admission.assignment().await?),
+            TurnHandleSource::Local { turn_id, .. } => Ok(Some(crate::hosting::TurnAssignment {
+                turn_id: *turn_id,
+                steered: self.disposition == SendDisposition::Steered,
+            })),
         }
     }
 
@@ -1273,19 +1252,40 @@ impl SentMessage {
 #[derive(Clone)]
 pub struct TurnHandle {
     session: Session,
-    turn_id: TurnId,
-    completion: watch::Receiver<TurnCompletion>,
+    source: TurnHandleSource,
+}
+
+#[derive(Clone)]
+enum TurnHandleSource {
+    Local {
+        turn_id: TurnId,
+        completion: watch::Receiver<TurnCompletion>,
+    },
+    Admission(crate::hosting::Admission),
 }
 
 impl TurnHandle {
+    /// Stable identity of this handle, even before a turn is assigned.
+    pub fn identity(&self) -> String {
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => turn_id.to_string(),
+            TurnHandleSource::Admission(admission) => admission.message_id().to_string(),
+        }
+    }
     /// The opaque turn id shared with events and the final [`Turn`].
-    pub fn id(&self) -> String {
-        self.turn_id.to_string()
+    pub fn id(&self) -> Option<String> {
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => Some(turn_id.to_string()),
+            TurnHandleSource::Admission(_) => None,
+        }
     }
 
     /// Wait for this turn's terminal result. Multiple waiters receive the same result.
     pub async fn wait(&self) -> Result<Turn, RunError> {
-        let mut completion = self.completion.clone();
+        let mut completion = match &self.source {
+            TurnHandleSource::Admission(admission) => return admission.wait().await,
+            TurnHandleSource::Local { completion, .. } => completion.clone(),
+        };
         loop {
             let state = completion.borrow().clone();
             match state {
@@ -1300,7 +1300,13 @@ impl TurnHandle {
 
     /// Cooperatively cancel this turn if it is still active.
     pub async fn cancel(&self) -> Result<(), CancelError> {
-        self.session.cancel_turn(self.turn_id).await
+        match &self.source {
+            TurnHandleSource::Local { turn_id, .. } => self.session.cancel_turn(*turn_id).await,
+            TurnHandleSource::Admission(admission) => admission
+                .cancel(uuid::Uuid::new_v4())
+                .await
+                .map_err(|_| CancelError::SessionClosed),
+        }
     }
 }
 
@@ -1329,7 +1335,7 @@ impl std::error::Error for CancelError {}
 ///
 /// A small, stable projection of the runtime's turn result — no stores, session
 /// records, or platform identity.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Turn {
     /// Final text response produced by the turn.
@@ -1396,6 +1402,8 @@ impl From<TurnResult> for Turn {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum RunError {
+    /// Accepted work is durably suspended and requires host intervention.
+    Suspended,
     /// The in-process runtime failed to build or execute the turn.
     Runtime(Arc<AgentLoopError>),
     /// A pre-effect lifecycle handler failed before the operation could run.
@@ -1411,6 +1419,7 @@ pub enum RunError {
 impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RunError::Suspended => f.write_str("session execution is suspended"),
             RunError::Runtime(err) => write!(f, "session run failed: {err}"),
             RunError::Hook(err) => write!(f, "session hook failed: {err}"),
             RunError::Environment(err) => write!(f, "session environment failed: {err}"),
@@ -1423,6 +1432,7 @@ impl std::fmt::Display for RunError {
 impl std::error::Error for RunError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            RunError::Suspended => None,
             RunError::Runtime(err) => Some(err.as_ref()),
             RunError::Hook(err) => Some(err),
             RunError::Environment(err) => Some(err),

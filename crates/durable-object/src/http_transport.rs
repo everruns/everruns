@@ -1,11 +1,11 @@
 //! Native HTTPS authority transport. No transport code participates in agent decisions.
 use crate::client::AuthorityTransport;
 use async_trait::async_trait;
-use everruns_contracts::{
+use everruns::hosting::spi::actor::actor_lease_lost;
+use everruns::hosting::spi::{
     error::{AgentLoopError, Result},
-    typed_id::SessionId,
+    ids::SessionId,
 };
-use everruns_core::host::session_actor::store::actor_lease_lost;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -77,10 +77,7 @@ impl AuthorityTransport for HttpAuthorityTransport {
             ));
         }
         if !response.status().is_success() {
-            return Err(AgentLoopError::store(format!(
-                "authority {operation} rejected ({})",
-                response.status().as_u16()
-            )));
+            return Err(crate::client::rejected(response.status().as_u16()));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response

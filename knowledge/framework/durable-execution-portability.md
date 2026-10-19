@@ -13,6 +13,12 @@ tags:
 
 # Portable Durable Agent Execution
 
+The revised [Engine-owned sessions proposal](engine-durable-sessions.md)
+supersedes this document's application integration recommendation. DO must run
+through the public Framework Engine/Session path, including admission, lifecycle
+and observation. The source assessment below is the original investigation;
+sharing a core host alone does not satisfy the revised Framework success bar.
+
 Implementation update: the first native executor profile is now implemented; see
 [Native Execution with Durable Object Authority](durable-object-native.md) for
 current scope and qualification. The broader design below remains a proposal.
@@ -78,41 +84,20 @@ yet an application-facing backend selection feature. The facade's default is
 process-local execution; persistent state allows recovery when a host restarts
 and resumes it, but does not supply an independent distributed activation service.
 
-## The two celld examples demonstrate different guarantees
+## Celld migration
 
-### Container snapshot and request journal
+The original investigation compared an app-level canonical snapshot/request
+journal with a separate Rust Reason/Act step machine. Both were superseded by
+[Engine-owned sessions](engine-durable-sessions.md). Their implementation and
+examples are removed as the common Engine path is qualified.
 
-[serve/celld](../../examples/serve/celld/README.md) runs the ordinary native serve
-app. The supervising [cell](../../examples/serve/celld/worker/src/cell.js) journals
-mutating requests and periodically snapshots the data directory. Recovery restores
-the snapshot and replays later requests. This preserves application code and gives
-a useful hosting experiment, but recovery may repeat model calls and tool effects
-from after the last snapshot. A container-local tool ledger rolls back with that
-snapshot, so it cannot prevent these repeats.
-
-There are also explicit weak paths in the source: creation while busy can return
-success with `x-celld-durable: pending` after the snapshot deadline; an already
-booted replacement container can be adopted without restoration. These paths are
-weaker than the README's unconditional acknowledged-creation guarantee. Tighten
-them or document their scope before promoting the example. Retrying recorded HTTP
-requests is not a substitute for durable operation identities.
-
-### Execution kernel inside the cell
-
-[celld-engine](../../examples/celld-engine/README.md) runs shared `ReasonAtom` and
-`ActAtom` inside Wasm. Its [Cell](../../examples/celld-engine/src/cell.rs) stages
-events and commits a reason or tool batch with the next position. Its
-[DO adapter](../../examples/celld-engine/src/durable.rs) uses SQLite and alarms.
-An already committed step is retained; an interrupted step repeats.
-
-This proves kernel portability, not full Framework parity. The example owns a
-separate reason/act driver instead of using `TurnExecution` and `drive_turn`;
-messages queue rather than steer; a blocked act or client-tool wait ends as an
-error; the model transport is a small non-streaming Chat Completions driver;
-history reads load all committed events. Its pure demo tool makes batch retry
-reasonable. General side-effecting tools need starts and results that survive
-discarding an uncommitted batch. Simply moving this code to a published crate
-would preserve a second, incomplete runtime.
+[celld-engine](../../examples/celld-engine/README.md) imports the same Framework
+Agent and Engine module as Cloudflare. [serve/celld](../../examples/serve/celld/README.md)
+uses per-session DO authority with replaceable native Engine execution. Local
+catalogs are projections; workspace persistence is explicit and independent.
+The original weak busy-creation and request-replay paths are not retained as
+alternate durability mechanisms. See the owning design for remaining acceptance
+gates and platform-specific qualification limits.
 
 ## Architecture and ownership
 

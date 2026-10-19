@@ -24,3 +24,8 @@ archive move to the header's **More actions** menu. Old `/edit` links open the
 page in edit mode, and `/sessions` opens the Sessions tab.
 
 See [Agent page](/features/ui/#agent-page). PR [#3917](https://github.com/everruns/everruns/pull/3917).
+
+## Update 2026-10-18
+
+Files stays in More, and on Preview, only when the agent has a filesystem or
+starter files. An agent without one no longer shows an empty Files section.
