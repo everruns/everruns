@@ -546,9 +546,11 @@ impl Session {
     /// Read this session's durable events with a sequence greater than
     /// `after`, oldest first.
     ///
-    /// Durable sequences are dense per session and start at 1, so
+    /// Durable sequences increase per session and start at 1, so
     /// `events_after(0)` returns the whole persisted log and a client that has
-    /// seen sequence `n` resumes with `events_after(n)`. Negative values read
+    /// seen sequence `n` resumes with `events_after(n)`. On an authority with
+    /// conversation branches, reads follow the active branch and sequences
+    /// skip abandoned events. Negative values read
     /// from the start. Ephemeral streaming deltas are never persisted and do
     /// not appear here. Works on a session reopened with
     /// [`Engine::resume`](crate::Engine::resume) as long as its backend keeps

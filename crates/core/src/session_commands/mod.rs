@@ -9,6 +9,7 @@ mod approval_outcome;
 pub use approval_outcome::ApprovalOutcome;
 mod causal;
 mod configuration;
+pub mod history;
 mod resolution;
 #[cfg(test)]
 mod tests;
@@ -81,6 +82,16 @@ pub enum SessionCommand {
         id: String,
         input: MessageId,
     },
+    /// Make `branch` the active conversation lineage while quiescent. With
+    /// `ranges`, create it (or confirm an identical one); without, reselect a
+    /// retained branch. The previous branch is retained for redo and fork.
+    SelectBranch {
+        id: String,
+        expected_revision: u64,
+        branch: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ranges: Option<Vec<history::SequenceRange>>,
+    },
 }
 
 /// A retained command's immutable request fingerprint and reply.
@@ -129,6 +140,9 @@ pub struct CommandView {
     pub terminal: bool,
     #[serde(default)]
     pub rejected: bool,
+    /// Branch facts, captured only by authorities that support selection.
+    #[serde(default)]
+    pub history: Option<history::HistoryView>,
 }
 
 impl CommandView {
@@ -154,6 +168,7 @@ impl CommandView {
             assignment: None,
             terminal: false,
             rejected: false,
+            history: None,
         }
     }
 }
@@ -189,6 +204,13 @@ pub enum ControlUpdate {
         input: MessageId,
         interrupt: bool,
     },
+    /// Retain the active branch at its current extent, then activate
+    /// `branch` with these canonical ranges at `revision`.
+    SelectBranch {
+        branch: String,
+        ranges: Vec<history::SequenceRange>,
+        revision: u64,
+    },
 }
 
 /// A complete atomic commit, or a replay with no effects.
@@ -217,6 +239,7 @@ impl SessionCommand {
             Self::Resolve { id, .. } => format!("resolution:{id}"),
             Self::ResolveWaits { id, .. } => format!("wait_resolution:{id}"),
             Self::Cancel { id, .. } => format!("cancel:{id}"),
+            Self::SelectBranch { id, .. } => format!("history_branch:{id}"),
         })
     }
     pub fn fingerprint(&self) -> Value {
@@ -250,6 +273,12 @@ impl SessionCommand {
                 ..
             } => json!({"turn_id":turn,"approvals":approvals,"results":results}),
             Self::Cancel { input, .. } => json!({"input":input}),
+            Self::SelectBranch {
+                expected_revision,
+                branch,
+                ranges,
+                ..
+            } => json!({"expected_revision":expected_revision,"branch":branch,"ranges":ranges}),
         }
     }
 }
@@ -300,7 +329,8 @@ pub fn prepare(
         | SessionCommand::SubmitApprovals { id, .. }
         | SessionCommand::Resolve { id, .. }
         | SessionCommand::ResolveWaits { id, .. }
-        | SessionCommand::Cancel { id, .. } => Some(id),
+        | SessionCommand::Cancel { id, .. }
+        | SessionCommand::SelectBranch { id, .. } => Some(id),
         _ => None,
     };
     if identity.is_some_and(|id| id.is_empty())
@@ -455,6 +485,84 @@ pub fn prepare(
             }) && !view.terminal
                 && !view.rejected;
             plan.control = ControlUpdate::Cancel { input, interrupt };
+        }
+        SessionCommand::SelectBranch {
+            expected_revision,
+            branch,
+            ranges,
+            ..
+        } => {
+            let facts = view.history.ok_or_else(|| {
+                invalid("this session authority does not support conversation branch selection")
+            })?;
+            if !history::valid_branch_id(&branch) {
+                return Err(invalid("invalid history branch identity"));
+            }
+            if expected_revision != facts.revision {
+                return Err(CommandError::Conflict(
+                    "conversation history revision changed",
+                ));
+            }
+            // Never discard owed work: a live epoch, an open or parked turn,
+            // outstanding waits, unconsumed input and suspensions all refuse.
+            if view.execution_active
+                || view.suspended
+                || view.open.is_some()
+                || !view.pending.is_empty()
+                || view.queued > 0
+                || facts.obligations
+            {
+                return Err(CommandError::Conflict(
+                    "conversation history can change only while the session is quiescent",
+                ));
+            }
+            let target = match ranges {
+                Some(_) => {
+                    let requested = facts
+                        .requested
+                        .ok_or_else(|| invalid("history selection facts are missing"))?
+                        .map_err(invalid)?;
+                    if facts
+                        .retained
+                        .as_ref()
+                        .is_some_and(|retained| retained != &requested)
+                    {
+                        return Err(CommandError::Conflict(
+                            "history branch already exists with a different lineage",
+                        ));
+                    }
+                    requested
+                }
+                None => facts
+                    .retained
+                    .clone()
+                    .ok_or_else(|| invalid("history branch not found"))?,
+            };
+            if branch == facts.active {
+                plan.reply = json!(history::HistorySelection {
+                    revision: facts.revision,
+                    branch,
+                    changed: false,
+                });
+            } else {
+                if facts.retained.is_none() && facts.branches >= history::MAX_BRANCHES {
+                    return Err(CommandError::Capacity("history branch capacity reached"));
+                }
+                let revision = facts
+                    .revision
+                    .checked_add(1)
+                    .ok_or(CommandError::Capacity("history revision capacity reached"))?;
+                plan.reply = json!(history::HistorySelection {
+                    revision,
+                    branch: branch.clone(),
+                    changed: true,
+                });
+                plan.control = ControlUpdate::SelectBranch {
+                    branch,
+                    ranges: target,
+                    revision,
+                };
+            }
         }
         command => {
             if view.pending.len() > 256 {

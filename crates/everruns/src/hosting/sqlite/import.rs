@@ -5,7 +5,64 @@
 //! committed cutover record makes a retry replay and a different cutover fail.
 use super::*;
 use crate::hosting::cutover::{CUTOVER_RECORD, CUTOVER_WORKSPACE, LegacySessionImage};
+use crate::hosting::spi::session_commands::history::{self, SequenceRange};
 use crate::hosting::spi::session_commands::{self, CommandView, SessionCommand};
+
+/// An imported lineage, validated and canonicalized against the image.
+struct PlannedLineage {
+    active: String,
+    branches: HashMap<String, Vec<SequenceRange>>,
+}
+
+impl PlannedLineage {
+    fn active_ranges(&self) -> &[SequenceRange] {
+        self.branches
+            .get(&self.active)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+}
+
+/// Refuse a malformed lineage before any authority write.
+fn plan_lineage(
+    events: &[Event],
+    lineage: &crate::hosting::ConversationLineage,
+) -> Result<PlannedLineage> {
+    let journal = super::lineage::image_journal(events);
+    let head = journal.last().map_or(0, |entry| entry.sequence);
+    if lineage.branches.len() > history::MAX_BRANCHES {
+        return Err(AgentLoopError::config(
+            "imported lineage has too many branches",
+        ));
+    }
+    let mut branches = HashMap::new();
+    for branch in &lineage.branches {
+        if !history::valid_branch_id(&branch.id) {
+            return Err(AgentLoopError::config(
+                "invalid imported history branch identity",
+            ));
+        }
+        // An abandoned branch may end in an interrupted turn; selecting it
+        // later is refused by the settled-turn rule of the branch command.
+        let ranges = history::canonical_selection(&journal, &branch.ranges, head, false).map_err(
+            |rule| AgentLoopError::config(format!("imported branch {}: {rule}", branch.id)),
+        )?;
+        if branches.insert(branch.id.clone(), ranges).is_some() {
+            return Err(AgentLoopError::config(
+                "imported lineage repeats a branch identity",
+            ));
+        }
+    }
+    if !branches.contains_key(&lineage.active) {
+        return Err(AgentLoopError::config(
+            "imported lineage does not retain its active branch",
+        ));
+    }
+    Ok(PlannedLineage {
+        active: lineage.active.clone(),
+        branches,
+    })
+}
 
 impl SqliteHosting {
     pub(super) fn import_image(
@@ -14,6 +71,11 @@ impl SqliteHosting {
         image: LegacySessionImage,
     ) -> Result<bool> {
         let decision = image.record();
+        let lineage = image
+            .lineage
+            .as_ref()
+            .map(|lineage| plan_lineage(&image.events, lineage))
+            .transpose()?;
         // Seal outside the transaction; refuse before any write without keys.
         let sealed = image
             .secrets
@@ -59,8 +121,8 @@ impl SqliteHosting {
             }
             state.binding = Some(image.binding.clone());
             state.created_at = everruns_contracts::rt::utc_now_iso();
-            import_journal(tx, session, state, &image)?;
-            import_objects(tx, session, state, &image)?;
+            import_journal(tx, session, state, &image, lineage.as_ref())?;
+            import_objects(tx, session, state, &image, lineage.as_ref())?;
             for (name, secret) in &sealed {
                 put(tx, session, "secret", name, secret)?;
             }
@@ -80,6 +142,7 @@ fn import_journal(
     session: SessionId,
     state: &mut Control,
     image: &LegacySessionImage,
+    lineage: Option<&PlannedLineage>,
 ) -> Result<()> {
     let mut last_input = 0i64;
     for event in &image.events {
@@ -123,7 +186,24 @@ fn import_journal(
         if matches!(event.data, EventData::InputMessage(_)) {
             last_input = i64::from(sequence);
         }
-        advance(state, event);
+        // Control state (open turn, pending calls) follows the active branch
+        // only; abandoned events are history, not obligations.
+        if lineage.is_none_or(|lineage| history::contains(lineage.active_ranges(), sequence)) {
+            advance(state, event);
+        }
+    }
+    if let Some(lineage) = lineage {
+        for (id, ranges) in &lineage.branches {
+            if *id != lineage.active {
+                put(tx, session, "branch", id, ranges)?;
+            }
+        }
+        state.lineage = Some(super::lineage::Lineage {
+            revision: 0,
+            branch: lineage.active.clone(),
+            ranges: lineage.active_ranges().to_vec(),
+            base: state.head,
+        });
     }
     // Imported turns finished their Framework lifecycle on the legacy lane;
     // their outcomes are written below. Every imported input is consumed: an
@@ -151,6 +231,7 @@ fn import_objects(
     session: SessionId,
     state: &Control,
     image: &LegacySessionImage,
+    lineage: Option<&PlannedLineage>,
 ) -> Result<()> {
     if let Some(record) = &image.record {
         put(tx, session, "session", "record", record)?;
@@ -164,16 +245,50 @@ fn import_objects(
             &image.configuration,
         )?;
     }
+    // Checkpoints from the legacy store summarized the linear journal; those
+    // a lineage names summarized their branch's prefix (EVE-1305).
+    let first = image.events.first().and_then(|event| event.sequence);
+    let mut checkpoints = Vec::new();
     for checkpoint in &image.checkpoints {
-        if checkpoint.session_id != session || checkpoint.source_sequence > i64::from(state.head) {
-            return Err(error("legacy checkpoint exceeds the imported journal"));
+        let prefix = i32::try_from(checkpoint.source_sequence)
+            .ok()
+            .and_then(|source| {
+                history::HistoryLineage::linear(first, source).rewind_ranges(source)
+            });
+        checkpoints.push((checkpoint, prefix));
+    }
+    if let (Some(planned), Some(source)) = (lineage, &image.lineage) {
+        for entry in &source.checkpoints {
+            let ranges = planned.branches.get(&entry.branch).ok_or_else(|| {
+                AgentLoopError::config("imported checkpoint names an unknown branch")
+            })?;
+            let prefix = i32::try_from(entry.checkpoint.source_sequence)
+                .ok()
+                .and_then(|source| history::clip(ranges, source))
+                .ok_or_else(|| {
+                    AgentLoopError::config("imported checkpoint source is not on its branch")
+                })?;
+            checkpoints.push((&entry.checkpoint, Some(prefix)));
         }
-        let key = json!([
-            checkpoint.provider_type,
-            checkpoint.model,
-            checkpoint.format_version
-        ])
-        .to_string();
+    }
+    for (checkpoint, prefix) in checkpoints {
+        let prefix = prefix
+            .filter(|_| {
+                checkpoint.session_id == session
+                    && checkpoint.source_sequence <= i64::from(state.head)
+            })
+            .ok_or_else(|| error("legacy checkpoint exceeds the imported journal"))?;
+        let key = super::ports::checkpoint_key(
+            &checkpoint.provider_type,
+            &checkpoint.model,
+            checkpoint.format_version,
+            &prefix,
+        );
+        if object::<Value>(tx, session, "checkpoint", &key)?
+            .is_some_and(|old| old["source_sequence"].as_i64() >= Some(checkpoint.source_sequence))
+        {
+            continue;
+        }
         put(
             tx,
             session,
@@ -187,6 +302,7 @@ fn import_objects(
                 "model": checkpoint.model,
                 "format_version": checkpoint.format_version,
                 "payload": checkpoint.payload,
+                "lineage": prefix,
             }),
         )?;
     }

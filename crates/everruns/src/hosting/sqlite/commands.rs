@@ -29,6 +29,11 @@ impl SqliteHosting {
                 assignment,
                 terminal:if let Some(turn)=assignment {tx.query_row("SELECT EXISTS(SELECT 1 FROM framework_events WHERE session=? AND identity=?)",params![session.to_string(),format!("terminal:{turn}")],|r|r.get(0)).map_err(error)?}else{false},
                 rejected:input.map(|input|object::<Value>(tx,session,"framework",&format!("rejected/{input}"))).transpose()?.flatten().is_some(),
+                // Branch facts only when asked: building them reads the journal index.
+                history:match &command {
+                    SessionCommand::SelectBranch{branch,ranges,..}=>Some(super::lineage::view(tx,session,state,branch,ranges.as_deref())?),
+                    _=>None,
+                },
             };
             let plan=session_commands::prepare(command,view)?;
             if plan.replay {return Ok(plan.reply);}
@@ -48,6 +53,11 @@ impl SqliteHosting {
                 ControlUpdate::Resume=>{state.inbox=i64::from(state.head);state.resume_generation+=1;state.runnable=true;},
                 ControlUpdate::RetryExecution=>{state.suspended=false;state.runnable=true;state.holder=None;state.expires=0;},
                 ControlUpdate::Cancel{input,interrupt}=>{state.target_cancels.insert(input,state.inbox);if interrupt{state.cancel=Some(state.inbox);state.cancel_reported=false;state.runnable=true;}},
+                ControlUpdate::SelectBranch{branch,ranges,revision}=>{
+                    super::lineage::select(tx,session,state,branch,ranges,revision)?;
+                    // Proactive-compaction attempts measured another branch.
+                    self.proactive.lock().map_err(error)?.retain(|(id,..),_|*id!=session);
+                },
             }
             if let Some(key)=plan.key {retain_command(tx,session,&key,&plan.fingerprint,&plan.reply)?;}
             Ok(plan.reply)

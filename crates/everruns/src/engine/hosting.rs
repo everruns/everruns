@@ -369,6 +369,39 @@ impl Engine {
     ) -> Result<crate::hosting::HostingStatus> {
         self.profile()?.status(session).await
     }
+    /// Read the authority's conversation branch catalog (EVE-1305): the
+    /// active branch, its current extent and every retained branch.
+    pub async fn history_lineage(
+        &self,
+        session: SessionId,
+    ) -> Result<crate::hosting::HistoryLineage> {
+        self.profile()?.history_lineage(session).await
+    }
+
+    /// Change the active conversation branch while the session is quiescent
+    /// (EVE-1305). The journal is never rewritten: context and history follow
+    /// the selected branch, raw exports keep every event and new input extends
+    /// the selected branch. `expected_revision` comes from
+    /// [`Engine::history_lineage`]; a concurrent change, an execution epoch,
+    /// an open turn, outstanding waits or unconsumed input refuse instead of
+    /// being discarded. With `ranges`, create (or confirm) `branch`, for
+    /// example from [`HistoryLineage::rewind_ranges`](crate::hosting::HistoryLineage::rewind_ranges);
+    /// without, reselect a retained branch for redo. Retain `command` across
+    /// lost replies: a retry replays its first reply. Privileged hosts
+    /// authorize callers. Stability: experimental.
+    pub async fn select_history_branch(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        expected_revision: u64,
+        branch: &str,
+        ranges: Option<Vec<crate::hosting::SequenceRange>>,
+    ) -> Result<crate::hosting::HistorySelection> {
+        self.profile()?
+            .select_history_branch(session, command, expected_revision, branch, ranges)
+            .await
+    }
+
     /// Read an authoritative binding without reconstructing executable code.
     pub async fn session_binding(&self, session: SessionId) -> Result<SessionBinding> {
         Ok(self.profile()?.status(session).await?.binding)

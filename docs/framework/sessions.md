@@ -450,6 +450,45 @@ target build cannot reopen the session's workspace head. Use
 The Agent's in-memory default workspace is not durable on either lane, so its
 files are not migrated; the report sets `volatile_workspace`.
 
+### Rewinding and branching history
+
+`SqliteHosting` keeps every event forever and tracks which events form the
+conversation (experimental). A branch is a list of event-sequence ranges made of
+whole turns. The model context, `Session::history` and `Session::events_after`
+follow the active branch. `SqliteHosting::export_jsonl` still returns every
+event with its original id and sequence. New input extends the active branch, so
+sequences on a branch can have gaps.
+
+```rust ignore
+let lineage = engine.history_lineage(session_id).await?;
+// Rewind to just after sequence 12; the old branch stays retained.
+let ranges = lineage.rewind_ranges(12).expect("12 is on the active branch");
+engine
+    .select_history_branch(session_id, command_id, lineage.revision, "undo-1", Some(ranges))
+    .await?;
+// Redo: reselect the retained branch by name.
+engine
+    .select_history_branch(session_id, redo_id, lineage.revision + 1, "main", None)
+    .await?;
+```
+
+A selection is accepted only when the session is quiescent: no execution, no
+open turn, no pending tool call or approval, and no unconsumed input. It also
+checks the revision you read. Anything else is refused, never queued or
+discarded. Retrying the same command id returns the first reply. Compaction
+checkpoints follow the branch too. A checkpoint can be used only on a branch
+that shares the history it summarized, so a summary of an abandoned branch never
+shows up on another branch. Checkpoints of a shared earlier part stay usable.
+`MemoryHosting` and other authorities without branch support refuse these
+calls.
+
+To import saved history that already has branches, convert your own timeline
+format into a `ConversationLineage` and pass it with
+`Engine::cut_over_legacy_session_with_options(.., CutoverOptions::new().lineage(lineage))`.
+The whole journal is imported. The lineage names the active branch, the
+retained branches and each branch's compaction checkpoints. A retry must pass
+the same lineage.
+
 ### One process runs a session at a time
 
 Each session runs as an actor: its event log is its state, and a turn holds

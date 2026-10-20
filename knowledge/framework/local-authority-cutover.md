@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Local Authority Cutover and Legacy Lane Retirement Gate"
-description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
+description: "How legacy local/custom-backend Engine sessions move losslessly into the coherent SQLite authority, conversation branch selection (EVE-1305), the gap matrix against EVE-1298, and the gate for retiring the legacy facade actor."
 tags:
   - everruns
   - framework
@@ -11,9 +11,9 @@ tags:
 
 # Local Authority Cutover and Legacy Lane Retirement Gate
 
-**Status: cutover core implemented, retirement gate open.** The legacy facade
-actor stays. This page is the gate: retire it only when every row below says
-**passes**.
+**Status: cutover core and branch selection implemented.** The legacy facade
+actor stays until a release qualifies every row below as **passes** and the
+retirement is decided.
 
 ## Context
 
@@ -92,7 +92,7 @@ noted.
 | EVE-1298 acceptance | Legacy lane | Coherent SQLite lane | Status |
 | --- | --- | --- | --- |
 | Lossless, idempotent import: identity, journal, tool call/result associations | JSONL or caller event log | Verbatim journal, receipts, assignments, outcomes | **passes** for custom and `LocalConfig` |
-| Active and abandoned branches | No branch model in the Framework journal; superseded outputs stay in the log | Verbatim copy keeps every event | **passes** for Framework stores; branch semantics depend on rewind below |
+| Active and abandoned branches | No branch model in the Framework journal; downstream timelines choose active ranges | Verbatim journal plus a portable `ConversationLineage` (active branch, retained branches, per-branch checkpoints) | **passes**; see [Conversation branches](#conversation-branches) |
 | Task/child links | Task registry records, `parent_session_id` | Every task and its message channel imported into the authority's task registry; links kept | **passes**; tasks still running under a live legacy owner refuse |
 | Workspace metadata | Binding store | Imported binding, exact-head factory, mismatch refused | **passes** |
 | Session secrets | Legacy secret store | Sealed under authority secret keys | **passes** |
@@ -100,7 +100,7 @@ noted.
 | Dreaming maintenance and shared Memory budgets | Original maintenance store | No maintenance-authority handoff | **protected by refusal** when configured or retained; not imported |
 | Durable source boundary and ownership decision | Marker | Cutover record | **passes** |
 | Interrupted/retried/conflicting cutover, no duplicate work, no automatic fallback | Frozen by marker and lease fence | One transaction, replay on retry | **passes** |
-| Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | None | **missing** |
+| Rewind/redo of active history and compaction under the authority while quiescent | Not in this repository: neither lane has a rewind contract | `SelectBranch` session command; lineage-scoped checkpoints ([branch tests](../../crates/everruns/tests/hosted_sessions/branches.rs), [downstream fixture](../../crates/everruns/tests/fixtures/external-consumer/history-lineage/src/lib.rs)) | **passes** on SQLite; other authorities refuse |
 | Workspace restore keeps its own confirmation and snapshot policy | Separate workspace checkpoint API | Unchanged | not affected; restore stays separate |
 | Background tools, monitors, child sessions, coordination: obligations, permissions, provenance, delivery dedup | Durable local task registry, `EngineHub` coordination, schedule runner | [Authority task services](../../crates/everruns/src/hosting/sqlite/services.rs): the local task registry and recovery over the authority file, child sessions of the same build with a durable parent link, wakes as task-derived admissions, fenced re-attach or conservative settlement after owner loss | **passes**, schedules included |
 | JSONL is the legacy authority before cutover or a rebuildable export after | JSONL is the authority | Never written after cutover; [rebuilt from one authority snapshot](../../crates/everruns/src/hosting/sqlite/export.rs) in the `JsonlEventLog` format | **passes** |
@@ -112,18 +112,14 @@ noted.
 | Probe: interrupted import | | Nothing committed, legacy stays frozen, explicit abandon only | **passes** |
 | Uncertain external effects not replayed | | Interrupted at-most-once call never runs again | **passes** |
 | Host surfaces on Engine | `LocalConfig`/custom-backend facade | serve on the native authority, [moving pre-authority sessions on first access](../../crates/serve/src/host/cutover.rs); [AG-UI hosted threads](../../crates/everruns/src/ag_ui/threads.rs); coordination through authority child sessions | **passes** |
-| Retire the facade actor only after all host surfaces pass | | | **blocked** by rewind/redo |
+| Retire the facade actor only after all host surfaces pass | | | ready for the retirement decision |
 
 ## Retirement gate
 
-Retire the legacy facade actor, and the `Engine::create` path that selects it,
-only when the remaining item holds on the revision being released:
+Every row passes. Retire the legacy facade actor, and the `Engine::create` path
+that selects it, only when a release qualifies the rows on its own revision.
 
-1. **Rewind/redo under the authority.** Blocked on the owner's decision on
-   branch-selection semantics (proposal below). Neither lane in this
-   repository has a rewind contract today; the downstream consumer owns it.
-
-Every other row passes. serve moves a session that a release before its native
+serve moves a session that a release before its native
 authority kept under `data_dir/everruns` when the session is first read: it
 cuts the session over to a separate `<build>:pre-authority` build of the same
 agent over the shared legacy directory workspace, so files and file tools carry
@@ -137,35 +133,41 @@ serve finds each from the legacy journal (started inside the parent's open
 parent, recording `parent_session_id` with
 `Engine::cut_over_legacy_session_with_metadata`.
 
-### Proposal for rewind and redo (needs an owner decision)
+## Conversation branches
 
-The journal stays append-only; a rewind selects which prefix is active.
+Decided in EVE-1305; this replaces the earlier `history.rewound` event proposal.
 
-- **Command.** `Rewind { id, to: <event sequence of a turn boundary> }` runs in
-  the shared session-command reducer. It is accepted only while quiescent: no
-  live epoch, no open turn, no pending call or approval, no queued admission.
-  Otherwise it is refused, never queued behind work.
-- **Canonical record.** It appends one `history.rewound` event naming the
-  active head (`to`) and the head it replaces (`from`). Folding the journal
-  into model history skips every event in the replaced range. Nothing is
-  deleted, so the abandoned branch stays readable and exportable.
-- **Redo.** Redo is a rewind whose `to` is the head of an abandoned branch,
-  allowed only while nothing has been admitted on the active branch since
-  that rewind. Admitting new input on a rewound head makes the abandoned branch
-  final; it remains in history, but it is no longer redoable.
-- **Compaction.** Checkpoints carry a source sequence. After a rewind, only
-  checkpoints whose source is at or before `to` on the active branch are used;
-  later ones are ignored, not deleted, so a redo can use them again.
-- **Admissions and waits.** Receipts and outcomes of rewound turns stay
-  readable. A retried command id from the abandoned branch replays its
-  original receipt; it does not run again on the new branch.
-- **Workspace.** Rewind never changes files. Restoring a workspace checkpoint
-  is a separate, confirmed operation with its own snapshot policy.
-
-The owner needs to decide whether redo stays available after new input,
-whether rewind may cross a compaction boundary, and how clients present
-abandoned branches. The `history.rewound` event is a public contract change
-(OpenAPI, SDKs, UI).
+- **Authority state, not a journal event.** The journal is never rewritten and
+  gains no event type. The [SQLite lineage](../../crates/everruns/src/hosting/sqlite/lineage.rs)
+  keeps the active branch as canonical sequence ranges plus a base: events
+  appended after the base extend the active branch. Context, history and the
+  actor journal read through that predicate; raw export does not. A downstream
+  `EventReader` filter would be a second history authority and could not move
+  compaction state atomically, so it is not the contract.
+- **One shared command.** `SessionCommand::SelectBranch` runs in the
+  [shared reducer](../../crates/core/src/session_commands/mod.rs) with
+  [pure lineage rules](../../crates/core/src/session_commands/history.rs). It
+  checks the expected revision and refuses any owed work: a live epoch, an open
+  or parked turn, pending calls or approvals, unconsumed input, a pending cancel
+  or wakeup, or a suspension. A retried command id replays its reply. Branches
+  select whole turns, and a branch change may not select a turn that has not
+  ended. Authorities that do not capture branch facts (memory, Durable Object,
+  server) refuse the command.
+- **Redo and fork stay available.** Leaving a branch retains it at its extent;
+  new input on another branch does not finalize it. Reselecting by id restores
+  it, and a new id with explicit ranges forks.
+- **Compaction follows the lineage.** A checkpoint stores the active prefix it
+  summarized, keyed per provider/model/format and prefix digest. It is eligible
+  only when the active branch has the same prefix at its source sequence, so
+  ancestor checkpoints stay usable and a summary of an abandoned suffix never
+  appears elsewhere. Checkpoints stored before lineage count as linear prefixes.
+- **Import is portable.** A product parses its own timeline into
+  `ConversationLineage` and passes it through `CutoverOptions`. Everruns knows
+  no product file names, checkpoint ids or workspace restore policy. Control
+  state replays only active events; the lineage digest is part of the cutover
+  record, so a retry with another lineage fails.
+- **Workspace.** Branch selection never changes files. Workspace restore keeps
+  its own confirmed operation and snapshot policy.
 
 A lower-level Core host still exists for platform hosts; retiring the facade
 lane does not remove it, and is a separate claim from whether an application can

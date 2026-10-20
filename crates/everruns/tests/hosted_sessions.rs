@@ -747,6 +747,9 @@ async fn native_rejected_admission_rolls_back_event_cursor_receipt_and_wakeup() 
     assert!(sent.wait().await.unwrap().success);
 }
 
+#[cfg(feature = "local")]
+#[path = "hosted_sessions/branches.rs"]
+mod branches;
 #[path = "hosted_sessions/controls.rs"]
 mod controls;
 #[cfg(feature = "local")]

@@ -28,7 +28,7 @@ use everruns_core::host::{EventReadLimit, EventReadRequest, SessionLease, Sessio
 
 use super::legacy_metadata::{CutoverState, LegacyCutoverMarker, LegacyCutoverStore};
 use super::*;
-use crate::hosting::cutover::{CutoverBoundary, CutoverReport, LegacySessionImage};
+use crate::hosting::cutover::{CutoverBoundary, CutoverOptions, CutoverReport, LegacySessionImage};
 use crate::hosting::{AgentBuild, SessionConfiguration};
 
 /// How long the cutover holds the legacy session lease while importing.
@@ -194,6 +194,30 @@ impl Engine {
         build: &AgentBuild,
         metadata: serde_json::Value,
     ) -> Result<CutoverReport> {
+        self.cut_over_legacy_session_with_options(
+            session,
+            legacy,
+            build,
+            CutoverOptions::new().metadata(metadata),
+        )
+        .await
+    }
+
+    /// [`Engine::cut_over_legacy_session`] with metadata and the journal's
+    /// branch structure (EVE-1305). With a
+    /// [`ConversationLineage`](crate::hosting::ConversationLineage) the whole
+    /// journal is still imported verbatim; the lineage says which events form
+    /// the active branch the authority continues and which abandoned branches
+    /// stay retained for redo and fork, with each branch's compaction
+    /// checkpoints. Retries must pass the same options. Stability: experimental.
+    pub async fn cut_over_legacy_session_with_options(
+        &self,
+        session: SessionId,
+        legacy: &Agent,
+        build: &AgentBuild,
+        options: CutoverOptions,
+    ) -> Result<CutoverReport> {
+        let CutoverOptions { metadata, lineage } = options;
         let profile = self.profile()?.clone();
         let lane = legacy_lane(legacy).ok_or_else(|| {
             AgentLoopError::config("the source Agent selects no legacy local or custom backends")
@@ -251,6 +275,7 @@ impl Engine {
                 &registration,
                 binding.clone(),
                 marker.is_none(),
+                lineage,
                 &*profile,
             )
             .await;
@@ -320,6 +345,7 @@ impl Engine {
         registration: &hosting::Registration,
         binding: crate::hosting::SessionBinding,
         first: bool,
+        lineage: Option<crate::hosting::ConversationLineage>,
         profile: &dyn crate::hosting::SessionHosting,
     ) -> std::result::Result<CutoverReport, (AgentLoopError, bool)> {
         let build = binding.behavior.clone();
@@ -337,7 +363,7 @@ impl Engine {
                 .await
                 .map_err(|error| (error, false))?;
         }
-        let image = self
+        let mut image = self
             .read_frozen(
                 session,
                 lane,
@@ -357,6 +383,11 @@ impl Engine {
         );
         let secret_count = image.secrets.len();
         let schedule_count = image.schedules.len();
+        let branch_count = lineage.as_ref().map_or(0, |lineage| lineage.branches.len());
+        let lineage_checkpoints = lineage
+            .as_ref()
+            .map_or(0, |lineage| lineage.checkpoints.len());
+        image.lineage = lineage;
         let volatile_workspace = image.source["volatile_workspace"].as_bool() == Some(true);
         let replayed = profile
             .import_legacy(session, image)
@@ -379,12 +410,13 @@ impl Engine {
             binding,
             boundary,
             replayed,
-            checkpoints: counts.0,
+            checkpoints: counts.0 + lineage_checkpoints,
             tasks: counts.1,
             values: counts.2,
             volatile_workspace,
             secrets: secret_count,
             schedules: schedule_count,
+            branches: branch_count,
         })
     }
 
@@ -641,6 +673,7 @@ impl Engine {
             secrets,
             schedules,
             workspace,
+            lineage: None,
         })
     }
 }

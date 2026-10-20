@@ -94,8 +94,15 @@ impl MemoryHosting {
             terminal: assignment.is_some_and(|turn| state.terminal.contains_key(&turn)),
             rejected: input
                 .is_some_and(|input| state.records.contains_key(&format!("rejected/{input}"))),
+            // No branch facts: the volatile authority refuses branch selection.
+            history: None,
         };
         let plan = session_commands::prepare(command, view)?;
+        if matches!(plan.control, ControlUpdate::SelectBranch { .. }) {
+            return Err(AgentLoopError::config(
+                "this session authority does not support conversation branch selection",
+            ));
+        }
         if plan.replay {
             return Ok(plan.reply);
         }
@@ -170,6 +177,7 @@ impl MemoryHosting {
                 state.holder = None;
                 state.expires = None;
             }
+            ControlUpdate::SelectBranch { .. } => {}
             ControlUpdate::Cancel { input, interrupt } => {
                 let position = state.inbox;
                 state.target_cancels.insert(input, position);
