@@ -43,6 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let turn = pending.wait().await?;
     println!("final response: {}", turn.response);
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !turn.success {
+        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
+    }
     assert_eq!(rendered, turn.response);
 
     // --- Cancel a turn ---------------------------------------------------

@@ -58,6 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for failure in &turn.hook_failures {
         eprintln!("hook warning: {failure}");
     }
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !turn.success {
+        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
+    }
 
     Ok(())
 }
