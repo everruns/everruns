@@ -775,7 +775,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             . -> target
-            examples/celld-engine -> target
+            examples/durable-object-agent -> target
 
       - name: Check wasm portability
         run: bash scripts/lib/check-wasm-portability.sh
