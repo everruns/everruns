@@ -18,12 +18,18 @@ pub mod cutover;
 pub use configuration::DirectoryEnvironmentFactory;
 #[doc(hidden)]
 pub use cutover::LegacySessionImage;
-pub use cutover::{CutoverBoundary, CutoverReport, ImportedWorkspaceFactory};
+pub use cutover::{
+    BranchCheckpoint, ConversationLineage, CutoverBoundary, CutoverOptions, CutoverReport,
+    ImportedWorkspaceFactory,
+};
 pub use everruns_contracts::execution_api::ToolApprovalDecision;
 pub use everruns_core::session_commands::{ApprovalCommit, SessionConfiguration};
 pub(crate) mod execution;
 mod memory;
 mod retry;
+pub use everruns_core::session_commands::history::{
+    HistoryBranch, HistoryLineage, HistorySelection, SequenceRange,
+};
 pub use everruns_core::session_commands::{
     QuestionAnswersRequest, validate_question_answers, validate_tool_resolutions,
 };
@@ -325,6 +331,41 @@ pub trait SessionHosting: Send + Sync + 'static {
                 spi::session_commands::SessionCommand::Seed {
                     id: command.to_string(),
                     messages,
+                },
+            )
+            .await?,
+        )
+        .map_err(|e| spi::error::AgentLoopError::store(e.to_string()))
+    }
+    /// The authority's conversation branch catalog (EVE-1305). Context and
+    /// history reads follow its active branch; raw exports keep every event.
+    /// Authorities without branch support refuse.
+    async fn history_lineage(&self, _session: SessionId) -> Result<HistoryLineage> {
+        Err(spi::error::AgentLoopError::config(
+            "this session authority does not support conversation branch selection",
+        ))
+    }
+    /// Activate a conversation branch while the session is quiescent, checked
+    /// against `expected_revision` and retained at `command` for retries.
+    /// With `ranges`, create (or confirm) `branch` over those journal
+    /// sequences; without, reselect a retained branch. Compatible compaction
+    /// state follows the branch in the same transaction.
+    async fn select_history_branch(
+        &self,
+        session: SessionId,
+        command: uuid::Uuid,
+        expected_revision: u64,
+        branch: &str,
+        ranges: Option<Vec<SequenceRange>>,
+    ) -> Result<HistorySelection> {
+        serde_json::from_value(
+            self.command(
+                session,
+                spi::session_commands::SessionCommand::SelectBranch {
+                    id: command.to_string(),
+                    expected_revision,
+                    branch: branch.to_owned(),
+                    ranges,
                 },
             )
             .await?,

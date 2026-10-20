@@ -5,6 +5,7 @@ mod commands;
 mod dreaming;
 mod export;
 mod import;
+mod lineage;
 mod ports;
 mod secrets;
 mod services;
@@ -85,6 +86,8 @@ struct Control {
     pending: Vec<crate::ToolCall>,
     finalizing: HashSet<TurnId>,
     target_cancels: HashMap<MessageId, i64>,
+    /// Active conversation branch; `None` until the first selection.
+    lineage: Option<lineage::Lineage>,
 }
 
 impl Control {
@@ -638,6 +641,15 @@ impl SessionHosting for SqliteHosting {
         backends: HostBackends,
     ) -> Result<HostBackends> {
         self.prepare(engine, session, environment, backends).await
+    }
+    async fn history_lineage(
+        &self,
+        session: SessionId,
+    ) -> Result<super::spi::session_commands::history::HistoryLineage> {
+        self.transaction(session, |tx, state| {
+            state.binding(session)?;
+            lineage::read(tx, session, state)
+        })
     }
     async fn import_legacy(&self, session: SessionId, image: LegacySessionImage) -> Result<bool> {
         let replayed = self.import_image(session, image)?;

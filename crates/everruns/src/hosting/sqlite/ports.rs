@@ -12,6 +12,8 @@ use everruns_core::{
     session_services::{KeyInfo, SecretInfo, SessionStorageStore},
 };
 
+use crate::hosting::spi::session_commands::history::{self, SequenceRange};
+
 fn log_error(error: impl std::fmt::Display) -> EventLogError {
     EventLogError::Backend {
         detail: error.to_string(),
@@ -187,24 +189,42 @@ impl SessionActorStore for Ports {
         self.scope(session)?;
         self.hosting.transaction(session,|tx,state| {
             state.binding(session)?;
-            let after=match after {Some(after)=>after,None=>tx.query_row("SELECT coalesce(max(seq)-1,0) FROM framework_events WHERE session=? AND type='turn.started'",[session.to_string()],|row|row.get(0)).map_err(error)?};
-            let (events,more)=page(tx,session,after,state.head,if limit==0 {256}else{limit.min(1024) as usize})?;
+            // Recovery reads the active branch: an abandoned turn is not the latest.
+            let (ranges,base)=super::lineage::filter(state)?;
+            let after=match after {Some(after)=>after,None=>tx.query_row(&format!("SELECT coalesce(max(seq)-1,0) FROM framework_events WHERE session=?1 AND type=?2 AND {}",super::lineage::ACTIVE),params![session.to_string(),"turn.started",ranges,base],|row|row.get(0)).map_err(error)?};
+            let (events,more)=page(tx,session,state,after,state.head,if limit==0 {256}else{limit.min(1024) as usize})?;
             Ok(ActorJournal {events,has_more:more,head_sequence:(state.head>0).then_some(state.head)})
         })
     }
 }
 
+/// One page of the active branch; abandoned events keep their sequences but
+/// are not context. Raw export reads the table directly.
 fn page(
     tx: &Transaction<'_>,
     session: SessionId,
+    state: &Control,
     after: i32,
     through: i32,
     limit: usize,
 ) -> Result<(Vec<Event>, bool)> {
-    let mut query=tx.prepare("SELECT value FROM framework_events WHERE session=? AND seq>? AND seq<=? ORDER BY seq LIMIT ?").map_err(error)?;
+    let (ranges, base) = super::lineage::filter(state)?;
+    let mut query = tx
+        .prepare(&format!(
+            "SELECT value FROM framework_events WHERE session=?1 AND seq>?2 AND {} AND seq<=?5 ORDER BY seq LIMIT ?6",
+            super::lineage::ACTIVE
+        ))
+        .map_err(error)?;
     let rows = query
         .query_map(
-            params![session.to_string(), after, through, (limit + 1) as i64],
+            params![
+                session.to_string(),
+                after,
+                ranges,
+                base,
+                through,
+                (limit + 1) as i64
+            ],
             |row| row.get::<_, String>(0),
         )
         .map_err(error)?;
@@ -250,7 +270,14 @@ impl EventReader for Ports {
                 if through > state.head || after > through {
                     return Err(error("invalid authority event cursor"));
                 }
-                let (events, more) = page(tx, self.session, after, through, request.limit().get())?;
+                let (events, more) = page(
+                    tx,
+                    self.session,
+                    state,
+                    after,
+                    through,
+                    request.limit().get(),
+                )?;
                 Ok((events, more, through))
             })
             .map_err(log_error)?;
@@ -367,6 +394,10 @@ struct Checkpoint {
     model: String,
     format_version: u32,
     payload: CompactionCheckpointPayload,
+    /// Active lineage prefix this checkpoint summarized (EVE-1305). Absent on
+    /// checkpoints stored before lineage: they cover the linear journal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lineage: Option<Vec<SequenceRange>>,
 }
 impl From<Checkpoint> for CompactionCheckpoint {
     fn from(c: Checkpoint) -> Self {
@@ -381,6 +412,103 @@ impl From<Checkpoint> for CompactionCheckpoint {
         }
     }
 }
+/// Checkpoint slot key. Ranges enter as a digest to bound the key length.
+pub(super) fn checkpoint_key(
+    provider: &str,
+    model: &str,
+    format: u32,
+    lineage: &[SequenceRange],
+) -> String {
+    json!([provider, model, format, history::lineage_digest(lineage)]).to_string()
+}
+/// Ancestor checkpoints retained per branch, so a rewind to an earlier point
+/// still finds compatible compaction state without unbounded growth.
+const CHECKPOINTS_PER_BRANCH: usize = 8;
+
+/// Delete checkpoints of `c`'s provider/model/format that are no longer among
+/// the newest eligible checkpoints of any branch once `c` is installed.
+/// Returns whether `c` should be installed: not when an equal or newer
+/// checkpoint already covers the active branch.
+fn prune_checkpoints(
+    tx: &Transaction<'_>,
+    session: SessionId,
+    state: &Control,
+    c: &CompactionCheckpoint,
+    lineage: &[SequenceRange],
+    key: &str,
+) -> Result<bool> {
+    let branches: Vec<Vec<SequenceRange>> = super::lineage::read(tx, session, state)?
+        .branches
+        .into_iter()
+        .map(|branch| branch.ranges)
+        .collect();
+    let first = super::lineage::first_sequence(tx, session)?;
+    let mut query = tx
+        .prepare("SELECT key,value FROM framework_objects WHERE session=? AND kind='checkpoint' AND json_extract(value,'$.provider_type')=? AND json_extract(value,'$.model')=? AND json_extract(value,'$.format_version')=? LIMIT 4096")
+        .map_err(error)?;
+    let mut candidates: Vec<(Option<String>, i64, Option<Vec<SequenceRange>>)> = query
+        .query_map(
+            params![
+                session.to_string(),
+                c.provider_type,
+                c.model,
+                c.format_version
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(error)?
+        .map(|row| {
+            let (key, value) = row.map_err(error)?;
+            let old = decode::<Checkpoint>(value)?;
+            let prefix =
+                super::lineage::summarized(old.lineage.as_deref(), old.source_sequence, first);
+            Ok((Some(key), old.source_sequence, prefix))
+        })
+        .collect::<Result<_>>()?;
+    // Existing rows win ties, so an equal checkpoint is not reinstalled.
+    candidates.push((None, c.source_sequence, Some(lineage.to_vec())));
+    let mut keep = vec![false; candidates.len()];
+    for branch in &branches {
+        let mut eligible: Vec<(usize, i64)> = candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, source, prefix))| {
+                prefix
+                    .as_deref()
+                    .is_some_and(|prefix| super::lineage::covers(branch, *source, prefix))
+            })
+            .map(|(index, (_, source, _))| (index, *source))
+            .collect();
+        // Newest first; on a tie the existing row stays.
+        eligible.sort_by_key(|(index, source)| (std::cmp::Reverse(*source), *index));
+        for (index, _) in eligible.into_iter().take(CHECKPOINTS_PER_BRANCH) {
+            keep[index] = true;
+        }
+    }
+    // The new checkpoint is redundant when an equal or newer one already
+    // covers the active branch at its prefix.
+    let install = keep.last().copied().unwrap_or(false)
+        && !candidates[..candidates.len() - 1]
+            .iter()
+            .any(|(_, source, prefix)| {
+                *source >= c.source_sequence
+                    && prefix
+                        .as_deref()
+                        .is_some_and(|prefix| super::lineage::covers(&branches[0], *source, prefix))
+            });
+    for ((old, ..), keep) in candidates.iter().zip(&keep) {
+        if let Some(old) = old
+            && (!keep || (install && old == key))
+        {
+            tx.execute(
+                "DELETE FROM framework_objects WHERE session=? AND kind='checkpoint' AND key=?",
+                params![session.to_string(), old],
+            )
+            .map_err(error)?;
+        }
+    }
+    Ok(install)
+}
 impl Ports {
     fn checkpoint(
         &self,
@@ -392,8 +520,21 @@ impl Ports {
         self.scope(session)?;
         self.hosting.transaction(session,|tx,state| {
         state.binding(session)?;
-        let raw:Option<String>=tx.query_row("SELECT value FROM framework_objects WHERE session=? AND kind='checkpoint' AND json_extract(value,'$.provider_type')=? AND json_extract(value,'$.model')=? AND (? IS NULL OR json_extract(value,'$.format_version')=?) ORDER BY json_extract(value,'$.source_sequence') DESC LIMIT 1",params![session.to_string(),provider,model,format,format],|row|row.get(0)).optional().map_err(error)?;
-        Ok(raw.map(decode::<Checkpoint>).transpose()?.map(Into::into))
+        // Newest checkpoint whose summarized prefix is the active branch's own
+        // prefix at its source: ancestors stay eligible, abandoned suffixes never.
+        let active=super::lineage::active_ranges(tx,session,state)?;
+        let first=super::lineage::first_sequence(tx,session)?;
+        let mut query=tx.prepare("SELECT value FROM framework_objects WHERE session=? AND kind='checkpoint' AND json_extract(value,'$.provider_type')=? AND json_extract(value,'$.model')=? AND (? IS NULL OR json_extract(value,'$.format_version')=?) ORDER BY json_extract(value,'$.source_sequence') DESC LIMIT 4096").map_err(error)?;
+        let rows=query.query_map(params![session.to_string(),provider,model,format,format],|row|row.get::<_,String>(0)).map_err(error)?;
+        for row in rows {
+            let checkpoint=decode::<Checkpoint>(row.map_err(error)?)?;
+            if super::lineage::summarized(checkpoint.lineage.as_deref(),checkpoint.source_sequence,first)
+                .is_some_and(|prefix|super::lineage::covers(&active,checkpoint.source_sequence,&prefix))
+            {
+                return Ok(Some(checkpoint.into()));
+            }
+        }
+        Ok(None)
     })
     }
 }
@@ -420,14 +561,20 @@ impl CompactionCheckpointStore for Ports {
         self.scope(c.session_id)?;
         self.hosting.transaction(self.session, |tx, state| {
             self.check(state)?;
-            let key = json!([c.provider_type, c.model, c.format_version]).to_string();
-            if object::<Checkpoint>(tx, self.session, "checkpoint", &key)?
-                .is_some_and(|old| old.source_sequence >= c.source_sequence)
-            {
-                return Ok(false);
-            }
             if c.source_sequence > i64::from(state.head) {
                 return Err(error("checkpoint exceeds canonical journal"));
+            }
+            // Slots are per lineage prefix, so a branch never overwrites another
+            // branch's compaction state. Pruning keeps only checkpoints that are
+            // the newest eligible one for some retained branch.
+            let active = super::lineage::active_ranges(tx, self.session, state)?;
+            let lineage = i32::try_from(c.source_sequence)
+                .ok()
+                .and_then(|source| history::clip(&active, source))
+                .ok_or_else(|| error("checkpoint source is not on the active branch"))?;
+            let key = checkpoint_key(&c.provider_type, &c.model, c.format_version, &lineage);
+            if !prune_checkpoints(tx, self.session, state, &c, &lineage, &key)? {
+                return Ok(false);
             }
             let stored = Checkpoint {
                 id: c.id,
@@ -437,6 +584,7 @@ impl CompactionCheckpointStore for Ports {
                 model: c.model,
                 format_version: c.format_version,
                 payload: c.payload,
+                lineage: Some(lineage),
             };
             put(tx, self.session, "checkpoint", &key, &stored)?;
             Ok(true)

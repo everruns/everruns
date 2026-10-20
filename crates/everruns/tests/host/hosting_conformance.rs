@@ -35,6 +35,14 @@ async fn sqlite_expired_owner() {
     conformance::lease_expiry(&profile).await;
 }
 
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_history_branches() {
+    let dir = tempfile::tempdir().unwrap();
+    let profile = everruns::hosting::SqliteHosting::open(dir.path().join("authority.db")).unwrap();
+    conformance::history_branches(&profile).await;
+}
+
 #[tokio::test]
 async fn memory_retained_deployment() {
     conformance::retained_build_recovery(MemoryHosting::default()).await;

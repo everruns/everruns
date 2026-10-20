@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-20
+
+* **Conversation branches.** SQLite hosting owns the active conversation
+  branch over an immutable journal: a shared `SelectBranch` command, retained
+  branches for redo/fork, lineage-scoped compaction checkpoints and a portable
+  `ConversationLineage` cutover import. The rewind row of the retirement gate
+  passes. See [Local authority cutover](framework/local-authority-cutover.md).
+
 ## 2026-10-19
 
 * **serve moves legacy child sessions.** Children found from the legacy

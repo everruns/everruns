@@ -259,6 +259,96 @@ pub async fn authority(profile: &impl SessionHosting) {
         .unwrap();
 }
 
+/// Check conversation branch selection (EVE-1305) on an authority that
+/// supports it: revision-checked, idempotent rewind; reads that follow the
+/// active branch; new input extending it; the abandoned branch retained; and
+/// refusal while input is unconsumed.
+pub async fn history_branches(profile: &impl SessionHosting) {
+    use super::SequenceRange;
+    let id = SessionId::new();
+    let binding = SessionBinding {
+        framework: 1,
+        behavior: AgentBuild::new("hosting-branches", uuid::Uuid::new_v4().to_string()),
+        harness: None,
+        environment: None,
+        metadata: json!(null),
+    };
+    profile.create(id, &binding).await.unwrap();
+    let messages = vec![
+        RuntimeMessage::user("a"),
+        RuntimeMessage::assistant("a!"),
+        RuntimeMessage::user("b"),
+        RuntimeMessage::assistant("b!"),
+    ];
+    assert!(
+        profile
+            .seed_history(id, uuid::Uuid::new_v4(), messages)
+            .await
+            .unwrap()
+    );
+    let visible = || async {
+        profile
+            .reader(id)
+            .event_log
+            .read_page(EventReadRequest::new(id, EventReadLimit::new(64).unwrap()))
+            .await
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.sequence.unwrap())
+            .collect::<Vec<_>>()
+    };
+    let lineage = profile.history_lineage(id).await.unwrap();
+    assert_eq!(lineage.revision, 0);
+    assert_eq!(lineage.active_ranges(), [SequenceRange::new(1, 4)]);
+    let rewind = lineage.rewind_ranges(2).unwrap();
+    let command = uuid::Uuid::new_v4();
+    let selected = profile
+        .select_history_branch(id, command, 0, "rewound", Some(rewind.clone()))
+        .await
+        .unwrap();
+    assert_eq!((selected.revision, selected.changed), (1, true));
+    assert_eq!(
+        profile
+            .select_history_branch(id, command, 0, "rewound", Some(rewind.clone()))
+            .await
+            .unwrap(),
+        selected,
+        "a retried selection must replay"
+    );
+    assert!(
+        profile
+            .select_history_branch(id, uuid::Uuid::new_v4(), 0, "fork", Some(rewind))
+            .await
+            .is_err(),
+        "a stale revision must refuse"
+    );
+    assert_eq!(
+        visible().await,
+        [1, 2],
+        "reads must follow the active branch"
+    );
+    let admitted = profile
+        .admit(id, RuntimeMessage::user("c"), false)
+        .await
+        .unwrap();
+    assert_eq!(visible().await, [1, 2, admitted.sequence]);
+    let lineage = profile.history_lineage(id).await.unwrap();
+    assert_eq!(lineage.active, "rewound");
+    assert_eq!(
+        lineage.branch("main").unwrap().ranges,
+        [SequenceRange::new(1, 4)],
+        "the abandoned branch must be retained"
+    );
+    assert!(
+        profile
+            .select_history_branch(id, uuid::Uuid::new_v4(), 1, "main", None)
+            .await
+            .is_err(),
+        "unconsumed input must refuse a branch change"
+    );
+}
+
 /// Check authority-clock lease expiry without releasing the owner. Refuse old
 /// receipts and storage writes before another owner claims, then recover the
 /// original input under a higher epoch. Requires one-second leases.

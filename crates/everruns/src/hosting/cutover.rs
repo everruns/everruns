@@ -17,6 +17,7 @@ use everruns_core::CompactionCheckpoint;
 use everruns_core::events::Event;
 use everruns_core::host::WorkspaceBinding;
 use everruns_core::session::ExecutionSession;
+use everruns_core::session_commands::history::{self, HistoryBranch};
 use everruns_core::{SessionTask, TaskMessage};
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +68,105 @@ pub struct CutoverReport {
     pub secrets: usize,
     /// Imported schedules; the authority's supervisor fires them.
     pub schedules: usize,
+    /// Imported conversation branches, the active one included; `0` for a
+    /// linear import.
+    pub branches: usize,
+}
+
+/// A compaction checkpoint produced on one branch of an imported lineage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BranchCheckpoint {
+    /// Branch whose context the checkpoint summarized.
+    pub branch: String,
+    /// The checkpoint; its source sequence must lie on that branch.
+    pub checkpoint: CompactionCheckpoint,
+}
+
+/// Portable conversation lineage for a cutover (EVE-1305).
+///
+/// The source journal is imported whole; this value says which events form
+/// each branch and which one is active. A downstream product parses its own
+/// timeline into it: Everruns knows no product file names, checkpoint ids or
+/// workspace restore policy. Branches are made of whole turns and identified
+/// by opaque ids. Each checkpoint stays eligible only on branches that share
+/// the lineage prefix it summarized. Stability: experimental.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConversationLineage {
+    /// Branch new input extends after the cutover.
+    pub active: String,
+    /// Every branch to retain, the active one included.
+    pub branches: Vec<HistoryBranch>,
+    /// Compaction checkpoints with the branch each one was produced on.
+    pub checkpoints: Vec<BranchCheckpoint>,
+}
+
+impl ConversationLineage {
+    /// Lineage with `active` among `branches` and no checkpoints.
+    pub fn new(active: impl Into<String>, branches: Vec<HistoryBranch>) -> Self {
+        Self {
+            active: active.into(),
+            branches,
+            checkpoints: Vec::new(),
+        }
+    }
+
+    /// Add a checkpoint produced on `branch`.
+    pub fn with_checkpoint(
+        mut self,
+        branch: impl Into<String>,
+        checkpoint: CompactionCheckpoint,
+    ) -> Self {
+        self.checkpoints.push(BranchCheckpoint {
+            branch: branch.into(),
+            checkpoint,
+        });
+        self
+    }
+
+    /// Retry identity: a repeated cutover must name the same lineage.
+    pub(crate) fn fingerprint(&self) -> serde_json::Value {
+        let value = serde_json::json!({
+            "active": self.active,
+            "branches": self.branches,
+            "checkpoints": self.checkpoints.iter().map(|entry| serde_json::json!({
+                "branch": entry.branch,
+                "id": entry.checkpoint.id,
+                "source_sequence": entry.checkpoint.source_sequence,
+                "provider_type": entry.checkpoint.provider_type,
+                "model": entry.checkpoint.model,
+                "format_version": entry.checkpoint.format_version,
+            })).collect::<Vec<_>>(),
+        });
+        serde_json::Value::String(history::json_digest(&value))
+    }
+}
+
+/// Options for [`Engine::cut_over_legacy_session_with_options`](crate::Engine::cut_over_legacy_session_with_options).
+/// Stability: experimental.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct CutoverOptions {
+    /// Creation metadata recorded on the authoritative binding.
+    pub metadata: serde_json::Value,
+    /// Branch structure of the imported journal; `None` imports it linearly.
+    pub lineage: Option<ConversationLineage>,
+}
+
+impl CutoverOptions {
+    /// Linear import without metadata.
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Record `metadata` on the binding, as session creation does.
+    pub fn metadata(mut self, metadata: serde_json::Value) -> Self {
+        self.metadata = metadata;
+        self
+    }
+    /// Import the journal with this branch structure.
+    pub fn lineage(mut self, lineage: ConversationLineage) -> Self {
+        self.lineage = Some(lineage);
+        self
+    }
 }
 
 /// One quiescent legacy session, ready for a single authority transaction.
@@ -92,17 +192,23 @@ pub struct LegacySessionImage {
         serde_json::Value,
     )>,
     pub(crate) workspace: Option<WorkspaceBinding>,
+    /// Branch structure of `events`; `None` is a linear journal.
+    pub(crate) lineage: Option<ConversationLineage>,
 }
 
 #[cfg_attr(not(feature = "local"), allow(dead_code))]
 impl LegacySessionImage {
     /// The committed decision. `decided_at` is not part of a retry's identity.
     pub(crate) fn record(&self) -> serde_json::Value {
-        serde_json::json!({
+        let mut record = serde_json::json!({
             "owner": "authority",
             "source": self.source,
             "binding": self.binding,
-        })
+        });
+        if let Some(lineage) = &self.lineage {
+            record["lineage"] = lineage.fingerprint();
+        }
+        record
     }
 }
 

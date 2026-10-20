@@ -1,0 +1,17 @@
+[package]
+name = "external-history-lineage"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A downstream product (EVE-1305) that keeps an append-only event log plus its
+# own timeline of active ranges. It parses that timeline into the portable
+# `ConversationLineage` and cuts the session over to the coherent SQLite
+# authority through public `everruns` paths alone.
+[dependencies]
+everruns = { path = "../../../../../../crates/everruns", features = ["local"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }
+uuid = { version = "1", features = ["v4"] }

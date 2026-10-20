@@ -290,3 +290,138 @@ fn causal_admission_retry_retains_first_commit_without_changing_identity() {
     assert!(retry.events.is_empty());
     assert_eq!(retry.reply, first.reply);
 }
+
+fn branch_view() -> CommandView {
+    let mut view = view();
+    view.open = None;
+    view.execution_active = false;
+    view.head = 6;
+    view.history = Some(history::HistoryView {
+        revision: 3,
+        active: history::DEFAULT_BRANCH.into(),
+        retained: None,
+        requested: Some(Ok(vec![history::SequenceRange::new(1, 3)])),
+        branches: 1,
+        obligations: false,
+    });
+    view
+}
+
+fn select(revision: u64, ranges: Option<Vec<history::SequenceRange>>) -> SessionCommand {
+    SessionCommand::SelectBranch {
+        id: "rewind".into(),
+        expected_revision: revision,
+        branch: "rewound".into(),
+        ranges,
+    }
+}
+
+#[test]
+fn branch_selection_commits_canonical_ranges_at_the_next_revision_and_replays() {
+    let ranges = Some(vec![history::SequenceRange::new(1, 3)]);
+    let plan = prepare(select(3, ranges.clone()), branch_view()).unwrap();
+    assert_eq!(plan.key.as_deref(), Some("history_branch:rewind"));
+    assert!(
+        plan.events.is_empty(),
+        "branch changes never rewrite the journal"
+    );
+    let ControlUpdate::SelectBranch {
+        branch,
+        ranges: selected,
+        revision,
+    } = &plan.control
+    else {
+        panic!("expected a branch selection");
+    };
+    assert_eq!((branch.as_str(), *revision), ("rewound", 4));
+    assert_eq!(selected, &[history::SequenceRange::new(1, 3)]);
+    assert_eq!(plan.reply["revision"], 4);
+
+    // A lost reply replays even though the revision moved on.
+    let mut retry = branch_view();
+    retry.history.as_mut().unwrap().revision = 4;
+    retry.previous = Some(CommandReceipt {
+        fingerprint: plan.fingerprint.clone(),
+        value: plan.reply.clone(),
+    });
+    let replay = prepare(select(3, ranges), retry.clone()).unwrap();
+    assert!(replay.replay);
+    assert_eq!(replay.reply, plan.reply);
+    assert!(matches!(replay.control, ControlUpdate::None));
+    assert!(
+        prepare(select(3, None), retry).is_err(),
+        "a reused identity with different input must conflict"
+    );
+}
+
+#[test]
+fn branch_selection_refuses_unsupported_stale_or_busy_authorities() {
+    let ranges = Some(vec![history::SequenceRange::new(1, 3)]);
+    let mut unsupported = branch_view();
+    unsupported.history = None;
+    assert!(
+        prepare(select(3, ranges.clone()), unsupported)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("does not support")
+    );
+    assert!(matches!(
+        prepare(select(2, ranges.clone()), branch_view()),
+        Err(CommandError::Conflict(
+            "conversation history revision changed"
+        ))
+    ));
+    let busy: [fn(&mut CommandView); 6] = [
+        |view| view.execution_active = true,
+        |view| view.suspended = true,
+        |view| view.open = Some(EventContext::turn(TurnId::new(), MessageId::new())),
+        |view| view.pending = vec![call("client")],
+        |view| view.queued = 1,
+        |view| view.history.as_mut().unwrap().obligations = true,
+    ];
+    for apply in busy {
+        let mut view = branch_view();
+        apply(&mut view);
+        assert!(
+            matches!(
+                prepare(select(3, ranges.clone()), view),
+                Err(CommandError::Conflict(message)) if message.contains("quiescent")
+            ),
+            "owed work must refuse a branch change"
+        );
+    }
+}
+
+#[test]
+fn branch_selection_conflicts_on_a_different_lineage_and_needs_known_branches() {
+    let mut view = branch_view();
+    view.history.as_mut().unwrap().retained = Some(vec![history::SequenceRange::new(1, 6)]);
+    assert!(matches!(
+        prepare(
+            select(3, Some(vec![history::SequenceRange::new(1, 3)])),
+            view.clone()
+        ),
+        Err(CommandError::Conflict(_))
+    ));
+    // Reselecting a retained branch takes its retained ranges.
+    let plan = prepare(select(3, None), view).unwrap();
+    assert!(matches!(
+        plan.control,
+        ControlUpdate::SelectBranch { ref ranges, .. }
+            if ranges == &[history::SequenceRange::new(1, 6)]
+    ));
+    assert!(prepare(select(3, None), branch_view()).is_err());
+    let mut invalid = branch_view();
+    invalid.history.as_mut().unwrap().requested = Some(Err("whole turns".into()));
+    assert!(prepare(select(3, Some(vec![])), invalid).is_err());
+
+    // Selecting the active branch again changes nothing.
+    let mut active = branch_view();
+    let facts = active.history.as_mut().unwrap();
+    facts.active = "rewound".into();
+    facts.retained = Some(vec![history::SequenceRange::new(1, 3)]);
+    let plan = prepare(select(3, None), active).unwrap();
+    assert!(matches!(plan.control, ControlUpdate::None));
+    assert_eq!(plan.reply["changed"], false);
+}
