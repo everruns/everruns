@@ -29,6 +29,8 @@
 //! # let _ = accepts_plan;
 //! ```
 
+/// Bounded background consolidation over host-owned Memory and durable stores.
+pub mod dreaming;
 mod execution;
 pub use execution::configured_max_tool_concurrency;
 mod machine;

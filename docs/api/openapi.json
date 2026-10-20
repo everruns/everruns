@@ -39847,6 +39847,55 @@
           }
         }
       },
+      "DreamingActivityData": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "status",
+          "note_count"
+        ],
+        "properties": {
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "DriverCredentialInfo": {
         "type": "object",
         "description": "A driver's declared credential schema, so the Settings UI can render\ndiscrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of\none opaque password field.",
@@ -41183,6 +41232,9 @@
           },
           {
             "$ref": "#/components/schemas/TurnCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/DreamingActivityData"
           },
           {
             "$ref": "#/components/schemas/TurnFailedData"
@@ -64084,7 +64136,7 @@
       },
       "TokenUsage": {
         "type": "object",
-        "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost\noptimization.\n\n# Disjoint bucket convention\n\nPrompt token buckets are **disjoint** (non-overlapping). Drivers normalize\nprovider wire formats at the boundary so this holds for every provider:\n\n```text\ntotal_prompt = input_tokens + cache_read_tokens + cache_creation_tokens\n```\n\n- `input_tokens` — non-cached prompt tokens only.\n- `cache_read_tokens` — tokens served from cache, never counted in\n  `input_tokens`.\n- `cache_creation_tokens` — tokens written to cache, never counted in\n  `input_tokens`.\n\nInclusive providers (OpenAI Responses / Chat Completions, Gemini) report a\nprompt count that *includes* cached reads; their drivers subtract the cached\nsubset so the value stored here is the non-cached remainder. Anthropic /\nBedrock already report disjoint buckets. Cost is therefore uniform across\nproviders (`input·in + cache_read·cr + cache_creation·cw + output·out`);\nconsumers must not re-derive a non-cached input by subtracting cache reads.",
+        "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost\noptimization.\n\n## Disjoint bucket convention\n\nPrompt token buckets are **disjoint** (non-overlapping). Drivers normalize\nprovider wire formats at the boundary so this holds for every provider:\n\n```text\ntotal_prompt = input_tokens + cache_read_tokens + cache_creation_tokens\n```\n\n- `input_tokens` — non-cached prompt tokens only.\n- `cache_read_tokens` — tokens served from cache, never counted in\n  `input_tokens`.\n- `cache_creation_tokens` — tokens written to cache, never counted in\n  `input_tokens`.\n\nInclusive providers (OpenAI Responses / Chat Completions, Gemini) report a\nprompt count that *includes* cached reads; their drivers subtract the cached\nsubset so the value stored here is the non-cached remainder. Anthropic /\nBedrock already report disjoint buckets. Cost is therefore uniform across\nproviders (`input·in + cache_read·cr + cache_creation·cw + output·out`);\nconsumers must not re-derive a non-cached input by subtracting cache reads.",
         "required": [
           "input_tokens",
           "output_tokens"

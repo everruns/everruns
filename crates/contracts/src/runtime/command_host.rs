@@ -212,6 +212,16 @@ impl SessionCompletionError {
 /// events. Hosts without these facilities use [`DisabledCommandHost`].
 #[async_trait]
 pub trait CommandHost: Send + Sync {
+    async fn dreaming_proposals(&self, _accept: bool, _discard: bool) -> Result<String> {
+        Err(AgentLoopError::config("dreaming review unavailable"))
+    }
+
+    async fn dream(&self) -> Result<bool> {
+        Err(AgentLoopError::config(
+            "host does not support dreaming commands",
+        ))
+    }
+
     /// Assemble the credential-free context a main turn would see.
     async fn turn_context(&self) -> Result<CommandTurnContext>;
 

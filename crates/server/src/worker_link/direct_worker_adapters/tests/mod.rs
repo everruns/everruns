@@ -102,6 +102,7 @@ async fn get_agent_resolves_by_public_id() {
 }
 
 mod actors;
+mod dreaming_memory;
 mod internal_commands;
 mod phase_read_tests;
 

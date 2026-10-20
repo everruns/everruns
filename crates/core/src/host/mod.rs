@@ -32,6 +32,7 @@ pub mod compute;
 #[cfg(feature = "native-containment")]
 pub mod containment;
 pub mod decisions;
+pub mod dreaming;
 #[cfg(feature = "direct-egress")]
 mod egress;
 #[cfg(feature = "direct-egress")]

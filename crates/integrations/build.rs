@@ -33,7 +33,11 @@ fn e2b() {
     let fds_path =
         std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("e2b.fds.bin");
     std::fs::write(&fds_path, fds.encode_to_vec()).expect("failed to write E2B descriptor set");
+    // The descriptor is generated above, not an input. Watching it invalidates
+    // every warm build; track the source proto and decoder setting instead.
+    println!("cargo:rerun-if-env-changed=BUFFA_ELEMENT_MEMORY_LIMIT");
     connectrpc_build::Config::new()
+        .emit_rerun_directives(false)
         .descriptor_set(&fds_path)
         .files(&["e2b/process.proto"])
         .include_file("_e2b.rs")

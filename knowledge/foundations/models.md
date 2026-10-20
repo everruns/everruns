@@ -296,7 +296,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 See `crates/contracts/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
-Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-5.2-2025-12-11" → "gpt-5.2").
+Profiles match provider type and wire model ID with version normalization. Gateway-qualified IDs reuse a canonical profile only through explicit registered aliases; unknown names do not inherit guessed prices. The [registry](../../crates/contracts/src/model_profile_data/profiles.rs) owns those identities.
 
 ### Model Discovery
 

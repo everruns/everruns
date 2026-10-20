@@ -19,6 +19,7 @@ pub mod command_idempotency;
 pub mod connection_resolver;
 pub(crate) mod embedded_postgres;
 pub mod encryption;
+pub mod encryption_rotation;
 pub mod entity_changes;
 mod health_issues;
 mod ingress;

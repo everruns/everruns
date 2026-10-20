@@ -39,3 +39,5 @@
 * [Compaction](compaction.md) - Context compaction capability.
 * [Session Attachments](session-attachments.md) - Attachments stored in session file storage under `/attachments`, labels with paths, attachment list after compaction, one intake path for every surface.
 * [Client Hints](client-hints.md) - Generic client hints mechanism.
+
+* [Dreaming](dreaming.md) - Background consolidation of completed experience into existing Memory files.

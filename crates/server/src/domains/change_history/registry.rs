@@ -645,6 +645,9 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
+        "worker_dreaming_state" => Change::Exempt(
+            "private runtime maintenance and reservations; payload-free activity is recorded separately",
+        ),
         "worker_create_session_task"
         | "worker_update_session_task"
         | "worker_request_cancel_session_task"

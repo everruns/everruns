@@ -156,6 +156,55 @@ impl Engine {
         })
     }
 
+    /// Run eligible durable dreaming work for one session. Hosts may call this from an alarm.
+    pub async fn maintain_dreaming(&self, session: SessionId) -> Result<bool> {
+        let runtime = self.query_runtime_hosted(session).await?.runtime;
+        let context = runtime.load_context(session).await?;
+        let org =
+            everruns_core::host::in_process_internal_org_id(&context.snapshot.organization_id);
+        let host =
+            everruns_core::host::dreaming::RuntimeDreamingHost::new(runtime, org, session).await?;
+        everruns_core::engine::dreaming::runner::run_session(&host, org, session).await
+    }
+    /// Inspect, accept, or discard pending Memory proposals. Accept and discard are mutually exclusive.
+    pub async fn review_dreaming(
+        &self,
+        session: SessionId,
+        accept: bool,
+        discard: bool,
+    ) -> Result<String> {
+        if accept && discard {
+            return Err(AgentLoopError::config("choose accept or discard"));
+        }
+        let runtime = self.query_runtime_hosted(session).await?.runtime;
+        let context = runtime.load_context(session).await?;
+        let org =
+            everruns_core::host::in_process_internal_org_id(&context.snapshot.organization_id);
+        everruns_core::host::dreaming::RuntimeDreamingHost::new(runtime, org, session)
+            .await?
+            .proposals(accept, discard)
+            .await
+    }
+
+    /// Consolidate completed experience now, bypassing the automatic trigger threshold.
+    pub async fn dream(&self, session: SessionId) -> Result<bool> {
+        let status = self.session_status(session).await?;
+        // A completed turn may retain its actor lease while finishing receipts.
+        // Only an open logical turn makes experience incomplete; maintenance
+        // uses its own claims and never needs the foreground execution epoch.
+        if status.open_turn.is_some() {
+            return Err(AgentLoopError::config("dreaming requires a completed turn"));
+        }
+        let runtime = self.query_runtime_hosted(session).await?.runtime;
+        let context = runtime.load_context(session).await?;
+        let org =
+            everruns_core::host::in_process_internal_org_id(&context.snapshot.organization_id);
+        let host =
+            everruns_core::host::dreaming::RuntimeDreamingHost::new(runtime, org, session).await?;
+        host.enqueue(true).await?;
+        everruns_core::engine::dreaming::runner::run_session(&host, org, session).await
+    }
+
     pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
         let query = self.query_runtime_hosted(session).await?;
         let commands = query.runtime.list_commands(session).await?;
@@ -764,5 +813,80 @@ impl Engine {
             .environment = Some((reference.clone(), factory));
         binding.environment = Some(reference);
         Ok(true)
+    }
+}
+
+#[cfg(all(test, feature = "builtins", feature = "filesystem"))]
+mod dreaming_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn session_timer_does_not_postpone_another_sessions_due_job() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = crate::DreamingConfig::new(crate::DreamDestination {
+            mount: "/memory/user".into(),
+            path: "/learned".into(),
+            instructions: String::new(),
+        });
+        config.trigger.mode = crate::DreamTriggerMode::Manual;
+        config.budget.max_cost_usd_per_day = None;
+        let make_agent = |config| {
+            Agent::builder()
+                .instructions("Acknowledge")
+                .model(crate::Model::simulated("{\"notes\":[]}"))
+                .memory_directory("/memory/user", directory.path())
+                .capability(config)
+                .build()
+                .unwrap()
+        };
+        let engine = Engine::new();
+        let other = engine.create(make_agent(config.clone()));
+        other.send_and_wait("Remember UTC.").await.unwrap();
+        let runtime = engine
+            .query_runtime_hosted(other.session_id())
+            .await
+            .unwrap()
+            .runtime;
+        let context = runtime.load_context(other.session_id()).await.unwrap();
+        let org =
+            everruns_core::host::in_process_internal_org_id(&context.snapshot.organization_id);
+        let host = everruns_core::host::dreaming::RuntimeDreamingHost::new(
+            runtime,
+            org,
+            other.session_id(),
+        )
+        .await
+        .unwrap();
+        assert!(host.enqueue(true).await.unwrap());
+        // This due job deliberately has no local timer. Another session's
+        // callback must leave it for its own host/alarm, not postpone it.
+        let store = everruns_core::engine::dreaming::runner::DreamingHost::store(&host);
+        let other_key = everruns_core::engine::dreaming::runner::job_key(other.session_id());
+        let before = store.get(org, &other_key).await.unwrap().unwrap();
+        config.trigger.mode = crate::DreamTriggerMode::Idle;
+        config.trigger.min_new_turns = 1;
+        config.trigger.idle_after_seconds = 1;
+        let automatic = engine.create(make_agent(config));
+        automatic.send_and_wait("Remember Rust.").await.unwrap();
+        let key = everruns_core::engine::dreaming::runner::job_key(automatic.session_id());
+        let deadline = everruns_contracts::rt::Instant::now() + Duration::from_secs(10);
+        loop {
+            let completed = store.get(org, &key).await.unwrap().is_some_and(|row| {
+                serde_json::from_str::<serde_json::Value>(&row.value).unwrap()["job"]["completed"]
+                    == true
+            });
+            if completed {
+                break;
+            }
+            assert!(
+                everruns_contracts::rt::Instant::now() < deadline,
+                "own dreaming job did not finish"
+            );
+            everruns_contracts::rt::sleep(Duration::from_millis(10)).await;
+        }
+        let after = store.get(org, &other_key).await.unwrap().unwrap();
+        assert_eq!(before.revision, after.revision);
+        assert_eq!(before.value, after.value);
+        assert_eq!(before.due_at, after.due_at);
     }
 }

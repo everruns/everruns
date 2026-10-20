@@ -17,6 +17,18 @@ use std::sync::Arc;
 /// - Project files onto real disk or object storage
 #[async_trait]
 pub trait SessionFileSystem: Send + Sync {
+    /// Explicit writable Memory authorization for background consolidation.
+    /// Ordinary workspace files never qualify merely by their pathname.
+    /// Authorization includes the source session's visibility: a private
+    /// source must not be promoted to a broader destination.
+    async fn dreaming_scope(
+        &self,
+        _session_id: SessionId,
+        _mount: &str,
+    ) -> Result<Option<crate::runtime::dreaming::DreamMemoryScope>> {
+        Ok(None)
+    }
+
     /// Human-facing root path for this filesystem.
     ///
     /// `/workspace` is the stable agent namespace and the default. Direct
@@ -77,6 +89,19 @@ pub trait SessionFileSystem: Send + Sync {
 
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
+
+    /// Atomically create a file without replacing any existing content.
+    async fn create_file_if_absent(
+        &self,
+        _session: SessionId,
+        _path: &str,
+        _content: &str,
+    ) -> Result<bool> {
+        Err(crate::runtime::error::AgentLoopError::config(format!(
+            "filesystem {} does not support atomic artifact creation",
+            std::any::type_name::<Self>()
+        )))
+    }
 
     /// Write/create a file
     async fn write_file(
@@ -246,6 +271,19 @@ impl WorkspaceScopedFileSystem {
 
 #[async_trait]
 impl SessionFileSystem for WorkspaceScopedFileSystem {
+    async fn dreaming_scope(
+        &self,
+        _: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::runtime::dreaming::DreamMemoryScope>> {
+        self.inner.dreaming_scope(self.key, mount).await
+    }
+    async fn create_file_if_absent(&self, _: SessionId, path: &str, content: &str) -> Result<bool> {
+        self.inner
+            .create_file_if_absent(self.key, path, content)
+            .await
+    }
+
     async fn read_file(&self, _session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(self.key, path).await
     }
@@ -342,6 +380,22 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
 
 #[async_trait]
 impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::runtime::dreaming::DreamMemoryScope>> {
+        (**self).dreaming_scope(session, mount).await
+    }
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        (**self).create_file_if_absent(session, path, content).await
+    }
+
     fn display_root(&self) -> String {
         (**self).display_root()
     }

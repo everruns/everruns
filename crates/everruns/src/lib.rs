@@ -479,3 +479,7 @@ pub mod utility_llm;
 
 /// Bounded durable causal identities, independent of any exporter.
 pub use everruns_contracts::runtime::causal::{CausalContext, CausalLink};
+/// Background memory consolidation configuration.
+pub use everruns_core::dreaming::{
+    DreamBudget, DreamCommitMode, DreamDestination, DreamTrigger, DreamTriggerMode, DreamingConfig,
+};

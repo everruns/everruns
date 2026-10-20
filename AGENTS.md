@@ -38,6 +38,10 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 
 ### Gotchas
 
+- Dreaming has an explicit user publication hold. Do not create or reinstate its public
+  changelog entry or announcement assets until the user explicitly approves them. CI, merge
+  and release are not publication approval. Continue implementation without an entry and
+  record the hold in the PR's `Changelog:` line.
 - Engine-owned durable execution for DO/Cloudflare/celld has an explicit user publication hold.
   Do not create or reinstate its public changelog entry or announcement assets until the
   Framework Engine, serve and celld implementation and qualification are complete, and the user

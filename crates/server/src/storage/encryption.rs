@@ -408,6 +408,13 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    // Private consolidation evidence/proposals and Memory-wide reservations.
+    // The UUID is globally unique; tenant/key remains the maintenance CAS identity.
+    EncryptedColumn {
+        table: "dreaming_state",
+        column: "value_encrypted",
+        id_column: "id",
+    },
     EncryptedColumn {
         table: "org_slack_connections",
         column: "access_token_encrypted",

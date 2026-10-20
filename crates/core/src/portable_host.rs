@@ -19,6 +19,8 @@ mod composition;
 pub mod compute;
 #[path = "host/decisions/mod.rs"]
 pub mod decisions;
+#[path = "host/dreaming.rs"]
+pub mod dreaming;
 #[path = "host/environment_preamble.rs"]
 pub mod environment_preamble;
 #[path = "host/events.rs"]
@@ -120,7 +122,7 @@ pub use in_memory::{
 pub use in_process_execution::InProcessExecution;
 pub use runtime::{
     AcceptedTurnInput, InProcessRuntime, InProcessRuntimeBuilder, ParkedToolCalls, TurnSteering,
-    TurnSteeringPushError,
+    TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use runtime_context::{
     assemble_turn_context, assemble_turn_context_from_snapshot, inspect_turn_context,

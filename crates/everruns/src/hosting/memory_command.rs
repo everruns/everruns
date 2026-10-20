@@ -24,7 +24,7 @@ impl MemoryHosting {
             }
             sessions
                 .entry(id)
-                .or_insert_with(|| Self::new_session(id))
+                .or_insert_with(|| self.new_session(id))
                 .clone()
         } else {
             self.session(id)

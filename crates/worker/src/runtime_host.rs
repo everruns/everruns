@@ -513,10 +513,18 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.agents_api_store()
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
+        self.adapters.dreaming_store()
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
         self.adapters.compaction_checkpoint_store()
+    }
+
+    fn dreaming_event_emitter(&self) -> Arc<dyn EventEmitter> {
+        Arc::new(SessionAdapter::new(self.adapters.clone()))
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
@@ -542,6 +550,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem> {
+        if let Some(files) = self.adapters.session_file_system(org_id) {
+            return files;
+        }
         // Org-scoped like `provider_store` and `sqldb_store`: the file surface
         // reaches the server through the org's command transport, so it needs
         // the org the turn is running for.

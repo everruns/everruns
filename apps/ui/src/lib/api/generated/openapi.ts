@@ -12813,6 +12813,16 @@ export interface components {
       message: string;
       timezone?: string;
     };
+    DreamingActivityData: {
+      /** Format: double */
+      cost_usd?: number | null;
+      model?: string | null;
+      note_count: number;
+      operation_id: string;
+      reason?: string | null;
+      status: string;
+      usage?: components["schemas"]["TokenUsage"] | null;
+    };
     /**
      * @description A driver's declared credential schema, so the Settings UI can render
      *     discrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of
@@ -13626,6 +13636,7 @@ export interface components {
       | components["schemas"]["OutputMessageCompletedData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
+      | components["schemas"]["DreamingActivityData"]
       | components["schemas"]["TurnFailedData"]
       | components["schemas"]["ReasonStartedData"]
       | components["schemas"]["ReasonCompletedData"]
@@ -26270,7 +26281,7 @@ export interface components {
      *     Tracks token consumption per LLM call including cache tokens for cost
      *     optimization.
      *
-     *     # Disjoint bucket convention
+     *     ## Disjoint bucket convention
      *
      *     Prompt token buckets are **disjoint** (non-overlapping). Drivers normalize
      *     provider wire formats at the boundary so this holds for every provider:

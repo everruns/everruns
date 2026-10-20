@@ -72,7 +72,8 @@ impl LocalBackends {
         runtime_backends: HostBackends,
         db: SqliteDb,
     ) -> Result<Self> {
-        let runtime_backends = crate::batteries::runtime_backends(runtime_backends);
+        let mut runtime_backends = crate::batteries::runtime_backends(runtime_backends);
+        runtime_backends.dreaming_store = super::dreaming::LocalDreamingStore::new(db.clone())?;
         let org_id = everruns_core::host::in_process_internal_org_id(&profile.org_public_id);
         let task_registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
         let task_recovery = Arc::new(LocalTaskRecovery::new(db.clone(), task_registry.clone()));

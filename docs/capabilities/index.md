@@ -163,6 +163,7 @@ Performance and cost optimization for LLM interactions.
 |---|---|---|
 | [Infinity Context](/capabilities/infinity-context/) | `infinity_context` | 1 |
 | [Context Compaction](/advanced/compaction/) | `compaction` | 0 |
+| [Dreaming](/features/dreaming/) | `dreaming` | 0; `FEATURE_DREAMING` grade; organization Adoption opt-in |
 | [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | `auto_tool_search` | 0 (adds `tool_search` on models without native tool search) |
 | [OpenAI Tool Search](/capabilities/tool-search/#hosted-openai) | `openai_tool_search` | 0 |
 | [Claude Tool Search](/capabilities/tool-search/#hosted-claude) | `claude_tool_search` | 0 |
@@ -303,6 +304,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
+| [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |
 | [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | Session Tasks |
 | AG-UI Agent Delegation | Session Tasks |

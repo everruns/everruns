@@ -1,3 +1,4 @@
+mod dreaming;
 use super::worker::commands::test_support::execute_test_command;
 use super::*;
 use tonic::service::Interceptor;

@@ -83,6 +83,7 @@ impl InProcessRuntime {
         session_id: SessionId,
         assembled: AssembledTurnContext,
     ) -> crate::host::StoreCommandHost {
+        let org = super::in_process_internal_org_id(&assembled.snapshot.organization_id);
         crate::host::StoreCommandHost::new(
             session_id,
             self.harness_store.clone(),
@@ -94,6 +95,10 @@ impl InProcessRuntime {
             self.host_composition.driver_registry().clone(),
         )
         .with_file_store(self.file_store.clone())
+        .with_dreaming(Arc::new(
+            crate::host::dreaming::RuntimeDreamingCommand::new(self.clone(), org, session_id)
+                .with_local_wakeup(),
+        ))
         .with_assembled_context(assembled)
     }
 

@@ -286,8 +286,50 @@ impl RealDiskFileStore {
 
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
-    /// A real-disk store shows where files actually live: the host-absolute root.
-    /// Filesystem decorators preserve this identity.
+    async fn create_file_if_absent(
+        &self,
+        _session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        use tokio::io::AsyncWriteExt;
+        let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
+        if self
+            .is_readonly(&self.relative_capability_path(&absolute)?)
+            .await
+        {
+            return Err(AgentLoopError::store("readonly Memory artifact"));
+        }
+        let parent = absolute
+            .parent()
+            .ok_or_else(|| AgentLoopError::store("invalid Memory artifact path"))?;
+        let temporary = parent.join(format!(".dreaming-{}.tmp", uuid::Uuid::now_v7()));
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let result = async {
+            let mut file = options.open(&temporary).await?;
+            file.write_all(content.as_bytes()).await?;
+            file.sync_all().await?;
+            match tokio::fs::hard_link(&temporary, &absolute).await {
+                Ok(()) => {
+                    #[cfg(unix)]
+                    {
+                        tokio::fs::File::open(parent).await?.sync_all().await?;
+                    }
+                    Ok(true)
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+                Err(e) => Err(e),
+            }
+        }
+        .await;
+        let _ = tokio::fs::remove_file(&temporary).await;
+        result.map_err(|e: std::io::Error| AgentLoopError::store(e.to_string()))
+    }
+
     fn display_root(&self) -> String {
         self.paths.display_root()
     }

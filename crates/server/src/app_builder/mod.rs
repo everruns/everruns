@@ -772,6 +772,7 @@ impl ServerAppBuilder {
                 driver_registry.as_ref().clone(),
                 sqldb_store.clone(),
             )
+            .with_encryption(encryption.clone())
             .with_virtual_registry(virtual_registry.clone()),
         );
         let plugins_state =

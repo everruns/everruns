@@ -66,3 +66,9 @@ pub use everruns_core::{
 /// between threads. Native hosts must use genuinely Send/Sync transports.
 #[cfg(target_arch = "wasm32")]
 pub use everruns_contracts::rt::AssertSend;
+
+/// Background consolidation persistence, including atomic claims and shared scope quotas.
+pub mod dreaming {
+    pub use everruns_core::dreaming::{DreamStateRow, DreamingStore};
+    pub use everruns_core::engine::dreaming::UnsupportedDreamingStore;
+}

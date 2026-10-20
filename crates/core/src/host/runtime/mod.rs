@@ -60,6 +60,8 @@ mod builder;
 mod input_message;
 use input_message::{message_from_input, message_from_input_with_id};
 mod commands;
+mod seeding;
+use seeding::seed_runtime_initial_files;
 mod parked;
 mod steering;
 mod turn_entry;
@@ -487,6 +489,15 @@ impl InProcessRuntimeBuilder {
         if let Some(policy) = self.workspace_policy.take() {
             file_store = crate::host::apply_workspace_policy(file_store, policy, &mut backends);
         }
+        // Workspace policy governs workspace paths. Memory is a separate,
+        // explicitly host-authorized surface and keeps its own access contract.
+        if !backends.memory_mounts.is_empty() {
+            let mut mounted = crate::mount_fs::MountFs::new(file_store);
+            for (point, backend, scope) in &backends.memory_mounts {
+                mounted = mounted.with_memory_mount(point.clone(), backend.clone(), scope.clone());
+            }
+            file_store = Arc::new(mounted);
+        }
 
         if let Some((provider, model_id)) = self.default_provider.take() {
             let provider_key = provider.id().clone();
@@ -606,6 +617,7 @@ impl InProcessRuntimeBuilder {
             event_log,
             event_history,
             native_async_store: backends.native_async_store,
+            dreaming_store: backends.dreaming_store,
             compaction_checkpoint_store: backends.compaction_checkpoint_store,
             provider_store: backends.provider_store,
             event_emitter,
@@ -673,6 +685,7 @@ pub struct InProcessRuntime {
     event_log: Arc<dyn EventLog>,
     event_history: Arc<EventHistory>,
     native_async_store: Option<Arc<dyn crate::native_async_store::NativeAsyncStore>>,
+    dreaming_store: Arc<dyn crate::dreaming::DreamingStore>,
     compaction_checkpoint_store: Arc<dyn crate::CompactionCheckpointStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
     event_emitter: Arc<HostEventEmitter>,
@@ -1316,6 +1329,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.native_async_store.clone()
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::dreaming::DreamingStore>> {
+        Some(self.dreaming_store.clone())
+    }
+
     fn compaction_checkpoint_store(&self) -> Option<Arc<dyn crate::CompactionCheckpointStore>> {
         Some(self.compaction_checkpoint_store.clone())
     }
@@ -1473,40 +1490,6 @@ fn hydrate_plugin_refs(
             cap.set_config(hydrated.config_value().clone());
         }
     }
-}
-
-async fn seed_runtime_initial_files(
-    harness_store: &dyn RuntimeHarnessStore,
-    agent_store: &dyn RuntimeAgentStore,
-    file_store: &dyn SessionFileSystem,
-    session: &ExecutionSession,
-) -> Result<()> {
-    let harness = harness_store
-        .get_harness(session.harness_id)
-        .await?
-        .ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "harness not found while seeding files: {}",
-                session.harness_id
-            ))
-        })?;
-    let agent = match session.agent_id {
-        Some(agent_id) => Some(
-            agent_store
-                .get_agent(agent_id)
-                .await?
-                .ok_or_else(|| AgentLoopError::store(format!("agent not found: {agent_id}")))?,
-        ),
-        None => None,
-    };
-    let overlay = effective_overlay(&harness, agent.as_ref(), session);
-    // Seed into the session's workspace (a shared workspace differs from the
-    // session id; the default 1:1 case is equal).
-    let seed_key = SessionId::from_uuid(session.workspace_id.uuid());
-    for file in &overlay.initial_files {
-        file_store.seed_initial_file(seed_key, file).await?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

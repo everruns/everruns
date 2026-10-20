@@ -422,3 +422,7 @@ required-features = ["openai"]
 [[example]]
 name = "file_agent"
 required-features = ["agent-package-fs", "openai"]
+
+[[example]]
+name = "dreaming"
+required-features = ["openai", "builtins", "filesystem"]

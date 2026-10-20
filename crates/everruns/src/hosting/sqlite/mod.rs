@@ -2,6 +2,7 @@
 //! IMMEDIATE SQLite transaction with FULL synchronization. JSONL is not a
 //! second writer. A startup supervisor rediscovers owed work after process loss.
 mod commands;
+mod dreaming;
 mod export;
 mod import;
 mod ports;
@@ -130,6 +131,8 @@ impl SqliteHosting {
             CREATE INDEX IF NOT EXISTS framework_event_ids ON framework_events(session,json_extract(value,'$.id'));
             CREATE INDEX IF NOT EXISTS framework_event_turns ON framework_events(session,type,seq);
             CREATE TABLE IF NOT EXISTS framework_objects(session TEXT NOT NULL,kind TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,created TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(session,kind,key));
+            CREATE TABLE IF NOT EXISTS dreaming_state(org_id INTEGER NOT NULL,key TEXT NOT NULL,revision INTEGER NOT NULL,value TEXT NOT NULL,session_id TEXT,due_at INTEGER,PRIMARY KEY(org_id,key));
+            CREATE INDEX IF NOT EXISTS dreaming_due ON dreaming_state(due_at) WHERE due_at IS NOT NULL;
             CREATE TABLE IF NOT EXISTS framework_commands(session TEXT NOT NULL,id TEXT NOT NULL,fingerprint TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(session,id));").map_err(error)?;
         Ok(Self {
             db: Arc::new(Mutex::new(db)),
@@ -248,6 +251,18 @@ impl SqliteHosting {
                     }
                 });
             }
+            let due = everruns_core::dreaming::DreamingStore::due(
+                self,
+                everruns_contracts::rt::utc_now().timestamp(),
+                32,
+            )
+            .await?;
+            for (_, session) in due {
+                let engine = engine.clone();
+                running.spawn(async move {
+                    let _ = engine.maintain_dreaming(session).await;
+                });
+            }
             while running.try_join_next().is_some() {}
             tokio::select! {
                 () = shutdown.cancelled() => {
@@ -294,7 +309,7 @@ fn put(
     if raw.len() > 2 * 1024 * 1024 {
         return Err(error("authority object exceeds size limit"));
     }
-    let at = chrono::Utc::now().to_rfc3339();
+    let at = everruns_contracts::rt::utc_now().to_rfc3339();
     tx.execute("INSERT INTO framework_objects VALUES (?,?,?,?,?,?) ON CONFLICT(session,kind,key) DO UPDATE SET value=excluded.value,updated=excluded.updated", params![session.to_string(),kind,key,raw,at,at]).map_err(error)?;
     Ok(())
 }

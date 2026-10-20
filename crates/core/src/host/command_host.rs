@@ -34,6 +34,7 @@ use crate::host::runtime_context::{inspect_turn_context_for_session, resolve_mod
 /// One instance is built per command dispatch. Its assembled context is
 /// memoized so `turn_context()` and completion share one store resolution.
 pub struct StoreCommandHost {
+    dreaming: Option<Arc<dyn super::dreaming::DreamingCommand>>,
     session_id: SessionId,
     harness_store: Arc<dyn HarnessStore>,
     agent_store: Arc<dyn AgentStore>,
@@ -62,6 +63,7 @@ impl StoreCommandHost {
         driver_registry: DriverRegistry,
     ) -> Self {
         Self {
+            dreaming: None,
             session_id,
             harness_store,
             agent_store,
@@ -75,6 +77,11 @@ impl StoreCommandHost {
             file_store: None,
             assembled: tokio::sync::OnceCell::new(),
         }
+    }
+
+    pub fn with_dreaming(mut self, command: Arc<dyn super::dreaming::DreamingCommand>) -> Self {
+        self.dreaming = Some(command);
+        self
     }
 
     /// Resolve `image_file` references for provider conversion.
@@ -271,6 +278,23 @@ struct PreparedCompletion {
 
 #[async_trait]
 impl CommandHost for StoreCommandHost {
+    async fn dreaming_proposals(&self, accept: bool, discard: bool) -> Result<String> {
+        self.dreaming
+            .as_ref()
+            .ok_or_else(|| AgentLoopError::config("dreaming review unavailable"))?
+            .proposals(accept, discard)
+            .await
+    }
+
+    async fn dream(&self) -> Result<bool> {
+        match &self.dreaming {
+            Some(c) => c.enqueue().await,
+            None => Err(AgentLoopError::config(
+                "dreaming is unavailable on this host",
+            )),
+        }
+    }
+
     async fn turn_context(&self) -> Result<CommandTurnContext> {
         let assembled = self.assembled().await?;
         Ok(CommandTurnContext {

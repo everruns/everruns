@@ -302,6 +302,28 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
             .map(Some)
     }
 
+    async fn create_memory_artifact(
+        &self,
+        org: i64,
+        session: Uuid,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        let _ = (org, session, path, content);
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "Memory artifact creation unsupported",
+        ))
+    }
+    async fn dreaming_scope(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        mount: &str,
+    ) -> Result<Option<crate::core::dreaming::DreamMemoryScope>> {
+        let _ = (org_id, session_id, mount);
+        Ok(None)
+    }
+
     /// Delete a file from session filesystem
     async fn delete_file(
         &self,
@@ -425,6 +447,19 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
+        None
+    }
+
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
+        None
+    }
+
+    /// An in-process host can supply the complete canonical filesystem port.
+    /// Remote workers use the org-scoped command adapter by default.
+    fn session_file_system(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn crate::core::session_files::SessionFileSystem>> {
         None
     }
 
@@ -1271,6 +1306,34 @@ impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for Sessio
             .await
     }
 
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.adapters
+            .create_memory_artifact(
+                self.require_org("create_memory_artifact")?,
+                session.uuid(),
+                path,
+                content,
+            )
+            .await
+    }
+    async fn dreaming_scope(
+        &self,
+        session_id: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::core::dreaming::DreamMemoryScope>> {
+        self.adapters
+            .dreaming_scope(
+                self.require_org("dreaming_scope")?,
+                session_id.uuid(),
+                mount,
+            )
+            .await
+    }
     async fn write_file_if_content_matches(
         &self,
         session_id: SessionId,

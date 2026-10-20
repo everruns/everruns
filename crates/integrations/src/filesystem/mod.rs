@@ -104,7 +104,7 @@ impl FilePathPresentation {
     fn root_guidance(&self) -> String {
         if self.uses_vfs_namespace() {
             format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`. "
+                "Workspace root: `{WORKSPACE_PREFIX}`. Mounts like `/memory/user` stay absolute. "
             )
         } else {
             let escaped_root = escape_xml_text(&self.root);
@@ -115,16 +115,7 @@ impl FilePathPresentation {
     }
 
     fn system_prompt_preview(&self) -> String {
-        if self.uses_vfs_namespace() {
-            format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`."
-            )
-        } else {
-            format!(
-                "Workspace root: `{}`. Paths may be relative to this root or absolute under it.",
-                self.root
-            )
-        }
+        self.root_guidance().trim_end().to_owned()
     }
 
     fn path_param_description(&self, example: &str) -> String {
@@ -3045,6 +3036,8 @@ mod tests {
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
 
         assert!(prompt.contains("Workspace root: `/workspace`"));
+        assert!(prompt.contains("Mounts like `/memory/user` stay absolute"));
+        assert!(!prompt.contains("All file paths must start"));
         assert!(!prompt.contains("/host/repo"));
     }
 
