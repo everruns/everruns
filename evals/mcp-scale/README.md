@@ -53,6 +53,8 @@ The committed stress run used rustc 1.96.0, Linux x86_64, four logical CPUs, and
 
 The 10,000-tool rows are synthetic offline stress only. The live model comparison used 600 and 2,000 tools. The top-10 retrieval results include a source-only server-description query; ranks and full measurements are in `results/tool-search-index-stress.json`. No provider-cache improvement is inferred from cache-read token counts.
 
+The [MCP Scale Eval Checks workflow](../../.github/workflows/mcp-scale-evals.yml) runs deterministic tests, catalog enumeration, and this stress matrix without model credentials. Each successful run publishes its measurements in the `mcp-scale-stress` artifact.
+
 ## Recorded live evidence
 
 The canonical serial qualification contains 54 Muse 1.3 Contributor trials: 36 read-only ticket and staged rollback trials at 600/2,000 tools on one server, plus 18 description-only disambiguation trials at 600/2,000 tools on ten servers. Each arm spans native, CLI, and hybrid with three trials per cell. All 54 passed both the task and state scorers; there were no subject failures, provider errors, or skips. A separate post-fix smoke passed one CLI read-only case and one CLI rollback case at 2,000 tools.
