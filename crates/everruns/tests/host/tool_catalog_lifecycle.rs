@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use everruns_contracts::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmResponseStream, LlmStreamEvent, Message,
+    ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message,
 };
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::tool_catalog::ToolSearchIndex;
@@ -100,9 +100,7 @@ impl ChatDriver for RecordingDriver {
         let events = match reply {
             Reply::Text(text) => vec![
                 Ok(LlmStreamEvent::TextDelta(text.to_string())),
-                Ok(LlmStreamEvent::Done(Box::new(
-                    LlmCompletionMetadata::default(),
-                ))),
+                Ok(LlmStreamEvent::Done(Box::default())),
             ],
             Reply::Call(name, arguments) => vec![
                 Ok(LlmStreamEvent::ToolCalls(vec![ToolCall {
@@ -110,9 +108,7 @@ impl ChatDriver for RecordingDriver {
                     name: name.into(),
                     arguments,
                 }])),
-                Ok(LlmStreamEvent::Done(Box::new(
-                    LlmCompletionMetadata::default(),
-                ))),
+                Ok(LlmStreamEvent::Done(Box::default())),
             ],
         };
         Ok(Box::pin(stream::iter(events)))
