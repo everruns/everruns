@@ -65,3 +65,12 @@ jobs:
         run: cargo test --locked
       - name: Validate offline fixture catalog
         run: cargo run --locked -- --offline-catalog
+      - name: Measure catalog search under stress
+        run: cargo run --locked -- --offline-stress --output "$RUNNER_TEMP/mcp-scale-stress.json"
+      - name: Upload stress measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mcp-scale-stress
+          path: ${{ runner.temp }}/mcp-scale-stress.json
+          if-no-files-found: error
+          retention-days: 14
