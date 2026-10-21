@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-21
+
+* **Large-catalog shipping contracts.** Custom egress adapters support bounded
+  streaming discovery for JSON replies; generated API contracts retain MCP
+  server descriptions. Bashkit uses an immutable upstream security fix across
+  active workspaces, and archived probe manifests remain snapshots. See
+  [large MCP catalogs](execution/large-mcp-catalogs.md) and
+  [dependency surface](project/dependency-surface.md#bashkit-security-source-pin).
+
 ## 2026-10-20
 
 * **Conversation branches.** SQLite hosting owns the active conversation

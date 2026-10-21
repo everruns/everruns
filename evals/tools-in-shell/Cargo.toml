@@ -30,3 +30,11 @@ async-trait = "0.1"
 
 [dev-dependencies]
 everruns-llmsim = { path = "../../crates/drivers/llmsim" }
+
+[patch.crates-io]
+
+# Published Bashkit 0.19.0 pins vulnerable Wasmtime 48.0.6.
+# Use the reviewed upstream 48.0.7 fix at an immutable revision.
+bashkit = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }
+bashkit-scripted-tool = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }
+bashkit-cpython-wasm = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }
