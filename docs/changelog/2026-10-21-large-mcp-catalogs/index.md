@@ -18,10 +18,20 @@ the session's `tools` command, or through both surfaces:
 
 ```json
 {
-  "ref": "tools_in_shell",
-  "config": {
-    "mode": "hybrid"
-  }
+  "capabilities": [
+    {
+      "ref": "tool_search",
+      "config": {
+        "bounded": true
+      }
+    },
+    {
+      "ref": "tools_in_shell",
+      "config": {
+        "mode": "hybrid"
+      }
+    }
+  ]
 }
 ```
 
