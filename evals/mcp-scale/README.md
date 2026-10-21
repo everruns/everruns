@@ -69,6 +69,21 @@ An earlier concurrency-3 attempt of the 600-tool, ten-server description case pr
 
 Full event traces are retained as deterministic gzip JSONL under `results/`; `results/qualification-summary.json` contains every case's scorer, usage, metrics, report path, and compressed-report SHA-256. Qualification rows sum to 2,467,860 input tokens, 159,575 output tokens, and 5,839,280 cache-read tokens. The provider returned `cost_usd: 0.0`; actual billing is unknown, so this is not a claim that the run was free. No cache benefit is inferred. The 54-trial run used the build before final CLI scope and deferred-server bound fixes; the separate two-case smoke used the rebuilt source at the end of that Framework qualification phase, whose 36 changed production Rust files and executable hash are recorded in the summary. The exact pre-fix binary was overwritten, so its source snapshot cannot be reconstructed from the recorded baseline commit alone. See the summary for baseline commit, dirty working-tree status, source hashes, token totals, separate retry lineage, and that phase's smoke distinction. Subsequent DB-backed platform checks and hosted fixes are recorded separately in [Hosted qualification](HOSTED_QUALIFICATION.md). To inspect a trace, run `gzip -dc results/live-read-rollback-600-1.jsonl.gz | less`.
 
+## Shipping rebuild smoke (2026-10-21)
+
+After the final behavior fixes, generated-contract refresh, and Bashkit security patch, the rebuilt study passed **6/6 Muse 1.3 Contributor trials**, with no failures, infrastructure errors, or skips. This is one read-only ticket and one state-verified staged rollback at 2,000 tools on one server for each surface. The [shipping summary](results/shipping-2026-10-21-summary.json) records the clean source commit, binary and lockfile hashes, exact commands, scorers, and separate [full traces](results/shipping-2026-10-21-live.jsonl.gz). A fresh [eight-row offline stress report](results/shipping-2026-10-21-stress.json) covers one and ten servers through 10,000 tools. The original 54-trial qualification and hosted evidence retain their separate source provenance.
+
+Token totals across the two tasks per surface:
+
+| Surface | Uncached input | Cache-read input | Output |
+| --- | ---: | ---: | ---: |
+| Native | 84,690 | 34,260 | 4,725 |
+| CLI | 480,180 | 502,780 | 11,485 |
+| Hybrid | 122,325 | 83,540 | 4,345 |
+| Total | 687,195 | 620,580 | 20,555 |
+
+These accumulate over all model turns. The CLI rollback requested full server help, putting the 2,000-tool listing into its transcript. Stable initial prompts do not bound model-requested output or total task tokens. Two tasks per surface do not establish a stable efficiency ranking or causal cache savings. The provider reported `cost_usd: 0.0`; actual billing is unknown.
+
 ## What gets measured
 
 - **Tool evidence** requires at least one completed MCP operation in the Framework transcript.
