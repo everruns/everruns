@@ -134,6 +134,40 @@ pub enum Reveal {
     InResult,
 }
 
+/// Bounded discovery is opt-in. Hot/turn-control tools are accounted separately
+/// from optional promoted schemas; every transition still uses ToolChanges.
+#[derive(Debug, Clone, Copy)]
+struct CatalogLimits {
+    active_tools: usize,
+    active_bytes: usize,
+    result_bytes: usize,
+}
+
+impl CatalogLimits {
+    fn from_config(config: &Value) -> Option<Self> {
+        (config.get("bounded").and_then(Value::as_bool) == Some(true)).then(|| Self {
+            active_tools: config
+                .get("max_active_tools")
+                .and_then(Value::as_u64)
+                .unwrap_or(32) as usize,
+            active_bytes: config
+                .get("max_active_bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(65536) as usize,
+            result_bytes: config
+                .get("max_result_bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or(32768) as usize,
+        })
+    }
+}
+
+const BOUNDED_SYSTEM_PROMPT: &str = "Additional tools are available through tool_search. \
+Search by operation, capability, or MCP server purpose. The catalog includes MCP server \
+names and descriptions. Search returns authoritative parameter schemas and makes matching \
+operations available as native functions on your next step. If a deferred server is loaded, \
+search again for its operation. Refine broad queries; only a bounded working set is advertised.";
+
 impl Reveal {
     fn from_config(config: &Value) -> Option<Self> {
         match config.get("reveal")?.as_str()? {
@@ -229,6 +263,7 @@ impl ToolSearchCapability {
             never_defer,
             disclosure,
             reveal,
+            limits: None,
         })
     }
 }
@@ -271,6 +306,29 @@ impl Capability for ToolSearchCapability {
         Some("Optimization")
     }
 
+    fn native_tool_disclosure_policy_with_config(
+        &self,
+        config: &Value,
+        _definitions: &[ToolDefinition],
+    ) -> Option<everruns_contracts::runtime::tool_surface::NativeToolDisclosurePolicy> {
+        CatalogLimits::from_config(config)?;
+        let (_, never_defer) = self.resolve_config(config);
+        Some(
+            everruns_contracts::runtime::tool_surface::NativeToolDisclosurePolicy {
+                default: everruns_contracts::runtime::tool_surface::NativeToolDisclosure::Deferred,
+                overrides: never_defer
+                    .iter()
+                    .map(|name| {
+                        (
+                            name.clone(),
+                            everruns_contracts::runtime::tool_surface::NativeToolDisclosure::Eager,
+                        )
+                    })
+                    .collect(),
+            },
+        )
+    }
+
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(match self.reveal {
             Reveal::Redefine => SYSTEM_PROMPT,
@@ -283,6 +341,9 @@ impl Capability for ToolSearchCapability {
         _ctx: &SystemPromptContext,
         config: &Value,
     ) -> Option<String> {
+        if CatalogLimits::from_config(config).is_some() {
+            return Some(BOUNDED_SYSTEM_PROMPT.to_owned());
+        }
         Some(
             match self.reveal(config) {
                 Reveal::Redefine => SYSTEM_PROMPT,
@@ -295,12 +356,14 @@ impl Capability for ToolSearchCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(ToolSearchTool {
             reveal: self.reveal,
+            limits: None,
         })]
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         vec![Box::new(ToolSearchTool {
             reveal: self.reveal(config),
+            limits: CatalogLimits::from_config(config),
         })]
     }
 
@@ -320,12 +383,13 @@ impl Capability for ToolSearchCapability {
         config: &Value,
     ) -> Vec<Arc<dyn ToolDefinitionHook>> {
         let (threshold, never_defer) = self.resolve_config(config);
-        vec![Self::hook(
+        vec![Arc::new(DeferSchemaHook {
             threshold,
             never_defer,
-            ToolDisclosure::default(),
-            self.reveal(config),
-        )]
+            disclosure: ToolDisclosure::default(),
+            reveal: self.reveal(config),
+            limits: CatalogLimits::from_config(config),
+        })]
     }
 
     fn tool_definition_hooks_with_context(
@@ -334,12 +398,53 @@ impl Capability for ToolSearchCapability {
         config: &Value,
     ) -> Vec<Arc<dyn ToolDefinitionHook>> {
         let (threshold, never_defer) = self.resolve_config(config);
-        vec![Self::hook(
+        vec![Arc::new(DeferSchemaHook {
             threshold,
             never_defer,
-            ctx.tool_disclosure.clone(),
-            self.reveal(config),
-        )]
+            disclosure: ctx.tool_disclosure.clone(),
+            reveal: self.reveal(config),
+            limits: CatalogLimits::from_config(config),
+        })]
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        if let Some(value) = config.get("bounded") {
+            if !value.is_boolean() {
+                return Err("bounded must be a boolean".into());
+            }
+        }
+        for (key, minimum, maximum) in [
+            ("max_active_tools", 1, 128),
+            ("max_active_bytes", 1024, 1048576),
+            ("max_result_bytes", 1024, 65536),
+        ] {
+            if let Some(value) = config.get(key) {
+                if !value
+                    .as_u64()
+                    .is_some_and(|value| value >= minimum && value <= maximum)
+                {
+                    return Err(format!("{key} must be an integer in {minimum}..={maximum}"));
+                }
+            }
+        }
+        if config.get("bounded").and_then(Value::as_bool) == Some(true)
+            && matches!(self.reveal(config), Reveal::InResult)
+        {
+            return Err("bounded discovery requires reveal=redefine for typed native calls".into());
+        }
+        Ok(())
+    }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({"type":"object", "properties": {
+            "threshold":{"type":"integer","minimum":1},
+            "never_defer":{"type":"array","items":{"type":"string"}},
+            "reveal":{"type":"string","enum":["redefine","in_result"]},
+            "bounded":{"type":"boolean","default":false},
+            "max_active_tools":{"type":"integer","minimum":1,"maximum":128,"default":32},
+            "max_active_bytes":{"type":"integer","minimum":1024,"maximum":1048576,"default":65536},
+            "max_result_bytes":{"type":"integer","minimum":1024,"maximum":65536,"default":32768}
+        }}))
     }
 }
 
@@ -364,9 +469,62 @@ pub(crate) struct DeferSchemaHook {
     never_defer: Arc<HashSet<String>>,
     disclosure: ToolDisclosure,
     reveal: Reveal,
+    limits: Option<CatalogLimits>,
 }
 
 impl DeferSchemaHook {
+    fn eager(&self, tool: &ToolDefinition) -> bool {
+        tool.name() == TOOL_SEARCH_TOOL_NAME
+            || everruns_contracts::runtime::tool_surface::NATIVE_ONLY_TOOL_NAMES
+                .contains(&tool.name())
+            || self.never_defer.contains(tool.name())
+            || matches!(tool, ToolDefinition::ClientSide(_))
+            || *tool.policy() == crate::builtins::tool_types::ToolPolicy::ClientSide
+            || tool.hints().stays_direct == Some(true)
+            || (matches!(tool.deferrable(), DeferrablePolicy::Never)
+                && crate::deferred_mcp_server_prefix(tool.name()).is_none())
+    }
+
+    fn bounded_projection(
+        &self,
+        tools: Vec<ToolDefinition>,
+        limits: CatalogLimits,
+    ) -> Vec<ToolDefinition> {
+        let by_name: std::collections::HashMap<_, _> =
+            tools.iter().map(|tool| (tool.name(), tool)).collect();
+        let candidates = self
+            .disclosure
+            .reveal_order
+            .iter()
+            .rev()
+            .chain(self.disclosure.failed.iter())
+            .chain(self.disclosure.revealed.iter());
+        let mut selected = HashSet::new();
+        // Include the optional-definition array's delimiters and separators.
+        // Eager host tools have their own budget and are never evicted here.
+        let mut bytes = 2;
+        for name in candidates {
+            let Some(tool) = by_name.get(name.as_str()) else {
+                continue;
+            };
+            if self.eager(tool) || selected.contains(name) || selected.len() >= limits.active_tools
+            {
+                continue;
+            }
+            let separator = usize::from(!selected.is_empty());
+            if let Some(size) =
+                serialized_size(tool, limits.active_bytes.saturating_sub(bytes + separator))
+            {
+                bytes += size + separator;
+                selected.insert(name.clone());
+            }
+        }
+        tools
+            .into_iter()
+            .filter(|tool| self.eager(tool) || selected.contains(tool.name()))
+            .collect()
+    }
+
     /// A tool keeps its full schema when it is the search tool itself, opts out
     /// via `DeferrablePolicy::Never`, is in the embedder's `never_defer`
     /// allowlist, or has already been revealed via `tool_search` this session
@@ -387,7 +545,24 @@ impl DeferSchemaHook {
 }
 
 impl ToolDefinitionHook for DeferSchemaHook {
+    fn model_tool_budget(
+        &self,
+        tools: &[ToolDefinition],
+    ) -> Option<everruns_contracts::runtime::capabilities::ModelToolBudget> {
+        let limits = self.limits?;
+        let eager: Vec<_> = tools.iter().filter(|tool| self.eager(tool)).collect();
+        Some(everruns_contracts::runtime::capabilities::ModelToolBudget {
+            max_tools: eager.len().saturating_add(limits.active_tools),
+            max_bytes: serialized_size(&eager, usize::MAX)
+                .unwrap_or(usize::MAX)
+                .saturating_add(limits.active_bytes),
+        })
+    }
+
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
+        if let Some(limits) = self.limits {
+            return self.bounded_projection(tools, limits);
+        }
         // Below the threshold full schemas fit comfortably; don't defer. Once a
         // session has deferred it keeps deferring: flipping every stub back to
         // its full schema when the count drops would rewrite the cached prefix.
@@ -410,6 +585,10 @@ impl ToolDefinitionHook for DeferSchemaHook {
     // Mutually exclusive with hosted (openai) tool_search — see build().
     fn applies_with_native_tool_search(&self) -> bool {
         false
+    }
+
+    fn preserves_execution_scope(&self) -> bool {
+        self.limits.is_some()
     }
 }
 
@@ -445,9 +624,159 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
 #[derive(Default)]
 pub struct ToolSearchTool {
     reveal: Reveal,
+    limits: Option<CatalogLimits>,
+}
+
+/// Count bytes without allocating the serialized form of an oversized schema.
+fn serialized_size(value: &impl serde::Serialize, limit: usize) -> Option<usize> {
+    struct Counter {
+        bytes: usize,
+        limit: usize,
+    }
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes = self.bytes.saturating_add(bytes.len());
+            if self.bytes > self.limit {
+                return Err(std::io::Error::other("catalog byte budget exceeded"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter { bytes: 0, limit };
+    serde_json::to_writer(&mut counter, value).ok()?;
+    Some(counter.bytes)
 }
 
 impl ToolSearchTool {
+    async fn bounded_search(
+        &self,
+        query: &str,
+        context: &ToolContext,
+        limits: CatalogLimits,
+    ) -> ToolExecutionResult {
+        if query.len() > 512 {
+            return ToolExecutionResult::tool_error(
+                "Search query exceeds 512 UTF-8 bytes; refine it.",
+            );
+        }
+        let (Some(registry), Some(allowed)) = (&context.tool_registry, &context.visible_tool_names)
+        else {
+            return ToolExecutionResult::tool_error(
+                "Search requires the current authorized operation registry.",
+            );
+        };
+        let index = registry.search_index();
+        let mut hits = index.search_operations(query, MAX_SEARCH_RESULTS, |name| {
+            name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name)
+        });
+        if hits.is_empty() {
+            hits = index.search(query, MAX_SEARCH_RESULTS, |name| {
+                name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name)
+            });
+        }
+        let mut matches = Vec::new();
+        let mut loaded = Vec::new();
+        let mut omitted = 0usize;
+        let mut active_bytes = 2usize;
+        let mut matching_sources = std::collections::BTreeSet::new();
+        let output = |matches: &Vec<Value>,
+                      loaded: &Vec<String>,
+                      omitted,
+                      servers: &Vec<String>| {
+            json!({
+                "query": query, "tools": matches, "loaded": loaded, "bounded": true,
+                "loading_mcp_servers": servers, "omitted_for_byte_budget": omitted,
+                "message": "Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
+            })
+        };
+        for hit in hits
+            .into_iter()
+            .take(limits.active_tools.min(MAX_SEARCH_RESULTS))
+        {
+            let Some(tool) = registry.get(&hit.name) else {
+                continue;
+            };
+            let definition = tool.to_definition();
+            if !hit.tool_match {
+                // A server-domain match identifies a source, not a particular
+                // operation. Ask for refinement rather than promoting the
+                // first alphabetical operations from a large server.
+                if hit.server_match
+                    && let Some((source, _)) =
+                        crate::mcp_server::parse_mcp_tool_name(definition.name())
+                {
+                    matching_sources.insert(source);
+                }
+                continue;
+            }
+            let separator = usize::from(!loaded.is_empty());
+            let Some(size) = serialized_size(
+                &definition,
+                limits.active_bytes.saturating_sub(active_bytes + separator),
+            ) else {
+                omitted += 1;
+                continue;
+            };
+            let value = json!({"name": definition.name(), "description": definition.description(),
+                "parameters": definition.full_parameters(), "server_match": hit.server_match,
+                "operation_match": hit.tool_match});
+            matches.push(value);
+            loaded.push(hit.name.clone());
+            let pending: Vec<_> = loaded
+                .iter()
+                .filter_map(|name| crate::deferred_mcp_server_prefix(name).map(str::to_string))
+                .collect();
+            if serialized_size(
+                &output(&matches, &loaded, MAX_SEARCH_RESULTS, &pending),
+                limits.result_bytes,
+            )
+            .is_none()
+            {
+                matches.pop();
+                loaded.pop();
+                omitted += 1;
+            } else {
+                active_bytes += size + separator;
+            }
+        }
+        let servers = reveal_deferred_servers(context, &loaded).await;
+        let mut result = output(&matches, &loaded, omitted, &servers);
+        if matches.is_empty() {
+            // Bounded source browse, never a fallback listing every operation.
+            let sources: std::collections::BTreeSet<_> = if matching_sources.is_empty() {
+                registry
+                    .tool_names()
+                    .into_iter()
+                    .filter(|name| allowed.contains(*name))
+                    .filter_map(|name| {
+                        crate::mcp_server::parse_mcp_tool_name(name)
+                            .map(|(source, _)| source)
+                            .or_else(|| crate::deferred_mcp_server_prefix(name).map(str::to_string))
+                    })
+                    .collect()
+            } else {
+                matching_sources
+            };
+            let mut sources: Vec<_> = sources.into_iter().take(16).collect();
+            loop {
+                result["available_servers"] = json!(sources);
+                if serialized_size(&result, limits.result_bytes).is_some() || sources.is_empty() {
+                    break;
+                }
+                sources.pop();
+            }
+        }
+        if serialized_size(&result, limits.result_bytes).is_none() {
+            return ToolExecutionResult::tool_error(
+                "Search response exceeds its byte budget; use a shorter query.",
+            );
+        }
+        ToolExecutionResult::success(result)
+    }
+
     /// Rank `defs` against `query` and return the best matches (full schemas).
     ///
     /// Scoring is keyword overlap with field weighting: each whitespace-separated
@@ -612,6 +941,10 @@ impl Tool for ToolSearchTool {
             .unwrap_or("")
             .trim();
 
+        if let Some(limits) = self.limits {
+            return self.bounded_search(query, context, limits).await;
+        }
+
         let Some(registry) = &context.tool_registry else {
             return ToolExecutionResult::tool_error(
                 "Tool registry not available in this context. tool_search requires worker-side tool execution.",
@@ -720,6 +1053,8 @@ pub fn tool_disclosure(messages: &[RuntimeMessage]) -> ToolDisclosure {
                         && let Some(name) = calls.get(result.tool_call_id.as_str())
                     {
                         disclosure.failed.insert((*name).to_string());
+                        disclosure.reveal_order.retain(|entry| entry != name);
+                        disclosure.reveal_order.push((*name).to_string());
                     }
                     let Some(result) = result
                         .result
@@ -727,6 +1062,26 @@ pub fn tool_disclosure(messages: &[RuntimeMessage]) -> ToolDisclosure {
                         .filter(|_| searches.contains(result.tool_call_id.as_str()))
                     else {
                         continue;
+                    };
+                    // The hosted event store reconstructs a successful
+                    // `tool.completed` text result as `Value::String`, while
+                    // in-process callers retain the structured object. Search
+                    // returns JSON as one text part, so decode that one layer
+                    // here to make transcript-derived disclosure consistent
+                    // across both histories. Keep ordinary text and malformed
+                    // JSON opaque; only an object carries disclosure fields.
+                    let decoded;
+                    let result = match result {
+                        Value::Object(_) => result,
+                        Value::String(text) => {
+                            decoded = serde_json::from_str::<Value>(text).ok();
+                            let Some(value) = decoded.as_ref().filter(|value| value.is_object())
+                            else {
+                                continue;
+                            };
+                            value
+                        }
+                        _ => continue,
                     };
                     let names = |key| {
                         result
@@ -736,12 +1091,17 @@ pub fn tool_disclosure(messages: &[RuntimeMessage]) -> ToolDisclosure {
                             .flatten()
                             .filter_map(Value::as_str)
                     };
-                    disclosure
-                        .revealed
-                        .extend(names("loaded").map(str::to_string));
-                    disclosure.revealed.extend(
-                        names("loading_mcp_servers").map(|prefix| format!("mcp_{prefix}__")),
-                    );
+                    let loaded: Vec<_> = names("loaded").map(str::to_string).collect();
+                    for name in loaded.into_iter().rev() {
+                        disclosure.revealed.insert(name.clone());
+                        disclosure.reveal_order.retain(|entry| entry != &name);
+                        disclosure.reveal_order.push(name);
+                    }
+                    if result.get("bounded").and_then(Value::as_bool) != Some(true) {
+                        disclosure.revealed.extend(
+                            names("loading_mcp_servers").map(|prefix| format!("mcp_{prefix}__")),
+                        );
+                    }
                 }
             }
             _ => {}
@@ -798,6 +1158,10 @@ async fn reveal_deferred_servers(context: &ToolContext, loaded: &[String]) -> Ve
 #[cfg(test)]
 #[path = "tool_search_deferred_tests.rs"]
 mod deferred_tests;
+
+#[cfg(test)]
+#[path = "tool_search_bounded_tests.rs"]
+mod bounded_tests;
 
 #[cfg(test)]
 mod tests;

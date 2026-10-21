@@ -162,6 +162,8 @@ where
     event_emitter: PhaseEffectEmitter<E>,
     /// Runtime-owned service snapshot cloned into every per-call ToolContext.
     context_services: crate::engine::tool_context::ToolContextServices,
+    /// Surface routes assembled for this execution turn.
+    tool_surface_plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
@@ -204,6 +206,7 @@ where
             thread_cpu_clock: None,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::engine::tool_context::ToolContextServices::default(),
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -228,6 +231,7 @@ where
                 file_store: Some(file_store),
                 ..Default::default()
             },
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -246,6 +250,15 @@ where
         services: crate::engine::tool_context::ToolContextServices,
     ) -> Self {
         self.context_services = services;
+        self
+    }
+
+    /// Set the resolved operation routes shared with nested shell adapters.
+    pub fn with_tool_surface_plan(
+        mut self,
+        plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
+    ) -> Self {
+        self.tool_surface_plan = plan;
         self
     }
 

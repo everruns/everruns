@@ -212,14 +212,31 @@ pub(super) fn prepare_for(
     model: &str,
     agent: &crate::engine::RuntimeAgent,
 ) -> ToolChangeReplay {
-    prepare_holding(
+    let replay = prepare_holding(
         messages,
         provider.as_str(),
         model,
         &agent.tools,
         &agent.system_prompt,
         ColdMoment::for_model(provider, model, agent.prompt_cache.as_ref()),
-    )
+    );
+    // A live reduction of the disclosure budget takes effect immediately.
+    // Ordinary removal-only changes still preserve a warm provider cache.
+    if replay.held_tools.as_ref().is_some_and(|held| {
+        agent
+            .model_tool_budget
+            .is_some_and(|budget| !budget.admits(held))
+    }) {
+        return prepare_holding(
+            messages,
+            provider.as_str(),
+            model,
+            &agent.tools,
+            &agent.system_prompt,
+            None,
+        );
+    }
+    replay
 }
 
 #[cfg(test)]
@@ -593,5 +610,52 @@ mod tests {
         let held = ColdMoment::for_model(&DriverId::Gemini, "gemini-unknown", Some(&hour))
             .expect("fallback model holds");
         assert_eq!(held.cache_lifetime, chrono::Duration::minutes(60));
+    }
+
+    #[test]
+    fn live_budget_reduction_releases_a_fallback_hold_but_ordinary_removal_keeps_it() {
+        use everruns_contracts::runtime::capabilities::ModelToolBudget;
+        let provider = everruns_contracts::DriverId::Gemini;
+        let model = "gemini-unknown";
+        let all = vec![tool("a", "A"), tool("b", "B")];
+        let mut agent = crate::engine::RuntimeAgent::new(PROMPT, model);
+        agent.tools = all.clone();
+        let initial = prepare_for(&[RuntimeMessage::user("first")], &provider, model, &agent);
+        let mut answer = RuntimeMessage::assistant("done");
+        answer.metadata = Some(HashMap::from([
+            ("provider".into(), json!(provider.as_str())),
+            ("model".into(), json!(model)),
+        ]));
+        initial.stamp(answer.metadata.as_mut().unwrap());
+        let messages = vec![
+            RuntimeMessage::user("first"),
+            answer,
+            RuntimeMessage::user("remove b"),
+        ];
+        agent.tools.pop();
+        agent.model_tool_budget = Some(ModelToolBudget {
+            max_tools: 2,
+            max_bytes: 4096,
+        });
+        assert!(
+            prepare_for(&messages, &provider, model, &agent)
+                .held_tools
+                .is_some()
+        );
+        for budget in [
+            ModelToolBudget {
+                max_tools: 1,
+                max_bytes: 4096,
+            },
+            ModelToolBudget {
+                max_tools: 2,
+                max_bytes: serde_json::to_vec(&agent.tools).unwrap().len(),
+            },
+        ] {
+            agent.model_tool_budget = Some(budget);
+            let replay = prepare_for(&messages, &provider, model, &agent);
+            assert!(replay.held_tools.is_none());
+            assert_eq!(replay.record.unwrap().removed, ["b"]);
+        }
     }
 }

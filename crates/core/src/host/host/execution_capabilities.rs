@@ -29,6 +29,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             tool_call_hooks: Vec::new(),
             subagent_nesting_policy: crate::delegation_services::SubagentNestingPolicy::default(),
             resolved_capabilities: Vec::new(),
+            tool_surface_plan: Default::default(),
         });
     }
 
@@ -77,6 +78,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         )),
         model: None,
         session_storage: None,
+        tool_surface_plan: Default::default(),
     };
     let collected = collect_capabilities_with_configs(
         &resolved.resolved_capability_configs,
@@ -181,5 +183,6 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             &resolved.resolved_capability_configs,
         ),
         resolved_capabilities: resolved.resolved_capability_configs,
+        tool_surface_plan: collected.tool_surface_plan,
     })
 }

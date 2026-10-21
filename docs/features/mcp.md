@@ -168,6 +168,10 @@ default, so existing agents are unchanged. A person's own servers
 default; a person can turn that off for one of their servers with its **Load
 tools on demand** switch in **Settings > My MCP servers**.
 
+For catalogs with hundreds or thousands of operations, Everruns paginates
+discovery and supports bounded search and schema disclosure. See [Large MCP
+catalogs and tool surfaces](/features/large-mcp-catalogs/).
+
 ```json
 {
   "mcpServers": {

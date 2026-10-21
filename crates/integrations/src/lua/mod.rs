@@ -382,6 +382,13 @@ fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
     };
     let mut out = Vec::new();
     for name in reg.tool_names() {
+        if context
+            .visible_tool_names
+            .as_ref()
+            .is_some_and(|names| !names.contains(name))
+        {
+            continue;
+        }
         let Some(tool) = reg.get(name) else { continue };
         if is_code_mode_eligible(name, &tool.policy(), &tool.hints()) {
             out.push(name.to_string());

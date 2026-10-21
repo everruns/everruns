@@ -1,0 +1,51 @@
+name: MCP Scale Eval Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'evals/mcp-scale/**'
+      - '.github/workflows/mcp-scale-evals.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'evals/mcp-scale/**'
+      - '.github/workflows/mcp-scale-evals.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  offline-evals:
+    name: MCP Scale Eval Offline Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: evals/mcp-scale
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: evals/mcp-scale
+          shared-key: mcp-scale-evals
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Run deterministic tests
+        run: cargo test --locked
+      - name: Validate offline fixture catalog
+        run: cargo run --locked -- --offline-catalog

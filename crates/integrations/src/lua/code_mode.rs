@@ -257,6 +257,11 @@ struct HideCodeModeToolsHook {
 }
 
 impl ToolDefinitionHook for HideCodeModeToolsHook {
+    fn preserves_execution_scope(&self) -> bool {
+        // Routing through Lua hides native schemas, not executable operations.
+        true
+    }
+
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         let mut kept: Vec<ToolDefinition> = Vec::new();
         let mut catalog: Vec<String> = Vec::new();
@@ -425,6 +430,36 @@ mod tests {
     }
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
+
+    #[tokio::test]
+    async fn lua_routing_hides_schemas_without_revoking_operations() {
+        use everruns_contracts::runtime::capabilities::{CapabilityRegistry, SystemPromptContext};
+        use everruns_contracts::runtime::runtime_agent::RuntimeAgentBuilder;
+        use everruns_contracts::typed_id::SessionId;
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(LuaCodeModeCapability);
+        let agent = RuntimeAgentBuilder::new()
+            .with_capabilities(
+                &[LUA_CODE_MODE_CAPABILITY_ID.to_string()],
+                &registry,
+                &SystemPromptContext::without_file_store(SessionId::new()),
+            )
+            .await
+            .tools([
+                builtin("lua", ToolPolicy::Auto, ToolHints::default()),
+                builtin("add", ToolPolicy::Auto, ToolHints::default()),
+            ])
+            .build();
+        assert_eq!(names(&agent.tools), vec!["lua"]);
+        assert!(
+            agent
+                .execution_tools()
+                .iter()
+                .any(|tool| tool.name() == "add"),
+            "Lua-routed operations must remain in the effective execution scope"
+        );
+    }
 
     #[test]
     fn hides_eligible_tools_keeps_lua_and_essential() {

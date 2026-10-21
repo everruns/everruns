@@ -803,3 +803,24 @@ fn deferred_defaults_to_off_and_round_trips() {
     assert!(server.deferred);
     assert_eq!(serde_json::to_value(&server).unwrap()["deferred"], true);
 }
+
+#[test]
+fn searchable_server_description_round_trips_with_bounded_utf8_bytes() {
+    let server: ScopedMcpServer = serde_json::from_value(json!({
+        "url":"https://example.com/mcp", "description":"Warehouse fulfillment"
+    }))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&server).unwrap()["description"],
+        "Warehouse fulfillment"
+    );
+    for (description, accepted) in [("é".repeat(2048), true), ("é".repeat(2049), false)] {
+        assert_eq!(
+            serde_json::from_value::<ScopedMcpServer>(json!({
+                "url":"https://example.com/mcp", "description":description
+            }))
+            .is_ok(),
+            accepted
+        );
+    }
+}

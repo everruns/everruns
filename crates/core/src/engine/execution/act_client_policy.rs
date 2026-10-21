@@ -153,6 +153,24 @@ where
             input_message_id: context.input_message_id.uuid(),
         },
     ));
+    tool_context.tool_surface_plan = atom.tool_surface_plan.clone();
+    if let Some(registry) = tool_context.tool_registry.as_ref() {
+        let definitions: Vec<_> = registry
+            .tool_names()
+            .into_iter()
+            .filter_map(|name| registry.get(&name))
+            .map(|tool| tool.to_definition())
+            .filter(|definition| {
+                tool_context
+                    .tool_surface_plan
+                    .route_for(definition.name())
+                    .is_none()
+            })
+            .collect();
+        tool_context
+            .tool_surface_plan
+            .extend_definitions(&definitions, cli_route_eligible);
+    }
     if let Some(resolver) = tool_context.connection_resolver.as_ref()
         && let Some(bound) = resolver.for_execution(context.input_message_id.uuid())
     {
@@ -219,6 +237,17 @@ where
     let cancellation = tokio_util::sync::CancellationToken::new();
     tool_context.cancellation = Some(cancellation.clone());
     (tool_context, cancellation)
+}
+
+fn cli_route_eligible(definition: &ToolDefinition) -> bool {
+    // These entry points and turn-control tools keep their owner-required
+    // native behavior. Client-side functions and tools explicitly marked by
+    // their owner stay native through the typed definition fields.
+    matches!(definition, ToolDefinition::Builtin(_))
+        && !everruns_contracts::runtime::tool_surface::NATIVE_ONLY_TOOL_NAMES
+            .contains(&definition.name())
+        && *definition.policy() != crate::engine::tool_types::ToolPolicy::ClientSide
+        && definition.hints().stays_direct != Some(true)
 }
 
 async fn record_settled_call<T, E>(

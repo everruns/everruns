@@ -1725,8 +1725,9 @@ pub async fn load_turn_context_for_execution(
     })
 }
 
-/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations and
-/// any saved risk label; an older server sends none, so default to open_world.
+/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations,
+/// saved risk labels and source search metadata. Older servers omit them;
+/// preserve the open_world default without inventing a source description.
 fn proto_mcp_tool_def_to_tool_definition(
     t: proto::McpToolDef,
 ) -> everruns_contracts::tool_types::ToolDefinition {
@@ -1737,6 +1738,7 @@ fn proto_mcp_tool_def_to_tool_definition(
         destructive: t.destructive,
         idempotent: t.idempotent,
         open_world: Some(t.open_world.unwrap_or(true)),
+        metadata: t.search_metadata.as_ref().map(proto_struct_to_json),
         ..Default::default()
     };
     if !t.capability_id.is_empty() {

@@ -164,6 +164,14 @@ optional `threshold`.
 Gemini, OpenAI Completions, models reached through gateways that don't
 implement hosted search, and any other provider.
 
+For large MCP catalogs, `tool_search` can use bounded schema disclosure. Set
+`bounded: true`; the optional `max_active_tools`, `max_active_bytes`, and
+`max_result_bytes` settings adjust the built-in limits for active native schemas
+and search responses. Legacy behavior remains the default unless bounded mode
+is enabled. See [Large MCP catalogs and tool
+surfaces](/features/large-mcp-catalogs/) for the complete configuration and
+runtime behavior.
+
 ### Tools
 
 - **`tool_search`**: search the available tools by keyword and load their full parameter schemas. It is never deferred itself.
@@ -190,7 +198,13 @@ The diagram below traces one deferred tool through a full round-trip, from schem
 
 Allowlisted tools behave exactly like `DeferrablePolicy::Never` tools, their full schema is always sent, so the agent is never forced through a `tool_search` round-trip before its first read/edit/shell call.
 
-### Search ranking and result bounding
+### Legacy search ranking and result bounding
+
+The behavior in this section describes the default, legacy generic search.
+Bounded mode uses the server-aware index and active/result byte limits
+described in [Large MCP catalogs](/features/large-mcp-catalogs/). In bounded
+mode, a source-only query returns a server refinement rather than arbitrary
+operation schemas.
 
 Because there is no hosted semantic index, `tool_search` ranks matches client-side with a deliberately simple, predictable scheme:
 
