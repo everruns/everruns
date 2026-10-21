@@ -76,6 +76,8 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         archived_at: null,
         deleted_at: null,
       };
+    } else if (pathname === `/api/v1/agents/${AGENT_ID}/source`) {
+      json = null;
     } else if (
       pathname === `/api/v1/agents/${AGENT_ID}/channels` ||
       pathname === `/api/v1/agents/${AGENT_ID}/triggers` ||

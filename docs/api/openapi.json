@@ -4073,6 +4073,267 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/source": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Get Agent source status",
+        "description": "Show the Agent's continuous GitHub source binding and sync status.",
+        "operationId": "get_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentSourceStatus"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Connect continuous GitHub source sync",
+        "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+        "operationId": "connect_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disconnect Agent source sync",
+        "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+        "operationId": "disconnect_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/options": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Browse GitHub source locations",
+        "description": "Browse GitHub branches and Agent package paths.",
+        "operationId": "get_agent_source_options",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceOptionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/preview": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Preview Agent source changes",
+        "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+        "operationId": "preview_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceLocation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/sync": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Request an Agent source check",
+        "description": "Queue an immediate check of this Agent's GitHub source.",
+        "operationId": "sync_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/stats": {
       "get": {
         "tags": [
@@ -32669,6 +32930,67 @@
           }
         }
       },
+      "AgentSourceStatus": {
+        "type": "object",
+        "required": [
+          "generation",
+          "repository",
+          "branch",
+          "path",
+          "managed_channels",
+          "status"
+        ],
+        "properties": {
+          "applied_commit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "branch": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "generation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "managed_channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "path": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "AgentStatus": {
         "type": "string",
         "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is hidden from listings and cannot be modified or assigned\n- `deleted`: Agent is a tombstone kept only for historical references",
@@ -35593,6 +35915,35 @@
         "enum": [
           "context_budget",
           "cost_pressure"
+        ]
+      },
+      "ConnectSourceRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SourceLocation"
+          },
+          {
+            "type": "object",
+            "required": [
+              "commit",
+              "agent_digest"
+            ],
+            "properties": {
+              "agent_digest": {
+                "type": "string"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "expected_generation": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid"
+              }
+            }
+          }
         ]
       },
       "ConnectedClient": {
@@ -63261,6 +63612,45 @@
               "type": "string"
             },
             "description": "Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result."
+          }
+        }
+      },
+      "SourceLocation": {
+        "type": "object",
+        "required": [
+          "repository",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative package folder or manifest; empty selects the repository root."
+          },
+          "repository": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceOptionsRequest": {
+        "type": "object",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
           }
         }
       },

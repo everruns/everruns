@@ -6,6 +6,9 @@ const mockUseFeatureFlag = jest.fn();
 const mockCanAgent = jest.fn();
 const mockCanBudget = jest.fn();
 
+jest.mock("@/hooks/use-agent-source", () => ({
+  useAgentSource: () => ({ data: null, isLoading: false, isError: false }),
+}));
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: (flag: string) => mockUseFeatureFlag(flag),
 }));

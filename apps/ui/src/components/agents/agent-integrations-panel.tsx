@@ -1,5 +1,6 @@
 "use client";
 
+import { useAgentSource } from "@/hooks/use-agent-source";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -103,6 +104,16 @@ export function AgentIntegrationsPanel({
     setExpandedId(initialChannelId);
   }
 
+  const sourceQuery = useAgentSource(agent.id);
+  const sourceOwns = (channel: { channel_config: unknown }) => {
+    const name = (channel.channel_config as { package_name?: string })?.package_name;
+    return (
+      !!name &&
+      (sourceQuery.isLoading ||
+        sourceQuery.isError ||
+        !!sourceQuery.data?.managed_channels.includes(name))
+    );
+  };
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);
   const canDangerous = canAgent("agent.dangerous") && !isReadOnlyStatus(agent.status);
@@ -198,7 +209,9 @@ export function AgentIntegrationsPanel({
                           agentDescription={agent.description}
                           channel={channel}
                           configureHref={
-                            canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
+                            canManage && !sourceOwns(channel)
+                              ? `/agents/${agent.id}/channels/${channel.id}`
+                              : undefined
                           }
                         />
                         {canViewBudgets && (
@@ -214,7 +227,9 @@ export function AgentIntegrationsPanel({
                       </div>
                     }
                     configureHref={
-                      canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
+                      canManage && !sourceOwns(channel)
+                        ? `/agents/${agent.id}/channels/${channel.id}`
+                        : undefined
                     }
                     onPublishChange={
                       canDangerous
@@ -246,7 +261,9 @@ export function AgentIntegrationsPanel({
                       setExpandedId((current) => (current === channel.id ? null : channel.id))
                     }
                     configureHref={
-                      canManage ? `/agents/${agent.id}/channels/${channel.id}` : undefined
+                      canManage && !sourceOwns(channel)
+                        ? `/agents/${agent.id}/channels/${channel.id}`
+                        : undefined
                     }
                     onPublishChange={
                       canDangerous

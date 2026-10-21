@@ -57,6 +57,7 @@ pub fn default_permissions() -> Value {
 
 /// Webhook events every agent App subscribes to.
 pub const DEFAULT_EVENTS: &[&str] = &[
+    "push",
     "pull_request",
     "issue_comment",
     "issues",
@@ -468,6 +469,41 @@ impl GitHubAppApi {
             .header("X-GitHub-Api-Version", "2022-11-28")
     }
 
+    /// Bounded, credential-safe reads for Agent source discovery and materialization.
+    /// Callers construct paths from validated repository coordinates and encoded segments.
+    pub(crate) async fn read_source_json(&self, path: &str, token: &str) -> Result<Value> {
+        // GitHub wraps blobs in base64 JSON. Keep enough bounded transport
+        // space for a package-limit-sized manifest before enforcing decoded limits.
+        const MAX_RESPONSE_BYTES: usize = everruns_core::agent_package::MAX_PACKAGE_BYTES * 3 / 2;
+        let mut response = self
+            .request(reqwest::Method::GET, path)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not reach GitHub. Retry the sync"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(match response.status().as_u16() {
+                401 | 403 =>
+                    "GitHub access failed or was rate limited. Check the connection and retry",
+                404 => "Repository, branch or source path was not found, or access was denied",
+                _ => "GitHub could not serve the source. Retry the sync",
+            });
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not read the GitHub source"))?
+        {
+            if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
+                anyhow::bail!("GitHub source response exceeds 15 MiB");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&bytes)
+            .map_err(|_| anyhow::anyhow!("GitHub returned an invalid source response"))
+    }
+
     /// Whether a public App already uses `slug`. Unauthenticated: 200 is
     /// taken, 404 is free (or a private App's), anything else is an error.
     pub async fn app_slug_taken(&self, slug: &str) -> Result<bool> {
@@ -746,6 +782,41 @@ mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn source_reads_allow_base64_envelopes_but_reject_unbounded_responses() {
+        let remote = MockServer::start().await;
+        let content = base64::engine::general_purpose::STANDARD
+            .encode(vec![0; everruns_core::agent_package::MAX_PACKAGE_BYTES]);
+        Mock::given(method("GET"))
+            .and(path("/blob"))
+            .and(header("authorization", "Bearer fixture-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "encoding":"base64", "content":content
+            })))
+            .mount(&remote)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/oversized"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b' '; 20 * 1024 * 1024]))
+            .mount(&remote)
+            .await;
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: remote.uri(),
+            web_url: "https://github.com".into(),
+        });
+        let value = api
+            .read_source_json("/blob", "fixture-token")
+            .await
+            .unwrap();
+        assert_eq!(value["content"].as_str().unwrap().len(), content.len());
+        let error = api
+            .read_source_json("/oversized", "fixture-token")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("exceeds 15 MiB"));
+        assert!(!error.to_string().contains("fixture-token"));
+    }
 
     fn encryption() -> EncryptionService {
         EncryptionService::new(

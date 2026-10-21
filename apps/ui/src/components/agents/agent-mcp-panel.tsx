@@ -313,7 +313,7 @@ function McpAttachmentRow({
   );
 }
 
-export function AgentMcpPanel({ agent }: { agent: Agent }) {
+export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readOnly?: boolean }) {
   const attachments = useAgentMcpAttachments(agent.id);
   const updateAgent = useUpdateAgent();
   const { data: presets = [], isLoading: presetsLoading } = useMcpServers();
@@ -516,7 +516,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
             Servers added to this agent, plus any its capabilities and harness bring.
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
+        <Button onClick={() => setAddOpen(true)} disabled={readOnly}>
           <Plus className="size-4" />
           Add MCP server
         </Button>
@@ -540,7 +540,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
             <McpAttachmentRow
               key={attachment.name}
               agentId={agent.id}
-              attachment={attachment}
+              attachment={readOnly ? { ...attachment, editable: false } : attachment}
               hasCollision={(prefixCounts.get(attachmentPrefix(attachment.name)) ?? 0) > 1}
               onRemove={setRemoveTarget}
               onConnectInChatChange={changeConnectInChat}
@@ -561,9 +561,12 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
         </Card>
       )}
 
-      <AgentUserMcpGroup agent={agent} attachments={attachments.data ?? []} />
+      <AgentUserMcpGroup agent={agent} attachments={attachments.data ?? []} readOnly={readOnly} />
 
-      <Dialog open={addOpen} onOpenChange={(open) => (open ? setAddOpen(true) : closeAdd())}>
+      <Dialog
+        open={addOpen && !readOnly}
+        onOpenChange={(open) => (open ? setAddOpen(true) : closeAdd())}
+      >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Add MCP server</DialogTitle>

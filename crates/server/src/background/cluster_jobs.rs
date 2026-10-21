@@ -1,5 +1,5 @@
-// Cluster-once maintenance jobs: blob GC, event retention, and the Memory and
-// Knowledge index source syncs.
+// Cluster-once maintenance jobs: blob GC, event retention, and Agent, Memory
+// and Knowledge index source syncs.
 //
 // Decision: these used to be a `tokio::interval` on every replica with no
 // leader election, so N replicas ran each sweep N times per interval. Each is

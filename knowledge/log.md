@@ -9,6 +9,10 @@
   [large MCP catalogs](execution/large-mcp-catalogs.md) and
   [dependency surface](project/dependency-surface.md#bashkit-security-source-pin).
 
+* **Agent source acceptance.** Record the browser acceptance contract for continuous
+  GitHub package sync, denied mutations, failed-revision retention and disconnect.
+  See [Agent source test cases](test-cases/ui/agent_sources/).
+
 ## 2026-10-20
 
 * **Conversation branches.** SQLite hosting owns the active conversation
@@ -44,6 +48,8 @@
   shared by native and CLI discovery. Extended the catalog prototype and tests
   for identical tools on different servers, metadata refresh and scoped
   visibility. See [Large MCP Catalogs](execution/large-mcp-catalogs.md).
+
+* **Continuous GitHub Agent sources.** Reviewed repository packages become read-only Agent sources, reconciled through durable jobs and signed pushes with generation fencing and last-good retention. See [Agent sources](runtime-resources/agent-sources.md).
 
 * **serve moves legacy child sessions.** Children found from the legacy
   journal move with their parent; the pre-authority build is registered under

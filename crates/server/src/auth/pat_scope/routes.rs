@@ -37,6 +37,12 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("POST", "/v1/agents/import", Write),
     ("POST", "/v1/agents/preview", Write),
     ("POST", "/v1/agents/validate", Read),
+    ("GET", "/v1/agents/{agent_id}/source", Read),
+    ("PUT", "/v1/agents/{agent_id}/source", Write),
+    ("DELETE", "/v1/agents/{agent_id}/source", Write),
+    ("POST", "/v1/agents/{agent_id}/source/sync", Write),
+    ("POST", "/v1/agents/{agent_id}/source/options", Read),
+    ("POST", "/v1/agents/{agent_id}/source/preview", Read),
     ("DELETE", "/v1/agents/{agent_id}", Write),
     ("GET", "/v1/agents/{agent_id}", Read),
     ("PATCH", "/v1/agents/{agent_id}", Write),
@@ -903,6 +909,8 @@ pub const REVIEWED_NON_GET_READ: &[(&str, &str)] = &[
     ("POST", "/v1/agents/diff"),
     // validate_agent_package: validates, persists nothing
     ("POST", "/v1/agents/validate"),
+    ("POST", "/v1/agents/{agent_id}/source/options"),
+    ("POST", "/v1/agents/{agent_id}/source/preview"),
     // searches memory files
     ("POST", "/v1/memories/{memory_id}/fs/_/grep"),
     // reads file metadata

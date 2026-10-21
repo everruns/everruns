@@ -22,6 +22,8 @@ mod agent_scripts;
 pub use agent_scripts::rows::*;
 mod agent_triggers;
 pub use agent_triggers::rows::*;
+mod agent_sources;
+pub use agent_sources::AgentSourceRow;
 mod agents;
 pub use agents::rows::*;
 mod apps;

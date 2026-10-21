@@ -1011,6 +1011,94 @@ export interface paths {
     patch: operations["update_agent_script"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/source": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Agent source status
+     * @description Show the Agent's continuous GitHub source binding and sync status.
+     */
+    get: operations["get_agent_source"];
+    /**
+     * Connect continuous GitHub source sync
+     * @description Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+     */
+    put: operations["connect_agent_source"];
+    post?: never;
+    /**
+     * Disconnect Agent source sync
+     * @description Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+     */
+    delete: operations["disconnect_agent_source"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/options": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Browse GitHub source locations
+     * @description Browse GitHub branches and Agent package paths.
+     */
+    post: operations["get_agent_source_options"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Agent source changes
+     * @description Validate and compare a GitHub Agent package without changing the Agent.
+     */
+    post: operations["preview_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request an Agent source check
+     * @description Queue an immediate check of this Agent's GitHub source.
+     */
+    post: operations["sync_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/stats": {
     parameters: {
       query?: never;
@@ -8825,6 +8913,21 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    AgentSourceStatus: {
+      applied_commit?: string | null;
+      branch: string;
+      error?: string | null;
+      /** Format: uuid */
+      generation: string;
+      /** Format: date-time */
+      last_checked_at?: string | null;
+      /** Format: date-time */
+      last_synced_at?: string | null;
+      managed_channels: string[];
+      path: string;
+      repository: string;
+      status: string;
+    };
     /**
      * @description Agent lifecycle status.
      *     - `active`: Agent is available for use
@@ -10385,6 +10488,12 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    ConnectSourceRequest: components["schemas"]["SourceLocation"] & {
+      agent_digest: string;
+      commit: string;
+      /** Format: uuid */
+      expected_generation?: string | null;
+    };
     /** @description An external MCP client the person approved. */
     ConnectedClient: {
       access: components["schemas"]["ConnectedClientAccess"];
@@ -25837,6 +25946,17 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    SourceLocation: {
+      branch: string;
+      /** @description Repository-relative package folder or manifest; empty selects the repository root. */
+      path?: string;
+      repository: string;
+    };
+    SourceOptionsRequest: {
+      branch?: string | null;
+      path?: string;
+      repository: string;
+    };
     /**
      * @description Speed level for models that expose a latency/price service tier.
      *     Wire values map 1:1 to the OpenAI `service_tier` request parameter:
@@ -33863,6 +33983,156 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"] | null;
+        };
+      };
+    };
+  };
+  connect_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConnectSourceRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"];
+        };
+      };
+    };
+  };
+  disconnect_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  get_agent_source_options: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SourceOptionsRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  preview_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SourceLocation"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  sync_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"];
         };
       };
     };

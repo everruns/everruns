@@ -3,6 +3,18 @@ import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
 
+let mockSourceManaged = false;
+jest.mock("@/hooks/use-agent-source", () => ({
+  useAgentSource: () => ({
+    data: mockSourceManaged ? { repository: "acme/agents", branch: "main" } : null,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+jest.mock("@/components/agents/agent-source", () => ({
+  AgentSourcePanel: () => <div>Agent source</div>,
+}));
+
 let mockSearchParams = new URLSearchParams();
 const push = jest.fn();
 const replace = jest.fn();
@@ -248,6 +260,7 @@ async function save() {
 }
 
 beforeEach(() => {
+  mockSourceManaged = false;
   jest.clearAllMocks();
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
@@ -531,6 +544,15 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
+  });
+
+  it("keeps a GitHub-managed Agent read-only even when edit mode is requested", async () => {
+    mockSourceManaged = true;
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
   });
 
   it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {

@@ -9,6 +9,7 @@
 * [Virtual users](agent_identities/) - Manual UI cases.
 * [Agent integrations](agent_integrations/) - Manual UI cases.
 * [Agent packages](agent_packages/) - Manual UI cases.
+* [Agent sources](agent_sources/) - Continuous GitHub sync and source ownership.
 * [Agent MCP attachments](agent_mcp_attachments/) - Manual UI cases.
 * [Agent triggers](agent_triggers/) - Manual UI cases.
 * [ARD discovery](ard_discovery/) - Manual UI cases.
