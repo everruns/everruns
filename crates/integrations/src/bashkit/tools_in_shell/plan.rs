@@ -14,7 +14,7 @@
 //! - **For soft approval.** The agent runs it to describe a script before
 //!   asking a person about it; it never decides anything itself.
 
-use bashkit::{CommandContext, ScriptAnalysis};
+use bashkit::{CommandPlacement, ScriptAnalysis};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::tool_types::ToolCall;
 use serde_json::{Value, json};
@@ -58,9 +58,9 @@ async fn planned_call(
     command: &bashkit::AnalyzedCommand,
 ) -> Option<Value> {
     let place = match command.context {
-        CommandContext::Direct => "script",
-        CommandContext::Substitution => "substitution",
-        CommandContext::FunctionBody => "function",
+        CommandPlacement::Direct => "script",
+        CommandPlacement::Substitution => "substitution",
+        CommandPlacement::FunctionBody => "function",
     };
     let literal: Option<Vec<String>> = command
         .literal_args()
