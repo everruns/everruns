@@ -39,5 +39,6 @@ Search and invocation both check current authorization, so a disclosed schema
 does not preserve access after a server is removed or its connection is
 revoked. CLI search loads at most eight matching deferred servers per query;
 other servers stay pending, and search, help, and calls remain within the
-current turn's visible scope. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
+current turn's visible scope. Custom Framework egress adapters must support
+`send_stream` for discovery. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
 [Tool Search](/capabilities/tool-search/), and [Tools in Shell](/capabilities/tools-in-shell/).

@@ -9385,6 +9385,11 @@ export interface components {
          *     start).
          */
         deferred?: boolean;
+        /**
+         * @description Searchable server context supplied by its attachment or catalog. It is
+         *     metadata, not an instruction or a credential.
+         */
+        description?: string | null;
         /** @description Which elicitation modes this server may use (`url` by default). */
         elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /** @description Environment variables set for the stdio `command`. */
@@ -24461,6 +24466,11 @@ export interface components {
        *     start).
        */
       deferred?: boolean;
+      /**
+       * @description Searchable server context supplied by its attachment or catalog. It is
+       *     metadata, not an instruction or a credential.
+       */
+      description?: string | null;
       /** @description Which elicitation modes this server may use (`url` by default). */
       elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /** @description Environment variables set for the stdio `command`. */

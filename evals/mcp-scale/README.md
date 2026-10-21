@@ -17,6 +17,12 @@ cargo run -- --offline-stress --output results/tool-search-index-stress.json
 
 The standalone crate path-depends on the current `../../crates/everruns` and enables stdio MCP plus Bashkit. The child server uses the same compiled executable as the study subject.
 
+The [study manifest](Cargo.toml) carries the checkout's exact Bashkit source
+patches for its Wasmtime security fix. Cargo does not inherit a dependency's
+workspace patches, so standalone Framework hosts enabling Bashkit need equivalent
+patches in their own workspace. The adapter uses the stable analysis labels shared
+by the registry and patched APIs.
+
 ## Run with a model
 
 Set `OPENROUTER_API_KEY` in the environment. The default synthetic-data-only target is `openrouter/meta/muse-spark-1.3-contributor`; target labels do not contain credentials. From this directory:
