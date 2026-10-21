@@ -30,6 +30,10 @@ cache grow without bound. These
 limits are safety bounds, not a claim that every provider or model can use
 10,000 schemas at once.
 
+Custom Framework egress adapters must implement `EgressService::send_stream`.
+HTTP discovery consumes bounded response streams even when the MCP reply is
+ordinary JSON, so response limits apply before buffering the complete body.
+
 The Framework's scoped MCP discovery also limits the combined session catalog
 to 10,000 tools and 32 MiB of serialized, server-prefixed definitions. If it exceeds either
 bound, discovery fails closed with an explicit trace error; it does not return
