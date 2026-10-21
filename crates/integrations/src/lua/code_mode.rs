@@ -406,6 +406,59 @@ Argument types follow each name:\n{}",
     }
 }
 
+/// Whether a tool is eligible to be driven through Lua "code mode" (the
+/// `tools.<name>` table) rather than called directly.
+///
+/// This is the single source of truth shared by two call sites so they can
+/// never drift apart: the engine's code-mode exposure
+/// (`gated_code_mode_tools`) and the `lua_code_mode` capability's
+/// tool-definition filter (which *hides* exactly this set from the model). If
+/// the two used different predicates a tool could be hidden from the model yet
+/// not re-exposed in Lua — an unreachable tool.
+///
+/// Conservative gate (TM-LUA-009): `Auto` policy only (never approval- or
+/// client-side tools), non-destructive, non-`cpu_bound`, and never the
+/// execution tools themselves (`lua`/`bash` are excluded so code mode cannot
+/// re-enter a shell or itself).
+pub fn is_code_mode_eligible(
+    name: &str,
+    policy: &super::tool_types::ToolPolicy,
+    hints: &ToolHints,
+) -> bool {
+    use super::tool_types::ToolPolicy;
+    name != "lua"
+        && name != "bash"
+        && *policy == ToolPolicy::Auto
+        && hints.destructive != Some(true)
+        && hints.cpu_bound != Some(true)
+}
+
+/// Sibling tools exposed to Lua "code mode" via the `tools` table.
+///
+/// Filters the live tool registry through [`is_code_mode_eligible`]. Returns an
+/// empty list when no tool registry is present.
+pub(super) fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
+    let Some(reg) = context.tool_registry.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for name in reg.tool_names() {
+        if context
+            .visible_tool_names
+            .as_ref()
+            .is_some_and(|names| !names.contains(name))
+        {
+            continue;
+        }
+        let Some(tool) = reg.get(name) else { continue };
+        if is_code_mode_eligible(name, &tool.policy(), &tool.hints()) {
+            out.push(name.to_string());
+        }
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -719,57 +772,4 @@ mod tests {
             prompt.len()
         );
     }
-}
-
-/// Whether a tool is eligible to be driven through Lua "code mode" (the
-/// `tools.<name>` table) rather than called directly.
-///
-/// This is the single source of truth shared by two call sites so they can
-/// never drift apart: the engine's code-mode exposure
-/// (`gated_code_mode_tools`) and the `lua_code_mode` capability's
-/// tool-definition filter (which *hides* exactly this set from the model). If
-/// the two used different predicates a tool could be hidden from the model yet
-/// not re-exposed in Lua — an unreachable tool.
-///
-/// Conservative gate (TM-LUA-009): `Auto` policy only (never approval- or
-/// client-side tools), non-destructive, non-`cpu_bound`, and never the
-/// execution tools themselves (`lua`/`bash` are excluded so code mode cannot
-/// re-enter a shell or itself).
-pub fn is_code_mode_eligible(
-    name: &str,
-    policy: &super::tool_types::ToolPolicy,
-    hints: &ToolHints,
-) -> bool {
-    use super::tool_types::ToolPolicy;
-    name != "lua"
-        && name != "bash"
-        && *policy == ToolPolicy::Auto
-        && hints.destructive != Some(true)
-        && hints.cpu_bound != Some(true)
-}
-
-/// Sibling tools exposed to Lua "code mode" via the `tools` table.
-///
-/// Filters the live tool registry through [`is_code_mode_eligible`]. Returns an
-/// empty list when no tool registry is present.
-pub(super) fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
-    let Some(reg) = context.tool_registry.as_ref() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for name in reg.tool_names() {
-        if context
-            .visible_tool_names
-            .as_ref()
-            .is_some_and(|names| !names.contains(name))
-        {
-            continue;
-        }
-        let Some(tool) = reg.get(name) else { continue };
-        if is_code_mode_eligible(name, &tool.policy(), &tool.hints()) {
-            out.push(name.to_string());
-        }
-    }
-    out.sort();
-    out
 }

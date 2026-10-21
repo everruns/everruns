@@ -452,84 +452,6 @@ fn pending_bytes(pending: &Pending) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use async_trait::async_trait;
-    use everruns_contracts::runtime::ToolExecutionResult;
-    use everruns_contracts::runtime::mcp_deferred::{
-        DeferredMcpServerTool, deferred_mcp_server_definition,
-    };
-    use everruns_contracts::runtime::tool_surface::ToolSurfaceMode;
-    use everruns_contracts::tool_types::ToolDefinition;
-
-    struct NamedTool(String);
-
-    #[async_trait]
-    impl Tool for NamedTool {
-        fn name(&self) -> &str {
-            &self.0
-        }
-
-        fn description(&self) -> &str {
-            "Test tool."
-        }
-
-        fn parameters_schema(&self) -> Value {
-            serde_json::json!({"type": "object"})
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::Success(serde_json::json!({}))
-        }
-    }
-
-    #[test]
-    fn aggregate_limit_rejects_a_whole_server_without_partial_publish() {
-        let ToolDefinition::Builtin(parent_definition) =
-            deferred_mcp_server_definition("docs", Some("Documentation"))
-        else {
-            unreachable!()
-        };
-        let parent: Arc<dyn Tool> = Arc::new(DeferredMcpServerTool::new(parent_definition));
-        let entries = (0..MAX_CATALOG_TOOLS - 1)
-            .map(|index| Entry {
-                tool_name: format!("existing_{index}"),
-                source: None,
-                command: format!("existing-{index}"),
-                tool: parent.clone(),
-                scope_parent: None,
-            })
-            .collect::<Vec<_>>();
-        let mut catalog = Catalog {
-            searchable_names: entries
-                .iter()
-                .map(|entry| entry.tool_name.clone())
-                .collect(),
-            entries,
-            pending: vec![Pending {
-                prefix: "docs".into(),
-                source: "docs".into(),
-                placeholder: parent,
-            }],
-            search_index: None,
-            surface_plan: ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli),
-            visible_tool_names: None,
-        };
-
-        let tools: Vec<Arc<dyn Tool>> = ["mcp_docs__one", "mcp_docs__two"]
-            .into_iter()
-            .map(|name| Arc::new(NamedTool(name.into())) as Arc<dyn Tool>)
-            .collect();
-        let error = catalog.add_loaded("docs", tools).unwrap_err();
-
-        assert!(error.contains("catalog limit"));
-        assert_eq!(catalog.entries.len(), MAX_CATALOG_TOOLS - 1);
-        assert_eq!(catalog.pending.len(), 1);
-        assert!(!catalog.searchable_names.contains("mcp_docs__one"));
-    }
-}
-
 /// `tools <...> <tool> --help`: the signature, description and input schema.
 pub(crate) fn tool_help(entry: &Entry) -> String {
     let schema = strip_human_intent(entry.tool.parameters_schema());
@@ -614,4 +536,82 @@ pub(crate) fn first_sentence(description: &str) -> String {
         s.push('…');
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use everruns_contracts::runtime::ToolExecutionResult;
+    use everruns_contracts::runtime::mcp_deferred::{
+        DeferredMcpServerTool, deferred_mcp_server_definition,
+    };
+    use everruns_contracts::runtime::tool_surface::ToolSurfaceMode;
+    use everruns_contracts::tool_types::ToolDefinition;
+
+    struct NamedTool(String);
+
+    #[async_trait]
+    impl Tool for NamedTool {
+        fn name(&self) -> &str {
+            &self.0
+        }
+
+        fn description(&self) -> &str {
+            "Test tool."
+        }
+
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::Success(serde_json::json!({}))
+        }
+    }
+
+    #[test]
+    fn aggregate_limit_rejects_a_whole_server_without_partial_publish() {
+        let ToolDefinition::Builtin(parent_definition) =
+            deferred_mcp_server_definition("docs", Some("Documentation"))
+        else {
+            unreachable!()
+        };
+        let parent: Arc<dyn Tool> = Arc::new(DeferredMcpServerTool::new(parent_definition));
+        let entries = (0..MAX_CATALOG_TOOLS - 1)
+            .map(|index| Entry {
+                tool_name: format!("existing_{index}"),
+                source: None,
+                command: format!("existing-{index}"),
+                tool: parent.clone(),
+                scope_parent: None,
+            })
+            .collect::<Vec<_>>();
+        let mut catalog = Catalog {
+            searchable_names: entries
+                .iter()
+                .map(|entry| entry.tool_name.clone())
+                .collect(),
+            entries,
+            pending: vec![Pending {
+                prefix: "docs".into(),
+                source: "docs".into(),
+                placeholder: parent,
+            }],
+            search_index: None,
+            surface_plan: ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli),
+            visible_tool_names: None,
+        };
+
+        let tools: Vec<Arc<dyn Tool>> = ["mcp_docs__one", "mcp_docs__two"]
+            .into_iter()
+            .map(|name| Arc::new(NamedTool(name.into())) as Arc<dyn Tool>)
+            .collect();
+        let error = catalog.add_loaded("docs", tools).unwrap_err();
+
+        assert!(error.contains("catalog limit"));
+        assert_eq!(catalog.entries.len(), MAX_CATALOG_TOOLS - 1);
+        assert_eq!(catalog.pending.len(), 1);
+        assert!(!catalog.searchable_names.contains("mcp_docs__one"));
+    }
 }

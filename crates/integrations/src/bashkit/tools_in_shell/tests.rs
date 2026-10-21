@@ -181,7 +181,7 @@ fn install_cli_surface(context: &mut ToolContext, registry: &ToolRegistry) {
     let definitions: Vec<_> = registry
         .tool_names()
         .into_iter()
-        .filter_map(|name| registry.get(&name))
+        .filter_map(|name| registry.get(name))
         .map(|tool| tool.to_definition())
         .collect();
     let routes = ToolsInShellCapability.tool_surface_routes_with_config(&json!({}), &definitions);
