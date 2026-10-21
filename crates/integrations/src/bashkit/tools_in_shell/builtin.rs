@@ -568,30 +568,29 @@ fn inherit_mcp_server_search_context(
         .and_then(Value::as_str)
         .filter(|description| !description.trim().is_empty())
         .unwrap_or_else(|| pending.placeholder.description());
-    let inherited = json!({
-        "name": source_name,
-        "description": source_description,
-    });
+    let inherited = serde_json::Map::from_iter([
+        ("name".to_string(), json!(source_name)),
+        ("description".to_string(), json!(source_description)),
+    ]);
 
     for definition in definitions {
         let everruns_contracts::tool_types::ToolDefinition::Builtin(tool) = definition else {
             continue;
         };
         let metadata = tool.hints.metadata.get_or_insert_with(|| json!({}));
-        if !metadata.is_object() {
+        let Some(metadata) = metadata.as_object_mut() else {
             // Preserve opaque metadata exactly; there is no safe way to add a
             // sibling field to a non-object value.
             continue;
-        }
-        let metadata = metadata.as_object_mut().expect("checked object metadata");
+        };
         let server_context = metadata.entry("mcp_server").or_insert_with(|| json!({}));
         if !server_context.is_object() {
             *server_context = json!({});
         }
-        let server_context = server_context
-            .as_object_mut()
-            .expect("replaced non-object server metadata");
-        for (key, value) in inherited.as_object().expect("source context is an object") {
+        let Some(server_context) = server_context.as_object_mut() else {
+            continue;
+        };
+        for (key, value) in &inherited {
             server_context.insert(key.clone(), value.clone());
         }
     }
