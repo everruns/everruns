@@ -5,6 +5,8 @@ mod host_services_parity;
 #[path = "integration/main.rs"]
 mod integration;
 #[cfg(feature = "mcp")]
+mod mcp_catalog_lifecycle;
+#[cfg(feature = "mcp")]
 mod mcp_runtime_test;
 #[cfg(feature = "openai-agents-api")]
 mod openai_agents_api;
@@ -14,6 +16,7 @@ mod openai_agents_api_lifecycle;
 mod openai_agents_api_observability;
 #[cfg(feature = "openai-agents-api")]
 mod openai_agents_api_policy;
+mod tool_catalog_lifecycle;
 
 #[cfg(feature = "openai-agents-api")]
 mod agents_api_support;

@@ -62,8 +62,8 @@ impl McpToolInvoker for DocsServer {
         assert_eq!(server_prefix, "docs");
         *self.listed.lock().unwrap() += 1;
         Ok(match self.listing {
-            Listing::Tools => Some(McpServerTools::Listed(vec![ToolDefinition::Builtin(
-                BuiltinTool {
+            Listing::Tools => {
+                let tool = BuiltinTool {
                     name: "mcp_docs__search_docs".into(),
                     display_name: None,
                     description: "Search the product docs.".into(),
@@ -75,10 +75,15 @@ impl McpToolInvoker for DocsServer {
                     policy: ToolPolicy::Auto,
                     category: Some("MCP Servers".into()),
                     deferrable: DeferrablePolicy::Automatic,
-                    hints: ToolHints::default(),
+                    hints: ToolHints {
+                        readonly: Some(true),
+                        metadata: Some(json!({"publisher": "docs-test"})),
+                        ..ToolHints::default()
+                    },
                     full_parameters: None,
-                },
-            )])),
+                };
+                Some(McpServerTools::Listed(vec![ToolDefinition::Builtin(tool)]))
+            }
             Listing::NeedsConnection => Some(McpServerTools::ConnectionRequired(result(
                 None,
                 Some("MCP server 'docs' requires an OAuth connection.".into()),
@@ -95,8 +100,23 @@ struct Fixture {
 }
 
 fn fixture(listing: Listing) -> Fixture {
+    fixture_with_metadata(
+        listing,
+        Some(json!({"mcp_server": {
+            "name": "docs",
+            "description": "Product documentation"
+        }})),
+    )
+}
+
+fn fixture_with_metadata(listing: Listing, metadata: Option<Value>) -> Fixture {
     let (mut context, _) = crate::bashkit::tests::create_context_with_mock_store();
-    let placeholder = deferred_mcp_server_definition("docs", Some("Product documentation"));
+    let mut placeholder = deferred_mcp_server_definition("docs", Some("Product documentation"));
+    if let Some(metadata) = metadata
+        && let ToolDefinition::Builtin(builtin) = &mut placeholder
+    {
+        builtin.hints.metadata = Some(metadata);
+    }
     let ToolDefinition::Builtin(builtin) = placeholder.clone() else {
         unreachable!()
     };
@@ -104,6 +124,7 @@ fn fixture(listing: Listing) -> Fixture {
     registry.register(DeferredMcpServerTool::new(builtin));
     registry.register(EchoTool::named("web_fetch"));
     registry.register(ToolsMarkerTool);
+    install_cli_surface(&mut context, &registry);
     context.tool_registry = Some(Arc::new(registry));
     context.tool_call_id = Some("call_outer".to_string());
     let server = DocsServer::new(listing);
@@ -176,12 +197,32 @@ async fn server_help_loads_it_and_lists_its_tools() {
     );
 }
 
-#[tokio::test]
-async fn search_matching_the_server_loads_it_and_ranks_its_tools() {
-    let fixture = fixture(Listing::Tools);
-    let output = run("tools search documentation", &fixture.context).await;
+async fn assert_repeated_source_search(fixture: &Fixture, query: &str) {
+    let command = format!("tools search {query}; tools search {query}");
+    let output = run(&command, &fixture.context).await;
     let stdout = output["stdout"].as_str().unwrap();
-    assert!(stdout.starts_with("tools docs search-docs"), "{stdout}");
+    assert_eq!(output["exit_code"], 0, "{output}");
+    assert_eq!(
+        stdout.matches("Server description matches").count(),
+        2,
+        "{stdout}"
+    );
+    assert_eq!(stdout.matches("tools docs --help").count(), 2, "{stdout}");
+    assert!(
+        !stdout.contains("tools docs search-docs"),
+        "server description terms must not match the child operation: {stdout}"
+    );
+    assert_eq!(
+        *fixture.server.listed.lock().unwrap(),
+        1,
+        "both searches run in one shell invocation, so loading happens once"
+    );
+}
+
+#[tokio::test]
+async fn server_description_matches_are_reported_as_browse_suggestions() {
+    let fixture = fixture(Listing::Tools);
+    assert_repeated_source_search(&fixture, "documentation").await;
     assert!(revealed(&fixture).await);
 
     let fixture = self::fixture(Listing::Tools);
@@ -191,6 +232,33 @@ async fn search_matching_the_server_loads_it_and_ranks_its_tools() {
         0,
         "a search that does not name the server leaves it alone"
     );
+}
+
+#[tokio::test]
+async fn placeholder_description_is_fallback_source_context() {
+    let fixture = fixture_with_metadata(Listing::Tools, None);
+    assert_repeated_source_search(&fixture, "not loaded yet").await;
+}
+
+#[tokio::test]
+async fn name_only_source_metadata_uses_placeholder_description() {
+    let fixture = fixture_with_metadata(
+        Listing::Tools,
+        Some(json!({"mcp_server": {"name": "docs"}})),
+    );
+    assert_repeated_source_search(&fixture, "documentation").await;
+}
+
+#[tokio::test]
+async fn blank_source_description_uses_placeholder_description() {
+    let fixture = fixture_with_metadata(
+        Listing::Tools,
+        Some(json!({"mcp_server": {
+            "name": "docs",
+            "description": "  "
+        }})),
+    );
+    assert_repeated_source_search(&fixture, "documentation").await;
 }
 
 #[tokio::test]
@@ -212,7 +280,7 @@ async fn a_host_that_cannot_list_mid_call_reveals_for_the_next_step() {
 }
 
 #[test]
-fn hook_hides_the_placeholder_and_names_it_on_bash() {
+fn hook_hides_the_placeholder_without_rewriting_bash_description() {
     let hook = HideBehindToolsHook::default();
     let kept = hook.transform(vec![
         definition("bash", ToolPolicy::Auto, ToolHints::default()),
@@ -221,11 +289,5 @@ fn hook_hides_the_placeholder_and_names_it_on_bash() {
     ]);
     let names: Vec<&str> = kept.iter().map(ToolDefinition::name).collect();
     assert_eq!(names, ["bash"]);
-    assert!(
-        kept[0]
-            .description()
-            .contains("docs (not loaded), web-fetch"),
-        "{}",
-        kept[0].description()
-    );
+    assert_eq!(kept[0].description(), "bash tool");
 }

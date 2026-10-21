@@ -372,10 +372,15 @@ pub struct ToolContext {
     /// `spawn_background` that need to inspect or delegate to sibling tools.
     pub tool_registry: Option<Arc<crate::runtime::tools::ToolRegistry>>,
 
-    /// Optional allowlist of tools visible to the model for this turn.
-    /// Registry-introspecting tools must filter through this before returning
-    /// sibling tool metadata, because the execution registry can be a superset.
+    /// Optional allowlist of operations authorized for this turn, including
+    /// schemas hidden by native search or a CLI/Lua routing projection.
+    /// Registry-introspecting adapters must filter both discovery and calls
+    /// through this scope because the execution registry can be a superset.
     pub visible_tool_names: Option<Arc<HashSet<String>>>,
+
+    /// Resolved native/CLI routes for this turn. Execution adapters consult
+    /// this plan for routing; the canonical executor still owns authorization.
+    pub tool_surface_plan: crate::runtime::tool_surface::ToolSurfacePlan,
 
     /// Optional org ID for org-scoped operations.
     pub org_id: Option<crate::runtime::typed_id::OrgId>,
@@ -445,6 +450,15 @@ impl ToolContext {
         self
     }
 
+    /// Set the surface plan assembled for this turn.
+    pub fn with_tool_surface_plan(
+        mut self,
+        plan: crate::runtime::tool_surface::ToolSurfacePlan,
+    ) -> Self {
+        self.tool_surface_plan = plan;
+        self
+    }
+
     /// Create a new tool context with just a session ID
     pub fn new(session_id: SessionId) -> Self {
         Self {
@@ -475,6 +489,7 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
+            tool_surface_plan: crate::runtime::tool_surface::ToolSurfacePlan::default(),
             org_id: None,
             network_access: None,
             locale: None,
@@ -519,6 +534,7 @@ impl ToolContext {
             capability_registry: services.capability_registry.clone(),
             tool_registry: services.tool_registry.clone(),
             visible_tool_names: None,
+            tool_surface_plan: crate::runtime::tool_surface::ToolSurfacePlan::default(),
             org_id: services.org_id,
             network_access: services.network_access.clone(),
             locale: None,

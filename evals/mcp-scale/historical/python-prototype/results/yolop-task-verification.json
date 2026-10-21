@@ -1,0 +1,15 @@
+{
+  "task_passed": true,
+  "checks": {
+    "staging_rolled_back_to_previous_version": true,
+    "production_unchanged": true,
+    "exactly_one_rollback_of_target": true,
+    "deployment_inspected_before_rollback": true,
+    "staging_logs_inspected_before_rollback": true,
+    "target_verified_after_rollback": true,
+    "no_unrequested_mutations": true
+  },
+  "attempted_calls": 11,
+  "successful_calls": 11,
+  "rejected_calls": 0
+}
