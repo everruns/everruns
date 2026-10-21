@@ -158,7 +158,7 @@ where
         let definitions: Vec<_> = registry
             .tool_names()
             .into_iter()
-            .filter_map(|name| registry.get(&name))
+            .filter_map(|name| registry.get(name))
             .map(|tool| tool.to_definition())
             .filter(|definition| {
                 tool_context

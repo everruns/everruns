@@ -298,13 +298,13 @@ pub(crate) async fn discover_turn_tool_definitions(
         })
         .collect();
     for definition in &mut definitions {
-        if let Some((prefix, _)) = crate::mcp_server::parse_mcp_tool_name(definition.name()) {
-            if let Some((name, server)) = descriptions.get(&prefix) {
-                let metadata = serde_json::json!({"mcp_server": {"name": name, "description": server.description.as_deref().unwrap_or_default()}});
-                match definition {
-                    ToolDefinition::Builtin(tool) => tool.hints.metadata = Some(metadata),
-                    ToolDefinition::ClientSide(_) => {}
-                }
+        if let Some((prefix, _)) = crate::mcp_server::parse_mcp_tool_name(definition.name())
+            && let Some((name, server)) = descriptions.get(&prefix)
+        {
+            let metadata = serde_json::json!({"mcp_server": {"name": name, "description": server.description.as_deref().unwrap_or_default()}});
+            match definition {
+                ToolDefinition::Builtin(tool) => tool.hints.metadata = Some(metadata),
+                ToolDefinition::ClientSide(_) => {}
             }
         }
     }

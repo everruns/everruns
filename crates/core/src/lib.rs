@@ -200,10 +200,6 @@ pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub use everruns_contracts::runtime::tool_surface;
-pub use everruns_contracts::runtime::tool_surface::{
-    NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceMode,
-    ToolSurfacePlan, ToolSurfaceRoute,
-};
 pub mod compaction_checkpoint;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;

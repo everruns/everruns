@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - 'evals/mcp-scale/**'
       - 'crates/contracts/**'
       - 'crates/core/**'
@@ -14,6 +17,9 @@ on:
   push:
     branches: [main]
     paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - 'evals/mcp-scale/**'
       - 'crates/contracts/**'
       - 'crates/core/**'

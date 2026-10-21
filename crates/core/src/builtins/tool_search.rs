@@ -408,23 +408,22 @@ impl Capability for ToolSearchCapability {
     }
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
-        if let Some(value) = config.get("bounded") {
-            if !value.is_boolean() {
-                return Err("bounded must be a boolean".into());
-            }
+        if let Some(value) = config.get("bounded")
+            && !value.is_boolean()
+        {
+            return Err("bounded must be a boolean".into());
         }
         for (key, minimum, maximum) in [
             ("max_active_tools", 1, 128),
             ("max_active_bytes", 1024, 1048576),
             ("max_result_bytes", 1024, 65536),
         ] {
-            if let Some(value) = config.get(key) {
-                if !value
+            if let Some(value) = config.get(key)
+                && !value
                     .as_u64()
                     .is_some_and(|value| value >= minimum && value <= maximum)
-                {
-                    return Err(format!("{key} must be an integer in {minimum}..={maximum}"));
-                }
+            {
+                return Err(format!("{key} must be an integer in {minimum}..={maximum}"));
             }
         }
         if config.get("bounded").and_then(Value::as_bool) == Some(true)
