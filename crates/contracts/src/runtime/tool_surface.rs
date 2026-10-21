@@ -47,18 +47,13 @@ pub enum ToolSurfaceMode {
 }
 
 /// How an operation is exposed at the model boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolSurface {
+    #[default]
     Native,
     Cli,
     Both,
-}
-
-impl Default for ToolSurface {
-    fn default() -> Self {
-        Self::Native
-    }
 }
 
 /// Native schema loading is independent of whether an operation has a CLI route.

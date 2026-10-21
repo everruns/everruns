@@ -5,11 +5,21 @@ on:
     branches: [main]
     paths:
       - 'evals/mcp-scale/**'
+      - 'crates/contracts/**'
+      - 'crates/core/**'
+      - 'crates/everruns/**'
+      - 'crates/integrations/**'
+      - 'crates/drivers/**'
       - '.github/workflows/mcp-scale-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/mcp-scale/**'
+      - 'crates/contracts/**'
+      - 'crates/core/**'
+      - 'crates/everruns/**'
+      - 'crates/integrations/**'
+      - 'crates/drivers/**'
       - '.github/workflows/mcp-scale-evals.yml'
 
 permissions:
