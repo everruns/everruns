@@ -40,7 +40,7 @@ pub async fn preflight(context: &ToolContext, analysis: Option<ScriptAnalysis>) 
         .commands
         .iter()
         .filter(|c| c.name.as_deref() == Some(TOOLS_COMMAND))
-        .filter(|c| c.context == bashkit::CommandPlacement::Direct)
+        .filter(|c| c.context.as_str() == "direct")
         .filter_map(|c| c.literal_args())
         .take(MAX_CALLS_PER_EXECUTION);
     for args in calls {
