@@ -615,43 +615,60 @@ async fn test_anthropic_claude_tool_search_low_threshold() {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[tokio::test]
 async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
-    let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
-        InMemoryAgenticLoop::builder()
-            .agent_name("Claude Auto Tool Search Agent")
-            .system_prompt("When asked to add numbers, use the add tool.")
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(TestMathCapability)
-            .capability(CurrentTimeCapability)
-            // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
-            .capability(AutoToolSearchCapability::with_threshold(3))
-            .max_iterations(6)
-            .build()
-            .await
-            .unwrap()
-    })
-    .await
-    else {
-        return;
-    };
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert!(
-        result.tool_calls_count > 0,
-        "Claude auto_tool_search should call add through hosted deferred loading"
-    );
-    assert_hosted_tool_search_was_enabled(&runner).await;
+    // Haiku sometimes answers "7 + 3" without the tool (nightly 2026-10-22), so a
+    // turn with no tool call is re-sampled in a fresh session, like
+    // `test_anthropic_claude_tool_search_low_threshold`. Hosted resolution is
+    // checked on every attempt, so a sampling miss never hides a fallback.
+    const MAX_ATTEMPTS: usize = 5;
+    let mut called_add = false;
 
-    let generations = runner.events_by_type(LLM_GENERATION).await;
-    for event in &generations {
-        let EventData::LlmGeneration(data) = &event.data else {
-            continue;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Claude Auto Tool Search Agent")
+                .system_prompt("When asked to add numbers, use the add tool.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(CurrentTimeCapability)
+                // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
+                .capability(AutoToolSearchCapability::with_threshold(3))
+                .max_iterations(6)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
+        else {
+            return;
         };
-        assert!(
-            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
-            "auto_tool_search on {config} must resolve to hosted: the client-side \
-             `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
-        );
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        let generations = runner.events_by_type(LLM_GENERATION).await;
+        for event in &generations {
+            let EventData::LlmGeneration(data) = &event.data else {
+                continue;
+            };
+            assert!(
+                !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+                "auto_tool_search on {config} must resolve to hosted: the client-side \
+                 `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
+            );
+        }
+
+        if result.tool_calls_count > 0 {
+            called_add = true;
+            break;
+        }
+        eprintln!("{config}: attempt {attempt}/{MAX_ATTEMPTS}: no tool call yet; retrying");
     }
+
+    assert!(
+        called_add,
+        "Claude auto_tool_search should call add through hosted deferred loading \
+         within {MAX_ATTEMPTS} attempts"
+    );
 }
 
 /// Reproduces the production surface where Opus 5 invented `bash_run` after
