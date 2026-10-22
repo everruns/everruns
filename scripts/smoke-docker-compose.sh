@@ -70,7 +70,13 @@ for _ in $(seq 1 90); do
 done
 curl -fsS "$BASE/health" || fail "GET $BASE/health never succeeded"
 echo
-ui_code="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/")"
+# The UI container starts alongside the server, so /health can pass while
+# Caddy still answers 502 for the UI; poll instead of checking once.
+for _ in $(seq 1 60); do
+  ui_code="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/" || true)"
+  case "$ui_code" in 2??|3??) break ;; esac
+  sleep 2
+done
 case "$ui_code" in 2??|3??) ;; *) fail "UI returned HTTP $ui_code" ;; esac
 
 step "Check container healthchecks"
