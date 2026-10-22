@@ -599,6 +599,17 @@ fn case(name: &str) {
             directory = Path((root/'path').read_text().strip())
             self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-18').resolve())
             self.assertIn('LLD 18 fixture', subprocess.check_output(['ld.lld', '--version'], env=dict(env, PATH=str(directory)), text=True))
+            # Any LLVM major works, and the newest wins (ubuntu-26.04 ships 21).
+            (root/'path').unlink()
+            for major in ('9', '21'):
+                (root/f'ld.lld-{major}').write_text(f'#!/bin/sh\necho "LLD {major} fixture"\n')
+                (root/f'ld.lld-{major}').chmod(0o755)
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('LLD 21 fixture', result.stdout)
+            directory = Path((root/'path').read_text().strip())
+            self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-21').resolve())
+            (root/'ld.lld-9').unlink(); (root/'ld.lld-21').unlink()
             # A pre-existing unversioned linker requires neither an alias nor apt.
             (root/'path').unlink()
             (root/'ld.lld').symlink_to(root/'ld.lld-18')
