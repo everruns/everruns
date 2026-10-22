@@ -1,0 +1,1095 @@
+{
+  "bundle_file": "hosted-manual-2026-10-19.jsonl.gz",
+  "compressed_bytes": 1030752,
+  "compressed_sha256": "1e7048b0c8da1f7a2889cc0e7d2c58bace50e299adec1e25eeaa8062904d33c0",
+  "included_captures": [
+    {
+      "case_id": "TC001-2000-ui-final",
+      "event_count": 103,
+      "file": "tc001-2000-ui-final.json"
+    },
+    {
+      "case_id": "TC001-600-warm-repeat",
+      "event_count": 102,
+      "file": "tc001-600-postfix-warm-repeat.json"
+    },
+    {
+      "case_id": "TC001-2000-warm",
+      "event_count": 57,
+      "file": "tc001-2000-postfix-warm.json"
+    },
+    {
+      "case_id": "TC001-2000-after-restart",
+      "event_count": 80,
+      "file": "tc001-2000-after-restart.json"
+    },
+    {
+      "case_id": "TC002-revoked",
+      "event_count": 136,
+      "file": "tc002-revoked.json"
+    },
+    {
+      "case_id": "TC002-metadata-refresh-final",
+      "event_count": 115,
+      "file": "tc002-metadata-refresh-final.json"
+    },
+    {
+      "case_id": "TC002-source-only-final",
+      "event_count": 57,
+      "file": "tc002-source-only-final.json"
+    },
+    {
+      "case_id": "TC002-source-only-before-fix-regression-lineage",
+      "classification": "pre_fix_regression_lineage",
+      "event_count": 57,
+      "file": "tc002-source-only-before-fix.json"
+    },
+    {
+      "case_id": "TC003-cli-postfix-denied",
+      "event_count": 86,
+      "file": "tc003-cli-postfix-denied.json"
+    },
+    {
+      "case_id": "TC003-hybrid-denied-retry",
+      "event_count": 116,
+      "file": "tc003-hybrid-denied-retry.json"
+    },
+    {
+      "case_id": "TC004-replay-final",
+      "event_count": 328,
+      "file": "tc004-replay-final.json"
+    },
+    {
+      "case_id": "TC005-warm-refresh-corrected",
+      "event_count": 148,
+      "file": "tc005-warm-refresh-corrected.json"
+    },
+    {
+      "case_id": "TC005-warm-refresh-after-restart",
+      "event_count": 171,
+      "file": "tc005-warm-refresh-after-restart.json"
+    },
+    {
+      "case_id": "TC006-lexical",
+      "event_count": 59,
+      "file": "tc006-lexical.json"
+    },
+    {
+      "case_id": "TC006-unattached-negative",
+      "event_count": 25,
+      "file": "tc006-unattached-precise.json"
+    },
+    {
+      "case_id": "TC006-overflow-pending",
+      "event_count": 49,
+      "file": "tc006-overflow-pending.json"
+    },
+    {
+      "case_id": "TC006-overflow-final",
+      "event_count": 25,
+      "file": "tc006-overflow-final.json"
+    },
+    {
+      "case_id": "TC006-description-final",
+      "event_count": 24,
+      "file": "tc006-description-final.json"
+    }
+  ],
+  "infrastructure_failure_events": [
+    {
+      "case_ids": [
+        "TC003-hybrid-denied-retry"
+      ],
+      "error_code": "model_unavailable",
+      "sequence": 88,
+      "session_id": "session_01a154459b9a7250b3807d5a6b97f34b",
+      "source_artifacts": [
+        "tc003-hybrid-denied-retry.json"
+      ]
+    }
+  ],
+  "known_scope_limitations": [
+    "Targeted synthetic hosted submatrices, not exhaustive manual cross-products or a statistical model benchmark.",
+    "Model task qualification reaches 2000 operations; 10000-operation evidence is protocol/search/limit testing. Hosted worker messages retain their existing 16-MiB cap, so arbitrary schema shapes at the count limit are not qualified.",
+    "Framework aggregate catalog/cache bounds and stdio have separate automated evidence; hosted inline actsAs:none does not qualify OAuth refresh or the platform persistent identity cache.",
+    "The hosted TC006 negative probe excludes an unattached server; custom current-turn visible-operation allowlists have separate Framework test coverage.",
+    "Muse gateway native additions/redefinitions change the flat wire tool list. CLI inventory loading and native metadata-only refresh preserve the measured prefixes; cache reads are not guaranteed.",
+    "Initial parity/boundary captures and final-source followups are distinct build phases; original 54 Rust/Mira trials have separate provenance and are not reruns of the final hosted source.",
+    "Preliminary TC005 byte/count probes and the prior-build TC006 manual summary are retained as lineage. Final boundary verdicts use tc005-count-exact-retry, tc005-count-plus-one, tc005-ip-pages-exact/plus-one, tc005-wire-exact-attempt-2 and tc005-wire-plus-one-attempt-1.",
+    "Provider model_unavailable failures are separate infrastructure events; expected policy/authorization rejections can occur inside successfully completed turns."
+  ],
+  "manifest_file": "hosted-manual-2026-10-19.manifest.json",
+  "optional_artifacts_not_present": [],
+  "qualification_status": "passed_targeted_hosted_submatrices",
+  "record_count": 701,
+  "record_counts_by_case": {
+    "TC001-2000-after-restart": 37,
+    "TC001-2000-ui-final": 47,
+    "TC001-2000-warm": 27,
+    "TC001-600-warm-repeat": 47,
+    "TC002-discovery": 1,
+    "TC002-metadata-refresh-final": 52,
+    "TC002-revoked": 61,
+    "TC002-source-only-before-fix-regression-lineage": 25,
+    "TC002-source-only-final": 26,
+    "TC003-cli-postfix-denied": 39,
+    "TC003-hybrid-denied-retry": 59,
+    "TC004-replay": 1,
+    "TC004-replay-final": 166,
+    "TC004-replay-plugin": 1,
+    "TC004-replay-second": 1,
+    "TC004-revoke": 1,
+    "TC004-revoke-final": 1,
+    "TC004-revoke-second-check": 1,
+    "TC005-10001-count-rejected": 1,
+    "TC005-10k-count-accepted": 1,
+    "TC005-16MiB-plus-one-rejected": 1,
+    "TC005-16MiB-response-accepted": 1,
+    "TC005-256-pages-accepted": 1,
+    "TC005-257-pages-rejected": 1,
+    "TC005-auth-recovery": 1,
+    "TC005-boundaries": 1,
+    "TC005-bytes-16m": 1,
+    "TC005-bytes-16m-minus100k": 1,
+    "TC005-bytes-exact": 1,
+    "TC005-bytes-plus-one": 1,
+    "TC005-bytes-response-exact": 1,
+    "TC005-bytes-response-plus-one": 1,
+    "TC005-count-exact": 1,
+    "TC005-count-plus-one": 1,
+    "TC005-cursor-empty": 1,
+    "TC005-cursor-repeat": 1,
+    "TC005-duplicate-name": 1,
+    "TC005-duplicate-name-rejected": 1,
+    "TC005-empty-cursor-rejected": 1,
+    "TC005-http-unauthorized": 1,
+    "TC005-late-page-failure": 1,
+    "TC005-late-page-failure-rejected": 1,
+    "TC005-pages-exact": 1,
+    "TC005-pages-plus-one": 1,
+    "TC005-repeated-cursor-rejected": 1,
+    "TC005-tc005-ip-auth-denied": 1,
+    "TC005-tc005-ip-auth-refreshed": 1,
+    "TC005-tc005-ip-bytes-exact": 1,
+    "TC005-tc005-ip-bytes-plus-one": 1,
+    "TC005-tc005-ip-pages-exact": 1,
+    "TC005-tc005-ip-pages-plus-one": 1,
+    "TC005-tc005-wire-exact-attempt-1": 1,
+    "TC005-tc005-wire-exact-attempt-2": 1,
+    "TC005-tc005-wire-plus-one-attempt-1": 1,
+    "TC005-warm-refresh-after-restart": 76,
+    "TC005-warm-refresh-corrected": 67,
+    "TC006": 1,
+    "TC006-description-final": 11,
+    "TC006-description-search-failure": 1,
+    "TC006-lexical": 26,
+    "TC006-lexical-name-search": 1,
+    "TC006-overflow-and-pending": 1,
+    "TC006-overflow-final": 12,
+    "TC006-overflow-pending": 21,
+    "TC006-unattached-negative": 11
+  },
+  "record_types": [
+    "bounded_boundary_summary",
+    "completed_message",
+    "discovery_api_result_summary",
+    "fixture_audit_summary",
+    "infrastructure_failure_event",
+    "manual_case_summary",
+    "runtime_event",
+    "runtime_metrics_summary"
+  ],
+  "sanitization": {
+    "excluded_sources": [
+      "provider registry and keys",
+      "browser screenshots",
+      "raw TC005 preview tool arrays",
+      "stack logs"
+    ],
+    "omitted_fields": [
+      "authorization and credential fields",
+      "API keys",
+      "secrets",
+      "cookies",
+      "headers"
+    ],
+    "scrubbed_strings": [
+      "Bearer credentials",
+      "common OpenRouter/OpenAI key forms",
+      "credential query parameters",
+      "ephemeral workspace output paths"
+    ],
+    "synthetic_test_data_only": true
+  },
+  "schema": "everruns.hosted-manual-evidence.v1",
+  "source_artifacts": [
+    {
+      "file": "bytes-16m-minus100k-preview.json",
+      "sha256": "18bbc05050c802a6b139ef89e95ae1ab75fd6c105bbfb8df034d76ac0e5fadb3"
+    },
+    {
+      "file": "bytes-16m-preview.json",
+      "sha256": "469980e141324e4581c8d99db051752c44dbd716a991ebb0ff3aaa8ca1dd43d2"
+    },
+    {
+      "file": "bytes-response-exact-preview.json",
+      "sha256": "36678934c4f9b115d3143f11d264a8e32df75701265dcc2bed91b111924639ef"
+    },
+    {
+      "file": "bytes-response-plus-one-preview.json",
+      "sha256": "6976c240a0433d39ee496105ff7d998c56cc439d5caa1b138ef99054d47d91af"
+    },
+    {
+      "file": "final-hosted-verification.json",
+      "sha256": "5b1883511cc315ebd51125566eaa9b6d3a94f7a8952d907969b17d07f5d6a919"
+    },
+    {
+      "file": "final-source-freeze.json",
+      "sha256": "2b0b5774383930dd0c63c5cab13a1f0685a21bf0da418e6260470075b2a417c8"
+    },
+    {
+      "file": "focused-build-evidence.json",
+      "sha256": "bc0e08b1f3c513252ae34af4e07fe3ecf54c19d2b45a9910e2139091b4472907"
+    },
+    {
+      "file": "restart-after-metadata-health.json",
+      "sha256": "7237d2384c27e4dcde8dfdd8bcab7ff74bfb9b6cae9bf2cca7c839375d6d44b5"
+    },
+    {
+      "file": "restart-after-metadata-workers.json",
+      "sha256": "635b0795f2e7363c995c1f2e3253b8927903b8a4438e72ca1015f2053829a275"
+    },
+    {
+      "file": "tc001-2000-after-restart-audit.json",
+      "sha256": "893522f070934d3fd6d019581456eda75ef21438ade49e09afbd3554790e928e"
+    },
+    {
+      "file": "tc001-2000-after-restart-metrics.json",
+      "sha256": "f3293ce81eef125babf483038052fb8c887d0b2e80fe4db0e0371787a162331a"
+    },
+    {
+      "file": "tc001-2000-after-restart.json",
+      "sha256": "7acb8c7126fe22ae16027d90a509a588f5bf751e6f8d77e5674b77e4caeb98da"
+    },
+    {
+      "file": "tc001-2000-postfix-warm-audit.json",
+      "sha256": "8659aefabf314b48c489f74fd0426b2c1ba77b08290476ecf8ab8bf699e0732d"
+    },
+    {
+      "file": "tc001-2000-postfix-warm-metrics.json",
+      "sha256": "6810ec3c58d8e04bd104a650d242c8e699cc2cd2c19295ccbf5de3d3d93e8d91"
+    },
+    {
+      "file": "tc001-2000-postfix-warm.json",
+      "sha256": "ba51ccf10904e74a72d9e4f51acca109389c805cf9ff5fed51fab1ee58eb1df1"
+    },
+    {
+      "file": "tc001-2000-ui-final-audit.json",
+      "sha256": "1d37cfe1cd40b1c87b9409b2eff3a3965b4703405e1d4d45156ec30ab544fa2e"
+    },
+    {
+      "file": "tc001-2000-ui-final-metrics.json",
+      "sha256": "bd2fe565649de34cc0d46a8b4653d440684b090649973217cfdecd0e48e48831"
+    },
+    {
+      "file": "tc001-2000-ui-final-verdict.json",
+      "sha256": "0d903cd8ee85459853ddf26b2e12616051e45f98994be363e3c0c659301c974f"
+    },
+    {
+      "file": "tc001-2000-ui-final.json",
+      "sha256": "166383e9cea466994b290929f782d6d8971e2701151a5eb3378ef79908372c5d"
+    },
+    {
+      "file": "tc001-600-postfix-warm-repeat-audit.json",
+      "sha256": "7eb95ea7b255d9e0ac211dfc101dea57e8d27197e57d65885483745023b084b8"
+    },
+    {
+      "file": "tc001-600-postfix-warm-repeat-metrics.json",
+      "sha256": "346fe0e7be6848fb45293614b06218464ca427ff710f96ad55c89c9eec0c208d"
+    },
+    {
+      "file": "tc001-600-postfix-warm-repeat.json",
+      "sha256": "1cfb9b7ef300f48703fc7555b8fe67cb7ed84538d05c154ffc517d126a52a596"
+    },
+    {
+      "file": "tc002-discovery-audit.json",
+      "sha256": "5b7a568a61050d380b167c96be4e9784bac7bcdf393f47471d64deeb3903a426"
+    },
+    {
+      "file": "tc002-metadata-refresh-final-audit.json",
+      "sha256": "91c885992ce2ffb6819b010e485a1cdb9b05dbb8d62c7318279b8fc0b892bf73"
+    },
+    {
+      "file": "tc002-metadata-refresh-final-metrics.json",
+      "sha256": "f82f6027ffcb2d7596e954129d393a3bf93f11e3384d7634c2a75f8f8292c25e"
+    },
+    {
+      "file": "tc002-metadata-refresh-final.json",
+      "sha256": "fe788f16533dd30a4fbaebc0a0af87d06ad45267550c657a6ef4ae968e904861"
+    },
+    {
+      "file": "tc002-metadata-refresh-prefix.json",
+      "sha256": "2b01775e3a367da8b42ba0109e961305d366be4697d459038b7fc992d1e3ec99"
+    },
+    {
+      "file": "tc002-revoked-audit.json",
+      "sha256": "0ebc2d6ae6f2f1f649282a156ee20863819d19411fa8f87a11860ea0798065eb"
+    },
+    {
+      "file": "tc002-revoked.json",
+      "sha256": "270bffda4449b59bf4d1a5e8090578216fd688af71a95796a38fff5b8b3ddc88"
+    },
+    {
+      "file": "tc002-source-only-before-fix.json",
+      "sha256": "a5f55cd9ad7435bfeb317c0b317435ddc724def535ed4585c6454df6ec1c9a2e"
+    },
+    {
+      "file": "tc002-source-only-final-audit.json",
+      "sha256": "2ceda9a08aa8a92890b93856e5b533d4b00310136d7030f7b7ca24e9beeae591"
+    },
+    {
+      "file": "tc002-source-only-final.json",
+      "sha256": "0f0b1c4940ce1acda54c9b771efbc89dba91d7797c7a9623e20bc9b51a526c3c"
+    },
+    {
+      "file": "tc003-cli-postfix-denied-audit.json",
+      "sha256": "aa371420325a06e99c581ad0f852e939bef8a543483deaf57214c4958084c94a"
+    },
+    {
+      "file": "tc003-cli-postfix-denied-metrics.json",
+      "sha256": "5d7b3f25c965e7067eccf119e1476fd7731a36634fc9974b437d652718c4d89c"
+    },
+    {
+      "file": "tc003-cli-postfix-denied.json",
+      "sha256": "b5cdf516b306fc78b48a036a1dd278ca36f71985862998e1fa7dbd69766a41ab"
+    },
+    {
+      "file": "tc003-hybrid-denied-retry-audit.json",
+      "sha256": "14b58912d33bda1cfdb352d8bf6691e46c4b12dfa03906d8c49837786fa035e8"
+    },
+    {
+      "file": "tc003-hybrid-denied-retry-metrics.json",
+      "sha256": "c664dd8bbc593b30115560b532de32c0d5bc8ccec06965f909f6a1151db3f8df"
+    },
+    {
+      "file": "tc003-hybrid-denied-retry.json",
+      "sha256": "5caa38d452d1e11752991b376d6aeed89a26c11a5f0b01783af37e666409286e"
+    },
+    {
+      "file": "tc004-replay-audit.json",
+      "sha256": "3fc994609bc11af7da5f9483437bcd9557b2c240a44b780fa5ffeacba2338a14"
+    },
+    {
+      "file": "tc004-replay-backend-verdict.json",
+      "sha256": "6ff64b64d3e0b88aa24e4b7eaf76400062751b5ba7b71007478248b91ba1b60c"
+    },
+    {
+      "file": "tc004-replay-final.json",
+      "sha256": "15df15ac8858a2645701524c8ca201c20b728d5d2e12c448682e11d350e38ff9"
+    },
+    {
+      "file": "tc004-replay-plugin-audit.json",
+      "sha256": "3a72043ba3e32b82812ce66d2a09003139fd6b728748c4412d0443a226225a73"
+    },
+    {
+      "file": "tc004-replay-second-audit.json",
+      "sha256": "1d577a5db0a9c578dba2bfb90f4a87f0be84b9e17ab308338df36c0abeb24185"
+    },
+    {
+      "file": "tc004-revoke-audit.json",
+      "sha256": "1127ff157fd21878496cc7e6dc924d47eec0f0c5d6276ec03978d7a0d58c2d39"
+    },
+    {
+      "file": "tc004-revoke-final-metrics.json",
+      "sha256": "026a6a1ea8ee88641045c2a2ff1b10c07367bb83ec5be8d79f144b33a3d4417e"
+    },
+    {
+      "file": "tc004-revoke-second-audit.json",
+      "sha256": "b084de17589d71ef802c398e53f64ccda68803fb03719b1ec3737ea667024536"
+    },
+    {
+      "file": "tc005-bytes-exact-preview.json",
+      "sha256": "399437ae7fed7df4331d5d8b8a2f44006dd3781673c1fffbff2cfa1308c91daa"
+    },
+    {
+      "file": "tc005-bytes-plus-one-preview.json",
+      "sha256": "c770e587ead1bd3474287a27f61cf7887bac914888267455a547a442e219263b"
+    },
+    {
+      "file": "tc005-count-exact-preview.json",
+      "sha256": "a5427ae0fdd1ff22d5aed617a3261aa8e8bb0158c4aaf153658356078c23252d"
+    },
+    {
+      "file": "tc005-count-exact-retry-audit.json",
+      "sha256": "bfc59182516ad92790cdf7e18fa5eb34c348840992916125ecafa274c3af1bc0"
+    },
+    {
+      "file": "tc005-count-plus-one-audit.json",
+      "sha256": "f5d5d7785263054b575bf40b372517ae129f64b9c1e17e6f18fb6fe5932c2a47"
+    },
+    {
+      "file": "tc005-count-plus-one-preview.json",
+      "sha256": "978be79a0ec44b92e6c3e95475579350d45869964c518b96e7ce4b9f5d893876"
+    },
+    {
+      "file": "tc005-cursor-empty-audit.json",
+      "sha256": "daabd981ce278cf225e9eb85219d5c8cfe0ee1cd143591abfd8e39875eda5970"
+    },
+    {
+      "file": "tc005-cursor-empty-preview.json",
+      "sha256": "f35e09317e8b0db8dececbbb047e6a1b5dbd052c7e40d96c858e7e51249c7ca6"
+    },
+    {
+      "file": "tc005-cursor-repeat-audit.json",
+      "sha256": "e1cddb4f7310782581538cab0560ce0a5eddb95c58ebb8b312d0986f20ffa322"
+    },
+    {
+      "file": "tc005-cursor-repeat-preview.json",
+      "sha256": "854428f057108ee0838aa29014a507b9653ec221e594401d6a031e7aeb505c97"
+    },
+    {
+      "file": "tc005-duplicate-name-audit.json",
+      "sha256": "7db1ec4d49b05a312a21db1b4794343cf208c14b37d92af9bee7cceaa1bff200"
+    },
+    {
+      "file": "tc005-duplicate-name-preview.json",
+      "sha256": "c0ef3ccecb9fc08d3491aae8db656fab576ae90e72235e5b8c3ebb739e35af16"
+    },
+    {
+      "file": "tc005-http-unauthorized-preview.json",
+      "sha256": "f84683595a84c8c5a06bbfe561d05bf7628e759d12d1386d901ed5dfe43e7814"
+    },
+    {
+      "file": "tc005-ip-auth-denied-preview.json",
+      "sha256": "63e5ae2fc8109c9afd6df4a974b2d96de38c89535ef380f6d1a7962a0af1dbb8"
+    },
+    {
+      "file": "tc005-ip-auth-refresh-audit.json",
+      "sha256": "89e90c668f7c0893a320978943f89d8c7a23cfcd7f757e9770d106b2ac403910"
+    },
+    {
+      "file": "tc005-ip-auth-refreshed-preview.json",
+      "sha256": "1a00ff29097fd6038d72010d73d4eb3bdb5e076be92db1b70d92c9bd93c11c68"
+    },
+    {
+      "file": "tc005-ip-bytes-exact-preview.json",
+      "sha256": "8afc2c75a61b64f98c4d95771242f7a1cd9cd520f7977b53da396a06746a488a"
+    },
+    {
+      "file": "tc005-ip-bytes-plus-one-preview.json",
+      "sha256": "c776b37b1207e00de3223b1993a3329c12dfb2b5a43eb86887fbddeb2d267e35"
+    },
+    {
+      "file": "tc005-ip-pages-exact-audit.json",
+      "sha256": "aa85cdec7a4bdb467b3b6e967fd5fbcc88f5e3dfd6b007fc18d155fac07a7c90"
+    },
+    {
+      "file": "tc005-ip-pages-exact-preview.json",
+      "sha256": "3ae7fee1ae663ad82002fac4ad98f15a731edcef71fc840693ee0629a6a39bb0"
+    },
+    {
+      "file": "tc005-ip-pages-plus-one-audit.json",
+      "sha256": "693acdc0f077c42312de819687ef09ab4ecea44afe1c4d1cab90a3ab39d5e14f"
+    },
+    {
+      "file": "tc005-ip-pages-plus-one-preview.json",
+      "sha256": "c3f67b2d87c62f8ebfb79567296658310e738b9adc0fef0790e1e69181295e1d"
+    },
+    {
+      "file": "tc005-late-page-failure-audit.json",
+      "sha256": "ef220789a786c86d62790725d1635c183ef6f45931830cb2ba458fb0bfc37b34"
+    },
+    {
+      "file": "tc005-late-page-failure-preview.json",
+      "sha256": "08f23d5f73e5c1903af70b237d738b69a2c589420c94011e96337d772a7cecd0"
+    },
+    {
+      "file": "tc005-pages-exact-preview.json",
+      "sha256": "8cdf78073bd514c154cac768843358802912b8add41c206928f30f6a071c57ce"
+    },
+    {
+      "file": "tc005-pages-plus-one-preview.json",
+      "sha256": "851fa296869a9cc381cbc55376cc6f909663d13625b840187a072a49dc97ec29"
+    },
+    {
+      "file": "TC005-RESULTS.md",
+      "sha256": "87dc755b6fe418aa52e5d5121ea91858f9cd72a550f93a0139f08aba97babcac"
+    },
+    {
+      "file": "tc005-warm-refresh-after-restart-audit.json",
+      "sha256": "3962dfd216da12f368433140091d3f8105fe866fe70c581eb0ce18f687167fbe"
+    },
+    {
+      "file": "tc005-warm-refresh-after-restart.json",
+      "sha256": "f6f9dc608d2a1d75bbd9eed3bec29fc989b2f91db90101eed8b7ffd9bf4de8aa"
+    },
+    {
+      "file": "tc005-warm-refresh-corrected-audit.json",
+      "sha256": "3527e8e690f82383e71398d6c117a1dac73e796d16b3736a14229e75b4e38824"
+    },
+    {
+      "file": "tc005-warm-refresh-corrected-metrics.json",
+      "sha256": "392ab23fb492141b2825cdf65065a4487390c681d4414d94c19ec664c2377bed"
+    },
+    {
+      "file": "tc005-warm-refresh-corrected.json",
+      "sha256": "3f55755dc4e2016c8db7c525a1a24009c1dd44072d2d762b4d77faecf9578dd6"
+    },
+    {
+      "file": "tc005-wire-exact-attempt-1-preview.json",
+      "sha256": "75372c12e8e66bd36585c3cd18fbb5cac6e288e6e4ba1cc7cd88853c8a7caac9"
+    },
+    {
+      "file": "tc005-wire-exact-attempt-2-audit.json",
+      "sha256": "c15fbd69da2b15c9371ee708e5dfe8df765e64452903dcdc90154e7356a394b8"
+    },
+    {
+      "file": "tc005-wire-exact-attempt-2-preview.json",
+      "sha256": "c03e6d34ceb793eae6cb1c3704fa434da72e112dbf81c4bb0fab8a1cfd3e4582"
+    },
+    {
+      "file": "tc005-wire-plus-one-attempt-1-audit.json",
+      "sha256": "58191cc24c7b50801617d1395558b7d02eb04bc8dc501f57ab2b9c07804666be"
+    },
+    {
+      "file": "tc005-wire-plus-one-attempt-1-preview.json",
+      "sha256": "ea6c7ba7bdea6d07b55bfe98a2e4d49ec1fbe0bfaecbfb2ab47e640a449bb1ef"
+    },
+    {
+      "file": "tc006-description-final-audit.json",
+      "sha256": "8eda07bd5a2b33ec22d6b21d7eef3a710dd55119d8ddec97534ada859c799805"
+    },
+    {
+      "file": "tc006-description-final.json",
+      "sha256": "30014ac187546012ac69fb690d61dc81730f70ab14c18b1ac17265fafbb266b7"
+    },
+    {
+      "file": "tc006-lexical-audit.json",
+      "sha256": "4077f9431628f693f1fa37fd4d4460069abbdd9c98f83ce05b9373b48e892e12"
+    },
+    {
+      "file": "tc006-lexical-metrics.json",
+      "sha256": "612c6f81a028f84cf8e5cb515bab402539eb2511bacce931690e2bf3e15ad8ac"
+    },
+    {
+      "file": "tc006-lexical.json",
+      "sha256": "f9af4075b4e191239016b42c1da87837fe7dc4f13cfe34f44d7fb7e8298c31e7"
+    },
+    {
+      "file": "tc006-manual-summary.json",
+      "sha256": "13473fb0120c2429c5acf09379d41c800b59f86f08519e328037922820e9b3e4"
+    },
+    {
+      "file": "tc006-overflow-final-audit.json",
+      "sha256": "e5add4b599aa8909c6c9245ff8811ddaf5c5e538382403e6a150474b8ea00987"
+    },
+    {
+      "file": "tc006-overflow-final-metrics.json",
+      "sha256": "94f202a19b5212542738017b89248273c3ea30038364703adc4629d085366cf5"
+    },
+    {
+      "file": "tc006-overflow-final.json",
+      "sha256": "eda630c39357a90572eea27b5ad80c28b1dd6272e014c86e3b92b518f11a4695"
+    },
+    {
+      "file": "tc006-overflow-pending-audit.json",
+      "sha256": "034338811cedb2d412b65f8e5781456795f24b623de43ec0a0362afc4c5fc49b"
+    },
+    {
+      "file": "tc006-overflow-pending-metrics.json",
+      "sha256": "3e5d63f0b41a289a87d5b7951611979613966d766f0f02335f3331c66acf94aa"
+    },
+    {
+      "file": "tc006-overflow-pending.json",
+      "sha256": "702239748447164a4314e619b29d6b5e12f06fe9560f28dd7099ec6e7eee7037"
+    },
+    {
+      "file": "tc006-unattached-precise-audit.json",
+      "sha256": "4d7bf8ac6391b834a58ab6d640e53e05692bf56245f626b8b0023c8cc3fe2c20"
+    },
+    {
+      "file": "tc006-unattached-precise.json",
+      "sha256": "83cb2289bf2f9deea7508bff5ebb2007742e15dd551f551f9fbf26c29f7dd5f3"
+    },
+    {
+      "file": "tc006-visible-retry-audit.json",
+      "sha256": "ba0de44b0e41d7bbb164a041202f9624da8d6f62a856e2de236b7468c5abba19"
+    }
+  ],
+  "tc005_boundary_values": [
+    {
+      "exact": 10000,
+      "exactResult": "accepted; final get_ticket exposed",
+      "limit": "tools",
+      "overBy": 1,
+      "overResult": "rejected with no partial tools"
+    },
+    {
+      "exact": 256,
+      "exactResult": "accepted",
+      "limit": "discovery pages",
+      "overBy": 1,
+      "overResult": "rejected with no partial tools"
+    },
+    {
+      "exact": 16777216,
+      "exactDiscoveryDefinitionBytes": 16777089,
+      "exactEnvelopeBytes": 68,
+      "exactResult": "accepted",
+      "exactResultObjectBytes": 16777148,
+      "limit": "full JSON-RPC HTTP response bytes",
+      "overBy": 1,
+      "overResult": "rejected; server log reports response-byte limit exceeded",
+      "plusOneObserved": 16777217
+    }
+  ],
+  "uncompressed_bytes": 10056506,
+  "uncompressed_sha256": "5ca5bbd9757496a220cc79fcbef1b688c2c7be4ba975554a314481e1aaddf25a",
+  "case_verdicts": {
+    "TC001": {
+      "status": "pass",
+      "coverage": "600/2000 native cold/warm, bounded wire schemas; final-source post-restart and browser-submitted 2000 reads"
+    },
+    "TC002": {
+      "status": "pass",
+      "coverage": "colliding nested schemas, attached scope; final-source native/CLI description-only selection and description refresh with identical provider prefix"
+    },
+    "TC003": {
+      "status": "pass",
+      "coverage": "CLI and hybrid canonical invocation parity and upstream 403; initial JSON-replay-fix build"
+    },
+    "TC004": {
+      "status": "pass",
+      "coverage": "plugin/MCP attach/redefine/remove/reattach, masking compaction; final-source fresh-worker replay, native/CLI upstream 403, removed plugin absent from native wire and CLI, current second-source read"
+    },
+    "TC005": {
+      "status": "pass",
+      "coverage": "HTTP count/page/full-response-byte boundaries, cursor/name/late-page faults and auth recovery; final-source recovery of stored complete 600-tool snapshot after restart"
+    },
+    "TC006": {
+      "status": "pass",
+      "coverage": "final-source description-only deferred loading eight then two, stable native tools/instructions, atomic 9800+500 rejection; unattached-server negative probe"
+    }
+  },
+  "final_evidence_assertions": [
+    {
+      "name": "tc002-source-only-final completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc002-metadata-refresh-final completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc004-replay-final completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc005-warm-refresh-after-restart completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc001-2000-after-restart completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc006-description-final completed",
+      "status": "pass"
+    },
+    {
+      "name": "tc006-overflow-final completed",
+      "status": "pass"
+    },
+    {
+      "name": "TC002 native source-only refinement selects alpha",
+      "status": "pass"
+    },
+    {
+      "name": "TC002 CLI source-only refinement selects alpha",
+      "status": "pass"
+    },
+    {
+      "name": "TC002 metadata refresh updates native retrieval",
+      "status": "pass"
+    },
+    {
+      "name": "TC002 metadata refresh updates CLI retrieval",
+      "status": "pass"
+    },
+    {
+      "name": "TC002 metadata-only change preserves provider prefix",
+      "status": "pass"
+    },
+    {
+      "name": "TC006 description-only search loads 8 then 2",
+      "status": "pass"
+    },
+    {
+      "name": "TC006 CLI loading leaves native tools and instructions stable",
+      "status": "pass"
+    },
+    {
+      "name": "TC006 9800 plus 500 load rejected atomically with pending source",
+      "status": "pass"
+    },
+    {
+      "name": "TC005 restarted runtime observes late-page failure",
+      "status": "pass"
+    },
+    {
+      "name": "TC004 native upstream denial remains current after restart",
+      "status": "pass"
+    },
+    {
+      "name": "TC004 CLI upstream denial and removed plugin remain current after restart",
+      "status": "pass"
+    }
+  ],
+  "metadata_refresh_prefix": {
+    "tools_equal": true,
+    "instructions_equal": true,
+    "prior_input_count": 17,
+    "next_input_count": 20,
+    "prior_items_unchanged": true
+  },
+  "final_browser_read": {
+    "status": "turn.completed",
+    "usage": {
+      "input_tokens": 12011,
+      "output_tokens": 150,
+      "cache_read_tokens": 0,
+      "actual_cost_usd": 0.0012311,
+      "estimated_cost_usd": 0.0012311000000000002,
+      "effective_cost_usd": 0.0012311
+    },
+    "operation": "mcp_telemetry__get_ticket",
+    "arguments": {
+      "filter": {
+        "ticket_id": "OPS-8421"
+      }
+    }
+  },
+  "provenance": {
+    "baseline_commit": "9a68f988f72cae2b20ad00d44ac529d10637ce40",
+    "working_tree_dirty": true,
+    "final_source_files": [
+      {
+        "file": "crates/contracts/src/runtime/capabilities/collect.rs",
+        "sha256": "f4f3b2081cb1a79ae30de94a0ee8b43ef177f590e0f6136f91b02dce4f96f983"
+      },
+      {
+        "file": "crates/contracts/src/runtime/capabilities/mod.rs",
+        "sha256": "d4af4a2fd560f02ad0a93e934745d38df5f4e4e95350cc36bbe2e995d66dc118"
+      },
+      {
+        "file": "crates/contracts/src/runtime/capabilities/tests_collect_tests.rs",
+        "sha256": "30429e73bd4f75608e5ebdb1fb688d2dbb6241d4884ab0f76337e6564379e970"
+      },
+      {
+        "file": "crates/contracts/src/runtime/mcp_server.rs",
+        "sha256": "6d3e7929d11e4676bbb86d97678ac98a680b298a69b2a6087d5f8bf302295607"
+      },
+      {
+        "file": "crates/contracts/src/runtime/mcp_server_tests.rs",
+        "sha256": "c25e1b0c11e3b7d6e76141a1457d5e7fab2802a0fc054f4d1db7b816bc6e2e14"
+      },
+      {
+        "file": "crates/contracts/src/runtime/mod.rs",
+        "sha256": "15c3b91527727013f9367b77ada602cde72968ad4f3ea82c957989052719693a"
+      },
+      {
+        "file": "crates/contracts/src/runtime/runtime_agent.rs",
+        "sha256": "29bd2993fc7d02393585ee83bebddf46fe5686a032515c6d7fc4227a4ab3b5ab"
+      },
+      {
+        "file": "crates/contracts/src/runtime/tool_catalog.rs",
+        "sha256": "5e02dab741ee63f5fbd1120bad2be667b25528f7c33d36177d0b2c77eb6050a7"
+      },
+      {
+        "file": "crates/contracts/src/runtime/tool_context.rs",
+        "sha256": "0841a208d9dba8caf983d0e2f82e88eaecd95f1d75cc982f209d98d0e4302a15"
+      },
+      {
+        "file": "crates/contracts/src/runtime/tool_surface.rs",
+        "sha256": "d4e80962dd8d013b8cbf3dea4315e2f30de0e725a3815149cc1d5a64f819ea6c"
+      },
+      {
+        "file": "crates/contracts/src/runtime/tools/mod.rs",
+        "sha256": "aed53dac8cb1eaabb62aef29031993a14554838e8f35b9b3a1bb33d618dd0bf8"
+      },
+      {
+        "file": "crates/core/src/builtins/tool_search.rs",
+        "sha256": "0a94eaef6fbc64111c09d839e090b2403477a0d14acb1f2ef01cdf0ecdc945dc"
+      },
+      {
+        "file": "crates/core/src/builtins/tool_search/tests.rs",
+        "sha256": "ea48dea124eed62b1b82448d671f82e48df1bf6f0b6f952a9af22ba3b4b93649"
+      },
+      {
+        "file": "crates/core/src/builtins/tool_search_bounded_tests.rs",
+        "sha256": "8b40eeb722bb2208f36bb504afb33936ba80dee31d5e511e4f55dcd088a4452f"
+      },
+      {
+        "file": "crates/core/src/engine/execution/act.rs",
+        "sha256": "d5b00a21e61d5b89005a1808cb0ccf489717314be434d6941a28ba6cab05f5ca"
+      },
+      {
+        "file": "crates/core/src/engine/execution/act_client_policy.rs",
+        "sha256": "257b6da2606d91f5d1a5ce815966ef4460014160414fc9d72a247c3e97f5b930"
+      },
+      {
+        "file": "crates/core/src/engine/execution/reason.rs",
+        "sha256": "64d6496b4cf33bcdbc54d6e14946fb291f9434464639371f2b64a3bc41bb528f"
+      },
+      {
+        "file": "crates/core/src/engine/execution/reason/tool_changes.rs",
+        "sha256": "007617a5f2a50d4fa8d2c7cb30aabe711b6d2fc9945ba92b373143ba8de636c9"
+      },
+      {
+        "file": "crates/core/src/host/host.rs",
+        "sha256": "c5bd71401d15887e84b2c63005099a3e94ad16c7d40e281015baa930be79094f"
+      },
+      {
+        "file": "crates/core/src/host/host/execution_capabilities.rs",
+        "sha256": "de33a6d2f56165abc0ce3e881e70460fe963db740ba9b60d361ff4b0bec9266e"
+      },
+      {
+        "file": "crates/core/src/host/mcp.rs",
+        "sha256": "01c378143237e80fb1a4ff4c5883092bdcda5fda4f0292d508442d34fb74e639"
+      },
+      {
+        "file": "crates/core/src/host/mcp_cache.rs",
+        "sha256": "df0d13820e19241557bd1615286bba467958ff4d5ea0e631350d97b298832f16"
+      },
+      {
+        "file": "crates/core/src/lib.rs",
+        "sha256": "76dabd54740caf17182b30cd1373a8893eb31104d3a4ca4ac197b2f69065fe04"
+      },
+      {
+        "file": "crates/core/src/mcp/bin/mcp_stdio_echo.rs",
+        "sha256": "ebf48ae376f7395af260bf1427ef6f96d82ce0b08f430693047695e314881167"
+      },
+      {
+        "file": "crates/core/src/mcp/capability.rs",
+        "sha256": "7fa3132b81c08addd835533f265dac1f3458830f072612d2e7a00c8ace1d56e4"
+      },
+      {
+        "file": "crates/core/src/mcp/discovery.rs",
+        "sha256": "98e45f32bfbcc5be4f7b83ad2bfb20776a1a167c40d73e873aacfeb36f6e1832"
+      },
+      {
+        "file": "crates/core/src/mcp/http.rs",
+        "sha256": "5f4f8fc2cf17343d3bfa60b43fad386f6320a008aff5493bb177a6338950d74c"
+      },
+      {
+        "file": "crates/core/src/mcp/mod.rs",
+        "sha256": "411f79e1dd89bbd051734471bd4e35cb7302af5c5a4850031ebee7345500577a"
+      },
+      {
+        "file": "crates/core/src/mcp/stdio.rs",
+        "sha256": "43b4291497986cd84a2f525b5dadb151146502fa6dec19a330f9632ad8d37bca"
+      },
+      {
+        "file": "crates/core/src/runtime_context.rs",
+        "sha256": "0a67dfb7f9086f3675b0bad3d4dd4a1533f18dc4d82d7c646cc574000b7b8d34"
+      },
+      {
+        "file": "crates/core/tests/consolidated/mcp/http_transport.rs",
+        "sha256": "bce6e2f70af9466cb17c8b27d5ac4b4f112cdcd5508a1360444db37b8dfcb066"
+      },
+      {
+        "file": "crates/core/tests/consolidated/mcp/protocol_negotiation.rs",
+        "sha256": "61d73acc9b0cfb9352d42f1c06c4661dfda077edc45883e9fa7ea003f2c069b5"
+      },
+      {
+        "file": "crates/core/tests/consolidated/mcp/stdio_transport.rs",
+        "sha256": "c13bf9da8a4f2e7ee377b4662c915bbfc769d7b775f7485173f2778fa5e3373b"
+      },
+      {
+        "file": "crates/everruns/src/capability.rs",
+        "sha256": "930b5b85a065f509299330b8f6cd35d7b1df874f5b6baa13c18ad063e8df22a8"
+      },
+      {
+        "file": "crates/everruns/src/mcp.rs",
+        "sha256": "8dc81b762522aeca4f54f4b12c42cf85fba3f2cd5487f527089ab1d7e7b4c527"
+      },
+      {
+        "file": "crates/everruns/tests/host/main.rs",
+        "sha256": "7ead1f5394f3800ca8c59cb968985ec1fc5fbdeda8df16a6b031b4ba53d7a288"
+      },
+      {
+        "file": "crates/everruns/tests/host/mcp_catalog_lifecycle.rs",
+        "sha256": "d1503fa1b443c65cbae5f051be82742fc2f4aab1bd93062b9d478f83a4772d6d"
+      },
+      {
+        "file": "crates/everruns/tests/host/tool_catalog_lifecycle.rs",
+        "sha256": "a81770c79512026e8b5be46860ba7ce11860a65929f91d2ea9f11b51654124b8"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/builtin.rs",
+        "sha256": "2b51cba4881f1345f637b7546cd385f119d185b816e2eaa13fe0492480a89ce0"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/catalog.rs",
+        "sha256": "846d35aaf6df5a9e8f9d867d2336838a227009d923951f2355d7c03b0fe9a044"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/deferred_tests.rs",
+        "sha256": "bd61b1f0e45087f469a23b920087108d5dc0dd24b4273491882d7403667d9a0f"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/mod.rs",
+        "sha256": "2fe1ed1d0622607493ab9ba9ce8ce7502df0e932f89e9506b2bb19851f131df8"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/ratings_tests.rs",
+        "sha256": "1ec053029bb9f01a7b49222d9d0382d361a5809f8d211843bf843b5300a2691d"
+      },
+      {
+        "file": "crates/integrations/src/bashkit/tools_in_shell/tests.rs",
+        "sha256": "3f562998a76c85d903be8c6ca90ad3ee2dae618990a44431eafbcfbe2d0b2658"
+      },
+      {
+        "file": "crates/integrations/src/lua/code_mode.rs",
+        "sha256": "3c48a76b89233efdbf3764433dfb031ae52d08b9ce76ef849541b29f368d4b62"
+      },
+      {
+        "file": "crates/integrations/src/lua/mod.rs",
+        "sha256": "15fec35a6401f7a00ce0998d477ee13e42e11a6113b3298e15801293dc9ed9aa"
+      },
+      {
+        "file": "crates/integrations/src/lua/nested_tool.rs",
+        "sha256": "fb7a6e55caced09a9c0a58a1b8e09ebedf3748950424abec3475bdb75f142d2b"
+      },
+      {
+        "file": "crates/integrations/src/lua/nested_tool_tests.rs",
+        "sha256": "58e10beabd50f908bbe50263ae21a45d34570e902e65fd49130fd20c05d9185e"
+      },
+      {
+        "file": "crates/internal-protocol/proto/worker.proto",
+        "sha256": "9d23c1856406ff7929f8014235e9d2a699cfda8e3189df6ede445d6dd02af071"
+      },
+      {
+        "file": "crates/server/src/domains/mcp_servers/deferred/mod.rs",
+        "sha256": "214eefe29fafc3c6f07eac0ea031febfe03af22e437322dd9a8508afb9251176"
+      },
+      {
+        "file": "crates/server/src/domains/mcp_servers/deferred/tests.rs",
+        "sha256": "f1e23beee7f0129052a6ae685fb03e2d717ddba26ba121e223d656ff2c0fc2fb"
+      },
+      {
+        "file": "crates/server/src/domains/mcp_servers/scoped_mcp/cache_tests.rs",
+        "sha256": "913fb2974dad474069594368b6774a61eafea85ddb238cdd4857c870a460bfcb"
+      },
+      {
+        "file": "crates/server/src/domains/mcp_servers/scoped_mcp/mod.rs",
+        "sha256": "3139e2b798e10d406f30e960f899348d83529f87d270a38c9f04dfc0f129421a"
+      },
+      {
+        "file": "crates/server/src/domains/mcp_servers/scoped_mcp/tests.rs",
+        "sha256": "3f0a56b39a791ebc8e6ef94a5e6772e04939510170f056161a51cc5e70d645cb"
+      },
+      {
+        "file": "crates/server/src/worker_link/grpc_service/worker/support.rs",
+        "sha256": "9885206e2f41f809f7750a20d67e4a53bb6a0051c8f17dc449384f71e81ec808"
+      },
+      {
+        "file": "crates/worker/src/grpc_adapters.rs",
+        "sha256": "1ac0ef36e2d7cae94bb92c78e4558cb7ffe263459ac30fd26ece788522698386"
+      },
+      {
+        "file": "crates/worker/src/grpc_adapters/tests.rs",
+        "sha256": "55d97825b1adfbbaa1bd89f1764a890f740de762c292abea37651390aef7ee48"
+      },
+      {
+        "file": "evals/mcp-scale/historical/python-prototype/runtime/src/main.rs",
+        "sha256": "cc91493921a1d7aa2e9d93f228862697b010e249cc1e408b9b6745c5727458d0"
+      },
+      {
+        "file": "evals/mcp-scale/src/bin/mcp_http_fixture.rs",
+        "sha256": "1b6c9f6710ff36f2e6fd4f169bfc547b40787593df6e36d8730f24c97bdb385d"
+      },
+      {
+        "file": "evals/mcp-scale/src/fixture.rs",
+        "sha256": "17c85a015800bb7ec5d85b7dd09910b7620c419bada62cf5a4f41e123a43c772"
+      },
+      {
+        "file": "evals/mcp-scale/src/main.rs",
+        "sha256": "bfbc5086d071cd094452ba3becfa974d3243df35473025b7587ebd8cdb72851b"
+      },
+      {
+        "file": "evals/mcp-scale/src/scorers.rs",
+        "sha256": "682f5cd658edb7e9dcc4725f0dbd1aeb59949bcff03f353e2e62d0ff9beea31f"
+      },
+      {
+        "file": "evals/mcp-scale/src/stress.rs",
+        "sha256": "c255252ed8e3ceb9d6969c40650ec4afd2060cc2fc5297de87039c4d9c96fd31"
+      },
+      {
+        "file": "evals/mcp-scale/src/subject.rs",
+        "sha256": "50f39fea6ad850f03ed6bdfccd587ab6368e10c2c1d850098b0844b3098ca437"
+      }
+    ],
+    "initial_hosted_build": {
+      "server_sha256": "8c604e0a4b68b5f71696563b8a8f8091cfb40d9f564611839fb8d6f5a3a47180",
+      "worker_sha256": "c04c970b55216720562d07ce1549ef16f8b2630ca1729d6bdc5f8633eeb82cdd",
+      "scope": "JSON-text replay fix; initial cold/warm, collision/scope, parity, lifecycle and HTTP boundary captures"
+    },
+    "final_hosted_build": {
+      "binaries": {
+        "target/debug/everruns-server": "4cf103aea53868abb291cadade097c6801f84948fc6aa0cbcf28990f48a97d5a",
+        "target/debug/everruns-worker": "5541e6b22b88f69addd568c9a54eab1dec1a5de81a548eeebe501d7aadbf768b"
+      },
+      "fixture_sha256": "e00b2d0103d8254579915898788ad5e34aa4ad162970a44bc1ef9f9fd6742134",
+      "worker_id": "worker-01a154e5-1b18-7595-85df-c6a131a4b957",
+      "worker_started_at": "2026-10-19T16:01:03.294402Z",
+      "launch": "Canonical start-agent-dev.sh with an ignored local cargo launcher executing the verified prebuilt binaries directly; same PostgreSQL data and encryption key retained",
+      "scope": "Seven final-source API turns plus browser-submitted native read"
+    },
+    "model": "openrouter/meta/muse-spark-1.3-contributor",
+    "synthetic_data_only": true,
+    "auth_mode": "none",
+    "infrastructure": [
+      "PostgreSQL 17.11",
+      "Valkey",
+      "NATS",
+      "API",
+      "worker",
+      "Next.js UI",
+      "Caddy"
+    ],
+    "focused_tests": [
+      {
+        "command": "CARGO_BUILD_JOBS=2 cargo test --offline -p everruns-server --lib mcp_servers:: -- --test-threads=1",
+        "result": "168 passed, 0 failed",
+        "log": "focused-server-mcp.log",
+        "log_sha256": "90fa6580df2361971ca13221e11a4db58963e7c25664ebd02467b268822d73e9"
+      },
+      {
+        "command": "target/debug/deps/everruns_server-ccd0cbcfdf97fd62 search --test-threads=1",
+        "result": "64 passed, 0 failed",
+        "log": "server-search-regressions.log",
+        "log_sha256": "2ba65b64adcff61fa88e9cc82f4e99876197cf60abc899c001548f12afe95728"
+      },
+      {
+        "command": "target/debug/deps/everruns_worker-e29d654778ea0f12 mcp_search_metadata --test-threads=1",
+        "result": "2 passed, 0 failed (roundtrip and old-server omission)",
+        "log": "worker-search-metadata.log",
+        "log_sha256": "2034eb79cbe1576ddf61f6d93c415d921993c0f11373d3bff6632e445302f185"
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=2 cargo test --offline -p everruns-integrations --features bashkit,filesystem,web-search --lib bashkit::tools_in_shell::tests::deferred::",
+        "result": "10 passed, 0 failed",
+        "log": "bashkit-deferred-search-metadata-final.log",
+        "log_sha256": "2c7a12c804dcd9336b29d4d9eba894df928eb8319c01779a51df90b4f53d3723"
+      },
+      {
+        "command": "CARGO_BUILD_JOBS=2 cargo build --offline -p everruns-server -p everruns-worker",
+        "result": "passed",
+        "log": "final-binaries-build.log",
+        "log_sha256": "4698636a2a69824580cfb46ecea52180d750c45200e88d40f35d978f97f3bbb0"
+      }
+    ],
+    "test_count_note": "The server search filter overlaps the server MCP filter; counts are per command, not a unique-test total."
+  }
+}

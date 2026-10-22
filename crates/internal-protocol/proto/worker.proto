@@ -332,6 +332,9 @@ message McpToolDef {
     optional bool idempotent = 8;
     optional bool open_world = 9;
     optional string display_name = 10;
+    // MCP source name/description for catalog search. This carries retrieval
+    // metadata only; current server configuration still authorizes execution.
+    google.protobuf.Struct search_metadata = 11;
 }
 
 // ============================================================================

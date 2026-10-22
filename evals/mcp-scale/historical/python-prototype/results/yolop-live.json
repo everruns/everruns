@@ -1,0 +1,40 @@
+{
+  "status": "passed",
+  "agent": "yolop",
+  "version": "0.21.0",
+  "commit": "1d5fa3d0ba79b048538c09fc0f2d9a5b417a291e",
+  "model": "openai/gpt-6-luna",
+  "provider": "openrouter",
+  "transport": "stdio",
+  "synthetic_backend": "platform fixture, 600 tools, 100 tools per page",
+  "duration_seconds": 66.5,
+  "usage": {
+    "prompt_tokens": 187372,
+    "completion_tokens": 2689,
+    "cached_tokens": 156052,
+    "cost_usd": 0.00681882,
+    "steps": 17
+  },
+  "backend_calls": {
+    "total": 11,
+    "successful": 11,
+    "failed": 0,
+    "by_tool": {
+      "list_deployments": 2,
+      "search_logs": 6,
+      "get_deployment": 2,
+      "rollback_deployment": 1
+    }
+  },
+  "outcome": {
+    "deployment_id": "dep-bill-stg-2042",
+    "environment": "staging",
+    "from_version": "3.8.1",
+    "to_previous_version": "3.8.0",
+    "status": "rolled_back",
+    "replicas_ready": "3/3",
+    "production_unchanged": true
+  },
+  "verification": "results/yolop-task-verification.json",
+  "response": "Rolled back billing-api staging deployment dep-bill-stg-2042 from 3.8.1 to recorded previous version 3.8.0. Inspected HTTP 500 logs (missing account_region column and payment authorization timeout after schema v4 migration); verified rolled_back with 3/3 replicas ready and 0.2% HTTP 5xx. Production remains healthy on 3.8.1 with 6/6 replicas ready."
+}

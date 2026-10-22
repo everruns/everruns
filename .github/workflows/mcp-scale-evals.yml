@@ -1,0 +1,76 @@
+name: MCP Scale Eval Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'evals/mcp-scale/**'
+      - 'crates/contracts/**'
+      - 'crates/core/**'
+      - 'crates/everruns/**'
+      - 'crates/integrations/**'
+      - 'crates/drivers/**'
+      - '.github/workflows/mcp-scale-evals.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'evals/mcp-scale/**'
+      - 'crates/contracts/**'
+      - 'crates/core/**'
+      - 'crates/everruns/**'
+      - 'crates/integrations/**'
+      - 'crates/drivers/**'
+      - '.github/workflows/mcp-scale-evals.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  offline-evals:
+    name: MCP Scale Eval Offline Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: evals/mcp-scale
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: evals/mcp-scale
+          shared-key: mcp-scale-evals
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Run deterministic tests
+        run: cargo test --locked
+      - name: Validate offline fixture catalog
+        run: cargo run --locked -- --offline-catalog
+      - name: Measure catalog search under stress
+        run: cargo run --locked -- --offline-stress --output "$RUNNER_TEMP/mcp-scale-stress.json"
+      - name: Upload stress measurements
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mcp-scale-stress
+          path: ${{ runner.temp }}/mcp-scale-stress.json
+          if-no-files-found: error
+          retention-days: 14
