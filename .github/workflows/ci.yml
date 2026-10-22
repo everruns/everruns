@@ -1640,7 +1640,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    timeout-minutes: 20
+    # 30, like the S3 job sharing this cache: when the `integration-v2` and sqlx
+    # caches are both evicted, installing sqlx-cli from source (~8m) plus a cold
+    # server test build overran 20 and cancelled the 2026-10-21 nightly.
+    timeout-minutes: 30
 
     services:
       postgres:
