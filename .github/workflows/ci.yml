@@ -1031,7 +1031,10 @@ jobs:
     # A docs/framework-only change still runs, but only the facade-cli leg
     # does work: it compiles the Framework docs snippets (crates/docs-snippets).
     if: (needs.changes.outputs.mode != 'pr' || needs.changes.outputs.rust != 'true') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_snippets == 'true')
-    timeout-minutes: 30
+    # 40: facade-cli adds ~9 serial integration-crate invocations in nightly/full
+    # mode. It took 28m in the 2026-10-22 nightly and hit the old 30m limit in the
+    # full run 39749578382, while running those extras with every test passing.
+    timeout-minutes: 40
 
 
     # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
