@@ -1566,7 +1566,7 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Install pi-poppy and Datalayer's PAP library
         if: ${{ matrix.shard == 'domain' }}
@@ -2626,7 +2626,7 @@ jobs:
         if: matrix.language == 'typescript'
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Setup Python
         if: matrix.language == 'python'
@@ -2746,7 +2746,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2804,7 +2804,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2890,7 +2890,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -3000,7 +3000,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/docs/pnpm-lock.yaml
 
