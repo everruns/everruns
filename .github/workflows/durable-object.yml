@@ -59,7 +59,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: durable-object
@@ -109,7 +109,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: durable-object-native-container
@@ -158,7 +158,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: durable-object-wasm
@@ -215,7 +215,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '24'
+          node-version: '24.22.1'
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: durable-object-wasm
