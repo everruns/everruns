@@ -1358,7 +1358,7 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The [managed Platform Chat](../../crates/server/src/platform_chat_agent.rs) runs on
+The [managed Platform Chat](../../crates/server/src/platform_chat_agent/mod.rs) runs on
 Generic. Its platform capability exposes the authoritative command catalog through the
 session shell; product docs and durable operator memory share that namespace. The Agent
 owns its domain instructions, identity, introduction, and starters. Generic supplies the

@@ -107,6 +107,25 @@ it("reports a failed send and retries it under the same id", async () => {
   expect(send.mock.calls[1][0].clientMessageId).toBe(clientId);
 });
 
+it("retries with the page context captured at the original send", async () => {
+  const send = jest
+    .fn<Promise<CreatedMessage>, [ChatSendInput, AbortSignal]>()
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce(message("msg_1"));
+  const { result } = setup(send);
+  const metadata = {
+    page_context: { route: "/agents/agent_1", entity_id: "agent_1" },
+    page_actions: [{ label: "Saved edits" }],
+  };
+  await act(async () => {
+    await result.current.submit({ text: "Improve this", metadata }).catch(() => undefined);
+  });
+  const clientId = result.current.pending[0].clientId;
+  act(() => result.current.retry(clientId));
+  await waitFor(() => expect(result.current.pending[0].phase).toBe("acked"));
+  expect(send.mock.calls[1][0]).toMatchObject({ clientMessageId: clientId, metadata });
+});
+
 it("gives the draft back when stopped before the server acks", async () => {
   const send = jest.fn(
     (_input: ChatSendInput, signal: AbortSignal) =>

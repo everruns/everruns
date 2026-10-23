@@ -58504,6 +58504,24 @@
           "revision"
         ],
         "properties": {
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Agent revision the user saw; refuses concurrent changes."
+          },
+          "fields": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Restore only these top-level Agent fields. Requires expected_revision."
+          },
           "kind": {
             "type": [
               "string",

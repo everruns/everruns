@@ -117,6 +117,7 @@ export async function sendUserMessageWithImages(
 }
 
 export interface ChatSendInput {
+  metadata?: Record<string, unknown>;
   /** Client-minted id; resending with the same id returns the stored message. */
   clientMessageId: string;
   text: string;
@@ -151,6 +152,7 @@ export async function sendChatMessage(
     sessionId,
     {
       message: { role: "user", content },
+      ...(input.metadata ? { metadata: input.metadata } : {}),
       controls: input.controls,
       client_message_id: input.clientMessageId,
       ...(input.addressedParticipantId

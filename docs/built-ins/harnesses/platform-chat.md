@@ -22,6 +22,34 @@ message; it starts without copied conversation history or workspace files.
 conversations and runs with other agents stay outside Chat. Use Playground to select
 an Agent or harness and test its behavior.
 
+## Chat beside an Agent
+
+Organization owners and admins can enable **Chat mode** in **Settings > Features**.
+Open an Agent, then click **Chat** or press **Command-J** (**Ctrl-J** on Windows
+and Linux). The permanent conversation opens beside the current page. **Back to
+app** restores the full page and keeps the conversation and composer draft.
+
+Each message shares the current page's identity with Chat. On an Agent page,
+Chat can read the live form, including unsaved instructions and configuration,
+and apply requested edits to that draft. Gold markers identify **Draft edited by
+Chat**. Review the result, then use **Save changes** to persist it or **Discard**
+to reset the draft. Draft **Undo** restores the preceding form values, including
+your earlier manual edits, and refuses to overwrite later manual edits. If you
+change the form while Chat is thinking, its stale patch fails so it can read the
+current draft again. Chat does not edit credentials or connection grants through
+this form; sandbox policy uses its dedicated editor.
+
+Outside the live form, Platform Chat still uses platform commands to change saved
+entities. Agent saves attributed to the conversation receive persisted-change
+markers and **Undo all**. That Undo creates a history entry and checks the saved
+revision; unsupported inverses fail without saving. If a saved definition changes
+while your draft is dirty, the page keeps the draft and blocks Save until you
+discard it and review the latest definition.
+
+This rollout starts with Agent definition fields. Other pages share the split
+shell; Agent definition fields receive change markers. Chat mode is independent
+of the **Chat threads** opt-in.
+
 ## Platform access and memory
 
 Platform Chat uses the `everruns` command in its session shell to discover operations,

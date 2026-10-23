@@ -56,6 +56,7 @@ pub fn proto_agent_to_schema(
         "harness_id": harness_id_str,
         "tags": tags,
         "capabilities": capabilities,
+        "tools": value.tools.iter().map(|tool| serde_json::from_str::<serde_json::Value>(tool)).collect::<Result<Vec<_>, _>>()?,
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
@@ -98,6 +99,11 @@ pub fn schema_agent_to_proto(value: &crate::domains::agents::record::Agent) -> p
             .then(|| value.communication.as_str().to_owned()),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         capabilities: encode_capability_configs(&value.capabilities),
+        tools: value
+            .tools
+            .iter()
+            .map(|tool| serde_json::to_string(tool).expect("tool definitions serialize"))
+            .collect(),
     }
 }
 

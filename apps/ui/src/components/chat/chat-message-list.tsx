@@ -120,6 +120,10 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
 import { formatDaySeparator, needsDaySeparator } from "@/lib/chat-day-separator";
+import {
+  MessagePageActions,
+  MessagePageContext,
+} from "@/components/chat-mode/message-page-context";
 
 /** A stored message this recent may still be waiting for its turn to start. */
 const STARTING_GRACE_MS = 60_000;
@@ -926,6 +930,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         className="chat-transcript-row scroll-mt-4 space-y-2"
         data-pending-send={send.phase}
       >
+        <MessagePageActions value={send.metadata?.page_actions} />
         <div className="flex justify-end">
           <div className={chatSurfaceStyles.userMessage}>
             <div className="space-y-2">
@@ -1022,6 +1027,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const items: ReactNode[] = [];
         const nowMs = Date.now();
         let previousUserMs: number | undefined;
+        let previousPageRoute: unknown;
         const pushDaySeparator = (key: string, ts: number) => {
           if (needsDaySeparator(previousUserMs, ts)) {
             items.push(
@@ -1136,6 +1142,13 @@ export const ChatMessageList = memo(function ChatMessageList({
             const outputData = getEventData(event, "output.message.completed");
             const data = inputData ?? outputData;
             if (!data) return null;
+            const pageContext = isUser ? data.message?.metadata?.page_context : undefined;
+            const pageRoute =
+              pageContext && typeof pageContext === "object" && "route" in pageContext
+                ? pageContext.route
+                : undefined;
+            const showPageContext = isUser && pageRoute !== previousPageRoute;
+            if (isUser) previousPageRoute = pageRoute;
 
             const textContent = getMessageText(data);
             const outputError = outputData
@@ -1198,10 +1211,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                 data-message-anchor={isUser ? event.id : undefined}
                 id={isUser ? `message-${data.message?.id}` : undefined}
               >
+                {isUser && <MessagePageActions value={data.message?.metadata?.page_actions} />}
                 {(textContent || images.length > 0) && (
                   <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                     {isUser ? (
                       <div className={chatSurfaceStyles.userMessage}>
+                        {showPageContext && <MessagePageContext value={pageContext} />}
                         {isTaskWake && (
                           <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
                             <RefreshCw className="h-3 w-3" />

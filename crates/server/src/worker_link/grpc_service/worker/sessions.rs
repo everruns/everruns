@@ -46,6 +46,9 @@ impl WorkerServiceImpl {
         if let Some(agent) = agent.as_mut() {
             self.filter_dreaming_for_org(req.org_id, &mut agent.capabilities)
                 .await?;
+            crate::platform_chat_agent::configure_page_tools(&self.db, req.org_id, agent)
+                .await
+                .map_err(|e| internal_status("Failed to resolve page tools", e))?;
         }
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 

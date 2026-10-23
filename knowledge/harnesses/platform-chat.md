@@ -23,7 +23,7 @@ The assistant manages the platform through the `everruns` CLI in the same
 Bashkit shell it uses for files, pipes, filtering, loops, and redirection.
 Product documentation is read-only; scratch files belong to the conversation;
 shared and private notes outlive it. The executable composition and prompt
-live in [the Agent definition](../../crates/server/src/platform_chat_agent.rs).
+live in [the Agent definition](../../crates/server/src/platform_chat_agent/mod.rs).
 
 The earlier `discover` / `query` / `execute` split forced the model to reason
 about tool selection without providing a permission boundary. Authorization

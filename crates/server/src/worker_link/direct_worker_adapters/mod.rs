@@ -1080,8 +1080,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await?;
                 let mut agent = Self::row_to_agent(row, hydrated_capabilities);
-                self.filter_dreaming(org_id, &mut agent.capabilities)
-                    .await?;
+                self.configure_agent_for_org(org_id, &mut agent).await?;
 
                 (Some(agent), mcp_tools)
             } else {

@@ -108,6 +108,10 @@ pub struct RestoreRequest {
     pub revision: i64,
     /// Entity kind, needed only for kinds whose ids have no prefix.
     pub kind: Option<String>,
+    /// Agent revision the user saw; refuses concurrent changes.
+    pub expected_revision: Option<i64>,
+    /// Restore only these top-level Agent fields. Requires expected_revision.
+    pub fields: Option<Vec<String>>,
 }
 
 /// GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision
@@ -180,6 +184,7 @@ pub async fn restore_entity_revision(
 ) -> ApiResult<RestoreResult> {
     let params = serde_json::json!({
         "entity_ref": entity_ref, "kind": request.kind, "revision": request.revision,
+        "expected_revision": request.expected_revision, "fields": request.fields,
     });
     dispatch(&org, &state, "restore_entity_revision", params).await
 }

@@ -23386,6 +23386,13 @@ export interface components {
     };
     /** @description The revision to bring back. */
     RestoreRequest: {
+      /**
+       * Format: int64
+       * @description Agent revision the user saw; refuses concurrent changes.
+       */
+      expected_revision?: number | null;
+      /** @description Restore only these top-level Agent fields. Requires expected_revision. */
+      fields?: string[] | null;
       /** @description Entity kind, needed only for kinds whose ids have no prefix. */
       kind?: string | null;
       /** Format: int64 */

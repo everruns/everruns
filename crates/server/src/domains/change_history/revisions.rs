@@ -172,6 +172,13 @@ pub struct RestoreEntityRevision {
     pub kind: Option<String>,
     /// The revision to bring back.
     pub revision: i64,
+    /// Refuse if the Agent changed after this revision. Guarded restores are atomic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_revision: Option<i64>,
+    /// Restore only these top-level Agent fields; omit to restore the full definition.
+    /// Requires expected_revision. Secrets and fields the update cannot restore are refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
 }
 
 #[command(
@@ -196,10 +203,41 @@ impl Command for RestoreEntityRevision {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
+        if self.expected_revision.is_some() || self.fields.is_some() {
+            return crate::storage::transaction::scope(
+                &ctx.db,
+                self.restore(ctx),
+                CommandError::internal,
+            )
+            .await;
+        }
+        self.restore(ctx).await
+    }
+}
+
+impl RestoreEntityRevision {
+    async fn restore(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
         let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
         kind.manage_policy()
             .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
             .map_err(|e| CommandError::forbidden(e.message))?;
+        if self.expected_revision.is_some() || self.fields.is_some() {
+            if kind != super::EntityKind::Agent || self.expected_revision.is_none() {
+                return Err(CommandError::bad_request(
+                    "Guarded field restore requires an Agent and expected_revision",
+                ));
+            }
+            ctx.db
+                .lock_agent_for_change(ctx.org_id(), &entity_ref)
+                .await?;
+            let latest = ctx
+                .db
+                .latest_entity_revision(ctx.org_id(), kind.as_str(), &entity_ref)
+                .await?;
+            if latest != self.expected_revision {
+                return Err(CommandError::conflict("This agent changed since Chat saved it. Review the latest changes before undoing.").with_code("entity_revision_changed"));
+            }
+        }
         let row = revision(ctx, &entity_ref, kind, Some(self.revision)).await?;
         let restored = snapshot_of(&row)?;
         let Some(current) = snapshot::read(ctx, kind, &entity_ref).await.or_else(|| {
@@ -211,7 +249,22 @@ impl Command for RestoreEntityRevision {
                 kind.as_str()
             )));
         };
-        let (command, params) = snapshot::restore_call(kind, &entity_ref, restored, &current)?;
+        let (command, mut params) = snapshot::restore_call(kind, &entity_ref, restored, &current)?;
+        if let Some(fields) = &self.fields {
+            let values = params
+                .as_object_mut()
+                .expect("restore params are an object");
+            if fields.is_empty()
+                || fields
+                    .iter()
+                    .any(|field| field == "id" || !values.contains_key(field))
+            {
+                return Err(CommandError::bad_request(
+                    "Choose non-secret fields that the Agent update can restore",
+                ));
+            }
+            values.retain(|field, _| field == "id" || fields.contains(field));
+        }
         let current_secrets = snapshot::secret_markers(ctx, kind, &entity_ref, &current).await;
         let warnings = snapshot::kept_warnings(restored, &current, &current_secrets, self.revision);
 
@@ -225,7 +278,17 @@ impl Command for RestoreEntityRevision {
         let entity: Value = serde_json::from_str(&entity).unwrap_or(Value::Null);
         let mut warnings = warnings;
         let id_param = snapshot::restore_command(kind).map_or("id", |(_, id)| id);
-        for field in snapshot::unrestored(&params, &entity, id_param) {
+        let unrestored = snapshot::unrestored(&params, &entity, id_param);
+        if self.fields.is_some() && !unrestored.is_empty() {
+            // Guarded field undo is all-or-nothing. The outer transaction also
+            // rolls back the nested update's history when an API cannot clear a field.
+            return Err(CommandError::conflict(format!(
+                "These fields could not be restored: {}. No undo was saved.",
+                unrestored.join(", ")
+            ))
+            .with_code("field_restore_failed"));
+        }
+        for field in unrestored {
             let warning = format!(
                 "{field} could not be set back to its revision {} value by `{command}`; \
                  change it directly",

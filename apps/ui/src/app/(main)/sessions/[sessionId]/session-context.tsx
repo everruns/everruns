@@ -243,7 +243,7 @@ export function SessionProvider({
     }) => chatSends.submit({ text: content, controls, addressedParticipantId }),
   });
 
-  // Update local status from SSE events (session.activated, session.idled)
+  // Update local status from SSE, including pauses that do not idle the session.
   useEffect(() => {
     if (!events || events.length === 0) return;
 
@@ -255,7 +255,7 @@ export function SessionProvider({
         setIsWaitingForResponse(false);
         break;
       }
-      if (event.type === "session.activated") {
+      if (event.type === "session.activated" || event.type === "reason.started") {
         setLocalStatus("active");
         break;
       }
@@ -320,7 +320,12 @@ export function SessionProvider({
   }, [sessionId]);
 
   // Use local status if available, otherwise fall back to session status
-  const effectiveStatus = localStatus ?? session?.status;
+  // The current API enum spells this wire value without underscores. Keep the
+  // UI state canonical, including when a page opens during an existing wait.
+  const serverStatus: string | undefined = session?.status;
+  const effectiveStatus =
+    localStatus ??
+    (serverStatus === "waitingfortoolresults" ? "waiting_for_tool_results" : session?.status);
 
   // Determine if session is actively processing
   // "active" = turn running, "waiting_for_tool_results" = paused for client-side tool
