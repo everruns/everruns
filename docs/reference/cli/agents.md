@@ -27,6 +27,12 @@ Agent definitions and their configuration.
 | [`agents get`](#agents-get) | Get a single agent by ID or name. |
 | [`agents list`](#agents-list) | List all active agents. |
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
+| [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous inbound sync. |
+| [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
+| [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
+| [`agents source options get`](#agents-source-options-get) | Browse GitHub branches and Agent package paths. |
+| [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
+| [`agents source sync`](#agents-source-sync) | Queue an immediate check of this Agent's GitHub source. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
 | [`agents avatar set`](#agents-avatar-set) | Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). |
@@ -360,6 +366,132 @@ Example:
 ```bash
 # See the prompt a draft configuration would produce, without creating it
 everruns agents preview --system-prompt 'Triage incoming issues'
+```
+
+## agents source connect
+
+Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+
+```bash
+everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-id <agent_id> --branch <branch> --commit <commit> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-digest <AGENT_DIGEST>` | Required. |
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. |
+| `--commit <COMMIT>` | Required. |
+| `--expected-generation <EXPECTED_GENERATION>` |  |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. |
+
+Example:
+
+```bash
+# Enable continuous sync using the commit and Agent digest returned by preview
+everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason "Deploy the reviewed GitHub package"
+```
+
+## agents source disconnect
+
+Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+
+```bash
+everruns agents source disconnect [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Keep the last applied definition and restore local editing
+everruns agents source disconnect --agent-id agent_01h9 --reason "Resume local editing"
+```
+
+## agents source get
+
+Show the Agent's continuous GitHub source binding and sync status.
+
+```bash
+everruns agents source get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See the applied GitHub revision and any sync error
+everruns agents source get --agent-id agent_01h9
+```
+
+## agents source options get
+
+Browse GitHub branches and Agent package paths.
+
+```bash
+everruns agents source options get [OPTIONS] --agent-id <agent_id> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` |  |
+| `--path <PATH>` |  |
+| `--repository <REPOSITORY>` | Required. |
+
+Example:
+
+```bash
+# Find branches and package paths before choosing a source
+everruns agents source options get --agent-id agent_01h9 --repository acme/agents --branch main --path agents
+```
+
+## agents source preview
+
+Validate and compare a GitHub Agent package without changing the Agent.
+
+```bash
+everruns agents source preview [OPTIONS] --agent-id <agent_id> --branch <branch> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. |
+
+Example:
+
+```bash
+# Review a repository package without changing the Agent
+everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support
+```
+
+## agents source sync
+
+Queue an immediate check of this Agent's GitHub source.
+
+```bash
+everruns agents source sync [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Check the source now after pushing a repository change
+everruns agents source sync --agent-id agent_01h9 --reason "Apply the latest repository change"
 ```
 
 ## agents upsert
