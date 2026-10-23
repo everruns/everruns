@@ -341,7 +341,9 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
             .map(|value| parse_timestamp(value, "sandbox init_completed_at"))
             .transpose()?;
 
-        let mut tx = self.pool.begin().await.map_err(state_storage_error)?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool)
+            .await
+            .map_err(state_storage_error)?;
         let logical: Option<(Uuid, i64, Option<Uuid>)> = sqlx::query_as(
             r#"
             SELECT id, generation, current_instance_id
@@ -518,7 +520,9 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
         provider: &str,
         expected: Option<&SandboxRef>,
     ) -> Result<bool, SandboxStateError> {
-        let mut tx = self.pool.begin().await.map_err(state_storage_error)?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool)
+            .await
+            .map_err(state_storage_error)?;
         let current: Option<(Uuid, i64, Option<Uuid>, bool)> = sqlx::query_as(
             "SELECT id, generation, current_instance_id, profile_snapshot IS NOT NULL FROM sandboxes WHERE session_id = $1 AND provider = $2 FOR UPDATE",
         )
@@ -698,7 +702,9 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         // Stamping `attached_at` and moving `current_checkpoint_id` happen in
         // one transaction: a checkpoint the sandbox points at is always marked
         // attached, which is what makes the garbage collector safe.
-        let mut tx = self.pool.begin().await.map_err(storage_error)?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool)
+            .await
+            .map_err(storage_error)?;
 
         let current: Option<(i64,)> =
             sqlx::query_as("SELECT generation FROM sandboxes WHERE id = $1 FOR UPDATE")
@@ -782,7 +788,9 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         // Same transaction shape as `attach_checkpoint`, run backwards: detach
         // the rejected revision and move the pointer, so the sandbox never
         // points at a row whose `attached_at` is NULL.
-        let mut tx = self.pool.begin().await.map_err(storage_error)?;
+        let mut tx = everruns_durable::begin_transaction(&self.pool)
+            .await
+            .map_err(storage_error)?;
 
         let current: Option<(i64, Option<Uuid>)> = sqlx::query_as(
             "SELECT generation, current_checkpoint_id FROM sandboxes WHERE id = $1 FOR UPDATE",

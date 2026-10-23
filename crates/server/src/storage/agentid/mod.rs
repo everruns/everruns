@@ -110,7 +110,7 @@ impl StorageBackend {
         let db = self.database();
         // Serialize first sign-ins per owner so concurrent callbacks cannot
         // both pass the cap. The transaction only holds the lock.
-        let mut lock = db.pool().begin().await?;
+        let mut lock = everruns_durable::begin_transaction(db.pool()).await?;
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, $2))")
             .bind(format!("agentid-owner:{}", agent.owner_sub))
             .bind(org_id)
