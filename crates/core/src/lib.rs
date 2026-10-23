@@ -195,9 +195,11 @@ pub mod plugins;
 
 /// Durable orchestration state for the opt-in OpenAI Agents API backend.
 pub mod agents_api_store;
+pub use capabilities::ModelToolBudget;
 pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
+pub use everruns_contracts::runtime::tool_surface;
 pub mod compaction_checkpoint;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;

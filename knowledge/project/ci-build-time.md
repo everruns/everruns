@@ -199,7 +199,8 @@ SDK cleanup plus linker package setup exhausted its five-minute startup budget i
 [main run 38663303410](https://github.com/everruns/everruns/actions/runs/38663303410).
 Rust jobs now reuse the image's existing linker, exposing its versioned executable
 under the standard command name in runner-local temporary storage when needed.
-Package installation remains a bounded fallback, and shared Cargo linker flags
+Any installed LLVM major qualifies (the newest wins), so a runner-image LLVM bump does
+not route every job through apt. Package installation remains a bounded fallback, and shared Cargo linker flags
 stay identical. See [linker preparation](../../scripts/ci-prepare-linker.sh).
 
 ## CI-only optimization measurements

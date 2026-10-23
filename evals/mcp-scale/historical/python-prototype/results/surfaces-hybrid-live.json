@@ -1,0 +1,126 @@
+{
+  "url": "stdio://ops",
+  "model": "openai/gpt-6-luna",
+  "provider": "openrouter",
+  "surface": "hybrid",
+  "surface_scope": "Validates native and Bashkit/Tools in Shell invocation adapters around the synthetic two-function gateway. It does not validate native individual-tool discovery, a new first-class catalog contract, or production MCP pagination.",
+  "prompt": "Using only the synthetic MCP fixture, look up ticket OPS-8421 through both invocation surfaces. First use the directly callable gateway functions: call catalog_search to get the exact get_ticket tool_id and schema_digest, then call catalog_call to read OPS-8421. Next use the bash tool and Tools in Shell command `tools ops catalog-call` to call that same get_ticket tool again, reusing the exact tool_id and schema_digest returned by catalog_search. Use read-only calls only. Report the ticket owner and status.",
+  "mode": "run",
+  "mcp_transport": "stdio",
+  "search": "tools_in_shell",
+  "success": true,
+  "response": "OPS-8421 is owned by Ava Li and its status is `in_progress`; both read-only invocation surfaces returned the same details.",
+  "error": null,
+  "iterations": 5,
+  "duration_ms": 12700,
+  "usage": {
+    "actual_cost_usd": 0.0008100200000000001,
+    "cache_creation_tokens": 3916,
+    "cache_read_tokens": 12252,
+    "effective_cost_usd": 0.0008100200000000001,
+    "input_tokens": 15,
+    "output_tokens": 393
+  },
+  "discovered_tool_count": 6,
+  "discovered_tools": [
+    "read_file",
+    "write_file",
+    "edit_file",
+    "bash",
+    "mcp_ops__catalog_call",
+    "mcp_ops__catalog_search"
+  ],
+  "tool_calls": [
+    {
+      "capability_id": "mcp:f2ae34c4-962b-593d-8508-ecdbdff81983",
+      "capability_name": "ops",
+      "display_name": "ops: catalog search",
+      "duration_ms": 879,
+      "invocation_surface": "native",
+      "narration": "Ran ops: catalog search",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"tools\\\": [{\\\"name\\\": \\\"get_ticket\\\", \\\"description\\\": \\\"Read a ticket, including owner, status, and linked incident.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"ticket_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Ticket identifier, for example OPS-8421.\\\"}}, \\\"required\\\": [\\\"ticket_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Ticket\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_ticket\\\", \\\"schema_digest\\\": \\\"39838bb88d58ef35d0663419fa3dfc48ed92267f3c3c105dcc6c18de368d7f55\\\"}, {\\\"name\\\": \\\"get_incident\\\", \\\"description\\\": \\\"Read the incident timeline, owner, impact, and linked ticket.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"incident_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Incident identifier, for example INC-427.\\\"}}, \\\"required\\\": [\\\"incident_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Incident\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"incidents\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_incident\\\", \\\"schema_digest\\\": \\\"85b31783cd73c66b9cdca616fe8a9bcf66bf2a9745be48c19c236b1d6404b0f7\\\"}, {\\\"name\\\": \\\"add_ticket_comment\\\", \\\"description\\\": \\\"Append a comment to an existing ticket. This mutates the ticket timeline.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"ticket_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Ticket identifier, for example OPS-8421.\\\"}, \\\"comment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Comment to append.\\\"}}, \\\"required\\\": [\\\"ticket_id\\\", \\\"comment\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Add Ticket Comment\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::add_ticket_comment\\\", \\\"schema_digest\\\": \\\"204506bdb93b7edaa84ab1b39df5e6eed66e3a1b90c8ee91fc37b2a3ff903777\\\"}, {\\\"name\\\": \\\"create_ticket\\\", \\\"description\\\": \\\"Create a new operational ticket with a structured service and environment scope.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"details\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"title\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Short actionable title.\\\"}, \\\"description\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Observed symptoms and requested follow-up.\\\"}, \\\"service\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Service slug, for example billing-api.\\\"}, \\\"environment\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Deployment environment.\\\", \\\"enum\\\": [\\\"dev\\\", \\\"staging\\\", \\\"prod\\\"]}, \\\"owner\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Optional ticket owner.\\\"}}, \\\"required\\\": [\\\"title\\\", \\\"description\\\", \\\"service\\\", \\\"environment\\\"], \\\"additionalProperties\\\": false}}, \\\"required\\\": [\\\"details\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Create Ticket\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"tickets\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::create_ticket\\\", \\\"schema_digest\\\": \\\"786e96861f743728705cf6731e82c97ea5e5ec181d861546868c1109d0b9e976\\\"}, {\\\"name\\\": \\\"get_change\\\", \\\"description\\\": \\\"Read a change record and its approval status.\\\", \\\"inputSchema\\\": {\\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"change_id\\\": {\\\"type\\\": \\\"string\\\", \\\"description\\\": \\\"Change identifier, for example CHG-1234.\\\"}}, \\\"required\\\": [\\\"change_id\\\"], \\\"additionalProperties\\\": false}, \\\"annotations\\\": {\\\"title\\\": \\\"Get Change\\\", \\\"readOnlyHint\\\": false}, \\\"_meta\\\": {\\\"fixture/domain\\\": \\\"change_management\\\"}, \\\"server\\\": \\\"platform\\\", \\\"tool_id\\\": \\\"platform::get_change\\\", \\\"schema_digest\\\": \\\"b1446e2d7b0481781707bcbec8e4a421b79c38ad5ef300d37562a2c49d0422d8\\\"}], \\\"omitted_for_byte_budget\\\": 0, \\\"available_servers\\\": [\\\"platform\\\"], \\\"server_count\\\": 1, \\\"message\\\": \\\"Refine the query if the desired tool is absent. No match is not proof the capability is unavailable.\\\"}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:5913133c0ebb482435fe3a9cbc89caef6de561244cf1e07ac62ff975b2138c14",
+      "tool_call_id": "call_fg7xe9WsQVfgqHE0KeEbpwTc",
+      "tool_name": "mcp_ops__catalog_search",
+      "tool_result_fingerprint": "sha256:0f55ef39deabf85bcaafce4aac18b592b9cde79aaf8b1f2699a214bf09a47a1a"
+    },
+    {
+      "capability_id": "mcp:f2ae34c4-962b-593d-8508-ecdbdff81983",
+      "capability_name": "ops",
+      "display_name": "ops: catalog call",
+      "duration_ms": 843,
+      "invocation_surface": "native",
+      "narration": "Ran ops: catalog call",
+      "result": [
+        {
+          "text": "{\"result\":\"{\\\"comments\\\": [], \\\"linked_incident\\\": \\\"INC-427\\\", \\\"owner\\\": \\\"Ava Li\\\", \\\"status\\\": \\\"in_progress\\\", \\\"ticket_id\\\": \\\"OPS-8421\\\", \\\"title\\\": \\\"Investigate billing-api staging 5xx after 3.8.1\\\"}\"}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:907031e31c993960820dbb112e3ac6c3a3b7f5c2f23c2401077a7deb450442c7",
+      "tool_call_id": "call_6dbWLq1LbE3ZNWUc5LJQFKi2",
+      "tool_name": "mcp_ops__catalog_call",
+      "tool_result_fingerprint": "sha256:60f85114c2ac036058fbe50cd72713476825541255544dc89731e73ecbd825df"
+    },
+    {
+      "capability_id": "bashkit_shell",
+      "capability_name": "Bashkit Shell",
+      "display_name": "Bash",
+      "duration_ms": 8,
+      "invocation_surface": "cli",
+      "narration": "Ran `tools ops catalog-call --help`",
+      "result": [
+        {
+          "text": "{\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"tools ops catalog-call '{\\\"tool_id\\\":<string>,\\\"schema_digest\\\":<string>,\\\"arguments\\\":<object>}'\\n\\nCall an exact tool discovered by catalog_search. Pass its tool_id and schema_digest unchanged, and arguments matching its inputSchema. Operations may change fake platform state.\\n\\nInput schema:\\n{\\n  \\\"additionalProperties\\\": false,\\n  \\\"properties\\\": {\\n    \\\"arguments\\\": {\\n      \\\"additionalProperties\\\": true,\\n      \\\"type\\\": \\\"object\\\"\\n    },\\n    \\\"schema_digest\\\": {\\n      \\\"type\\\": \\\"string\\\"\\n    },\\n    \\\"tool_id\\\": {\\n      \\\"type\\\": \\\"string\\\"\\n    }\\n  },\\n  \\\"required\\\": [\\n    \\\"tool_id\\\",\\n    \\\"schema_digest\\\",\\n    \\\"arguments\\\"\\n  ],\\n  \\\"type\\\": \\\"object\\\"\\n}\\n\",\"success\":true,\"total_lines\":26,\"truncated\":false}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:7752e5a654052a338cd7fc16d6c66d9cb9075dd2be9fe7010abffa22fbf5b717",
+      "tool_call_id": "call_OQjHMpVMIT6OKeSS3MOBBi5n",
+      "tool_name": "bash",
+      "tool_result_fingerprint": "sha256:90dbc17100f8a0d8c92d151bc0ed968048e124c13194e6fb2f2bd5e14ac6e9df"
+    },
+    {
+      "call_id": "call_67zWXZ5zZpymZRkTjFyOZh4r:tools:1:mcp_ops__catalog_call",
+      "command": "tools ops catalog-call",
+      "duration_ms": 851,
+      "input_preview": "{\"arguments\":{\"ticket_id\":\"OPS-8421\"},\"schema_digest\":\"39838bb88d58ef35d0663419fa3dfc48ed92267f3c3c105dcc6c18de368d7f55\",\"tool_id\":\"platform::get_ticket\"}",
+      "invocation_surface": "cli",
+      "parent_tool_call_id": "call_67zWXZ5zZpymZRkTjFyOZh4r",
+      "status": "completed",
+      "tool_name": "mcp_ops__catalog_call"
+    },
+    {
+      "capability_id": "bashkit_shell",
+      "capability_name": "Bashkit Shell",
+      "display_name": "Bash",
+      "duration_ms": 856,
+      "invocation_surface": "cli",
+      "narration": "Ran `tools ops catalog-call '{\"tool_id\":\"platform::ge...`",
+      "result": [
+        {
+          "text": "{\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"{\\\"result\\\":\\\"{\\\\\\\"comments\\\\\\\": [], \\\\\\\"linked_incident\\\\\\\": \\\\\\\"INC-427\\\\\\\", \\\\\\\"owner\\\\\\\": \\\\\\\"Ava Li\\\\\\\", \\\\\\\"status\\\\\\\": \\\\\\\"in_progress\\\\\\\", \\\\\\\"ticket_id\\\\\\\": \\\\\\\"OPS-8421\\\\\\\", \\\\\\\"title\\\\\\\": \\\\\\\"Investigate billing-api staging 5xx after 3.8.1\\\\\\\"}\\\"}\\n\",\"success\":true,\"total_lines\":1,\"truncated\":false}",
+          "type": "text"
+        }
+      ],
+      "status": "success",
+      "success": true,
+      "tool_call_fingerprint": "sha256:7b13fe92f5e4e342d9d3014a4b829b18ae7ce9fa128e6c3970cb13a909615c31",
+      "tool_call_id": "call_67zWXZ5zZpymZRkTjFyOZh4r",
+      "tool_name": "bash",
+      "tool_result_fingerprint": "sha256:aeb0ad4dba0c7410ca386ede1afb0ee8b21d3c099b0f79c106c436ac0ed6e204"
+    }
+  ],
+  "event_errors": []
+}

@@ -185,6 +185,7 @@ pub async fn assemble_resolved_turn_context(
         file_store,
         model: Some(model.model.clone()),
         session_storage,
+        tool_surface_plan: Default::default(),
     };
     let compaction_policy = effective_overlay.capabilities.iter().find_map(|config| {
         capability_registry

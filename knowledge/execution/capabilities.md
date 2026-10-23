@@ -12,6 +12,12 @@ tags:
 
 Capabilities are modular functionality units that extend Agent behavior. A Capability can contribute additions to the system prompt, provide tools, and modify execution behavior. Users can enable multiple capabilities on an Agent to compose functionality.
 
+[Native and CLI Tool Surfaces](tool-surfaces.md) defines the implemented,
+read-only `ToolSurfacePlan` shared with capability prompt and definition hooks.
+It preserves one canonical operation registration while allowing native calls,
+CLI, or both, with eager/deferred native schemas resolved separately from the
+invocation route.
+
 ## Requirements
 
 ### Persisted Declarative Capabilities

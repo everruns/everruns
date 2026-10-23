@@ -119,6 +119,10 @@ impl McpCapability {
         if let Some(label) = self.tool_labels.get(&mcp_tool.name) {
             label.apply(&mut hints);
         }
+        hints.metadata = Some(serde_json::json!({"mcp_server": {
+            "name": self.server_name,
+            "description": self.description.as_deref().unwrap_or_default(),
+        }}));
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,

@@ -1,0 +1,26 @@
+{
+  "url": "stdio://ops",
+  "model": "gpt-6-luna",
+  "provider": "openai",
+  "surface": "cli",
+  "surface_scope": "Validates native and Bashkit/Tools in Shell invocation adapters around the synthetic two-function gateway. It does not validate native individual-tool discovery, a new first-class catalog contract, or production MCP pagination.",
+  "prompt": null,
+  "mode": "list",
+  "mcp_transport": "stdio",
+  "search": "tools_in_shell",
+  "success": null,
+  "response": null,
+  "error": null,
+  "iterations": null,
+  "duration_ms": null,
+  "usage": null,
+  "discovered_tool_count": 4,
+  "discovered_tools": [
+    "read_file",
+    "write_file",
+    "edit_file",
+    "bash"
+  ],
+  "tool_calls": [],
+  "event_errors": []
+}

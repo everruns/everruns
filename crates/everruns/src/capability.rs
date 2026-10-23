@@ -92,6 +92,14 @@ pub use everruns_contracts::capability::definition::{
     serde, serde_json,
 };
 
+/// Model tool definition budget requested by a capability.
+pub use everruns_contracts::runtime::capabilities::ModelToolBudget;
+/// Tool routing and native schema disclosure policy exposed by the runtime.
+pub use everruns_contracts::runtime::tool_surface::{
+    NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceMode,
+    ToolSurfacePlan, ToolSurfaceRoute,
+};
+
 // ============================================================================
 // Runtime adapters (private): neutral contract -> in-process engine
 // ============================================================================
@@ -294,6 +302,17 @@ mod tests {
         Agent, CancellationToken, InMemoryEngine, Model, RunOptions, SessionEventKind,
         TurnStopReason,
     };
+
+    #[test]
+    fn exposes_tool_surface_contracts_for_capability_authors() {
+        let plan = ToolSurfacePlan::for_mode(ToolSurfaceMode::Hybrid);
+        assert_eq!(plan.mode, ToolSurfaceMode::Hybrid);
+        let _route = ToolSurfaceRoute {
+            surface: ToolSurface::Both,
+            native_disclosure: NativeToolDisclosure::Deferred,
+        };
+        let _policy = NativeToolDisclosurePolicy::default();
+    }
 
     #[derive(Deserialize, JsonSchema)]
     struct LookupInput {
