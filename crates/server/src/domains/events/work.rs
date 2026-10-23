@@ -41,7 +41,7 @@ pub struct SessionWorkResult {
 #[command(
     name = "get_session_work",
     category = "events",
-    description = "What a session's turn is doing now, or what it got done: headline, steps, plan, open request and result.",
+    description = "Show what a session's turn is doing or got done.",
     method = "GET",
     cli = CliRoute::new(&["sessions", "work"], "get").with_args(&[CliArg::new("session_id").at(1)]).with_examples(&[CliExample::new("See what a session's agent is doing or what it got done", "everruns sessions work get session_01h9")]),
     path = "/v1/sessions/{session_id}/work",

@@ -13458,7 +13458,7 @@
       "work"
     ],
     "verb": "get",
-    "description": "What a session's turn is doing now, or what it got done: headline, steps, plan, open request and result.",
+    "description": "Show what a session's turn is doing or got done.",
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/work",
     "args": [

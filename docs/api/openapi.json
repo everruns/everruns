@@ -27020,7 +27020,7 @@
         "tags": [
           "events"
         ],
-        "summary": "What a session's turn is doing now, or what it got done: headline, steps, plan, open request and result",
+        "summary": "Show what a session's turn is doing or got done",
         "operationId": "get_session_work",
         "parameters": [
           {

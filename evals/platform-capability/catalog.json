@@ -12273,7 +12273,7 @@
   {
     "category": "events",
     "cli": "sessions work get",
-    "description": "What a session's turn is doing now, or what it got done: headline, steps, plan, open request and result.",
+    "description": "Show what a session's turn is doing or got done.",
     "input_schema": {
       "description": "Work report of one turn, or of the session's latest turn.",
       "properties": {

@@ -6874,7 +6874,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** What a session's turn is doing now, or what it got done: headline, steps, plan, open request and result */
+    /** Show what a session's turn is doing or got done */
     get: operations["get_session_work"];
     put?: never;
     post?: never;
