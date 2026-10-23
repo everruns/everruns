@@ -76,17 +76,38 @@ pub(crate) async fn ensure_channel_writable(
     Ok(())
 }
 
+/// Continuous GitHub source binding, applied revision and reconciliation status.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AgentSourceStatus {
+    /// Binding generation used to detect a concurrent reconnect or disconnect.
+    #[schema(example = "018f30c8-c970-7cb5-a8c9-9348aa71ba8c")]
     pub generation: Uuid,
+    /// Selected GitHub repository in owner/name form.
+    #[schema(example = "acme/agents")]
     pub repository: String,
+    /// Branch monitored for source updates.
+    #[schema(example = "main")]
     pub branch: String,
+    /// Repository-relative package folder or manifest; empty means the root.
+    #[schema(example = "agents/support")]
     pub path: String,
+    /// Package channel names whose configuration is managed by the source.
+    #[schema(example = json!(["chat"]))]
     pub managed_channels: Vec<String>,
+    /// Last successfully applied commit; retained when a later revision fails.
+    #[schema(example = "0123456789abcdef0123456789abcdef01234567")]
     pub applied_commit: Option<String>,
+    /// Current reconciliation state: pending, syncing, synced or error.
+    #[schema(example = "synced")]
     pub status: String,
+    /// Safe diagnostic for the latest failed check, without upstream credentials.
+    #[schema(example = "Source package validation failed: missing capability")]
     pub error: Option<String>,
+    /// UTC time when the source was last checked.
+    #[schema(example = "2026-10-23T12:00:00Z")]
     pub last_checked_at: Option<DateTime<Utc>>,
+    /// UTC time when a source revision was last applied successfully.
+    #[schema(example = "2026-10-23T12:00:00Z")]
     pub last_synced_at: Option<DateTime<Utc>>,
 }
 impl From<AgentSourceRow> for AgentSourceStatus {
@@ -256,12 +277,19 @@ impl Command for GetAgentSource {
     }
 }
 
+/// Repository location to browse before selecting an Agent source package.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct SourceOptionsRequest {
+    /// GitHub repository in owner/name form.
+    #[schema(example = "acme/agents")]
     pub repository: String,
+    /// Branch to browse; omitted uses the repository's default branch.
     #[serde(default)]
+    #[schema(example = "main")]
     pub branch: Option<String>,
+    /// Repository-relative directory to browse; empty selects the root.
     #[serde(default)]
+    #[schema(example = "agents")]
     pub path: String,
 }
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -340,13 +368,21 @@ impl Command for PreviewAgentSource {
     }
 }
 
+/// Reviewed package location and concurrency tokens required to enable source sync.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ConnectSourceRequest {
+    /// Repository, branch and package path that were previewed.
     #[serde(flatten)]
     pub location: SourceLocation,
+    /// Exact source commit returned by preview; a changed branch requires another preview.
+    #[schema(example = "0123456789abcdef0123456789abcdef01234567")]
     pub commit: String,
+    /// Agent package digest returned by preview, protecting concurrent local edits.
+    #[schema(example = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")]
     pub agent_digest: String,
+    /// Current binding generation when replacing a source; omit for an unbound Agent.
     #[serde(default)]
+    #[schema(example = "018f30c8-c970-7cb5-a8c9-9348aa71ba8c")]
     pub expected_generation: Option<Uuid>,
 }
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

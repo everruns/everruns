@@ -8,12 +8,18 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use utoipa::ToSchema;
 
+/// Repository, branch and package path that define an Agent's GitHub source.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct SourceLocation {
+    /// GitHub repository in owner/name form.
+    #[schema(example = "acme/agents")]
     pub repository: String,
+    /// Branch whose future commits the Agent follows.
+    #[schema(example = "main")]
     pub branch: String,
     /// Repository-relative package folder or manifest; empty selects the repository root.
     #[serde(default)]
+    #[schema(example = "agents/support")]
     pub path: String,
 }
 impl SourceLocation {

@@ -2000,7 +2000,8 @@
         "field": "agent_digest",
         "long": "agent-digest",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Agent package digest returned by preview, protecting concurrent local edits."
       },
       {
         "field": "agent_id",
@@ -2012,19 +2013,22 @@
         "field": "branch",
         "long": "branch",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Branch whose future commits the Agent follows."
       },
       {
         "field": "commit",
         "long": "commit",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Exact source commit returned by preview; a changed branch requires another preview."
       },
       {
         "field": "expected_generation",
         "long": "expected-generation",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Current binding generation when replacing a source; omit for an unbound Agent."
       },
       {
         "field": "path",
@@ -2037,7 +2041,8 @@
         "field": "repository",
         "long": "repository",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "GitHub repository in owner/name form."
       }
     ],
     "examples": [
@@ -2119,19 +2124,22 @@
         "field": "branch",
         "long": "branch",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Branch to browse; omitted uses the repository's default branch."
       },
       {
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Repository-relative directory to browse; empty selects the root."
       },
       {
         "field": "repository",
         "long": "repository",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "GitHub repository in owner/name form."
       }
     ],
     "examples": [
@@ -2162,7 +2170,8 @@
         "field": "branch",
         "long": "branch",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Branch whose future commits the Agent follows."
       },
       {
         "field": "path",
@@ -2175,7 +2184,8 @@
         "field": "repository",
         "long": "repository",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "GitHub repository in owner/name form."
       }
     ],
     "examples": [

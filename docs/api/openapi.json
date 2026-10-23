@@ -32932,6 +32932,7 @@
       },
       "AgentSourceStatus": {
         "type": "object",
+        "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
         "required": [
           "generation",
           "repository",
@@ -32945,49 +32946,71 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Last successfully applied commit; retained when a later revision fails.",
+            "example": "0123456789abcdef0123456789abcdef01234567"
           },
           "branch": {
-            "type": "string"
+            "type": "string",
+            "description": "Branch monitored for source updates.",
+            "example": "main"
           },
           "error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Safe diagnostic for the latest failed check, without upstream credentials.",
+            "example": "Source package validation failed: missing capability"
           },
           "generation": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Binding generation used to detect a concurrent reconnect or disconnect.",
+            "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
           },
           "last_checked_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC time when the source was last checked.",
+            "example": "2026-10-23T12:00:00Z"
           },
           "last_synced_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "UTC time when a source revision was last applied successfully.",
+            "example": "2026-10-23T12:00:00Z"
           },
           "managed_channels": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Package channel names whose configuration is managed by the source.",
+            "example": [
+              "chat"
+            ]
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Repository-relative package folder or manifest; empty means the root.",
+            "example": "agents/support"
           },
           "repository": {
-            "type": "string"
+            "type": "string",
+            "description": "Selected GitHub repository in owner/name form.",
+            "example": "acme/agents"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current reconciliation state: pending, syncing, synced or error.",
+            "example": "synced"
           }
         }
       },
@@ -35920,7 +35943,8 @@
       "ConnectSourceRequest": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/SourceLocation"
+            "$ref": "#/components/schemas/SourceLocation",
+            "description": "Repository, branch and package path that were previewed."
           },
           {
             "type": "object",
@@ -35930,21 +35954,28 @@
             ],
             "properties": {
               "agent_digest": {
-                "type": "string"
+                "type": "string",
+                "description": "Agent package digest returned by preview, protecting concurrent local edits.",
+                "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
               },
               "commit": {
-                "type": "string"
+                "type": "string",
+                "description": "Exact source commit returned by preview; a changed branch requires another preview.",
+                "example": "0123456789abcdef0123456789abcdef01234567"
               },
               "expected_generation": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "format": "uuid"
+                "format": "uuid",
+                "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
+                "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
               }
             }
           }
-        ]
+        ],
+        "description": "Reviewed package location and concurrency tokens required to enable source sync."
       },
       "ConnectedClient": {
         "type": "object",
@@ -63617,25 +63648,32 @@
       },
       "SourceLocation": {
         "type": "object",
+        "description": "Repository, branch and package path that define an Agent's GitHub source.",
         "required": [
           "repository",
           "branch"
         ],
         "properties": {
           "branch": {
-            "type": "string"
+            "type": "string",
+            "description": "Branch whose future commits the Agent follows.",
+            "example": "main"
           },
           "path": {
             "type": "string",
-            "description": "Repository-relative package folder or manifest; empty selects the repository root."
+            "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+            "example": "agents/support"
           },
           "repository": {
-            "type": "string"
+            "type": "string",
+            "description": "GitHub repository in owner/name form.",
+            "example": "acme/agents"
           }
         }
       },
       "SourceOptionsRequest": {
         "type": "object",
+        "description": "Repository location to browse before selecting an Agent source package.",
         "required": [
           "repository"
         ],
@@ -63644,13 +63682,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Branch to browse; omitted uses the repository's default branch.",
+            "example": "main"
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Repository-relative directory to browse; empty selects the root.",
+            "example": "agents"
           },
           "repository": {
-            "type": "string"
+            "type": "string",
+            "description": "GitHub repository in owner/name form.",
+            "example": "acme/agents"
           }
         }
       },

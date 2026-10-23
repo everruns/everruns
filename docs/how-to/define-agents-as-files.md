@@ -188,7 +188,8 @@ Everruns App installation there. Select an accessible repository, its branch,
 and a package folder or standalone manifest. Leave the path empty for a package
 at the repository root. Use **Browse folder** to navigate, then **Preview changes**
 to review the same validation and changes as an import. Select **Enable continuous
-sync** to apply the reviewed commit and follow subsequent changes.
+sync** to apply the reviewed commit and follow subsequent changes. Built-in
+Agents must be copied before connecting a source.
 
 A repository can contain several Agents, each in its own folder:
 

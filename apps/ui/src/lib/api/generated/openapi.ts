@@ -8913,19 +8913,62 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    /** @description Continuous GitHub source binding, applied revision and reconciliation status. */
     AgentSourceStatus: {
+      /**
+       * @description Last successfully applied commit; retained when a later revision fails.
+       * @example 0123456789abcdef0123456789abcdef01234567
+       */
       applied_commit?: string | null;
+      /**
+       * @description Branch monitored for source updates.
+       * @example main
+       */
       branch: string;
+      /**
+       * @description Safe diagnostic for the latest failed check, without upstream credentials.
+       * @example Source package validation failed: missing capability
+       */
       error?: string | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Binding generation used to detect a concurrent reconnect or disconnect.
+       * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
+       */
       generation: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC time when the source was last checked.
+       * @example 2026-10-23T12:00:00Z
+       */
       last_checked_at?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description UTC time when a source revision was last applied successfully.
+       * @example 2026-10-23T12:00:00Z
+       */
       last_synced_at?: string | null;
+      /**
+       * @description Package channel names whose configuration is managed by the source.
+       * @example [
+       *       "chat"
+       *     ]
+       */
       managed_channels: string[];
+      /**
+       * @description Repository-relative package folder or manifest; empty means the root.
+       * @example agents/support
+       */
       path: string;
+      /**
+       * @description Selected GitHub repository in owner/name form.
+       * @example acme/agents
+       */
       repository: string;
+      /**
+       * @description Current reconciliation state: pending, syncing, synced or error.
+       * @example synced
+       */
       status: string;
     };
     /**
@@ -10488,10 +10531,23 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /** @description Reviewed package location and concurrency tokens required to enable source sync. */
     ConnectSourceRequest: components["schemas"]["SourceLocation"] & {
+      /**
+       * @description Agent package digest returned by preview, protecting concurrent local edits.
+       * @example 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+       */
       agent_digest: string;
+      /**
+       * @description Exact source commit returned by preview; a changed branch requires another preview.
+       * @example 0123456789abcdef0123456789abcdef01234567
+       */
       commit: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Current binding generation when replacing a source; omit for an unbound Agent.
+       * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
+       */
       expected_generation?: string | null;
     };
     /** @description An external MCP client the person approved. */
@@ -25946,15 +26002,40 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    /** @description Repository, branch and package path that define an Agent's GitHub source. */
     SourceLocation: {
+      /**
+       * @description Branch whose future commits the Agent follows.
+       * @example main
+       */
       branch: string;
-      /** @description Repository-relative package folder or manifest; empty selects the repository root. */
+      /**
+       * @description Repository-relative package folder or manifest; empty selects the repository root.
+       * @example agents/support
+       */
       path?: string;
+      /**
+       * @description GitHub repository in owner/name form.
+       * @example acme/agents
+       */
       repository: string;
     };
+    /** @description Repository location to browse before selecting an Agent source package. */
     SourceOptionsRequest: {
+      /**
+       * @description Branch to browse; omitted uses the repository's default branch.
+       * @example main
+       */
       branch?: string | null;
+      /**
+       * @description Repository-relative directory to browse; empty selects the root.
+       * @example agents
+       */
       path?: string;
+      /**
+       * @description GitHub repository in owner/name form.
+       * @example acme/agents
+       */
       repository: string;
     };
     /**

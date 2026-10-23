@@ -1406,17 +1406,24 @@
         "ConnectSourceRequest": {
           "allOf": [
             {
-              "$ref": "#/$defs/SourceLocation"
+              "$ref": "#/$defs/SourceLocation",
+              "description": "Repository, branch and package path that were previewed."
             },
             {
               "properties": {
                 "agent_digest": {
+                  "description": "Agent package digest returned by preview, protecting concurrent local edits.",
+                  "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                   "type": "string"
                 },
                 "commit": {
+                  "description": "Exact source commit returned by preview; a changed branch requires another preview.",
+                  "example": "0123456789abcdef0123456789abcdef01234567",
                   "type": "string"
                 },
                 "expected_generation": {
+                  "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
+                  "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c",
                   "format": "uuid",
                   "type": [
                     "string",
@@ -1430,18 +1437,25 @@
               ],
               "type": "object"
             }
-          ]
+          ],
+          "description": "Reviewed package location and concurrency tokens required to enable source sync."
         },
         "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
           "properties": {
             "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
               "type": "string"
             },
             "path": {
               "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
               "type": "string"
             },
             "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
               "type": "string"
             }
           },
@@ -10969,17 +10983,24 @@
     "input_schema": {
       "$defs": {
         "SourceOptionsRequest": {
+          "description": "Repository location to browse before selecting an Agent source package.",
           "properties": {
             "branch": {
+              "description": "Branch to browse; omitted uses the repository's default branch.",
+              "example": "main",
               "type": [
                 "string",
                 "null"
               ]
             },
             "path": {
+              "description": "Repository-relative directory to browse; empty selects the root.",
+              "example": "agents",
               "type": "string"
             },
             "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
               "type": "string"
             }
           },
@@ -17043,15 +17064,21 @@
     "input_schema": {
       "$defs": {
         "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
           "properties": {
             "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
               "type": "string"
             },
             "path": {
               "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
               "type": "string"
             },
             "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
               "type": "string"
             }
           },

@@ -1160,13 +1160,13 @@ everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-i
 
 | Flag | Description |
 |---|---|
-| `--agent-digest <AGENT_DIGEST>` | Required. |
+| `--agent-digest <AGENT_DIGEST>` | Required. Agent package digest returned by preview, protecting concurrent local edits. |
 | `--agent-id <AGENT_ID>` | Required. |
-| `--branch <BRANCH>` | Required. |
-| `--commit <COMMIT>` | Required. |
-| `--expected-generation <EXPECTED_GENERATION>` |  |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--commit <COMMIT>` | Required. Exact source commit returned by preview; a changed branch requires another preview. |
+| `--expected-generation <EXPECTED_GENERATION>` | Current binding generation when replacing a source; omit for an unbound Agent. |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
-| `--repository <REPOSITORY>` | Required. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 
 Example:
 
@@ -1224,9 +1224,9 @@ everruns agents source preview [OPTIONS] --agent-id <agent_id> --branch <branch>
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
-| `--branch <BRANCH>` | Required. |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
 | `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
-| `--repository <REPOSITORY>` | Required. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 
 Example:
 
@@ -1265,9 +1265,9 @@ everruns agents source options get [OPTIONS] --agent-id <agent_id> --repository 
 | Flag | Description |
 |---|---|
 | `--agent-id <AGENT_ID>` | Required. |
-| `--branch <BRANCH>` |  |
-| `--path <PATH>` |  |
-| `--repository <REPOSITORY>` | Required. |
+| `--branch <BRANCH>` | Branch to browse; omitted uses the repository's default branch. |
+| `--path <PATH>` | Repository-relative directory to browse; empty selects the root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
 
 Example:
 
