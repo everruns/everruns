@@ -298,6 +298,8 @@ jobs:
             shell:
               - '.github/scripts/ci/**'
               - 'scripts/run-shell-tests.sh'
+              # The Compose regression checks syntax and credential-consent gates.
+              - 'scripts/e2e-compose-openrouter.mjs'
               - 'scripts/docker-release-source.py'
               - 'scripts/test-*.sh'
               - 'scripts/load-test.py'

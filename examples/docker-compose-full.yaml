@@ -20,9 +20,11 @@
 #      AUTH_JWT_SECRET=<your-random-secret> # Required: JWT signing secret
 #      AUTH_ADMIN_EMAIL=admin@example.com   # Required: admin login email
 #      AUTH_ADMIN_PASSWORD=<your-password>  # Required: admin login password
+#      SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true # Opt in to encrypting default-org keys
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
 #      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
+#      DEFAULT_OPENROUTER_API_KEY=sk-or-... # Optional: OpenRouter inference key
 #
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
@@ -102,6 +104,9 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
+      DEFAULT_OPENROUTER_API_KEY: ${DEFAULT_OPENROUTER_API_KEY:-}
+      # Explicit single-tenant opt-in; production never borrows host keys implicitly.
+      SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV: ${SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV:-false}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       AUTH_MODE: ${AUTH_MODE:-admin}
