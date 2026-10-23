@@ -4,6 +4,7 @@
 * [Legacy Agent Identities](agent-identities.md) - Refactored into virtual users.
 * [Virtual Users and Everruns Users](virtual-users.md) - Canonical runtime accounts separate from platform management users.
 * [Virtual Users API](virtual-users-api.md) - API contract for virtual users and links to the route and schema owners.
+* [Continuous GitHub Agent Sources](agent-sources.md) - Source ownership, reconciliation and failure semantics.
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.

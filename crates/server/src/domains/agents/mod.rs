@@ -29,6 +29,7 @@ pub mod preview;
 pub mod queries;
 pub mod record;
 pub(crate) mod sandbox_policy;
+pub mod source;
 pub mod types;
 
 pub use avatar_commands::{ListAvatarPresets, SetAgentAvatar};

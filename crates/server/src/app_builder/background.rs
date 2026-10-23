@@ -320,6 +320,7 @@ fn log_sync_result(provider_id: impl std::fmt::Display, result: domains::models:
 /// Inputs for the cluster-wide maintenance loops below. They all run on the
 /// background pool (EVE-1081) so they never queue behind request traffic.
 pub(super) struct MaintenanceDeps {
+    pub agent_source_ctx: crate::domains::common::Ctx,
     pub background_db: Arc<StorageBackend>,
     pub background_pool: sqlx::PgPool,
     pub background_runner: Arc<dyn everruns_core::host::TurnBackend>,
@@ -369,9 +370,12 @@ pub(super) async fn start_maintenance(
     );
 
     // -- Cluster-once maintenance jobs on durable schedules (crate::background::cluster_jobs) --
-    // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
+    // Blob GC, event and Sandbox history retention, source syncs: one run per cluster
     // per interval, whatever the replica count.
+    let mut agent_source_ctx = deps.agent_source_ctx;
+    agent_source_ctx.db = deps.background_db.clone();
     let cluster_jobs = vec![
+        crate::domains::agents::source::source_sync_job(agent_source_ctx),
         crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
             deps.background_db.clone(),

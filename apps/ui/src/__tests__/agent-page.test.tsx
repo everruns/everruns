@@ -14,6 +14,18 @@ jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
   AgentChatBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+let mockSourceManaged = false;
+jest.mock("@/hooks/use-agent-source", () => ({
+  useAgentSource: () => ({
+    data: mockSourceManaged ? { repository: "acme/agents", branch: "main" } : null,
+    isLoading: false,
+    isError: false,
+  }),
+}));
+jest.mock("@/components/agents/agent-source", () => ({
+  AgentSourcePanel: () => <div>Agent source</div>,
+}));
+
 let mockSearchParams = new URLSearchParams();
 const push = jest.fn();
 const replace = jest.fn();
@@ -259,6 +271,7 @@ async function save() {
 }
 
 beforeEach(() => {
+  mockSourceManaged = false;
   mockChatMode = null;
   jest.clearAllMocks();
   mockCan.mockReturnValue(true);
@@ -543,6 +556,15 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
+  });
+
+  it("keeps a GitHub-managed Agent read-only even when edit mode is requested", async () => {
+    mockSourceManaged = true;
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
   });
 
   it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
@@ -903,6 +925,34 @@ describe("AgentPage entity actions", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
     expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("keeps GitHub-owned fields read-only in the Chat draft adapter", async () => {
+    mockSourceManaged = true;
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    const snapshot = adapter!.read(adapter!.describe().binding);
+    expect(snapshot.writable).toBe(false);
+    expect(() =>
+      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" }),
+    ).toThrow(/read-only/);
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("stages a Chat edit in the visible unsaved form, then saves through the ordinary page action", async () => {

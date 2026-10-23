@@ -2,6 +2,7 @@ mod background;
 mod channels;
 mod http_layers;
 mod integrations;
+use integrations::optional_connection_resolver;
 mod listeners;
 mod pat_scope;
 use pat_scope::{PersonalAccessTokenRoutesWrapFn, apply_personal_access_token_routes_wrap};
@@ -79,17 +80,6 @@ pub(super) fn build_connection_resolver(
         github_app_token_minter(auth_config),
         egress,
     ))
-}
-
-fn optional_connection_resolver(
-    db: &Arc<StorageBackend>,
-    encryption: &Option<Arc<EncryptionService>>,
-    auth_config: &auth::AuthConfig,
-    egress: Arc<dyn everruns_core::EgressService>,
-) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
-    encryption
-        .as_ref()
-        .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
 }
 
 fn spawn_background_tasks(
@@ -1064,7 +1054,13 @@ impl ServerAppBuilder {
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
             user_connections_state.clone(),
         )))
-        .with_provider_services(provider_services.clone());
+        .with_provider_services(provider_services.clone())
+        .with_connection_resolver(optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            host_composition.egress_service(),
+        ));
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
             None => mcp_endpoint_state,
@@ -1074,6 +1070,10 @@ impl ServerAppBuilder {
             None => mcp_endpoint_state,
         };
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
+        let agent_source_ctx = api::mcp_endpoint::domain_context(
+            everruns_core::Caller::internal(0),
+            &mcp_endpoint_state,
+        );
 
         let health_state = health::HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
@@ -1454,6 +1454,7 @@ impl ServerAppBuilder {
         background::start_maintenance(
             &mut supervisor,
             background::MaintenanceDeps {
+                agent_source_ctx,
                 background_db: background_db.clone(),
                 background_pool: db.background_pool().clone(),
                 background_runner,

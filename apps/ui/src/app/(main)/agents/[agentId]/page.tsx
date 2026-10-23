@@ -1,5 +1,7 @@
 "use client";
 
+import { AgentSourcePanel } from "@/components/agents/agent-source";
+import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
 
 // Agent page: one layout for reading and editing an agent.
@@ -183,6 +185,8 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
 
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const sourceQuery = useAgentSource(agentId);
+  const sourceManaged = !!sourceQuery.data;
   const { data: harnesses } = useHarnesses();
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
@@ -217,7 +221,8 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   // them. Bindings (service account, triggers, credentials) stay editable.
   const builtIn = !!agent?.is_built_in;
   const statusReadOnly = isReadOnlyStatus(agent?.status);
-  const readOnly = builtIn || statusReadOnly;
+  const readOnly =
+    builtIn || statusReadOnly || sourceManaged || sourceQuery.isLoading || sourceQuery.isError;
   const editing = editRequested && !!agent && !readOnly;
   const [draftConflict, setDraftConflict] = useState(false);
   const previousAgentUpdate = useRef(agent?.updated_at);
@@ -448,7 +453,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   }
 
   const isActive = agent.status === "active";
-  const canEdit = isActive && !builtIn;
+  const canEdit = isActive && !readOnly;
   const sessionCount = agent.session_count;
   const displayName = getDisplayName(agent);
   const fixedSandbox = harnessInheritsFromName(
@@ -663,6 +668,10 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
               }
               actions={actions}
             />
+
+            {!editing && !builtIn && (
+              <AgentSourcePanel agentId={agentId} disabled={statusReadOnly} />
+            )}
 
             {editing && (
               <ChangeReasonField

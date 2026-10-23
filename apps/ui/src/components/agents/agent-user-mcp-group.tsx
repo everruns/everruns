@@ -53,29 +53,40 @@ function settingValue(config: Record<string, unknown>, setting: (typeof SETTINGS
 export function AgentUserMcpGroup({
   agent,
   attachments,
+  readOnly = false,
 }: {
   agent: Agent;
   attachments: AgentMcpAttachment[];
+  readOnly?: boolean;
 }) {
   const capability = agent.capabilities.find((c) => c.ref === USER_MCP_CAPABILITY_ID);
   if (!capability) return null;
-  return <UserMcpGroup agent={agent} attachments={attachments} config={capability.config ?? {}} />;
+  return (
+    <UserMcpGroup
+      agent={agent}
+      attachments={attachments}
+      config={capability.config ?? {}}
+      definitionReadOnly={readOnly}
+    />
+  );
 }
 
 function UserMcpGroup({
   agent,
   attachments,
   config,
+  definitionReadOnly,
 }: {
   agent: Agent;
   attachments: AgentMcpAttachment[];
   config: Record<string, unknown>;
+  definitionReadOnly: boolean;
 }) {
   const updateAgent = useUpdateAgent();
   const { data: myServers = [] } = useUserMcpServers("me");
   const [error, setError] = useState<string | null>(null);
 
-  const readOnly = agent.is_built_in === true;
+  const readOnly = definitionReadOnly || agent.is_built_in === true;
   const manage = settingValue(config, SETTINGS[1]);
   const byName = new Map(attachments.map((attachment) => [attachment.name, attachment]));
   const clashes = myServers.filter((server) => byName.has(server.name));

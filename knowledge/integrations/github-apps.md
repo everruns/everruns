@@ -65,6 +65,8 @@ to our callback.
   requests, and an `installation.new_permissions_accepted` delivery refreshes
   the stored scopes.
 
+- **Agent source sync consumes pushes too.** New Apps subscribe to `push`; verified deliveries wake only matching source bindings under the receiving identity. Source reconciliation does not start an Agent session, and periodic checks cover older Apps that have not subscribed. See [Agent sources](../runtime-resources/agent-sources.md).
+
 ## Where it lives
 
 - Service: `crates/server/src/github_apps.rs`

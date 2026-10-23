@@ -200,6 +200,12 @@ impl Command for CreateAgentChannel {
         }
         let agent = resolve_agent(ctx, &self.agent_id).await?;
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
+        crate::domains::agents::source::ensure_channel_writable(
+            ctx,
+            agent.id,
+            &self.req.channel_config,
+        )
+        .await?;
         let mut config = self.req.channel_config;
         // A builder may configure transport credentials, but cannot select an
         // arbitrary managed app for deletion via forged install metadata.
@@ -267,6 +273,16 @@ impl Command for UpdateAgentChannelCmd {
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if let Some(config) = &self.req.channel_config {
+            crate::domains::agents::source::ensure_channel_writable(
+                ctx,
+                agent.id,
+                &existing.channel_config,
+            )
+            .await?;
+            // A local channel cannot claim a source-owned package name either.
+            crate::domains::agents::source::ensure_channel_writable(ctx, agent.id, config).await?;
+        }
         if existing.channel_type == "slack" {
             // Cleanup must not be followed by a stale settings write restoring
             // the deleted app's credentials. Hold through the command commit.
@@ -450,6 +466,18 @@ impl Command for DeleteAgentChannel {
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
+        if let Some(existing) = ctx
+            .db
+            .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
+            .await?
+        {
+            crate::domains::agents::source::ensure_channel_writable(
+                ctx,
+                agent.id,
+                &existing.channel_config,
+            )
+            .await?;
+        }
         super::slack_cleanup::remove_channel_app(ctx, agent.id.uuid(), &self.channel_id).await?;
         let deleted = ctx
             .db

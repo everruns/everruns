@@ -21,7 +21,8 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone())
-    .with_github_apps(github_apps(state));
+    .with_github_apps(github_apps(state))
+    .with_connection_resolver(state.connection_resolver.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -49,7 +50,8 @@ pub(crate) fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone())
-    .with_github_apps(github_apps(state));
+    .with_github_apps(github_apps(state))
+    .with_connection_resolver(state.connection_resolver.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
     }
@@ -80,6 +82,14 @@ pub type SharedMcpOAuthChecker =
     Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>;
 
 impl AppState {
+    pub fn with_connection_resolver(
+        mut self,
+        resolver: Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
+    ) -> Self {
+        self.connection_resolver = resolver;
+        self
+    }
+
     pub fn with_provider_services(mut self, services: ProviderServices) -> Self {
         self.provider_services = Some(services);
         self
@@ -161,9 +171,14 @@ mod tests {
             None,
         )
         .with_provider_services(providers.provider_services())
+        .with_connection_resolver(Some(Arc::new(crate::storage::NoopConnectionResolver)))
     }
 
     fn assert_provider_services(ctx: &Ctx) {
+        assert!(
+            ctx.connection_resolver.is_some(),
+            "repository credential resolver missing"
+        );
         assert!(ctx.provider_service.is_some(), "provider service missing");
         assert!(
             ctx.model_sync_service.is_some(),

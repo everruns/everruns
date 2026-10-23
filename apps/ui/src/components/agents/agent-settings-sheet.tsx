@@ -190,7 +190,7 @@ export function AgentSettingsSheet({
                   onDraftChange={onDraftChange}
                 />
               )}
-              {active === "mcp" && <AgentMcpPanel agent={agent} />}
+              {active === "mcp" && <AgentMcpPanel agent={agent} readOnly={readOnly} />}
               {active === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
               {active === "service" && (
                 <AgentServiceAccount

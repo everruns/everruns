@@ -762,17 +762,24 @@ mod tests {
     #[test]
     fn discovery_score_saturates_for_many_matching_terms() {
         let query = "agent ".repeat(4_096);
+        let entry = crate::domains::common::catalog_entries_with_schemas(
+            false,
+            &crate::records::FeatureFlags::default(),
+        )
+        .into_iter()
+        .find(|entry| entry.name == "list_agents")
+        .expect("list_agents is in the catalog");
+        assert_eq!(catalog_entry_score(&entry, &query), u16::MAX);
+
         let output = discover_for_test(&json!({ "query": query, "include_schemas": false }))
             .expect("discovery with many matching terms");
         let value: Value = serde_json::from_str(&output).expect("discover JSON");
-        let names = value["operations"]
-            .as_array()
-            .expect("operations")
-            .iter()
-            .filter_map(|operation| operation["name"].as_str())
-            .collect::<Vec<_>>();
-
-        assert!(names.contains(&"list_agents"), "got {names:?}");
+        // Saturated ties may move as the catalog grows; discovery stays bounded.
+        assert!(
+            value["count"]
+                .as_u64()
+                .is_some_and(|count| (1..=12).contains(&count))
+        );
     }
 
     #[test]

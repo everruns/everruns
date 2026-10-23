@@ -406,6 +406,11 @@ pub fn declared(name: &str) -> Change {
         // Agents and what hangs off them.
         "create_agent" | "copy_agent" | "adopt_agent_example" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
+        "connect_agent_source" => on(K::Agent, Attached, Param("agent_id")),
+        "disconnect_agent_source" => on(K::Agent, Detached, Param("agent_id")),
+        "sync_agent_source" => {
+            Change::Exempt("queues reconciliation; the import records the actual change")
+        }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
@@ -717,6 +722,7 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
+        | "connect_agent_source"
         // Decodes and resizes an image (CPU) before the write.
         | "set_agent_avatar"
     )

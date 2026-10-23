@@ -85,3 +85,9 @@ binding fails. It includes instructions and configuration; assets are represente
 by relative paths, byte sizes, permissions and digests, never file bodies or resolved
 credentials. The UI reviews that same validated candidate and human-readable
 changes before import. Invalid dependencies disable applying the candidate.
+
+## Continuous sources
+
+[GitHub Agent sources](agent-sources.md) reconcile this same portable contract into
+a bound Agent. Source ownership is enforced by domain commands; the package stays
+independent of its deployment connection, branch and applied revision.

@@ -4073,6 +4073,267 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/source": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Get Agent source status",
+        "description": "Show the Agent's continuous GitHub source binding and sync status.",
+        "operationId": "get_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentSourceStatus"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Connect continuous GitHub source sync",
+        "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+        "operationId": "connect_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Disconnect Agent source sync",
+        "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+        "operationId": "disconnect_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/options": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Browse GitHub source locations",
+        "description": "Browse GitHub branches and Agent package paths.",
+        "operationId": "get_agent_source_options",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceOptionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/preview": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Preview Agent source changes",
+        "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+        "operationId": "preview_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceLocation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/source/sync": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Request an Agent source check",
+        "description": "Queue an immediate check of this Agent's GitHub source.",
+        "operationId": "sync_agent_source",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSourceStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/stats": {
       "get": {
         "tags": [
@@ -32669,6 +32930,90 @@
           }
         }
       },
+      "AgentSourceStatus": {
+        "type": "object",
+        "description": "Continuous GitHub source binding, applied revision and reconciliation status.",
+        "required": [
+          "generation",
+          "repository",
+          "branch",
+          "path",
+          "managed_channels",
+          "status"
+        ],
+        "properties": {
+          "applied_commit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last successfully applied commit; retained when a later revision fails.",
+            "example": "0123456789abcdef0123456789abcdef01234567"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch monitored for source updates.",
+            "example": "main"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Safe diagnostic for the latest failed check, without upstream credentials.",
+            "example": "Source package validation failed: missing capability"
+          },
+          "generation": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Binding generation used to detect a concurrent reconnect or disconnect.",
+            "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+          },
+          "last_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "UTC time when the source was last checked.",
+            "example": "2026-10-23T12:00:00Z"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "UTC time when a source revision was last applied successfully.",
+            "example": "2026-10-23T12:00:00Z"
+          },
+          "managed_channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Package channel names whose configuration is managed by the source.",
+            "example": [
+              "chat"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative package folder or manifest; empty means the root.",
+            "example": "agents/support"
+          },
+          "repository": {
+            "type": "string",
+            "description": "Selected GitHub repository in owner/name form.",
+            "example": "acme/agents"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current reconciliation state: pending, syncing, synced or error.",
+            "example": "synced"
+          }
+        }
+      },
       "AgentStatus": {
         "type": "string",
         "description": "Agent lifecycle status.\n- `active`: Agent is available for use\n- `archived`: Agent is hidden from listings and cannot be modified or assigned\n- `deleted`: Agent is a tombstone kept only for historical references",
@@ -35594,6 +35939,43 @@
           "context_budget",
           "cost_pressure"
         ]
+      },
+      "ConnectSourceRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SourceLocation",
+            "description": "Repository, branch and package path that were previewed."
+          },
+          {
+            "type": "object",
+            "required": [
+              "commit",
+              "agent_digest"
+            ],
+            "properties": {
+              "agent_digest": {
+                "type": "string",
+                "description": "Agent package digest returned by preview, protecting concurrent local edits.",
+                "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+              },
+              "commit": {
+                "type": "string",
+                "description": "Exact source commit returned by preview; a changed branch requires another preview.",
+                "example": "0123456789abcdef0123456789abcdef01234567"
+              },
+              "expected_generation": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "uuid",
+                "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
+                "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c"
+              }
+            }
+          }
+        ],
+        "description": "Reviewed package location and concurrency tokens required to enable source sync."
       },
       "ConnectedClient": {
         "type": "object",
@@ -63279,6 +63661,58 @@
               "type": "string"
             },
             "description": "Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result."
+          }
+        }
+      },
+      "SourceLocation": {
+        "type": "object",
+        "description": "Repository, branch and package path that define an Agent's GitHub source.",
+        "required": [
+          "repository",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string",
+            "description": "Branch whose future commits the Agent follows.",
+            "example": "main"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+            "example": "agents/support"
+          },
+          "repository": {
+            "type": "string",
+            "description": "GitHub repository in owner/name form.",
+            "example": "acme/agents"
+          }
+        }
+      },
+      "SourceOptionsRequest": {
+        "type": "object",
+        "description": "Repository location to browse before selecting an Agent source package.",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Branch to browse; omitted uses the repository's default branch.",
+            "example": "main"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative directory to browse; empty selects the root.",
+            "example": "agents"
+          },
+          "repository": {
+            "type": "string",
+            "description": "GitHub repository in owner/name form.",
+            "example": "acme/agents"
           }
         }
       },

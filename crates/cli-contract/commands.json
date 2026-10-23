@@ -1986,6 +1986,241 @@
     ]
   },
   {
+    "wire_name": "connect_agent_source",
+    "path": [
+      "agents",
+      "source"
+    ],
+    "verb": "connect",
+    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "method": "PUT",
+    "http_path": "/v1/agents/{agent_id}/source",
+    "args": [
+      {
+        "field": "agent_digest",
+        "long": "agent-digest",
+        "kind": "string",
+        "required": true,
+        "help": "Agent package digest returned by preview, protecting concurrent local edits."
+      },
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "branch",
+        "long": "branch",
+        "kind": "string",
+        "required": true,
+        "help": "Branch whose future commits the Agent follows."
+      },
+      {
+        "field": "commit",
+        "long": "commit",
+        "kind": "string",
+        "required": true,
+        "help": "Exact source commit returned by preview; a changed branch requires another preview."
+      },
+      {
+        "field": "expected_generation",
+        "long": "expected-generation",
+        "kind": "string",
+        "required": false,
+        "help": "Current binding generation when replacing a source; omit for an unbound Agent."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false,
+        "help": "Repository-relative package folder or manifest; empty selects the repository root."
+      },
+      {
+        "field": "repository",
+        "long": "repository",
+        "kind": "string",
+        "required": true,
+        "help": "GitHub repository in owner/name form."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Enable continuous sync using the commit and Agent digest returned by preview",
+        "command": "everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason \"Deploy the reviewed GitHub package\""
+      }
+    ]
+  },
+  {
+    "wire_name": "disconnect_agent_source",
+    "path": [
+      "agents",
+      "source"
+    ],
+    "verb": "disconnect",
+    "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{agent_id}/source",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Keep the last applied definition and restore local editing",
+        "command": "everruns agents source disconnect --agent-id agent_01h9 --reason \"Resume local editing\""
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_source",
+    "path": [
+      "agents",
+      "source"
+    ],
+    "verb": "get",
+    "description": "Show the Agent's continuous GitHub source binding and sync status.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/source",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See the applied GitHub revision and any sync error",
+        "command": "everruns agents source get --agent-id agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_agent_source_options",
+    "path": [
+      "agents",
+      "source",
+      "options"
+    ],
+    "verb": "get",
+    "description": "Browse GitHub branches and Agent package paths.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/source/options",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "branch",
+        "long": "branch",
+        "kind": "string",
+        "required": false,
+        "help": "Branch to browse; omitted uses the repository's default branch."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false,
+        "help": "Repository-relative directory to browse; empty selects the root."
+      },
+      {
+        "field": "repository",
+        "long": "repository",
+        "kind": "string",
+        "required": true,
+        "help": "GitHub repository in owner/name form."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find branches and package paths before choosing a source",
+        "command": "everruns agents source options get --agent-id agent_01h9 --repository acme/agents --branch main --path agents"
+      }
+    ]
+  },
+  {
+    "wire_name": "preview_agent_source",
+    "path": [
+      "agents",
+      "source"
+    ],
+    "verb": "preview",
+    "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/source/preview",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "branch",
+        "long": "branch",
+        "kind": "string",
+        "required": true,
+        "help": "Branch whose future commits the Agent follows."
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false,
+        "help": "Repository-relative package folder or manifest; empty selects the repository root."
+      },
+      {
+        "field": "repository",
+        "long": "repository",
+        "kind": "string",
+        "required": true,
+        "help": "GitHub repository in owner/name form."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review a repository package without changing the Agent",
+        "command": "everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support"
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_agent_source",
+    "path": [
+      "agents",
+      "source"
+    ],
+    "verb": "sync",
+    "description": "Queue an immediate check of this Agent's GitHub source.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/source/sync",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check the source now after pushing a repository change",
+        "command": "everruns agents source sync --agent-id agent_01h9 --reason \"Apply the latest repository change\""
+      }
+    ]
+  },
+  {
     "wire_name": "create_agent_trigger",
     "path": [
       "agents",

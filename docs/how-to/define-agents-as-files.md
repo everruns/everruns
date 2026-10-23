@@ -180,6 +180,63 @@ or resolved credentials. Diff requires
 `target` and returns `changed` and `changes`. Export formats are `markdown`
 (default), `toml`, `yaml`, `json` and `zip`.
 
+## Sync an Agent continuously from GitHub
+
+Open an existing Agent and select **Source → Sync from GitHub**. Connect the
+Agent's GitHub App in **Integrations** first, or choose an organization-linked
+Everruns App installation there. Select an accessible repository, its branch,
+and a package folder or standalone manifest. Leave the path empty for a package
+at the repository root. Use **Browse folder** to navigate, then **Preview changes**
+to review the same validation and changes as an import. Select **Enable continuous
+sync** to apply the reviewed commit and follow subsequent changes. Built-in
+Agents must be copied before connecting a source.
+
+A repository can contain several Agents, each in its own folder:
+
+```text
+agents/
+  support/
+    agent.toml
+    instructions.md
+    .agents/skills/triage/SKILL.md
+  reviewer/
+    agent.toml
+    instructions.md
+```
+
+Changes apply automatically after GitHub pushes. Periodic checks approximately
+every minute recover missed deliveries and work without a public webhook URL.
+New per-agent GitHub Apps subscribe to **Push** events. For an older App, enable
+that subscription in its GitHub settings for faster updates; periodic sync still
+works. The shared Everruns App needs the same subscription on its webhook.
+
+The **Source** panel shows the applied commit, last check, last successful sync,
+and errors. **Sync now** queues another check. A missing file, invalid package,
+missing destination dependency or lost GitHub access retains the last successful
+Agent. Reconnecting a changed GitHub connection requires selecting the source
+again. If a human configured the source, that person must retain Agent management
+permission in the organization.
+
+While connected, authored Agent configuration and package-owned channel settings
+are read-only in the UI, API, CLI and MCP. Edit them in GitHub. Credentials and
+channel publication remain destination bindings. Sync follows the existing
+Agent Files lifecycle and never rewrites existing session files. Export is still
+available; copying creates an editable Agent. **Disconnect** stops synchronization,
+retains the current definition and restores local editing. This mode syncs from
+GitHub only.
+
+The API exposes `GET`, `PUT` and `DELETE /v1/agents/{agent_id}/source`, plus
+`POST .../source/options`, `POST .../source/preview` and `POST .../source/sync`.
+Preview takes `repository`, `branch` and `path`; connecting supplies the returned
+`commit` and `agent_digest` alongside that selection. Changing an existing source
+also supplies its current `expected_generation`. If the reviewed source or Agent
+changed, preview again before connecting.
+
+The same operations are available under `everruns agents source --help`. Use
+`preview` to review a package, `connect` with the returned commit and digest to
+enable sync, `get` to inspect status, `sync` to request a check, and `disconnect`
+to restore local editing. Each command includes a worked example in its help.
+
 ## Platform Chat and MCP
 
 In Platform Chat, ask Everruns to validate, compare, import or export an agent

@@ -205,6 +205,21 @@ describe("AgentMcpPanel", () => {
     expect(screen.getByText("search_repositories")).toBeInTheDocument();
     expect(screen.getByText("get_file_contents")).toBeInTheDocument();
   });
+  it("keeps source-owned configuration read-only while allowing service authorization", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "connection_missing",
+      action: "authorize",
+      connected_as: null,
+    });
+    render(<AgentMcpPanel agent={agent} readOnly />);
+    expect(screen.getByRole("button", { name: "Add MCP server" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Load tools on demand" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Authorize" })).toBeInTheDocument();
+  });
+
   it("offers authorization for a missing service grant when allowed", () => {
     showAttachments({
       ...attachment,

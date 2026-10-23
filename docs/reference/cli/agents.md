@@ -64,6 +64,12 @@ Agent definitions and their configuration.
 | [`agents scripts get`](#agents-scripts-get) | Get a single saved script by id. |
 | [`agents scripts list`](#agents-scripts-list) | List an agent's saved scripts with their bodies. |
 | [`agents scripts update`](#agents-scripts-update) | Update a saved script's description, input schema or body. |
+| [`agents source connect`](#agents-source-connect) | Apply a reviewed GitHub package and enable continuous inbound sync. |
+| [`agents source disconnect`](#agents-source-disconnect) | Disconnect GitHub source sync and restore local editing. |
+| [`agents source get`](#agents-source-get) | Show the Agent's continuous GitHub source binding and sync status. |
+| [`agents source preview`](#agents-source-preview) | Validate and compare a GitHub Agent package without changing the Agent. |
+| [`agents source sync`](#agents-source-sync) | Queue an immediate check of this Agent's GitHub source. |
+| [`agents source options get`](#agents-source-options-get) | Browse GitHub branches and Agent package paths. |
 | [`agents triggers create`](#agents-triggers-create) | Create a schedule or webhook trigger for an agent. |
 | [`agents triggers delete`](#agents-triggers-delete) | Archive an agent trigger and remove its durable schedule. |
 | [`agents triggers get`](#agents-triggers-get) | Get a single agent trigger by id. |
@@ -1142,6 +1148,132 @@ Example:
 ```bash
 # Change a script's body, keeping its name
 everruns agents scripts update --agent-id agent_01h9 --script-id scr_01h9 --body 'cargo test --workspace --locked' --reason 'Pin tests to the lockfile'
+```
+
+## agents source connect
+
+Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+
+```bash
+everruns agents source connect [OPTIONS] --agent-digest <agent_digest> --agent-id <agent_id> --branch <branch> --commit <commit> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-digest <AGENT_DIGEST>` | Required. Agent package digest returned by preview, protecting concurrent local edits. |
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--commit <COMMIT>` | Required. Exact source commit returned by preview; a changed branch requires another preview. |
+| `--expected-generation <EXPECTED_GENERATION>` | Current binding generation when replacing a source; omit for an unbound Agent. |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Enable continuous sync using the commit and Agent digest returned by preview
+everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason "Deploy the reviewed GitHub package"
+```
+
+## agents source disconnect
+
+Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+
+```bash
+everruns agents source disconnect [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Keep the last applied definition and restore local editing
+everruns agents source disconnect --agent-id agent_01h9 --reason "Resume local editing"
+```
+
+## agents source get
+
+Show the Agent's continuous GitHub source binding and sync status.
+
+```bash
+everruns agents source get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# See the applied GitHub revision and any sync error
+everruns agents source get --agent-id agent_01h9
+```
+
+## agents source preview
+
+Validate and compare a GitHub Agent package without changing the Agent.
+
+```bash
+everruns agents source preview [OPTIONS] --agent-id <agent_id> --branch <branch> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Required. Branch whose future commits the Agent follows. |
+| `--path <PATH>` | Repository-relative package folder or manifest; empty selects the repository root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Review a repository package without changing the Agent
+everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support
+```
+
+## agents source sync
+
+Queue an immediate check of this Agent's GitHub source.
+
+```bash
+everruns agents source sync [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+
+Example:
+
+```bash
+# Check the source now after pushing a repository change
+everruns agents source sync --agent-id agent_01h9 --reason "Apply the latest repository change"
+```
+
+## agents source options get
+
+Browse GitHub branches and Agent package paths.
+
+```bash
+everruns agents source options get [OPTIONS] --agent-id <agent_id> --repository <repository>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. |
+| `--branch <BRANCH>` | Branch to browse; omitted uses the repository's default branch. |
+| `--path <PATH>` | Repository-relative directory to browse; empty selects the root. |
+| `--repository <REPOSITORY>` | Required. GitHub repository in owner/name form. |
+
+Example:
+
+```bash
+# Find branches and package paths before choosing a source
+everruns agents source options get --agent-id agent_01h9 --repository acme/agents --branch main --path agents
 ```
 
 ## agents triggers create
