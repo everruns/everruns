@@ -47,12 +47,16 @@ JSON or SSE parser. `worker/provider.js` supplies endpoint and credential policy
 journal, Framework binding, execution epoch and durable alarm. There is no custom
 turn state machine, celld runtime, container or sibling-example dependency.
 
-The source-only DO adapter implements Framework's public hosting SPI. The build
-produces both its authority Wasm module and the chat Engine module. Admission,
-history seeding and other session commands run shared Rust rules inside the DO's
-storage transaction; the application does not prepare trusted command effects.
+The source-only DO adapter implements Framework's public hosting SPI. One Engine
+Wasm module also exports the shared command reducer used inside the authority's
+storage transaction. The Worker imports `service.js` and installs those exports;
+it does not upload a second copy of the reducer. The application does not prepare
+trusted command effects.
 Each session retains its model at creation. Changing the host's `MODEL` default
 affects new sessions; recovery of existing sessions uses their original model.
+Pre-pinning memberships use `LEGACY_MODEL`, defaulting to the original Muse
+model. Set it to the historical model before upgrading an older custom
+deployment; `MODEL` selects the default for new sessions.
 
 ## What belongs to the application
 
@@ -81,7 +85,7 @@ code; Framework constructs model context.
 ```sh
 npm run build
 npm test
-npx wrangler deploy --dry-run
+npm run check:bundle
 ```
 
 Tests use actual workerd, SQLite, hibernatable WebSockets and alarms. They kill
@@ -93,8 +97,10 @@ driver while refusing a custom runner or sibling-example dependency.
 
 ## Deploy
 
-The current Wasm bundle exceeds Workers Free's 3 MiB compressed script limit;
-use a Cloudflare Workers Paid plan.
+Check the complete bundle with `npm run check:bundle`. Cloudflare's
+[current size limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)
+allow 64 MiB uncompressed on Free and Paid, with no compressed-size cap. Startup,
+CPU, memory, request and storage limits remain separate constraints.
 
 ```sh
 npx wrangler login
@@ -118,16 +124,18 @@ through Framework, and queued messages retain their original IDs. An unfinished
 legacy tool call is not replayed under the new runtime. Existing timer metadata
 and command receipts are retained. The old namespace must not be deleted.
 
-Build IDs hash application and shared runtime sources, manifests and locks. Keep
-matching immutable deployments available while sessions retain those bindings;
-a code-incompatible redeployment suspends existing Framework sessions rather
-than silently changing their behavior.
+Build IDs now identify the immutable Agent policy, independently of compatible
+Engine/adapter upgrades. `retained-builds.json` names the prior live and review
+builds that used the same factory. The build checks that factory's full digest;
+do not retarget these keys to changed instructions or tools. A future behavior
+revision must retain its previous factory and host tool contracts separately.
 
-The example registers only its current build and has no retained-build router
-or automatic Framework binding migration. A changed build cannot continue old
-sessions; retaining a Cloudflare version alone does not route those sessions.
-Test incompatible revisions in a separate Worker and namespaces. A long-lived
-deployment needs retained-build routing or an explicit migration before upgrade.
+Engine selects the persisted registration and validates the runtime format.
+Unsupported code or formats suspend execution while keeping history. The room
+snapshot exposes compatibility and suspension diagnostics, and the browser shows
+a paused state. Restoring code and explicitly calling Framework's checked
+`Engine::retry_session` can resume a compatibility suspension; the demo has no
+browser retry control or automatic binding-rewrite migration.
 
 This is experimental hosting for small demo rooms. There is no automatic
 compaction, individual identity or production quota system. Shared access permits

@@ -88,6 +88,52 @@ project's smaller compressed budget remains deliberate. Raw Engine Wasm is large
 than 3 MB and does not claim to meet a 3 MB uncompressed deployment restriction.
 Runtime startup time and memory are separate platform constraints.
 
+## Multiplayer chat host
+
+`examples/cloudflare-durable-chat` uses ordinary Framework Agents and Engine
+with the source-only `ObjectHosting` adapter and shared OpenRouter driver. Every
+conversation and history-search child has its own native Cloudflare authority,
+canonical journal, execution epoch and alarm. There is no celld runtime,
+sibling-example dependency, external executor or custom turn loop. Its
+[hosting audit](../../examples/cloudflare-durable-chat/test/hosting-contract.mjs)
+checks that dependency boundary. The Worker installs the authority command
+exports from its Engine Wasm and imports the storage service directly, avoiding
+a second reducer upload.
+
+The Agent identity hashes immutable application policy instead of Framework
+sources and locks. Historical live/review registrations retain that same
+verified factory; a digest guard prevents silently retargeting their keys to
+changed Agent code. Future behavior revisions need retained factories and
+compatible room tool contracts. Model selection is retained per session.
+Pre-pinning memberships capture a separately declared historical model rather
+than the new-session default; custom deployments must supply their original
+selection when upgrading that old shape. Engine
+checks runtime compatibility and the exact registration; unsupported code pauses
+execution without hiding history. Room snapshots expose those diagnostics and
+the browser shows a paused state. Framework provides explicit checked retry
+after code restoration; the chat does not yet expose a browser retry control.
+
+A separate room DO owns membership, presence, forks, receipts, reminders and a
+durable delivery outbox. Stable Framework message identities deduplicate lost
+cross-object acknowledgements. Tool effects and child ownership use Framework's
+execution identity, including the assistant tool-call message. Search-derived
+answers and search children are excluded from evidence; fork imports preserve
+that provenance without copying pending tools or execution ownership.
+
+The old room payload is backed up before importing settled history, and queued
+messages retain their identities. Room application state is still one JSON row
+with small-demo bounds, no automatic compaction or per-user budget controls.
+Optional shared access is not individual identity or room-level authorization.
+These remain application concerns; native SQLite host services do not implicitly
+provide equivalent ports for an object adapter.
+
+The [walkthrough](../../docs/framework/examples/durable-chat.md) owns setup and
+deployment procedures. Its [workerd suite](../../examples/cloudflare-durable-chat/test/chat-e2e.mjs)
+and [CI](../../.github/workflows/cloudflare-durable-chat.yml) cover retained
+registration/model selection, forks, lost acknowledgements and autonomous
+search/reminder recovery. Platform limits and measured bundle size must be
+reported separately from any project artifact budget.
+
 ## Host requirements
 
 Native filesystem/process tools require explicit compatible host services, or

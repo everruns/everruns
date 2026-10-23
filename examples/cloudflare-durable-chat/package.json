@@ -7,7 +7,8 @@
     "dev": "wrangler dev --local",
     "deploy": "npm run build && wrangler deploy",
     "test": "node --test test/room-state.test.mjs && npm run check:hosting && node test/chat-e2e.mjs",
-    "check:hosting": "node --test test/hosting-contract.mjs"
+    "check:hosting": "node --test test/hosting-contract.mjs",
+    "check:bundle": "node check-bundle.mjs"
   },
   "devDependencies": {
     "wrangler": "4.151.1"

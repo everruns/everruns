@@ -49,11 +49,11 @@ jobs:
         run: |
           npm ci
           cargo install wasm-bindgen-cli --version 0.2.129 --locked
-      - name: Build authority commands and the Framework Engine
+      - name: Build the Framework Engine and shared authority command exports
         run: npm run build
       - name: Lint the Wasm integration
         run: cargo clippy --locked --target wasm32-unknown-unknown --all-targets -- -D warnings
       - name: Test room semantics and autonomous recovery on workerd
         run: npm test
       - name: Check the production Worker bundle
-        run: npx wrangler deploy --dry-run
+        run: npm run check:bundle

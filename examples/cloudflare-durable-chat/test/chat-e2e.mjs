@@ -138,6 +138,8 @@ const config = {
   migrations: [{ tag: "v1", new_sqlite_classes: ["ChatRoom", "ChatSession"] }],
   vars: {
     MODEL: "scripted",
+    LEGACY_MODEL: "scripted",
+    TEST_CREATION_BUILD: "chat-71eae7eb9de56959711746bb",
     TENANT_ID: "chat",
     AUTHORITY_TOKEN: "test-authority-secret-at-least-32-characters",
     CHAT_ACCESS_TOKEN: "test-access",
@@ -396,6 +398,8 @@ try {
   a.ws.close();
   await send(first, "We chose PostgreSQL for the event store.", "fact"); // retry same command after disconnect
   const firstState = await until("first turn", () => idle(first));
+  assert.equal(firstState.execution.compatibility.status, "available");
+  assert.equal(firstState.execution.build_id, config.vars.TEST_CREATION_BUILD);
   assert.equal(firstState.messages.filter((m) => m.role === "user").length, 1);
   assert.equal(calls.filter((c) => c.metadata.session_id === first).length, 1);
   const completion = firstState.activity.find(
@@ -441,6 +445,8 @@ try {
   // Host configuration may change on restart. Existing sessions must reconstruct
   // their retained model; only newly created sessions adopt the new default.
   config.vars.MODEL = "changed-host-model";
+  config.vars.TEST_LEGACY_MEMBERSHIP_SESSION = first;
+  delete config.vars.TEST_CREATION_BUILD;
   await writeFile(join(temp, "wrangler.json"), JSON.stringify(config));
   processHandle = start();
   await until(
@@ -467,6 +473,8 @@ try {
   );
   assert.equal(answer.queued, 0);
   assert.ok(answer.messages.at(-1).text.includes("PostgreSQL"));
+  assert.equal(answer.execution.build_id, "chat-71eae7eb9de56959711746bb");
+  assert.equal(answer.execution.compatibility.status, "available");
   assert.ok(
     calls.slice(before).every((c) => c.model === "scripted"),
     "recovered sessions must keep their original model after host config changes",
@@ -515,10 +523,26 @@ try {
   const fresh = (await create("create-new-model", "New default")).conversation;
   await send(fresh, "Use the new default", "new-model");
   await until("new model turn", () => idle(fresh));
+  assert.notEqual(
+    (await idle(fresh)).execution.build_id,
+    "chat-71eae7eb9de56959711746bb",
+    "new sessions use the current Agent registration while old bindings stay intact",
+  );
   assert.equal(
     calls.find((c) => c.metadata.session_id === fresh).model,
     "changed-host-model",
     "new sessions adopt the configured default",
+  );
+  await send(
+    first,
+    "Continue after the legacy upgrade.",
+    "legacy-model-upgrade",
+  );
+  await until("legacy membership continues", () => idle(first));
+  assert.equal(
+    calls.filter((c) => c.metadata.session_id === first).at(-1).model,
+    "scripted",
+    "pre-pinning memberships must use the historical model, not the new default",
   );
   console.log(
     "chat e2e: shared sockets, reconnect deduplication, forks, isolation, search recovery, and scheduled wake after restart passed",

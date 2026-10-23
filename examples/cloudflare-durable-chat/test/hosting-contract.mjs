@@ -4,6 +4,7 @@ import { readFile, access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createHash } from "node:crypto";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -74,12 +75,24 @@ test("the app uses Framework hosting and only native Cloudflare objects", async 
   assert.match(worker, /crates\/durable-object\/worker/);
   assert.doesNotMatch(worker, /celld|examples\//);
   await access(join(root, "pkg/everruns_cloudflare_durable_chat_bg.wasm"));
-  // SessionAuthority imports this module and invokes it inside its transaction.
-  // A build of the chat Engine alone is no longer a complete Worker deployment.
-  await access(
-    join(
-      root,
-      "../../crates/durable-object/worker/pkg/everruns_durable_object_bg.wasm",
-    ),
+  assert.match(
+    worker,
+    /installSessionCommands\(session_command, session_command_key\)/,
   );
+  assert.doesNotMatch(worker, /worker\/src\/index\.js/);
+  const retained = JSON.parse(
+    await readFile(join(root, "retained-builds.json"), "utf8"),
+  );
+  const policy = createHash("sha256")
+    .update(await readFile(join(root, "src/agent.rs")))
+    .digest("hex");
+  assert.equal(
+    policy,
+    retained.policy_sha256,
+    "retained registrations need their exact factory",
+  );
+  const build = JSON.parse(
+    await readFile(join(root, "worker/build.json"), "utf8"),
+  );
+  assert.equal(build.build_id, `chat-${policy.slice(0, 24)}`);
 });

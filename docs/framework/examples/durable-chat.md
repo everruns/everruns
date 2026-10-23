@@ -75,12 +75,15 @@ recovery, iteration limits and completion metadata. The application does not
 assemble core runtime backends or author canonical agent events.
 
 `ObjectHosting` is a source-only adapter implementing Framework's public hosting
-SPI. The build also compiles its shared Rust command reducer to Wasm. The
-authority invokes that reducer inside its SQLite transaction for admission,
+SPI. The Engine Wasm module also exports the shared Rust command reducer. The
+authority installs those exports and invokes them inside its SQLite transaction for admission,
 history seeding and other session commands; JavaScript only supplies storage and
 activation glue. Command validation and idempotency rules stay in shared Rust.
 The session also retains its model at creation, so changing the host's `MODEL`
 default does not change an existing session's behavior during recovery.
+For older memberships that predate model pinning, `LEGACY_MODEL` supplies the
+historical selection and defaults to the original Muse model. Set it explicitly
+before upgrading an old custom deployment that used another model.
 
 The shared OpenRouter driver handles Responses request encoding, streaming,
 provider options, retries, error mapping and usage metadata. The host adapter
@@ -173,8 +176,11 @@ hosting and driver code.
 
 ## Storage and deployment limits
 
-The current Wasm bundle exceeds the 3 MiB compressed script limit on Workers
-Free and requires a Workers Paid plan.
+Measure the complete upload with `npm run check:bundle`.
+Cloudflare's [current size limit](https://developers.cloudflare.com/workers/platform/limits/#worker-size)
+is 64 MiB uncompressed on Free and Paid, with no compressed-size cap. The bundle
+contains one Engine Wasm module, including the authority's command exports.
+Startup time, CPU, memory and usage limits must be checked separately.
 
 An existing deployment retains its ChatRoom namespace. On first access the old
 room payload is backed up, settled user/assistant text is imported through
@@ -182,17 +188,19 @@ Framework, and queued messages retain their original identities. Unfinished
 legacy tool calls are not replayed under the new runtime. Room receipts and
 schedule metadata remain available.
 
-A build ID hashes application and runtime inputs. Retain matching immutable
-builds while sessions depend on them; incompatible activation suspends the
-session instead of silently changing its executable definition.
+A build ID identifies immutable Agent policy, independently of compatible
+Framework rebuilds. The Engine registers the current policy and the older live
+and review keys in `retained-builds.json`. A digest check prevents those keys
+from silently referring to changed Agent code. Future behavior changes must
+retain the old factory and compatible host services alongside the new one.
 
-This example registers only the current build. It does not route sessions to
-retained older executors or migrate existing Framework bindings automatically.
-An ordinary redeployment with changed runtime inputs therefore prevents old
-sessions from continuing. Keeping a Cloudflare version alone does not provide
-per-session routing. Use a separate Worker and namespaces to try an incompatible
-revision, or implement retained-build routing or an explicit migration before
-upgrading a long-lived deployment.
+Engine checks the persisted runtime format and exact registration before
+execution. Missing or unsupported implementations suspend without hiding
+history; snapshots expose compatibility diagnostics and the UI shows a paused
+state. After restoring the code, Framework's explicit `Engine::retry_session`
+checks the binding and absence of a live epoch before clearing a compatibility
+suspension. It does not clear uncertain effects. The chat has no browser retry
+control or automatic binding-rewrite migration.
 
 Rooms use a JSON metadata document without automatic compaction. Shared access
 is not individual identity or tenant authorization, and deployers own production

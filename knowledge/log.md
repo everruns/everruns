@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-23
+
+* **Chat adopts retained Engine registrations.** Rebase the Cloudflare demo on
+  current Framework, keep immutable Agent identity across compatible runtime
+  upgrades, retain the verified earlier live/review keys, and show compatibility
+  suspensions. Preserve the historical model for pre-pinning memberships when
+  the new-session default changes. Reuse command exports from one Engine Wasm
+  instead of uploading
+  a second reducer. Correct the obsolete Workers compressed-size restriction.
+  See [The isolate host](framework/wasm-kernel.md).
+
 ## 2026-10-21
 
 * **Large-catalog shipping contracts.** Custom egress adapters support bounded

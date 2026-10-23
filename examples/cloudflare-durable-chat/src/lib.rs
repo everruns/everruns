@@ -63,18 +63,33 @@ fn engine(
         })
     });
     let model = Model::new(model, Provider::from_driver("openrouter", driver));
-    let engine = Engine::builder()
-        .hosting(hosting.clone())
-        .register(
-            AgentBuild::new("durable-chat", BUILD),
-            agent::chat(model.clone(), false, handler.clone()).map_err(|_| invalid())?,
-        )
-        .register(
-            AgentBuild::new("history-search", BUILD),
-            agent::chat(model, true, handler).map_err(|_| invalid())?,
-        )
-        .build();
-    Ok((engine, hosting))
+    // The live and prior review builds used this exact Agent policy. The build
+    // checks its digest; changing behavior requires retaining a separate factory.
+    let retained: Value =
+        serde_json::from_str(include_str!("../retained-builds.json")).map_err(|_| invalid())?;
+    let policy = retained["policy_sha256"].as_str().ok_or_else(invalid)?;
+    let mut builds: Vec<String> =
+        if policy.get(..24).map(|id| format!("chat-{id}")) == Some(BUILD.to_string()) {
+            serde_json::from_value(retained["build_ids"].clone()).map_err(|_| invalid())?
+        } else {
+            // A direct development Cargo build has no checked policy identity.
+            // Never label a different factory with a historical registration key.
+            Vec::new()
+        };
+    builds.push(BUILD.to_string());
+    let mut builder = Engine::builder().hosting(hosting.clone());
+    for build in builds {
+        builder = builder
+            .register(
+                AgentBuild::new("durable-chat", &build),
+                agent::chat(model.clone(), false, handler.clone()).map_err(|_| invalid())?,
+            )
+            .register(
+                AgentBuild::new("history-search", &build),
+                agent::chat(model.clone(), true, handler.clone()).map_err(|_| invalid())?,
+            );
+    }
+    Ok((builder.build(), hosting))
 }
 
 fn invalid() -> JsValue {
@@ -107,8 +122,13 @@ async fn wait_for_admission(
 
 // Coalesce read-only queries inside the session DO. A room snapshot stays below
 // Cloudflare's outbound subrequest budget even with many conversations.
-async fn view(api: &SessionApi, session: everruns::SessionId) -> HostingResult<Value> {
-    let status = api.handle(session, "status", json!({})).await?;
+async fn view(
+    engine: &Engine,
+    api: &SessionApi,
+    session: everruns::SessionId,
+) -> HostingResult<Value> {
+    let mut status = api.handle(session, "status", json!({})).await?;
+    status["compatibility"] = json!(engine.session_compatibility(session).await?);
     let mut events = Vec::new();
     let mut cursor = Value::Null;
     loop {
@@ -164,6 +184,7 @@ pub async fn request(
         .ok_or_else(invalid)?
         .to_string();
     let kind = configuration["kind"].as_str().ok_or_else(invalid)?;
+    let build = configuration["build_id"].as_str().unwrap_or(BUILD);
     let session = session.parse().map_err(|_| invalid())?;
     let body: Value = serde_json::from_str(&body).map_err(|_| invalid())?;
     let (engine, hosting) = engine(tenant, authority, provider, tools, model)?;
@@ -177,9 +198,9 @@ pub async fn request(
     } else if operation == "wait" {
         wait_for_admission(&engine, session, &body).await
     } else {
-        let api = SessionApi::new(engine, AgentBuild::new(kind, BUILD));
+        let api = SessionApi::new(engine.clone(), AgentBuild::new(kind, build));
         if operation == "view" {
-            view(&api, session).await
+            view(&engine, &api, session).await
         } else {
             api.handle(session, &operation, body).await
         }
