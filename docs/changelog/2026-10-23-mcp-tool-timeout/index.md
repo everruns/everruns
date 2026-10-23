@@ -20,7 +20,11 @@ other `mcpServers` config files use, is also accepted:
 ```json
 {
   "mcpServers": {
-    "ci": { "type": "http", "url": "https://ci.example.com/mcp", "tool_timeout_ms": 600000 }
+    "ci": {
+      "type": "http",
+      "url": "https://ci.example.com/mcp",
+      "tool_timeout_ms": 600000
+    }
   }
 }
 ```
