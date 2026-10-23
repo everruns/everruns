@@ -160,6 +160,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -1545,6 +1552,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -4431,6 +4445,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -7477,6 +7498,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -16301,6 +16329,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -16882,6 +16917,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -18714,6 +18756,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -21378,6 +21427,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -24328,6 +24384,13 @@
               "deferred": {
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
+              },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",

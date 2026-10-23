@@ -1031,7 +1031,10 @@ jobs:
     # A docs/framework-only change still runs, but only the facade-cli leg
     # does work: it compiles the Framework docs snippets (crates/docs-snippets).
     if: (needs.changes.outputs.mode != 'pr' || needs.changes.outputs.rust != 'true') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_snippets == 'true')
-    timeout-minutes: 30
+    # 40: facade-cli adds ~9 serial integration-crate invocations in nightly/full
+    # mode. It took 28m in the 2026-10-22 nightly and hit the old 30m limit in the
+    # full run 39749578382, while running those extras with every test passing.
+    timeout-minutes: 40
 
 
     # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
@@ -1563,7 +1566,7 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Install pi-poppy and Datalayer's PAP library
         if: ${{ matrix.shard == 'domain' }}
@@ -1640,7 +1643,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    timeout-minutes: 20
+    # 30, like the S3 job sharing this cache: when the `integration-v2` and sqlx
+    # caches are both evicted, installing sqlx-cli from source (~8m) plus a cold
+    # server test build overran 20 and cancelled the 2026-10-21 nightly.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -2620,7 +2626,7 @@ jobs:
         if: matrix.language == 'typescript'
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Setup Python
         if: matrix.language == 'python'
@@ -2740,7 +2746,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2798,7 +2804,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2884,7 +2890,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2994,7 +3000,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/docs/pnpm-lock.yaml
 

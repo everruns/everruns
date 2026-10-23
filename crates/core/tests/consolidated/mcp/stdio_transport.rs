@@ -36,8 +36,9 @@ async fn lists_tools_over_stdio() {
         .list_tools(&fixture_connection(), None)
         .await
         .unwrap();
-    assert_eq!(tools.len(), 1);
+    assert_eq!(tools.len(), 2);
     assert_eq!(tools[0].name, "echo");
+    assert_eq!(tools[1].name, "echo_length");
 }
 
 #[tokio::test]

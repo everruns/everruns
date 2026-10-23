@@ -47,6 +47,8 @@ mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
 pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
 pub use shared_client::SharedClient;
+mod mcp_definitions;
+use mcp_definitions::proto_mcp_tool_def_to_tool_definition;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
@@ -1722,39 +1724,6 @@ pub async fn load_turn_context_for_execution(
         messages,
         model,
         mcp_tool_definitions,
-    })
-}
-
-/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations and
-/// any saved risk label; an older server sends none, so default to open_world.
-fn proto_mcp_tool_def_to_tool_definition(
-    t: proto::McpToolDef,
-) -> everruns_contracts::tool_types::ToolDefinition {
-    use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
-    let parameters = t.parameters.map(|s| proto_struct_to_json(&s));
-    let mut hints = ToolHints {
-        readonly: t.readonly,
-        destructive: t.destructive,
-        idempotent: t.idempotent,
-        open_world: Some(t.open_world.unwrap_or(true)),
-        ..Default::default()
-    };
-    if !t.capability_id.is_empty() {
-        hints = hints.with_capability_attribution(
-            t.capability_id.clone(),
-            (!t.capability_name.is_empty()).then_some(t.capability_name.clone()),
-        );
-    }
-    ToolDefinition::Builtin(BuiltinTool {
-        name: t.name,
-        display_name: t.display_name,
-        description: t.description,
-        parameters: parameters.unwrap_or_else(|| serde_json::json!({"type": "object"})),
-        policy: everruns_contracts::tool_types::ToolPolicy::Auto, // MCP tools are auto-executed
-        category: None,
-        deferrable: Default::default(),
-        hints,
-        full_parameters: None,
     })
 }
 

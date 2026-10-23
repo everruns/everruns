@@ -277,20 +277,31 @@ impl ToolsBuiltin {
         }
         let catalog = self.catalog();
         let matches = catalog.search(&query, SEARCH_LIMIT);
-        if matches.is_empty() {
+        let source_matches = catalog.source_matches(&query, SEARCH_LIMIT);
+        if matches.is_empty() && source_matches.is_empty() {
             return text(format!(
                 "No tools match `{query}`. Run `tools --help` to list everything.\n"
             ));
         }
         let mut out = String::new();
-        for entry in matches {
+        for entry in &matches {
             out.push_str(&format!(
                 "{}  {}\n",
                 entry.command_line(),
                 super::catalog::first_sentence(entry.tool.description())
             ));
         }
-        out.push_str("\nRun `<line> --help` for a tool's input.\n");
+        if !matches.is_empty() {
+            out.push_str("\nRun `<line> --help` for a tool's input.\n");
+        }
+        if !source_matches.is_empty() {
+            out.push_str("\nServer description matches (browse these servers; these are not operation matches):\n");
+            for source in source_matches {
+                out.push_str(&format!(
+                    "  {source}  Run `tools {source} --help` to browse its operations; refine search with an operation name.\n"
+                ));
+            }
+        }
         text(out)
     }
 
@@ -300,6 +311,18 @@ impl ToolsBuiltin {
     /// reveal, and the script is told to try again on the next step.
     async fn load(&self, pending: &Pending) -> Result<(), ExecResult> {
         let server = &pending.source;
+        if self
+            .context
+            .visible_tool_names
+            .as_ref()
+            .is_some_and(|visible| !visible.contains(pending.placeholder.name()))
+        {
+            return Err(error(
+                code::DENIED,
+                "MCP server is outside the current operation scope",
+                false,
+            ));
+        }
         let Some(invoker) = self.context.mcp_invoker.clone() else {
             return Err(error(
                 code::UNAVAILABLE,
@@ -310,7 +333,7 @@ impl ToolsBuiltin {
         let listing = invoker
             .list_server_tools(&pending.prefix, self.context.session_id.uuid())
             .await;
-        let definitions = match listing {
+        let mut definitions = match listing {
             Ok(Some(McpServerTools::Listed(definitions))) => definitions,
             Ok(Some(McpServerTools::ConnectionRequired(result))) => {
                 return Err(error(
@@ -340,7 +363,7 @@ impl ToolsBuiltin {
                 ));
             }
         };
-        self.reveal(pending).await;
+        inherit_mcp_server_search_context(pending, &mut definitions);
         // Keep the parent turn's guard while narrowing to the newly listed tools.
         let invoker = Arc::new(ScopedMcpToolInvoker::new(&definitions, invoker));
         let tools = build_mcp_proxy_tools(&definitions, invoker)
@@ -353,7 +376,10 @@ impl ToolsBuiltin {
             server = %pending.prefix,
             "deferred MCP server loaded from shell"
         );
-        self.catalog().add_loaded(&pending.prefix, tools);
+        if let Err(message) = self.catalog().add_loaded(&pending.prefix, tools) {
+            return Err(error(code::UNAVAILABLE, message, false));
+        }
+        self.reveal(pending).await;
         Ok(())
     }
 
@@ -377,6 +403,24 @@ impl ToolsBuiltin {
         arguments: Value,
         ctx: &bashkit::BuiltinContext<'_>,
     ) -> ExecResult {
+        if self
+            .context
+            .visible_tool_names
+            .as_ref()
+            .is_some_and(|visible| {
+                !visible.contains(&entry.tool_name)
+                    && !entry
+                        .scope_parent
+                        .as_ref()
+                        .is_some_and(|parent| visible.contains(parent))
+            })
+        {
+            return error(
+                code::DENIED,
+                "tool is outside the current operation scope",
+                false,
+            );
+        }
         let Some(policy) = self.context.nested_tool_policy.clone() else {
             return error(
                 code::UNAVAILABLE,
@@ -490,6 +534,65 @@ impl ToolsBuiltin {
             "tools call from shell"
         );
         render(entry, result, ctx).await
+    }
+}
+
+/// MCP listings can lose source context between turn-context construction and
+/// `list_server_tools`. Carry the authorized placeholder's canonical source
+/// metadata onto each listed operation so later CLI searches can still match
+/// the server after it has been loaded.
+fn inherit_mcp_server_search_context(
+    pending: &Pending,
+    definitions: &mut [everruns_contracts::tool_types::ToolDefinition],
+) {
+    let placeholder = pending.placeholder.to_definition();
+    let source_metadata = match &placeholder {
+        everruns_contracts::tool_types::ToolDefinition::Builtin(tool) => tool
+            .hints
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("mcp_server"))
+            .filter(|metadata| metadata.is_object())
+            .cloned(),
+        everruns_contracts::tool_types::ToolDefinition::ClientSide(_) => None,
+    };
+    let source_name = source_metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("name"))
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(pending.prefix.as_str());
+    let source_description = source_metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("description"))
+        .and_then(Value::as_str)
+        .filter(|description| !description.trim().is_empty())
+        .unwrap_or_else(|| pending.placeholder.description());
+    let inherited = serde_json::Map::from_iter([
+        ("name".to_string(), json!(source_name)),
+        ("description".to_string(), json!(source_description)),
+    ]);
+
+    for definition in definitions {
+        let everruns_contracts::tool_types::ToolDefinition::Builtin(tool) = definition else {
+            continue;
+        };
+        let metadata = tool.hints.metadata.get_or_insert_with(|| json!({}));
+        let Some(metadata) = metadata.as_object_mut() else {
+            // Preserve opaque metadata exactly; there is no safe way to add a
+            // sibling field to a non-object value.
+            continue;
+        };
+        let server_context = metadata.entry("mcp_server").or_insert_with(|| json!({}));
+        if !server_context.is_object() {
+            *server_context = json!({});
+        }
+        let Some(server_context) = server_context.as_object_mut() else {
+            continue;
+        };
+        for (key, value) in &inherited {
+            server_context.insert(key.clone(), value.clone());
+        }
     }
 }
 

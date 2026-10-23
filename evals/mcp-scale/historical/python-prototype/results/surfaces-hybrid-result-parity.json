@@ -1,0 +1,29 @@
+{
+  "task_passed": true,
+  "checks": {
+    "runtime_completed": true,
+    "native_call_succeeded": true,
+    "shell_call_succeeded": true,
+    "shell_result_untruncated": true,
+    "expected_nested_operation": true,
+    "complete_ticket_results_equal": true,
+    "matches_fixture_ticket": true
+  },
+  "native_ticket": {
+    "comments": [],
+    "linked_incident": "INC-427",
+    "owner": "Ava Li",
+    "status": "in_progress",
+    "ticket_id": "OPS-8421",
+    "title": "Investigate billing-api staging 5xx after 3.8.1"
+  },
+  "cli_ticket": {
+    "comments": [],
+    "linked_incident": "INC-427",
+    "owner": "Ava Li",
+    "status": "in_progress",
+    "ticket_id": "OPS-8421",
+    "title": "Investigate billing-api staging 5xx after 3.8.1"
+  },
+  "scope": "Result parity for the synthetic gateway adapters; not a cache or retrieval benchmark."
+}

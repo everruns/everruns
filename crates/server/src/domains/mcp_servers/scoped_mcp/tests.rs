@@ -147,9 +147,14 @@ impl EgressService for CatalogPreviewEgress {
 
     async fn send_stream(
         &self,
-        _request: everruns_core::EgressRequest,
+        request: everruns_core::EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        panic!("MCP discovery should not use streaming egress")
+        let response = self.send(request).await?;
+        Ok(everruns_core::EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter(vec![Ok(response.body)])),
+        })
     }
 }
 
@@ -158,6 +163,24 @@ fn scoped_server(url: &str) -> ScopedMcpServer {
         url: url.to_string(),
         ..Default::default()
     }
+}
+
+#[tokio::test]
+async fn listed_tool_search_uses_attached_server_description() {
+    let mut server = scoped_server("http://8.8.8.8/mcp");
+    server.description = Some("Geothermal drilling telemetry records".to_string());
+    let servers = ScopedMcpServers::from([("geothermal".to_string(), server)]);
+    let definitions =
+        build_scoped_mcp_tool_definitions(&servers, None, None, &CatalogPreviewEgress::default())
+            .await
+            .unwrap();
+
+    let hits = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions)
+        .search("drilling telemetry", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "mcp_geothermal__echo");
+    assert!(hits[0].server_match);
+    assert!(!hits[0].tool_match);
 }
 fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
     ScopedMcpServer {
@@ -1013,6 +1036,44 @@ async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
     assert_eq!(egress.calls.load(Ordering::SeqCst), 6);
 }
+
+#[tokio::test]
+async fn listed_catalog_tool_search_uses_preset_description() {
+    let db = StorageBackend::test_database();
+    let preset_id = seed_catalog_server(&db, "geothermal", false).await;
+    db.update_mcp_server(
+        everruns_core::DEFAULT_ORG_ID,
+        preset_id.uuid(),
+        UpdateMcpServer {
+            description: Some("Geothermal drilling telemetry records".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let servers = ScopedMcpServers::from([(
+        "geothermal".to_string(),
+        catalog_server("geothermal", McpServerActsAs::None),
+    )]);
+
+    let definitions = build_materialized_scoped_mcp_tool_definitions(
+        &db,
+        everruns_core::DEFAULT_ORG_ID,
+        &servers,
+        None,
+        None,
+        &CatalogPreviewEgress::default(),
+    )
+    .await
+    .unwrap();
+    let hits = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&definitions)
+        .search("drilling telemetry", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "mcp_geothermal__echo");
+    assert!(hits[0].server_match);
+    assert!(!hits[0].tool_match);
+}
+
 #[tokio::test]
 async fn runtime_catalog_discovery_without_cache_identity_fails_closed() {
     let db = StorageBackend::test_database();
