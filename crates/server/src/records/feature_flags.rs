@@ -22,6 +22,9 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
+    /// Page-aware split Chat. Organization Adoption opt-in.
+    #[serde(default)]
+    pub chat_mode: bool,
     /// Organization-scoped live execution monitoring. Adoption opt-in.
     #[serde(default)]
     pub monitoring: bool,
@@ -125,6 +128,12 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// One catalog for platform flags, including infrastructure capabilities.
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "chat_mode",
+        label: "Chat mode",
+        description: "Work with Platform Chat beside the current page. Agents show saved changes with undo.",
+        grade: FeatureFlagGrade::Adoption,
+    },
     FeatureFlagDefinition {
         name: "dreaming",
         label: "Dreaming",
@@ -339,6 +348,7 @@ impl FeatureFlags {
             ("lua".to_string(), self.lua),
             ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
+            ("chat_mode".to_string(), self.chat_mode),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
@@ -374,6 +384,7 @@ impl FeatureFlags {
             "lua" => self.lua,
             "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
+            "chat_mode" => self.chat_mode,
             "evals" => self.evals,
             "skills" => self.skills,
             "memory" => self.memory,
@@ -413,6 +424,7 @@ impl FeatureFlags {
             "lua" => self.lua = enabled,
             "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
+            "chat_mode" => self.chat_mode = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -486,6 +498,7 @@ impl FeatureFlags {
             lua: true,
             mistral: true,
             chat_threads: true,
+            chat_mode: true,
             evals: true,
             skills: true,
             memory: true,
@@ -517,6 +530,39 @@ mod tests {
             grades: feature_flag_definitions()
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
+        }
+    }
+
+    #[test]
+    fn chat_mode_is_an_independent_org_adoption_opt_in() {
+        for deployment in [
+            DeploymentGrade::Dev,
+            DeploymentGrade::Preview,
+            DeploymentGrade::Prod,
+        ] {
+            let policy = FeatureFlagPolicy::from_env(deployment);
+            assert_eq!(
+                API_FEATURE_FLAG_DEFINITIONS
+                    .iter()
+                    .find(|flag| flag.name == "chat_mode")
+                    .unwrap()
+                    .grade,
+                FeatureFlagGrade::Adoption
+            );
+            let policy = policy.with_grade("chat_mode", FeatureFlagGrade::Adoption);
+            assert!(policy.deployment_flags().chat_mode);
+            assert!(!policy.for_org(&HashMap::new()).chat_mode);
+            let enrolled = HashMap::from([("chat_mode".to_string(), true)]);
+            let flags = policy.for_org(&enrolled);
+            assert!(flags.chat_mode);
+            assert!(!flags.chat_threads);
+            assert!(flags.to_map().0["chat_mode"]);
+            assert!(
+                !policy
+                    .with_grade("chat_mode", FeatureFlagGrade::Off)
+                    .for_org(&enrolled)
+                    .chat_mode
+            );
         }
     }
 

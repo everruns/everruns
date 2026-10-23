@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
 import { useCommandPalette } from "@/hooks/use-command-palette";
@@ -98,6 +99,7 @@ export function CommandPalette() {
 }
 
 function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }) {
+  const openChat = useChatMode()?.setOpen;
   const router = useRouter();
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -130,9 +132,13 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
         result.onSelect();
         return;
       }
+      if (result.href === "/chats" && openChat) {
+        openChat(true);
+        return;
+      }
       router.push(result.href);
     },
-    [router, setOpen],
+    [router, setOpen, openChat],
   );
 
   // Scroll selected item into view

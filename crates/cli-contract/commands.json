@@ -6185,6 +6185,20 @@
         "help": "The entity's public id."
       },
       {
+        "field": "expected_revision",
+        "long": "expected-revision",
+        "kind": "integer",
+        "required": false,
+        "help": "Refuse if the Agent changed after this revision."
+      },
+      {
+        "field": "fields",
+        "long": "fields",
+        "kind": "string_list",
+        "required": false,
+        "help": "Restore only these top-level Agent fields; omit to restore the full definition. Requires expe..."
+      },
+      {
         "field": "kind",
         "long": "kind",
         "kind": "string",

@@ -28,6 +28,9 @@ pub enum MessageMetadataField {
     /// `[time <RFC3339 UTC>]`. For user messages this is when the message was
     /// received; for agent messages, when the reply was generated.
     Timestamp,
+    /// The page beside Platform Chat at send time, and recent mouse actions.
+    /// Client-authored data, never an instruction or authorization source.
+    PageContext,
 }
 
 impl MessageMetadataField {
@@ -37,6 +40,23 @@ impl MessageMetadataField {
                 "[time {}]",
                 msg.created_at.to_rfc3339_opts(SecondsFormat::Secs, true)
             )),
+            Self::PageContext => {
+                if msg.role != RuntimeMessageRole::User {
+                    return None;
+                }
+                let metadata = msg.metadata.as_ref()?;
+                let page = metadata.get("page_context")?;
+                if !page.is_object() {
+                    return None;
+                }
+                let context = serde_json::json!({
+                    "page": page,
+                    "recent_mouse_actions": metadata.get("page_actions"),
+                });
+                let value = serde_json::to_string(&context).ok()?;
+                // THREAT[TM-CLIENT-007]: Bound untrusted UI context; it grants no authority.
+                (value.len() <= 16_384).then(|| format!("[untrusted_page_context {value}]"))
+            }
         }
     }
 }
@@ -123,7 +143,8 @@ impl Capability for MessageMetadataCapability {
                         "title": "Metadata field",
                         "description": "Metadata field rendered as a bracketed prefix on each message.",
                         "oneOf": [
-                            { "const": "timestamp", "title": "Timestamp" }
+                            { "const": "timestamp", "title": "Timestamp" },
+                            { "const": "page_context", "title": "Page context" }
                         ]
                     },
                     "default": ["timestamp"],
@@ -385,6 +406,39 @@ mod tests {
 
     fn time_annotation(msg: &RuntimeMessage) -> String {
         render_annotation(msg, &[MessageMetadataField::Timestamp]).unwrap()
+    }
+
+    #[test]
+    fn page_context_is_opt_in_bounded_user_data_and_does_not_change_stored_text() {
+        let mut user = RuntimeMessage::user("Improve this agent");
+        user.metadata = Some(std::collections::HashMap::from([
+            (
+                "page_context".into(),
+                serde_json::json!({"route":"/agents/agent_123", "entity_id":"agent_123", "label":"Support"}),
+            ),
+            (
+                "page_actions".into(),
+                serde_json::json!([{"label":"Saved manual edits"}]),
+            ),
+        ]));
+        let default = apply(vec![user.clone()], serde_json::json!({}));
+        assert!(!default[0].text().unwrap().contains("agent_123"));
+        let out = apply(
+            vec![user.clone()],
+            serde_json::json!({"fields":["page_context"]}),
+        );
+        assert!(out[0].text().unwrap().contains("untrusted_page_context"));
+        assert!(out[0].text().unwrap().contains("agent_123"));
+        assert!(out[0].text().unwrap().contains("Saved manual edits"));
+        assert_eq!(user.text().unwrap(), "Improve this agent");
+        let mut agent = RuntimeMessage::assistant("Done");
+        agent.metadata = user.metadata.clone();
+        assert!(render_annotation(&agent, &[MessageMetadataField::PageContext]).is_none());
+        user.metadata.as_mut().unwrap().insert(
+            "page_context".into(),
+            serde_json::json!({"label":"x".repeat(17000)}),
+        );
+        assert!(render_annotation(&user, &[MessageMetadataField::PageContext]).is_none());
     }
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
@@ -692,7 +746,7 @@ mod tests {
         }
         assert_eq!(
             enum_values.len(),
-            1,
+            2,
             "add new MessageMetadataField variants to the schema oneOf"
         );
         let schema_default = serde_json::json!({

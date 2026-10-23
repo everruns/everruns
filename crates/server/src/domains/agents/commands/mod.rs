@@ -364,6 +364,7 @@ impl Command for UpdateAgentCmd {
             .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))?;
 
         // Covers archive too: archiving is `status: archived` through here.
+        ctx.db.lock_agent_for_change(ctx.org_id(), &self.id).await?;
         q::ensure_not_built_in(&ctx.db, ctx.org_id(), &self.id, "modify").await?;
 
         let req = self.req;
