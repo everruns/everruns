@@ -62,7 +62,11 @@ describe("work report status", () => {
       workReportStatus(
         report({
           state: "needs_you",
-          attention: { kind: "approval", prompt: "Deploy to staging", tool_call_ids: ["c1"] },
+          attention: {
+            kind: "approval",
+            prompt: "Deploy to staging",
+            tool_call_ids: ["c1"],
+          },
         }),
         t,
       ),
@@ -115,8 +119,16 @@ describe("WorkResultBox", () => {
               { kind: "issues", value: 1 },
             ],
             artifacts: [
-              { name: "PR #4861", type: "pr", url: "https://github.com/o/r/pull/4861" },
-              { name: "invoice.ts", type: "file", path: "/workspace/invoice.ts" },
+              {
+                name: "PR #4861",
+                type: "pr",
+                url: "https://github.com/o/r/pull/4861",
+              },
+              {
+                name: "invoice.ts",
+                type: "file",
+                path: "/workspace/invoice.ts",
+              },
             ],
           },
         })}
@@ -137,11 +149,36 @@ describe("WorkResultBox", () => {
       <WorkResultBox
         report={report({
           state: "done",
-          result: { summary: "Saved the notes.", summary_source: "reply", facts: [] },
+          result: {
+            summary: "Saved the notes.",
+            summary_source: "reply",
+            facts: [],
+          },
         })}
       />,
     );
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows what the agent checked, and a failure it reported", () => {
+    render(
+      <WorkResultBox
+        report={report({
+          state: "done",
+          result: {
+            summary: "The staging key is missing, so nothing was deployed.",
+            summary_source: "agent",
+            checks: "ran the deploy dry run",
+            outcome: "failed",
+            facts: [],
+          },
+        })}
+      />,
+    );
+    const box = screen.getByTestId("work-result");
+    expect(box).toHaveTextContent("Could not finish");
+    expect(box).not.toHaveTextContent("Done");
+    expect(box).toHaveTextContent("Checked: ran the deploy dry run");
   });
 
   it("never links a non-web URL", () => {

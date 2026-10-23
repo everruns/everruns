@@ -47,6 +47,10 @@ changed").
 - **Labels are narration.** Step labels come from
   [tool narration](tool-narration.md), which already applies the redaction
   rules, so the report adds no new path for arguments to leak.
+- **The agent's report is optional and costs no step.** `report_done` comes
+  with the Task Management capability, next to the plan tool; it only
+  validates its arguments, which the reducer reads. Like a plan call, a report
+  call is not listed as a step, and a rejected one is ignored.
 - **Needs you points, never answers.** A parked turn's report names the open
   request; answering still goes through the endpoint that owns it (tool
   approvals, tool results).
@@ -60,7 +64,8 @@ changed").
 | Plan | Latest successful call of a plan tool (`write_todos`, `update_checklist`, `update_status`); not a step |
 | Needs you | Open `tool.call_requested` calls: approval, question, other client action |
 | Facts | Distinct `file.written` paths, `task.created`, the turn's issue count, step count |
-| Summary | First sentence of the final reply (`final_answer_preview`) |
+| Summary | The agent's own report (`report_done`, or `complete_assignment` for a coordinated worker), else the first sentence of the final reply (`final_answer_preview`) |
+| Checks, outcome | The agent's report: how it checked the work, and `failed` when it could not do it ("Could not finish · 2s") |
 
 A call parked on the approval gate is not a step and not an issue: it did not
 run. The request replaces it, and the model's re-run after approval is the

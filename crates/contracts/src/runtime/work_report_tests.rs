@@ -317,6 +317,97 @@ fn done_reports_measured_facts_and_the_first_sentence_of_the_reply() {
 }
 
 #[test]
+fn the_agents_own_report_wins_over_the_reply_and_is_not_a_step() {
+    let mut log = Log::new();
+    let turn = log.turn.clone();
+    log.push(100, "file.written", json!({ "path": "/src/invoice.ts", "operation": "update", "size_bytes": 10, "created": false }))
+        .started_with(
+            200,
+            "r1",
+            "report_done",
+            "Reporting",
+            json!({
+                "summary": "Fixed proration rounding: partial months round per line.",
+                "validation": "Ran the 12 billing tests, all pass.",
+                "artifacts": [
+                    { "name": "PR #4861", "type": "pr", "url": "https://github.com/o/r/pull/4861" },
+                    { "name": "invoice.ts", "type": "file", "path": "/src/invoice.ts" },
+                    { "bogus": true }
+                ]
+            }),
+        )
+        .completed(300, "r1", "report_done", "Reported")
+        .push(
+            1_000,
+            "turn.completed",
+            json!({ "turn_id": turn, "iterations": 2, "final_answer_preview": "Here is what I did." }),
+        );
+
+    let report = log.report_at(5_000);
+    assert!(report.steps.is_empty(), "reporting is not work");
+    let result = report.result.as_ref().expect("result");
+    assert_eq!(
+        result.summary.as_deref(),
+        Some("Fixed proration rounding: partial months round per line.")
+    );
+    assert_eq!(result.summary_source, Some(WorkSummarySource::Agent));
+    assert_eq!(
+        result.checks.as_deref(),
+        Some("Ran the 12 billing tests, all pass.")
+    );
+    assert_eq!(result.outcome, Some(WorkOutcome::Done));
+    let names: Vec<&str> = result.artifacts.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["PR #4861", "invoice.ts"],
+        "agent links first, written file once"
+    );
+    assert_eq!(report.headline, "Done in 1s · 1 file changed");
+}
+
+#[test]
+fn a_reported_failure_says_so_and_a_rejected_report_is_ignored() {
+    let mut log = Log::new();
+    let turn = log.turn.clone();
+    log.started_with(
+        100,
+        "r1",
+        "complete_assignment",
+        "Completing",
+        json!({ "summary": "Could not reach the billing API.", "outcome": "failed" }),
+    )
+    .completed(200, "r1", "complete_assignment", "Completed")
+    .started_with(
+        300,
+        "r2",
+        "report_done",
+        "Reporting",
+        json!({ "summary": "Ignored" }),
+    )
+    .failed(400, "r2", "report_done", "Could not report")
+    .push(
+        2_000,
+        "turn.completed",
+        json!({ "turn_id": turn, "iterations": 1 }),
+    );
+
+    let report = log.report_at(5_000);
+    let result = report.result.as_ref().expect("result");
+    assert_eq!(
+        result.summary.as_deref(),
+        Some("Could not reach the billing API.")
+    );
+    assert_eq!(result.outcome, Some(WorkOutcome::Failed));
+    assert_eq!(report.headline, "Could not finish · 2s");
+    assert!(report.steps.is_empty());
+    assert_eq!(
+        report.fact(WorkFactKind::Issues),
+        None,
+        "a rejected report is not an issue"
+    );
+}
+
+#[test]
 fn a_stopped_turn_does_not_leave_steps_running() {
     let mut log = Log::new();
     let turn = log.turn.clone();

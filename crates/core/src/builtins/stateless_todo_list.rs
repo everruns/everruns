@@ -98,7 +98,7 @@ impl Capability for StatelessTodoListCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(WriteTodosTool)]
+        vec![Box::new(WriteTodosTool), Box::new(super::ReportDoneTool)]
     }
 }
 
@@ -112,7 +112,9 @@ const SYSTEM_PROMPT: &str = r#"## Task Management (`write_todos`)
 Use sparingly, only for substantial multi-step work needing tracking. Default to skipping it. Never use for greetings, single-step edits, read-only checks, or simple short tasks.
 
 Each `write_todos` call replaces the full list. Keep exactly one task
-`in_progress`. Mark `completed` only when fully done (tests pass, no unresolved errors)."#;
+`in_progress`. Mark `completed` only when fully done (tests pass, no unresolved errors).
+
+When tracked work is finished, call `report_done` once before your final reply."#;
 
 // ============================================================================
 // Tool: write_todos

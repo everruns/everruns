@@ -31052,6 +31052,11 @@ export interface components {
      * @enum {string}
      */
     WorkFactKind: "files_changed" | "issues" | "tasks_started" | "steps";
+    /**
+     * @description How the agent itself judged the work, when it reported.
+     * @enum {string}
+     */
+    WorkOutcome: "done" | "failed";
     /** @description The plan the agent shared, from its latest plan tool call. */
     WorkPlan: {
       /**
@@ -31153,8 +31158,15 @@ export interface components {
     WorkResult: {
       /** @description Files, links, pull requests and sessions the work produced. */
       artifacts?: components["schemas"]["TaskArtifact"][];
+      /**
+       * @description How the agent checked the work ("ran the 12 billing tests"), when it
+       *     reported.
+       * @example Ran the 12 billing tests
+       */
+      checks?: string | null;
       /** @description Measured facts, in display order. */
       facts?: components["schemas"]["WorkFact"][];
+      outcome?: components["schemas"]["WorkOutcome"] | null;
       /**
        * @description One or two sentences on what changed.
        * @example Fixed the proration rounding and added a test.
