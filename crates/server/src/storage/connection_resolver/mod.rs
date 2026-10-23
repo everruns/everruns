@@ -77,6 +77,8 @@ struct OAuthClientConfig {
     client_id: String,
     client_secret: Option<String>,
     resource: Option<String>,
+    /// The server's org, to which the refresh request is attributed.
+    org_id: i64,
 }
 
 /// Handles GitHub App JWT signing and installation token minting.
@@ -408,11 +410,12 @@ impl DbConnectionResolver {
         if settings.auth_mode != McpServerAuthMode::OAuth {
             return Ok(None);
         }
-        self.oauth_client_config_from_settings(settings.oauth.as_ref())
+        self.oauth_client_config_from_settings(org_id, settings.oauth.as_ref())
     }
 
     fn oauth_client_config_from_settings(
         &self,
+        org_id: i64,
         oauth: Option<&McpServerOAuthSettings>,
     ) -> Result<Option<OAuthClientConfig>> {
         let Some(oauth) = oauth else {
@@ -438,6 +441,7 @@ impl DbConnectionResolver {
             client_id,
             client_secret,
             resource: oauth.resource.clone(),
+            org_id,
         }))
     }
 
@@ -454,6 +458,7 @@ impl DbConnectionResolver {
                 client_secret: config.client_secret,
                 refresh_token,
                 resource: config.resource,
+                org_id: config.org_id,
             })
             .await
         {

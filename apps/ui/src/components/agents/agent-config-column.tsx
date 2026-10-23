@@ -26,6 +26,7 @@ import { CapabilityEditorContext } from "./capability-editor-context";
 import { normalizeTags } from "@/lib/tags";
 import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
+import { ChatChangeMark, useChatChanges } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentMoreRow = MoreSettingsRow;
 
@@ -62,6 +63,7 @@ export function AgentConfigColumn({
   onOpenRow,
   className,
 }: AgentConfigColumnProps) {
+  const chatChanges = useChatChanges();
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
     return (value: T) => {
@@ -76,7 +78,7 @@ export function AgentConfigColumn({
       className={cn("flex min-w-0 flex-col bg-muted/30", className)}
     >
       <div className="flex flex-col gap-4 border-b p-4">
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="harness">Harness</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
@@ -94,9 +96,9 @@ export function AgentConfigColumn({
           {draft.errors.harness_id && (
             <p className="text-xs text-destructive">{draft.errors.harness_id}</p>
           )}
-        </div>
+        </ChatChangeMark>
 
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
           {editing ? (
             <CapabilityEditorContext.Provider value={{ modelId: draft.fields.default_model_id }}>
               <CapabilitySelector
@@ -132,9 +134,9 @@ export function AgentConfigColumn({
               />
             </>
           )}
-        </div>
+        </ChatChangeMark>
 
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="default-model">Default model</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
@@ -149,9 +151,9 @@ export function AgentConfigColumn({
               className="w-full bg-background"
             />
           )}
-        </div>
+        </ChatChangeMark>
 
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="max_output_tokens" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="max-output-tokens">Max output tokens</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
@@ -185,9 +187,9 @@ export function AgentConfigColumn({
               </p>
             )
           )}
-        </div>
+        </ChatChangeMark>
 
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="communication">Communication</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
@@ -201,9 +203,9 @@ export function AgentConfigColumn({
               className="bg-background"
             />
           )}
-        </div>
+        </ChatChangeMark>
 
-        <div className="flex flex-col gap-1.5">
+        <ChatChangeMark field="tags" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="tags">Tags</FieldLabel>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
@@ -226,17 +228,48 @@ export function AgentConfigColumn({
               className="bg-background"
             />
           )}
-        </div>
+        </ChatChangeMark>
 
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-medium">Updated</span>
           <span className="text-[13px] text-muted-foreground">
-            {new Date(agent.updated_at).toLocaleString()}
+            {chatChanges?.fields.length
+              ? "Just now · by Chat"
+              : new Date(agent.updated_at).toLocaleString()}
           </span>
         </div>
       </div>
 
-      <MoreSettingsNav rows={moreRows} onOpen={onOpenRow} />
+      <MoreSettingsNav
+        rows={moreRows}
+        onOpen={onOpenRow}
+        renderRow={(row, content) => (
+          <ChatChangeMark
+            key={row.id}
+            field={
+              (
+                {
+                  branding: [
+                    "name",
+                    "display_name",
+                    "description",
+                    "intro_markdown",
+                    "short_description",
+                    "starters",
+                  ],
+                  files: "initial_files",
+                  network: "network_access",
+                  sandbox: "sandbox_policy",
+                  mcp: ["mcpServers", "mcp_servers"],
+                  service: "service_virtual_user_id",
+                } as Record<string, string | string[]>
+              )[row.id] ?? row.id
+            }
+          >
+            {content}
+          </ChatChangeMark>
+        )}
+      />
     </aside>
   );
 }

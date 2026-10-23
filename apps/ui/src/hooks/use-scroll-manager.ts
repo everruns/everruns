@@ -51,7 +51,10 @@ export function useScrollManager({
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    // Keep automatic transcript scrolling inside its pane. scrollIntoView also
+    // scrolls ancestors and can move the adjacent Agent out of the workspace.
+    const container = scrollContainerRef.current;
+    container?.scrollTo({ top: container.scrollHeight, behavior });
   }, []);
 
   // Track near-bottom state on scroll

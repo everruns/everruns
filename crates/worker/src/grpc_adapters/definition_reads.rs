@@ -54,7 +54,17 @@ pub(super) fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<Age
         communication: crate::core::conversation::Communication::from_wire(
             proto_agent.communication.as_deref(),
         ),
-        tools: vec![],
+        tools: proto_agent
+            .tools
+            .into_iter()
+            .map(|tool| {
+                serde_json::from_str(&tool).map_err(|error| {
+                    AgentLoopError::store(format!(
+                        "Invalid agent tool definition in gRPC response: {error}"
+                    ))
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?,
         mcp_servers: Default::default(),
     })
 }
@@ -126,6 +136,41 @@ impl GrpcOrgAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_projection_preserves_client_tools_and_rejects_invalid_definitions() {
+        use everruns_contracts::tool_types::{
+            ClientSideTool, DeferrablePolicy, ToolDefinition, ToolHints,
+        };
+        let tool = ToolDefinition::ClientSide(
+            ClientSideTool::new(
+                "read_page_draft",
+                "Read live draft",
+                serde_json::json!({"type":"object"}),
+            )
+            .with_deferrable(DeferrablePolicy::Never)
+            .with_hints(ToolHints::default().with_stays_direct(true)),
+        );
+        let record = proto::Agent {
+            id: Some(uuid_to_proto(Uuid::now_v7())),
+            status: "active".into(),
+            tools: vec![serde_json::to_string(&tool).unwrap()],
+            ..Default::default()
+        };
+        let definition = proto_agent_to_definition(record.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(definition.tools).unwrap(),
+            serde_json::json!([tool])
+        );
+        let mut invalid = record;
+        invalid.tools = vec!["invalid JSON".into()];
+        assert!(
+            proto_agent_to_definition(invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid agent tool definition")
+        );
+    }
 
     #[test]
     fn agent_lifecycle_and_projection_keep_independent_error_semantics() {

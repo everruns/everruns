@@ -143,7 +143,7 @@ health-issues snooze	--context-revision --issue-id! --reason
 history diff	--context-revision --entity-ref --from! --kind --reason --to <entity_ref>
 history list	--action --before --context-revision --entity-ref --kind --limit --reason <entity_ref>
 history org	--action --actor-user-id --before --context-revision --kind --limit --reason --since --via-agent
-history restore	--context-revision --entity-ref --kind --reason --revision! <entity_ref>
+history restore	--context-revision --entity-ref --expected-revision --fields... --kind --reason --revision! <entity_ref>
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason

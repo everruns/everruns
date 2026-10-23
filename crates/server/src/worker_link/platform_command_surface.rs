@@ -436,6 +436,7 @@ mod tests {
 
     fn all_flags() -> crate::records::FeatureFlags {
         crate::records::FeatureFlags {
+            chat_mode: true,
             monitoring: true,
             dreaming: true,
             docker_capability: true,
@@ -464,6 +465,7 @@ mod tests {
         discover(
             arguments,
             &crate::records::FeatureFlags {
+                chat_mode: true,
                 monitoring: false,
                 dreaming: true,
                 docker_capability: true,

@@ -99,6 +99,8 @@ everruns history restore [OPTIONS] --revision <revision> [ENTITY_REF]
 | Flag | Description |
 |---|---|
 | `--entity-ref <ENTITY_REF>` | The entity's public id. |
+| `--expected-revision <EXPECTED_REVISION>` | Refuse if the Agent changed after this revision. |
+| `--fields <FIELDS>` | Restore only these top-level Agent fields; omit to restore the full definition. Requires expe... Comma-separated or a JSON array of strings. Repeatable. |
 | `--kind <KIND>` | Entity kind, for ids without a prefix. |
 | `--revision <REVISION>` | Required. The revision to bring back. |
 

@@ -47,6 +47,76 @@ fn with_reason(ctx: &Ctx, reason: &str) -> Ctx {
     )
 }
 
+#[tokio::test]
+async fn guarded_agent_restore_undoes_one_field_and_refuses_a_stale_revision() {
+    let ctx = owner();
+    crate::setup::org_init::initialize_org_harnesses(&ctx.db, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    let agent = run(
+        "create_agent",
+        json!({"name":"chat-mode-test", "system_prompt":"Original", "tags":["original"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let id = agent["id"].as_str().unwrap();
+    run(
+        "update_agent",
+        json!({"id":id, "system_prompt":"Changed", "tags":["new"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let ctx = with_reason(&ctx, "Undo only the Chat instructions change");
+    let restored = run(
+        "restore_entity_revision",
+        json!({"entity_ref":id, "revision":1, "expected_revision":2, "fields":["system_prompt"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored["entity"]["system_prompt"], "Original");
+    assert_eq!(restored["entity"]["tags"], json!(["new"]));
+    let stale = run(
+        "restore_entity_revision",
+        json!({"entity_ref":id, "revision":1, "expected_revision":2, "fields":["tags"]}),
+        &ctx,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(stale.code.as_deref(), Some("entity_revision_changed"));
+    let entries = history(&ctx, id).await;
+    assert_eq!(entries[0]["revision"], 3);
+    assert_eq!(entries[0]["action"], "restored");
+    assert_eq!(entries[0]["changed_fields"], json!(["system_prompt"]));
+    for fields in [
+        json!([]),
+        json!(["$secrets"]),
+        json!(["id"]),
+        json!(["does_not_exist"]),
+    ] {
+        assert!(
+            run(
+                "restore_entity_revision",
+                json!({"entity_ref":id, "revision":1, "expected_revision":3, "fields":fields}),
+                &ctx
+            )
+            .await
+            .is_err()
+        );
+    }
+    assert!(
+        run(
+            "restore_entity_revision",
+            json!({"entity_ref":id, "revision":1, "fields":["tags"]}),
+            &ctx
+        )
+        .await
+        .is_err()
+    );
+}
+
 async fn history(ctx: &Ctx, id: &str) -> Vec<Value> {
     run("list_entity_history", json!({ "entity_ref": id }), ctx)
         .await

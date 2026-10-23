@@ -93,10 +93,11 @@ export async function restoreEntityRevision(
   entityRef: string,
   revision: number,
   reason: string,
+  options?: { expected_revision: number; fields?: string[] },
 ): Promise<RestoreResult> {
   const response = await api.post<RestoreResult>(
     `/v1/history/${refPath(entityRef)}/restore`,
-    { revision },
+    { revision, ...options },
     changeReasonOptions(reason),
   );
   return response.data;

@@ -88,6 +88,7 @@ export function ChatComposer({
   modelReady,
   modelLoading,
   hideModelNotice = false,
+  hideModelPicker = false,
   isUploading,
   sendPending,
   textareaRef,
@@ -142,6 +143,7 @@ export function ChatComposer({
   modelLoading: boolean;
   /** Hide the model-required notice above the input; the surrounding empty state already guides model choice. */
   hideModelNotice?: boolean;
+  hideModelPicker?: boolean;
   isUploading: boolean;
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -342,26 +344,28 @@ export function ChatComposer({
                 <ImagePlus className="icon-sharp h-4 w-4" />
               </Button>
 
-              <ModelEffortMenu
-                models={models}
-                recentModels={recentModels}
-                selectedModelId={selectedModelId}
-                onModelChange={onModelChange}
-                modelTriggerLabel={modelTriggerLabel}
-                defaultModelOptionLabel={defaultModelOptionLabel}
-                supportsReasoning={supportsReasoning}
-                reasoningEffort={reasoningEffort}
-                reasoningEffortConfig={reasoningEffortConfig}
-                defaultEffortName={defaultEffortName}
-                getReasoningEffortName={getReasoningEffortName}
-                onReasoningEffortChange={onReasoningEffortChange}
-                supportsVerbosity={supportsVerbosity}
-                verbosity={verbosity}
-                verbosityConfig={verbosityConfig}
-                defaultVerbosityName={defaultVerbosityName}
-                getVerbosityName={getVerbosityName}
-                onVerbosityChange={onVerbosityChange}
-              />
+              {(!hideModelPicker || !modelReady) && (
+                <ModelEffortMenu
+                  models={models}
+                  recentModels={recentModels}
+                  selectedModelId={selectedModelId}
+                  onModelChange={onModelChange}
+                  modelTriggerLabel={modelTriggerLabel}
+                  defaultModelOptionLabel={defaultModelOptionLabel}
+                  supportsReasoning={supportsReasoning}
+                  reasoningEffort={reasoningEffort}
+                  reasoningEffortConfig={reasoningEffortConfig}
+                  defaultEffortName={defaultEffortName}
+                  getReasoningEffortName={getReasoningEffortName}
+                  onReasoningEffortChange={onReasoningEffortChange}
+                  supportsVerbosity={supportsVerbosity}
+                  verbosity={verbosity}
+                  verbosityConfig={verbosityConfig}
+                  defaultVerbosityName={defaultVerbosityName}
+                  getVerbosityName={getVerbosityName}
+                  onVerbosityChange={onVerbosityChange}
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-2">
