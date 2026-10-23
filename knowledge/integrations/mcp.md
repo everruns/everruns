@@ -69,11 +69,11 @@ chooses scope for skill files versus organization data across all success paths.
 | `server/discover` | `complete` | 30 s | `private` (org-specific Events support) |
 | `tools/call` | `complete` (or `task`) |, |, |
 
-`public` is only correct where the payload is identical for every caller: list catalogs and embedded public skill files. `resources/read` of org-scoped data (agents, capabilities, harnesses, models) remains `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
+`public` is only correct where the payload is identical for every caller: list catalogs and embedded public skill files. `resources/read` of org-scoped data (agents, capabilities, harnesses, models) remains `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; under the Tasks extension a task-creating call returns `resultType: "task"` instead.
 
 Hints are emitted only under the negotiated `2026-07-28` protocol. They would be ignored by 2025-era clients, but gating keeps each era's responses exactly what that era specifies.
 
-The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is implemented as optional, additive interop alignment for the existing `agent_run` → `session_get_status` poll pattern. See [Tasks extension (2026-07-28)](#tasks-extension-2026-07-28) below.
+The Tasks extension runs `agent_run` and `session_send_message` as tasks, one per turn, driven by `tasks/get`/`tasks/update`/`tasks/cancel`. See [Tasks extension (2026-07-28)](#tasks-extension-2026-07-28) below.
 
 ### Supported Methods
 
@@ -88,11 +88,11 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `resources/read` | Read a resource or a filled template URI; an unknown ordinary resource is `-32002` with `data.uri`, an unknown skill file is `-32602` |
 | `skills/list`, `skills/get` | (2026 Skills extension) Discover or directly look up public product skills |
 | `resources/directory/read` | (2026 Skills extension) List a public skill directory's direct children |
-| `tasks/get` | (2026-07-28 Tasks extension) Poll a task handle for status + result |
+| `tasks/get` | (2026-07-28 Tasks extension) Poll a task for status and the turn's result |
 | `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
 | `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
 
-`tasks/list` is intentionally not implemented, SEP-2663 removed it, and Everruns never exposed a server-side task list. The `tasks/*` methods are only routed under the negotiated `2026-07-28` protocol; a `2025-*` client that sends them gets `-32601 Method not found`.
+`tasks/list` is intentionally not implemented, SEP-2663 removed it, and Everruns never exposed a server-side task list. The `tasks/*` methods are only routed under the negotiated `2026-07-28` protocol; a `2025-*` client that sends them gets `-32601 Method not found`, and a `2026-07-28` client that did not declare the extension gets `-32021`.
 
 ### Entity Cards
 
@@ -125,101 +125,88 @@ including the URI scheme, sandboxing requirements, and the planned
 ## Tasks extension (2026-07-28)
 
 Everruns' `/mcp` server implements the MCP Tasks extension
-(`io.modelcontextprotocol/tasks`, SEP-2663) as optional, **additive** interop
-alignment. It is not new capability: Everruns already runs long agent turns as
-the poll pattern (`agent_run` returns a session id + hint, clients poll
-`session_get_status`), all state Postgres-backed with no server-side session
-memory. Tasks is the standardized vocabulary for that same pattern, so a
-**task handle is a session id**. Field names follow final SEP-2663 and the
-official Tasks extension overview: task handles use `ttlMs` and
-`pollIntervalMs`.
+(`io.modelcontextprotocol/tasks`, SEP-2663). `agent_run` and
+`session_send_message` start an agent turn that can run for minutes; with Tasks
+the client gets a task back instead of waiting on the HTTP request, and polls
+`tasks/get` until the turn ends. The schema of record is
+`@modelcontextprotocol/ext-tasks` `core/v2`.
 
-The whole surface is gated: it activates only when the negotiated protocol is
-`2026-07-28` **and** the client advertised the extension. `2025-*` clients (and
-`2026-07-28` clients that did not opt in) see today's shapes byte-for-byte
-unchanged.
+The surface is gated: it exists only under the negotiated `2026-07-28`
+protocol, and only for a client that declared the extension in the request's
+`params._meta["io.modelcontextprotocol/clientCapabilities"].extensions`. The
+server advertises it in `initialize` capabilities under the same key. A
+`2026-07-28` client that did not declare it gets `-32021`
+(MissingRequiredClientCapability) on `tasks/*` and plain tool results from
+`tools/call`; `2025-*` clients see no change.
 
-### Capability negotiation
+### A task is one turn
 
-- **Server advertises** the extension in `initialize` capabilities under
-  `capabilities.extensions["io.modelcontextprotocol/tasks"]`, only when the
-  negotiated protocol is `2026-07-28`.
-- **Client opts in** per request via
-  `params._meta["io.modelcontextprotocol/clientCapabilities"].extensions["io.modelcontextprotocol/tasks"]`.
-  Per SEP-2663 the server must never return a task to a client that did not
-  declare support, this is what keeps the change back-compatible.
+A task names the turn that answered one input message, not the session. A
+session goes back to work on the next message, so a session-scoped task would
+leave `completed`, and an old handle would show a newer turn's reply; the spec
+makes terminal states final. The handle is therefore
+`{org_public_id}.{session_id}.{message_id}`:
 
-### Session ↔ task mapping
+- the org is in the handle because `tools/call` can target another org through
+  `organization_id`, and `tasks/*` carry nothing but the handle;
+- every `tasks/*` request re-resolves membership for that org and re-runs the
+  session read policy, so the handle grants nothing by itself;
+- the ids are UUIDv7, which meets the spec's "cannot be guessed" bar. A handle
+  that does not parse, or names a session or message the caller cannot see, is
+  `-32602 Unknown taskId`.
 
-| Tasks extension | Everruns equivalent |
-|-----------------|---------------------|
-| task handle / `taskId` | `session_id` (Postgres-backed, instance-agnostic) |
-| `tools/call` returns `CreateTaskResult` | `agent_run` / `session_send_message` return the task handle alongside their existing fields |
-| `tasks/get` | `session_get_status` (status + events under `result`; pending questions under `inputRequests`) |
-| `tasks/update` (provide input on `input_required`) | typed question resolution, or `session_send_message` for free text |
-| `tasks/cancel` | `cancel_session` (cooperative) |
-| lifecycle state | derived from session status |
-| `tasks/list` | not implemented (removed by SEP-2663) |
+Each new message is a new task, and a finished task keeps its own reply.
 
-### Status mapping
+### Status from the event log
 
-Session status → task lifecycle state:
+Status comes from turn events, not session status. The first terminal turn
+event after the input message ends the turn that answered it (a message sent
+mid-turn steers the running turn), the same rule the waited message API uses.
 
-| Session status | Task status |
-|----------------|-------------|
-| `started`, `active` | `working` |
-| `waiting_for_tool_results`, `paused` | `input_required` |
-| `idle` | `completed` |
+| Turn state | Task status |
+|------------|-------------|
+| `turn.completed` | `completed`, `result` is the turn's reply as a tool result |
+| `turn.failed`, `turn.sealed` | `completed` with `isError: true`, `statusMessage` says why |
+| `turn.cancelled` | `cancelled` |
+| open, parked on an `ask_user` form | `input_required` with the form under `inputRequests` |
+| open, otherwise | `working`, `statusMessage` describes progress |
 
-`failed` and `cancelled` are part of the SEP-2663 vocabulary but are not
-persisted session statuses today (cancellation emits a turn event and the
-session returns to `idle`), so they are unreachable from status alone. The
-mapping helper is total against the vocabulary so callers with stronger
-information can still report them.
+`failed` is never reported: the spec reserves it for JSON-RPC errors, and a
+failed turn is a tool error. A completed result carries the reply as text and
+`structuredContent` with `session_id`, `message_id`, the reply, and the
+session's schema-bound `structured_result` when the turn reported one (see
+[session tasks](../runtime-resources/session-tasks.md)).
 
-### Task-handle shape and additivity
+### Questions, cancel
 
-When active, `agent_run` / `session_send_message` merge `CreateTaskResult`
-fields (`resultType: "task"`, `taskId`, `status`, `ttlMs`, `pollIntervalMs`)
-into the tools/call `result`; the existing `content` / `structuredContent` are
-untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
-`pollIntervalMs`) with the full `session_get_status` payload under `result`.
-When the session is parked on `ask_user`, `tasks/get` also returns
-`inputRequests.ask_user`. The request is the same `elicitation/create` form
-projection used by `session_get_status`: its `requestedSchema` carries choice,
-multi-select, and text questions without requiring the client to inspect
-events. The client echoes the `ask_user` key in `tasks/update.inputResponses`
-and sends the standard elicitation response (`action` plus form `content`).
-Accepted selections are checked against the emitted question set by the shared
-question-resolution operation before the turn resumes. Decline and cancel
-remain distinct outcomes.
+A parked `ask_user` question set is offered as an `elicitation/create` form
+under the input key `ask_user:{tool_call_id}`; the key names the parked call
+because one turn can ask more than once and the spec forbids reusing an
+answered key. `tasks/update` sends the standard elicitation response; the
+shared question-resolution operation validates it against the emitted
+questions before the turn resumes. A key that is no longer outstanding is
+acknowledged and ignored. There is no free-text `tasks/update`: a follow-up
+message is `session_send_message`, which is its own task.
 
-Free-text `tasks/update` remains supported through `message` or a string-valued
-`inputResponses` entry. If an `ask_user` question is pending, message delivery
-first resolves it as `cancelled`, then records the user message and resumes the
-turn as one durable operation.
+Tasks opt-in alone does not claim the client renders forms. A session gets the
+`ask_user` pause hint only when the client also declares elicitation; otherwise
+questions resolve from declared defaults.
 
-Tasks opt-in alone does not claim that a client can render an
-`elicitation/create` question. A session gets the `ask_user` pause hint only
-when the initiating client also declares elicitation support. A Tasks client
-without that rendering capability therefore keeps the unattended fallback:
-the question resolves from declared defaults instead of parking the session.
+`tasks/cancel` cancels the session's running turn cooperatively and
+acknowledges; on a finished task it is a plain acknowledgment. `tasks/list` is
+not implemented (SEP-2663 removed it).
 
-**Structured result.** When the task's session reported a deterministic,
-schema-bound result (`result.json`, produced by a task declared with a
-`result_schema`, see [`knowledge/runtime-resources/subagents.md`](../runtime-resources/subagents.md) and
-[`knowledge/runtime-resources/session-tasks.md`](../runtime-resources/session-tasks.md)), `tasks/get` adds that JSON under
-`result.structured_result`, so Tasks clients get the machine result instead of
-re-parsing last-message text. It is additive: the existing status snapshot
-(session status, latest output, events) is unchanged, and a plain agent turn
-that reported no structured result omits the field. Retrieval is scoped by the
-same org `session_get_status` already validated, so tenant isolation is
-preserved; when a session reported more than one structured result the most
-recently updated one wins.
+### Verification
 
-Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
-capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and
-the `handle_tools_call` augmentation).
+Beyond the domain tests, `tests/domain/mcp_tasks_interop_test.rs` drives
+`/mcp` with the official TypeScript client (`@modelcontextprotocol/client`
+plus `@modelcontextprotocol/ext-tasks`, pinned in `scripts/mcp-tasks-interop/`),
+which validates every task response against the published schema: task
+creation, settlement, per-message immutability, an `input_required` round trip,
+cancel, and the `Mcp-Name` header. CI's domain shard installs the client;
+locally run `scripts/mcp-tasks-interop.sh`.
+
+Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs`.
 
 ## Public Skills extension
 

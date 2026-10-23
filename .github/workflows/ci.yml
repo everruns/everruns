@@ -1574,6 +1574,12 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         run: bash scripts/poppy-interop.sh --setup-only
 
+      # The official MCP TypeScript client for `official_ts_client_drives_mcp_tasks`
+      # (scripts/mcp-tasks-interop.sh), which also rides the domain step.
+      - name: Install the official MCP Tasks client
+        if: ${{ matrix.shard == 'domain' }}
+        run: bash scripts/mcp-tasks-interop.sh --setup-only
+
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
         env:
@@ -1582,6 +1588,7 @@ jobs:
           DEPLOYMENT_GRADE: dev
           PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
           PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
+          MCP_TASKS_INTEROP_DIR: ${{ github.workspace }}/scripts/mcp-tasks-interop
         run: |
           python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/domain-tests.jsonl" -- \
             cargo test --locked -p everruns-server --no-run --message-format=json \
