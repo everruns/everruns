@@ -388,13 +388,17 @@
         b.append(
           node(
             "small",
-            c.owner
-              ? "Search subagent"
-              : c.turn
-                ? "Working…"
-                : c.queued
-                  ? c.queued + " queued"
-                  : "Ready",
+            c.execution?.phase === "suspended" ||
+              (c.execution?.compatibility &&
+                c.execution.compatibility.status !== "available")
+              ? "Paused — recovery needs attention"
+              : c.owner
+                ? "Search subagent"
+                : c.turn
+                  ? "Working…"
+                  : c.queued
+                    ? c.queued + " queued"
+                    : "Ready",
           ),
         );
         b.onclick = () => choose(c.id);
@@ -403,11 +407,15 @@
       const c = snapshot.conversations.find((c) => c.id === selected);
       $("current").textContent = c?.title || "A room for long conversations";
       $("status").textContent = c
-        ? c.turn
-          ? "Working · " + c.queued + " queued"
-          : c.queued
-            ? "Queued: " + c.queued
-            : "Ready"
+        ? c.execution?.phase === "suspended" ||
+          (c.execution?.compatibility &&
+            c.execution.compatibility.status !== "available")
+          ? "Paused — this conversation needs a compatible deployment or recovery review."
+          : c.turn
+            ? "Working · " + c.queued + " queued"
+            : c.queued
+              ? "Queued: " + c.queued
+              : "Ready"
         : "";
       const box = $("messages"),
         atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 100;

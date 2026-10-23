@@ -30,6 +30,35 @@ export class ChatRoom extends Room {
 }
 
 export class ChatSession extends Session {
+  constructor(ctx, env) {
+    super(ctx, env);
+    // The actual earlier live build stored only room/kind. Reopen one retained
+    // session with that shape; its canonical Framework journal stays untouched.
+    const row = ctx.storage.sql
+      .exec("SELECT value FROM chat_membership WHERE id=1")
+      .toArray()[0];
+    if (
+      row &&
+      this.authority.journal.read().session_id ===
+        env.TEST_LEGACY_MEMBERSHIP_SESSION
+    ) {
+      const member = JSON.parse(row.value);
+      if (!member.test_legacy_membership) {
+        delete member.model;
+        member.test_legacy_membership = true;
+        ctx.storage.sql.exec(
+          "UPDATE chat_membership SET value=? WHERE id=1",
+          JSON.stringify(member),
+        );
+      }
+    }
+  }
+  configuration(member, tenant) {
+    return {
+      ...super.configuration(member, tenant),
+      build_id: this.env.TEST_CREATION_BUILD,
+    };
+  }
   async fetch(request) {
     const body = await request
       .clone()

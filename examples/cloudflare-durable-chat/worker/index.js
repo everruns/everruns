@@ -3,9 +3,10 @@ import html from "../src/chat.html";
 import wasm from "../pkg/everruns_cloudflare_durable_chat_bg.wasm";
 import {
   initSync,
-  binding,
   run,
   request as sessionRequest,
+  session_command,
+  session_command_key,
 } from "../pkg/everruns_cloudflare_durable_chat.js";
 import {
   SessionAuthority,
@@ -13,7 +14,8 @@ import {
   address,
   readJson,
   failure,
-} from "../../../crates/durable-object/worker/src/index.js";
+} from "../../../crates/durable-object/worker/src/service.js";
+import { installSessionCommands } from "../../../crates/durable-object/worker/src/session-command.js";
 import { runActivation } from "../../../crates/durable-object/worker/src/activation.js";
 import { objectPort } from "../../../crates/durable-object/worker/src/isolate.js";
 import { fetchModel } from "./provider.js";
@@ -27,6 +29,7 @@ import {
   transcript,
 } from "./room-state.js";
 initSync({ module: wasm });
+installSessionCommands(session_command, session_command_key);
 
 const MODEL = "meta/muse-spark-1.3-contributor";
 const headers = (env) => ({
@@ -77,7 +80,11 @@ export class ChatSession extends SessionAuthority {
       if (!retained.model) {
         // Runtime defaults are mutable host configuration. Capture behavior once
         // so retry/reconstruction cannot switch an existing session's model.
-        retained.model = this.env.MODEL ?? MODEL;
+        // Pre-pinning memberships used the demo's historical default. Keep that
+        // separate from MODEL so an upgrade cannot change their behavior.
+        retained.model = member
+          ? (this.env.LEGACY_MODEL ?? MODEL)
+          : (this.env.MODEL ?? MODEL);
         this.ctx.storage.sql.exec(
           "INSERT INTO chat_membership(id,value) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
           JSON.stringify(retained),
@@ -92,11 +99,7 @@ export class ChatSession extends SessionAuthority {
           }),
           (raw, signal) => fetchModel(this.env, raw, signal),
           (raw) => this.tool(retained, scope.sessionId, raw),
-          JSON.stringify({
-            tenant: scope.tenant,
-            model: retained.model,
-            kind: retained.kind,
-          }),
+          JSON.stringify(this.configuration(retained, scope.tenant)),
           body.operation,
           JSON.stringify(body.body ?? {}),
         ),
@@ -105,6 +108,9 @@ export class ChatSession extends SessionAuthority {
     } catch (error) {
       return failure(error);
     }
+  }
+  configuration(member, tenant) {
+    return { tenant, model: member.model, kind: member.kind };
   }
   constructor(ctx, env) {
     super(ctx, env);
@@ -120,8 +126,8 @@ export class ChatSession extends SessionAuthority {
   }
   async alarm() {
     await runActivation(this.authority, async (activation) => {
-      const expected = JSON.parse(binding());
-      if (activation.binding.build_id !== expected.build_id) return 409;
+      // Engine validates runtime compatibility and selects the exact retained
+      // registration. The host must not replace it with the newest definition.
       const row = this.ctx.storage.sql
         .exec("SELECT value FROM chat_membership WHERE id=1")
         .toArray()[0];
@@ -135,7 +141,7 @@ export class ChatSession extends SessionAuthority {
           objectPort(this.authority, activation),
           (raw, signal) => fetchModel(this.env, raw, signal),
           (raw) => this.tool(member, activation.session_id, raw),
-          member.model ?? this.env.MODEL ?? MODEL,
+          member.model ?? this.env.LEGACY_MODEL ?? MODEL,
         );
       } finally {
         // A lost notification affects freshness only. Actor completion is
@@ -264,6 +270,12 @@ export class ChatRoom extends DurableObject {
           ...c,
           messages: transcript(events).map(({ raw, ...m }) => m),
           activity: events.slice(-40).reverse(),
+          execution: {
+            phase: status.status ?? "idle",
+            build_id: status.build_id,
+            compatibility: status.compatibility,
+            suspension_reason: status.suspension_reason,
+          },
           turn: status.status === "active" ? { phase: status.status } : null,
           queued: data.outbox.filter((j) => j.conversation === id).length,
         };
