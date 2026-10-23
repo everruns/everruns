@@ -231,6 +231,11 @@ Preview takes `repository`, `branch` and `path`; connecting supplies the returne
 also supplies its current `expected_generation`. If the reviewed source or Agent
 changed, preview again before connecting.
 
+The same operations are available under `everruns agents source --help`. Use
+`preview` to review a package, `connect` with the returned commit and digest to
+enable sync, `get` to inspect status, `sync` to request a check, and `disconnect`
+to restore local editing. Each command includes a worked example in its help.
+
 ## Platform Chat and MCP
 
 In Platform Chat, ask Everruns to validate, compare, import or export an agent

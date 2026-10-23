@@ -243,7 +243,7 @@ async fn apply(
 pub struct GetAgentSource {
     pub agent_id: String,
 }
-#[command(name="get_agent_source",summary="Get Agent source status",category="agents",description="Show the Agent's continuous GitHub source binding and sync status.",method="GET",path="/v1/agents/{agent_id}/source",policy=AGENT_VIEW,http=plain)]
+#[command(name="get_agent_source",summary="Get Agent source status",category="agents",description="Show the Agent's continuous GitHub source binding and sync status.",method="GET",path="/v1/agents/{agent_id}/source",policy=AGENT_VIEW,http=plain,cli=CliRoute::new(&["agents", "source"], "get").with_examples(&[CliExample::new("See the applied GitHub revision and any sync error", "everruns agents source get --agent-id agent_01h9")]))]
 impl Command for GetAgentSource {
     type Output = Option<AgentSourceStatus>;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -270,7 +270,7 @@ pub struct GetAgentSourceOptions {
     #[serde(flatten)]
     pub req: SourceOptionsRequest,
 }
-#[command(name="get_agent_source_options",summary="Browse GitHub source locations",category="agents",description="Browse GitHub branches and Agent package paths.",method="POST",path="/v1/agents/{agent_id}/source/options",policy=AGENT_VIEW,http=plain,request_body(SourceOptionsRequest),read_only=true)]
+#[command(name="get_agent_source_options",summary="Browse GitHub source locations",category="agents",description="Browse GitHub branches and Agent package paths.",method="POST",path="/v1/agents/{agent_id}/source/options",policy=AGENT_VIEW,http=plain,request_body(SourceOptionsRequest),read_only=true,cli=CliRoute::new(&["agents", "source", "options"], "get").with_examples(&[CliExample::new("Find branches and package paths before choosing a source", "everruns agents source options get --agent-id agent_01h9 --repository acme/agents --branch main --path agents")]))]
 impl Command for GetAgentSourceOptions {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -303,7 +303,7 @@ pub struct PreviewAgentSource {
     #[serde(flatten)]
     pub req: SourceLocation,
 }
-#[command(name="preview_agent_source",summary="Preview Agent source changes",category="agents",description="Validate and compare a GitHub Agent package without changing the Agent.",method="POST",path="/v1/agents/{agent_id}/source/preview",policy=AGENT_VIEW,http=plain,request_body(SourceLocation),read_only=true)]
+#[command(name="preview_agent_source",summary="Preview Agent source changes",category="agents",description="Validate and compare a GitHub Agent package without changing the Agent.",method="POST",path="/v1/agents/{agent_id}/source/preview",policy=AGENT_VIEW,http=plain,request_body(SourceLocation),read_only=true,cli=CliRoute::new(&["agents", "source"], "preview").with_examples(&[CliExample::new("Review a repository package without changing the Agent", "everruns agents source preview --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support")]))]
 impl Command for PreviewAgentSource {
     type Output = Value;
     async fn execute(mut self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -355,7 +355,7 @@ pub struct ConnectAgentSource {
     #[serde(flatten)]
     pub req: ConnectSourceRequest,
 }
-#[command(name="connect_agent_source",summary="Connect continuous GitHub source sync",category="agents",description="Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",method="PUT",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain,request_body(ConnectSourceRequest))]
+#[command(name="connect_agent_source",summary="Connect continuous GitHub source sync",category="agents",description="Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",method="PUT",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain,request_body(ConnectSourceRequest),cli=CliRoute::new(&["agents", "source"], "connect").with_examples(&[CliExample::new("Enable continuous sync using the commit and Agent digest returned by preview", "everruns agents source connect --agent-id agent_01h9 --repository acme/agents --branch main --path agents/support --commit 0123456789abcdef0123456789abcdef01234567 --agent-digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --reason \"Deploy the reviewed GitHub package\"")]))]
 impl Command for ConnectAgentSource {
     type Output = AgentSourceStatus;
     async fn execute(mut self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -448,7 +448,7 @@ impl Command for ConnectAgentSource {
 pub struct DisconnectAgentSource {
     pub agent_id: String,
 }
-#[command(name="disconnect_agent_source",summary="Disconnect Agent source sync",category="agents",description="Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",method="DELETE",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain)]
+#[command(name="disconnect_agent_source",summary="Disconnect Agent source sync",category="agents",description="Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",method="DELETE",path="/v1/agents/{agent_id}/source",policy=AGENT_MANAGE,http=plain,cli=CliRoute::new(&["agents", "source"], "disconnect").with_examples(&[CliExample::new("Keep the last applied definition and restore local editing", "everruns agents source disconnect --agent-id agent_01h9 --reason \"Resume local editing\"")]))]
 impl Command for DisconnectAgentSource {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
@@ -467,7 +467,7 @@ impl Command for DisconnectAgentSource {
 pub struct SyncAgentSource {
     pub agent_id: String,
 }
-#[command(name="sync_agent_source",summary="Request an Agent source check",category="agents",description="Queue an immediate check of this Agent's GitHub source.",method="POST",path="/v1/agents/{agent_id}/source/sync",policy=AGENT_MANAGE,http=plain)]
+#[command(name="sync_agent_source",summary="Request an Agent source check",category="agents",description="Queue an immediate check of this Agent's GitHub source.",method="POST",path="/v1/agents/{agent_id}/source/sync",policy=AGENT_MANAGE,http=plain,cli=CliRoute::new(&["agents", "source"], "sync").with_examples(&[CliExample::new("Check the source now after pushing a repository change", "everruns agents source sync --agent-id agent_01h9 --reason \"Apply the latest repository change\"")]))]
 impl Command for SyncAgentSource {
     type Output = AgentSourceStatus;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

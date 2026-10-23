@@ -1399,6 +1399,85 @@
   },
   {
     "category": "agents",
+    "cli": "agents source connect",
+    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "input_schema": {
+      "$defs": {
+        "ConnectSourceRequest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SourceLocation"
+            },
+            {
+              "properties": {
+                "agent_digest": {
+                  "type": "string"
+                },
+                "commit": {
+                  "type": "string"
+                },
+                "expected_generation": {
+                  "format": "uuid",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "commit",
+                "agent_digest"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SourceLocation": {
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ConnectSourceRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "connect_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents copy",
     "description": "Copy an agent. Generates a unique name.",
     "input_schema": {
@@ -9838,6 +9917,28 @@
   },
   {
     "category": "agents",
+    "cli": "agents source disconnect",
+    "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "disconnect_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents draft",
     "description": "Revise an agent draft from a conversation with the agent builder. Returns the draft only; nothing is created.",
     "input_schema": {
@@ -10836,6 +10937,79 @@
     "name": "get_agent_script",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/scripts/{script_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents source get",
+    "description": "Show the Agent's continuous GitHub source binding and sync status.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents source options get",
+    "description": "Browse GitHub branches and Agent package paths.",
+    "input_schema": {
+      "$defs": {
+        "SourceOptionsRequest": {
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceOptionsRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "get_agent_source_options",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/options",
     "positional_arg": null,
     "read_only": true
   },
@@ -16863,6 +17037,56 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents source preview",
+    "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+    "input_schema": {
+      "$defs": {
+        "SourceLocation": {
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceLocation"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "preview_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/preview",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "harnesses",
     "cli": "harnesses preview",
     "description": "Preview the final harness shape with capabilities applied.",
@@ -18335,6 +18559,28 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/exposures/suspend",
     "positional_arg": "agent_id",
+    "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents source sync",
+    "description": "Queue an immediate check of this Agent's GitHub source.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "sync_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/sync",
+    "positional_arg": null,
     "read_only": false
   },
   {
