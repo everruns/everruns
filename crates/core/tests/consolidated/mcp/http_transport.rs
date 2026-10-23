@@ -764,3 +764,91 @@ async fn resolver_excludes_ambiguous_names_and_routes_exact_valid_server_and_too
         assert_eq!(body["params"]["arguments"], json!({"value":"original"}));
     }
 }
+
+/// Egress that answers every request with one tool result and records the
+/// deadline each `tools/call` was sent with.
+struct DeadlineRecordingEgress {
+    call_timeouts: Arc<Mutex<Vec<Option<u64>>>>,
+}
+
+#[async_trait]
+impl EgressService for DeadlineRecordingEgress {
+    async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap_or_default();
+        if body["method"] == "tools/call" {
+            self.call_timeouts.lock().unwrap().push(request.timeout_ms);
+        }
+        Ok(EgressResponse {
+            status: 200,
+            headers: Default::default(),
+            body: serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": body["id"].clone(),
+                "result": { "content": [{ "type": "text", "text": "done" }], "isError": false }
+            }))
+            .unwrap(),
+        })
+    }
+
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
+    }
+}
+
+async fn tools_call_deadlines(connection: McpConnection) -> Vec<Option<u64>> {
+    let call_timeouts = Arc::new(Mutex::new(Vec::new()));
+    let client = Arc::new(McpClient::new(
+        Arc::new(DeadlineRecordingEgress {
+            call_timeouts: call_timeouts.clone(),
+        }),
+        Arc::new(NoAuthProvider),
+    ));
+    let executor = McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    );
+    let result = executor
+        .execute_mcp_tool(&ToolCall {
+            id: "call_deadline".into(),
+            name: "mcp_ci__run".into(),
+            arguments: json!({}),
+        })
+        .await
+        .unwrap();
+    assert!(result.error.is_none(), "call failed: {:?}", result.error);
+    call_timeouts.lock().unwrap().clone()
+}
+
+#[tokio::test]
+async fn tools_call_uses_the_default_deadline_when_unset() {
+    let deadlines = tools_call_deadlines(McpConnection::http("ci", FAKE_URL)).await;
+    assert!(!deadlines.is_empty());
+    assert!(deadlines.iter().all(|deadline| *deadline == Some(60_000)));
+}
+
+#[tokio::test]
+async fn tools_call_honors_the_servers_configured_deadline() {
+    let deadlines =
+        tools_call_deadlines(McpConnection::http("ci", FAKE_URL).with_tool_timeout_ms(300_000))
+            .await;
+    assert!(!deadlines.is_empty());
+    assert!(deadlines.iter().all(|deadline| *deadline == Some(300_000)));
+}
+
+#[tokio::test]
+async fn an_out_of_range_deadline_is_clamped_not_trusted() {
+    let deadlines = tools_call_deadlines(
+        McpConnection::http("ci", FAKE_URL).with_tool_timeout_ms(7 * 24 * 60 * 60 * 1000),
+    )
+    .await;
+    assert!(
+        deadlines
+            .iter()
+            .all(|deadline| *deadline == Some(30 * 60_000))
+    );
+}

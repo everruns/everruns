@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use everruns_contracts::ConnectionRequired;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Transport-specific connection target.
 #[derive(Debug, Clone)]
@@ -44,6 +45,9 @@ pub struct McpConnection {
     /// Which elicitation modes may be declared to this server. `Url` (default)
     /// is the behaviour every server had before the policy existed.
     pub elicitation_policy: McpElicitationPolicy,
+    /// Configured `tools/call` timeout in milliseconds; `None` uses the
+    /// default. Read through [`McpConnection::tool_timeout`].
+    pub tool_timeout_ms: Option<u64>,
     pub oauth_provider_id: Option<String>,
     /// Set by the connection resolver when this server requires an OAuth grant.
     /// The executor short-circuits into a structured `connection_required`
@@ -94,6 +98,7 @@ impl McpConnection {
             auth_mode: McpServerAuthMode::None,
             protocol_mode: McpProtocolMode::Auto,
             elicitation_policy: McpElicitationPolicy::Url,
+            tool_timeout_ms: None,
             oauth_provider_id: None,
             pending_oauth_provider: None,
             connect_in_chat: crate::McpConnectInChat::Ask,
@@ -112,6 +117,26 @@ impl McpConnection {
     pub fn with_elicitation_policy(mut self, policy: McpElicitationPolicy) -> Self {
         self.elicitation_policy = policy;
         self
+    }
+
+    /// Set the `tools/call` timeout in milliseconds (builder-style).
+    pub fn with_tool_timeout_ms(mut self, timeout_ms: u64) -> Self {
+        self.tool_timeout_ms = Some(timeout_ms);
+        self
+    }
+
+    /// How long one `tools/call` may take. Unset uses the 60 s default; a
+    /// value outside the accepted range (only reachable from a record written
+    /// before validation) is clamped into it rather than trusted.
+    pub fn tool_timeout(&self) -> Duration {
+        use crate::mcp_server::{
+            MCP_TOOL_TIMEOUT_DEFAULT_MS, MCP_TOOL_TIMEOUT_MAX_MS, MCP_TOOL_TIMEOUT_MIN_MS,
+        };
+        let ms = self
+            .tool_timeout_ms
+            .unwrap_or(MCP_TOOL_TIMEOUT_DEFAULT_MS)
+            .clamp(MCP_TOOL_TIMEOUT_MIN_MS, MCP_TOOL_TIMEOUT_MAX_MS);
+        Duration::from_millis(ms)
     }
 }
 

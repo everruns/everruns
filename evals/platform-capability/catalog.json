@@ -216,6 +216,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -1701,6 +1710,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -4595,6 +4613,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -5181,6 +5208,16 @@
           "example": "github",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "tool_timeout_ms": {
+          "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\nDefaults to 60000.",
+          "example": 300000,
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -7647,6 +7684,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -16580,6 +16626,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -17224,6 +17279,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -19103,6 +19167,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -21775,6 +21848,15 @@
                 },
                 "type": "object"
               },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
                 "description": "MCP transport type. Only remote HTTP is supported today."
@@ -22529,6 +22611,16 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "tool_timeout_ms": {
+              "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\n`0` clears it back to the 60000 default.",
+              "example": 300000,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
               ]
             },
             "transport_type": {
@@ -24731,6 +24823,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",

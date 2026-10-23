@@ -39,8 +39,11 @@ use std::time::{Duration, Instant};
 /// Timeout for tool discovery (`tools/list`). Kept shorter than execution so a
 /// slow server doesn't stall turn-context assembly.
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
-/// Timeout for tool execution (`tools/call`).
-const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// Timeout for requests without a per-server setting: resource reads and
+/// `tools/call` through the connection-less helpers. A connection's
+/// `tools/call` uses [`McpConnection::tool_timeout`] instead.
+const CALL_TIMEOUT: Duration =
+    Duration::from_millis(crate::mcp_server::MCP_TOOL_TIMEOUT_DEFAULT_MS);
 /// How long a per-transport negotiation verdict stays valid before re-probing.
 const NEGOTIATION_TTL: Duration = Duration::from_secs(300);
 /// How many `input_required` rounds one `tools/call` may take before the client
@@ -759,6 +762,7 @@ pub async fn http_call_tool(
             url: elicitation,
             form: None,
         },
+        CALL_TIMEOUT,
         text,
     )
     .await?;
@@ -812,6 +816,7 @@ async fn resolve_input_required(
     arguments: &Value,
     idempotency_key: Option<&str>,
     handlers: InputHandlers<'_>,
+    call_timeout: Duration,
     text: String,
 ) -> Result<String> {
     let mut text = text;
@@ -857,7 +862,7 @@ async fn resolve_input_required(
             "tools/call",
             Some(tool_name),
             body,
-            CALL_TIMEOUT,
+            call_timeout,
             None,
         )
         .await?;
@@ -1376,7 +1381,7 @@ impl McpTransport for HttpTransport {
                 )
             },
             cached,
-            CALL_TIMEOUT,
+            connection.tool_timeout(),
         )
         .await?;
         let text = resolve_input_required(
@@ -1391,6 +1396,7 @@ impl McpTransport for HttpTransport {
             &arguments,
             idempotency_key,
             self.handlers(connection),
+            connection.tool_timeout(),
             text,
         )
         .await?;

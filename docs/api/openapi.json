@@ -34102,6 +34102,15 @@
                 "type": "string"
               }
             },
+            "tool_timeout_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+              "minimum": 0
+            },
             "type": {
               "$ref": "#/components/schemas/McpServerTransportType",
               "description": "MCP transport type. Only remote HTTP is supported today."
@@ -38402,6 +38411,16 @@
             ],
             "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (currently `github`: the agent's GitHub\nApp installation). Only allowed for MCP hosts that accept that\nprovider's tokens.",
             "example": "github"
+          },
+          "tool_timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\nDefaults to 60000.",
+            "example": 300000,
+            "minimum": 0
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
@@ -47973,6 +47992,16 @@
                   "$ref": "#/components/schemas/McpServerStatus",
                   "description": "Current lifecycle status of the MCP server."
                 },
+                "tool_timeout_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "How long one tool call may take, in milliseconds. Absent means the\n60000 default.",
+                  "example": 300000,
+                  "minimum": 0
+                },
                 "transport_type": {
                   "$ref": "#/components/schemas/McpServerTransportType",
                   "description": "Transport type (currently only HTTP supported)."
@@ -49536,6 +49565,16 @@
                     "status": {
                       "$ref": "#/components/schemas/McpServerStatus",
                       "description": "Current lifecycle status of the MCP server."
+                    },
+                    "tool_timeout_ms": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int64",
+                      "description": "How long one tool call may take, in milliseconds. Absent means the\n60000 default.",
+                      "example": 300000,
+                      "minimum": 0
                     },
                     "transport_type": {
                       "$ref": "#/components/schemas/McpServerTransportType",
@@ -51886,6 +51925,16 @@
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
             "description": "Current lifecycle status of the MCP server."
+          },
+          "tool_timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long one tool call may take, in milliseconds. Absent means the\n60000 default.",
+            "example": 300000,
+            "minimum": 0
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
@@ -61003,6 +61052,15 @@
               "type": "string"
             }
           },
+          "tool_timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+            "minimum": 0
+          },
           "type": {
             "$ref": "#/components/schemas/McpServerTransportType",
             "description": "MCP transport type. Only remote HTTP is supported today."
@@ -68488,6 +68546,16 @@
               }
             ]
           },
+          "tool_timeout_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\n`0` clears it back to the 60000 default.",
+            "example": 300000,
+            "minimum": 0
+          },
           "transport_type": {
             "oneOf": [
               {
@@ -71693,6 +71761,16 @@
               "status": {
                 "$ref": "#/components/schemas/McpServerStatus",
                 "description": "Current lifecycle status of the MCP server."
+              },
+              "tool_timeout_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "description": "How long one tool call may take, in milliseconds. Absent means the\n60000 default.",
+                "example": 300000,
+                "minimum": 0
               },
               "transport_type": {
                 "$ref": "#/components/schemas/McpServerTransportType",

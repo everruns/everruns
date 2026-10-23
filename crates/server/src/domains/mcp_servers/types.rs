@@ -41,6 +41,11 @@ pub struct CreateMcpServerRequest {
     /// lets it ask structured questions, `none` stops it eliciting at all.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elicitation_policy: Option<McpElicitationPolicy>,
+    /// How long one tool call may take, in milliseconds (1000 to 1800000).
+    /// Defaults to 60000.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 300000)]
+    pub tool_timeout_ms: Option<u64>,
     /// Connection provider whose connection on an agent's service virtual user
     /// supplies the service credential (currently `github`: the agent's GitHub
     /// App installation). Only allowed for MCP hosts that accept that
@@ -93,6 +98,11 @@ pub struct UpdateMcpServerRequest {
     /// Elicitation modes the server may use (`url`, `url_and_form`, `none`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elicitation_policy: Option<McpElicitationPolicy>,
+    /// How long one tool call may take, in milliseconds (1000 to 1800000).
+    /// `0` clears it back to the 60000 default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 300000)]
+    pub tool_timeout_ms: Option<u64>,
     /// Connection provider whose connection on an agent's service virtual user
     /// supplies the service credential (`github`). An empty string clears it.
     #[serde(skip_serializing_if = "Option::is_none")]

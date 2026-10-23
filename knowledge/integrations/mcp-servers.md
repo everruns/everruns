@@ -235,6 +235,24 @@ It persists and propagates exactly like `protocol_mode` below (`settings` JSONB,
 the embedded `mcpServers` object, `McpServerInfo.elicitation_policy`), and the
 same catalog-reference conflict rule applies.
 
+#### `tool_timeout_ms`
+
+How long one `tools/call` may block, per server (org-managed `McpServer` and
+scoped `ScopedMcpServer`). Unset means 60 s, the limit every call had before it
+was configurable; the accepted range is 1 s to 30 min, checked when config is
+written and clamped again in the client so a row written before validation
+cannot hold a worker longer. The cap exists because a blocking call holds a
+worker for its whole duration: work longer than that belongs in an MCP task,
+which the client polls instead of holding open. `timeout` is accepted as an
+alias, matching common `mcpServers` config files.
+
+Unlike `elicitation_policy` it is not a trust decision, so an attachment that
+references a catalog preset may set its own and otherwise inherits the
+catalog's. It persists like `protocol_mode` (`settings` JSONB, the embedded
+`mcpServers` object, `McpServerInfo.tool_timeout_ms`). Only `tools/call` uses
+it; discovery and resource reads keep their fixed limits. An update request
+sends `0` to clear it.
+
 #### `protocol_mode`
 
 Each server (org-managed `McpServer` and scoped `ScopedMcpServer`) carries a

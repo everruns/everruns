@@ -194,6 +194,24 @@ with the App's permissions, and tools about a person (`get_me`, notifications,
 starred repositories, "my" issues and pull requests) fail. For those, attach the
 server acting as `user` so the person signs in.
 
+### Long-running tools
+
+A call to an MCP tool fails if the server has not answered within 60 seconds.
+For a server whose tools take longer, such as one that runs a build or a
+deployment, set `tool_timeout_ms` on the attachment or catalog entry (**Tool call
+timeout** in the catalog form, in seconds). It accepts 1 second to 30 minutes.
+`timeout`, the key common `mcpServers` config files use, works as well. An
+attachment that uses a catalog entry may set its own timeout. If it does not,
+it uses the catalog's timeout.
+
+```json
+{
+  "mcpServers": {
+    "ci": { "type": "http", "url": "https://ci.example.com/mcp", "tool_timeout_ms": 600000 }
+  }
+}
+```
+
 ### Waking an agent on a server's events (experimental)
 
 With the **MCP Events** flag on, an agent can also subscribe to events that one

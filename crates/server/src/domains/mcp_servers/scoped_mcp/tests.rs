@@ -211,6 +211,7 @@ pub(crate) async fn seed_catalog_server(
         },
         protocol_mode: McpProtocolMode::V2025June,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth: oauth
             .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
         service_connection_provider: None,
@@ -243,6 +244,7 @@ pub(crate) async fn seed_unregistered_oauth_catalog_server(
         auth_mode: McpServerAuthMode::OAuth,
         protocol_mode: McpProtocolMode::V2025June,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth: None,
         service_connection_provider: None,
         connection_check: None,
@@ -907,6 +909,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
         auth_mode: McpServerAuthMode::OAuth,
         protocol_mode: McpProtocolMode::V2025June,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
         service_connection_provider: None,
         connection_check: None,
@@ -991,6 +994,7 @@ async fn none_attachment_keeps_preset_transport_and_literal_headers() {
     assert!(resolved.api_key.is_none());
     assert_eq!(resolved.headers.get("X-Catalog"), Some(&"value".into()));
 }
+
 #[tokio::test]
 async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
     let db = StorageBackend::test_database();
