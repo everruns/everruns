@@ -142,8 +142,8 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("/v1/skills/config", "skills"),
         ("/v1/memories", "memory"),
         ("/v1/memories/memory_missing/fs", "memory"),
-        ("/v1/knowledge-indexes", "knowledge"),
-        ("/v1/knowledge-bases", "knowledge"),
+        ("/v1/knowledge", "knowledge"),
+        ("/v1/knowledge-indexers", "knowledge"),
         ("/v1/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
@@ -179,14 +179,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
             .iter()
             .all(|category| !matches!(
                 category["category"].as_str(),
-                Some(
-                    "evals"
-                        | "skills"
-                        | "memories"
-                        | "knowledge_indexes"
-                        | "knowledge_bases"
-                        | "plugins"
-                )
+                Some("evals" | "skills" | "memories" | "knowledge" | "plugins")
             ))
     );
 

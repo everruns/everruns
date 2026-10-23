@@ -210,6 +210,10 @@ impl SessionFileSystem for PolicyFileStore {
         self.inner.is_mount_resolver()
     }
 
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
+    }
+
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
         self.inner.host_path(path)
     }
@@ -552,6 +556,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
         self.inner.is_mount_resolver()
     }
 
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
+    }
+
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
         self.inner.host_path(path)
     }
@@ -766,6 +774,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {

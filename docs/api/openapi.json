@@ -14513,19 +14513,17 @@
         }
       }
     },
-    "/v1/knowledge-bases": {
+    "/v1/knowledge": {
       "get": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "List kbs",
-        "description": "List knowledge bases.",
-        "operationId": "list_kbs",
+        "summary": "List knowledge",
+        "operationId": "list_knowledge",
         "parameters": [
           {
-            "name": "search",
+            "name": "after",
             "in": "query",
-            "description": "Substring filter applied to knowledge-base name and description.",
             "required": false,
             "schema": {
               "type": [
@@ -14535,9 +14533,32 @@
             }
           },
           {
-            "name": "include_archived",
+            "name": "path",
             "in": "query",
-            "description": "When `true`, also returns archived knowledge bases.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "extracted",
+            "in": "query",
             "required": false,
             "schema": {
               "type": [
@@ -14545,16 +14566,52 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List knowledge bases",
+            "description": "Knowledge collections",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_KnowledgeBaseResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -14568,49 +14625,26 @@
       },
       "post": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "Create kb",
-        "description": "Create a new knowledge base.",
-        "operationId": "create_kb",
+        "summary": "Create knowledge",
+        "operationId": "create_knowledge",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateKnowledgeBaseRequest"
+                "$ref": "#/components/schemas/CollectionInput"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Knowledge base created",
+          "200": {
+            "description": "Created collection",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeBaseResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate knowledge base name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -14623,19 +14657,111 @@
         }
       }
     },
-    "/v1/knowledge-bases/{kb_id}": {
+    "/v1/knowledge-indexers": {
       "get": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "Get kb",
-        "description": "Get a knowledge base by ID.",
-        "operationId": "get_kb",
+        "summary": "List knowledge indexers",
+        "operationId": "list_knowledge_indexers",
+        "responses": {
+          "200": {
+            "description": "Organization search accounts",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Create knowledge indexer",
+        "operationId": "create_knowledge_indexer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Configured search account",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/knowledge/search": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Search knowledge collections",
+        "operationId": "search_knowledge_collections",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Versioned search results",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/knowledge/{collection_id}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Get knowledge",
+        "operationId": "get_knowledge",
         "parameters": [
           {
-            "name": "kb_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge base ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
@@ -14644,22 +14770,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Knowledge base found",
+            "description": "Collection and processing status",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeBaseResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -14673,16 +14787,15 @@
       },
       "delete": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "Delete kb",
-        "description": "Delete a knowledge base.",
-        "operationId": "delete_kb",
+        "summary": "Archive knowledge",
+        "operationId": "archive_knowledge",
         "parameters": [
           {
-            "name": "kb_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge base ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
@@ -14690,16 +14803,11 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Knowledge base archived"
-          },
-          "404": {
-            "description": "Knowledge base not found",
+          "200": {
+            "description": "Archived collection",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -14713,16 +14821,15 @@
       },
       "patch": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "Update kb",
-        "description": "Update a knowledge base. Only provided fields are modified.",
-        "operationId": "update_kb",
+        "summary": "Update knowledge",
+        "operationId": "update_knowledge",
         "parameters": [
           {
-            "name": "kb_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge base ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
@@ -14733,7 +14840,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateKnowledgeBaseRequest"
+                "$ref": "#/components/schemas/CollectionInput"
               }
             }
           },
@@ -14741,42 +14848,10 @@
         },
         "responses": {
           "200": {
-            "description": "Knowledge base updated",
+            "description": "Updated collection",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeBaseResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate knowledge base name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -14789,28 +14864,26 @@
         }
       }
     },
-    "/v1/knowledge-bases/{kb_id}/entries": {
+    "/v1/knowledge/{collection_id}/files": {
       "get": {
         "tags": [
-          "knowledge_bases"
+          "knowledge"
         ],
-        "summary": "List entries",
-        "description": "List knowledge base entries.",
-        "operationId": "list_entries",
+        "summary": "List knowledge files",
+        "operationId": "list_knowledge_files",
         "parameters": [
           {
-            "name": "kb_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge base ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
             }
           },
           {
-            "name": "search",
+            "name": "after",
             "in": "query",
-            "description": "Substring filter applied to entry title and body.",
             "required": false,
             "schema": {
               "type": [
@@ -14820,425 +14893,8 @@
             }
           },
           {
-            "name": "kind",
+            "name": "path",
             "in": "query",
-            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List entries",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_KnowledgeEntryResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      },
-      "post": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Create entry",
-        "description": "Create a new knowledge base entry.",
-        "operationId": "create_entry",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateKnowledgeEntryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Entry created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/knowledge-bases/{kb_id}/entries/{entry_id}": {
-      "get": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Get entry",
-        "description": "Get a knowledge base entry by ID.",
-        "operationId": "get_entry",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "entry_id",
-            "in": "path",
-            "description": "Entry ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Entry found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Entry not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      },
-      "delete": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Delete entry",
-        "description": "Delete a knowledge base entry.",
-        "operationId": "delete_entry",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "entry_id",
-            "in": "path",
-            "description": "Entry ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Entry deleted"
-          },
-          "404": {
-            "description": "Entry not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      },
-      "patch": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Update entry",
-        "description": "Update a knowledge base entry. Only provided fields are modified.",
-        "operationId": "update_entry",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "entry_id",
-            "in": "path",
-            "description": "Entry ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateKnowledgeEntryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Entry updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeEntryResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Entry not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/knowledge-bases/{kb_id}/okf_export": {
-      "get": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Export okf",
-        "description": "Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter).",
-        "operationId": "export_okf",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OKF bundle (.tar.gz)",
-            "content": {
-              "application/gzip": {}
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/knowledge-bases/{kb_id}/okf_import": {
-      "post": {
-        "tags": [
-          "knowledge_bases"
-        ],
-        "summary": "Import okf",
-        "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates.",
-        "operationId": "import_okf",
-        "parameters": [
-          {
-            "name": "kb_id",
-            "in": "path",
-            "description": "Knowledge base ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ImportOkfBundleRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Import summary",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OkfImportSummary"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid bundle or input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge base not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/knowledge-indexes": {
-      "get": {
-        "tags": [
-          "knowledge_indexes"
-        ],
-        "summary": "List indexes",
-        "description": "List knowledge indexes.",
-        "operationId": "list_indexes",
-        "parameters": [
-          {
-            "name": "search",
-            "in": "query",
-            "description": "Substring filter applied to index name and description.",
             "required": false,
             "schema": {
               "type": [
@@ -15248,9 +14904,21 @@
             }
           },
           {
-            "name": "include_archived",
+            "name": "limit",
             "in": "query",
-            "description": "When `true`, also returns archived knowledge indexes.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "extracted",
+            "in": "query",
             "required": false,
             "schema": {
               "type": [
@@ -15258,16 +14926,52 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "List knowledge indexes",
+            "description": "File catalog page",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_KnowledgeIndexResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -15279,100 +14983,39 @@
           "support": "preview"
         }
       },
-      "post": {
+      "put": {
         "tags": [
-          "knowledge_indexes"
+          "knowledge"
         ],
-        "summary": "Create index",
-        "description": "Create a new knowledge index.",
-        "operationId": "create_index",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateKnowledgeIndexRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Knowledge index created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate knowledge index name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "x-docs": {
-          "audience": "public",
-          "availability": "Everruns Cloud and self-hosted Platform",
-          "group": "knowledge-memory",
-          "support": "preview"
-        }
-      }
-    },
-    "/v1/knowledge-indexes/{index_id}": {
-      "get": {
-        "tags": [
-          "knowledge_indexes"
-        ],
-        "summary": "Get index",
-        "description": "Get a knowledge index by ID.",
-        "operationId": "get_index",
+        "summary": "Write knowledge file",
+        "operationId": "write_knowledge_file",
         "parameters": [
           {
-            "name": "index_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge index ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Knowledge index found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
-                }
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileInput"
               }
             }
           },
-          "404": {
-            "description": "Knowledge index not found",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stored immutable file version",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -15386,16 +15029,24 @@
       },
       "delete": {
         "tags": [
-          "knowledge_indexes"
+          "knowledge"
         ],
-        "summary": "Delete index",
-        "description": "Delete a knowledge index.",
-        "operationId": "delete_index",
+        "summary": "Delete knowledge file",
+        "operationId": "delete_knowledge_file",
         "parameters": [
           {
-            "name": "index_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge index ID",
+            "description": "Knowledge collection",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "description": "File path",
             "required": true,
             "schema": {
               "type": "string"
@@ -15403,16 +15054,11 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Knowledge index archived"
-          },
-          "404": {
-            "description": "Knowledge index not found",
+          "200": {
+            "description": "Deleted file",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -15426,16 +15072,15 @@
       },
       "patch": {
         "tags": [
-          "knowledge_indexes"
+          "knowledge"
         ],
-        "summary": "Update index",
-        "description": "Update a knowledge index. Only provided fields are modified.",
-        "operationId": "update_index",
+        "summary": "Update knowledge file metadata",
+        "operationId": "update_knowledge_file_metadata",
         "parameters": [
           {
-            "name": "index_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge index ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
@@ -15446,7 +15091,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateKnowledgeIndexRequest"
+                "$ref": "#/components/schemas/FileMetadataInput"
               }
             }
           },
@@ -15454,42 +15099,10 @@
         },
         "responses": {
           "200": {
-            "description": "Knowledge index updated",
+            "description": "Updated file metadata and policy",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge index not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate knowledge index name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -15502,42 +15115,115 @@
         }
       }
     },
-    "/v1/knowledge-indexes/{index_id}/documents": {
+    "/v1/knowledge/{collection_id}/files/content": {
       "get": {
         "tags": [
-          "knowledge_indexes"
+          "knowledge"
         ],
-        "summary": "List documents",
-        "description": "List documents inside a knowledge index.",
-        "operationId": "list_documents",
+        "summary": "Get knowledge file content",
+        "operationId": "get_knowledge_file_content",
         "parameters": [
           {
-            "name": "index_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge index ID",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "extracted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "List documents",
+            "description": "Bounded original or extracted bytes",
             "content": {
-              "application/json": {
+              "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_KnowledgeIndexDocumentResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge index not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "type": "string"
                 }
               }
             }
@@ -15551,19 +15237,184 @@
         }
       }
     },
-    "/v1/knowledge-indexes/{index_id}/sync": {
-      "post": {
+    "/v1/knowledge/{collection_id}/okf": {
+      "get": {
         "tags": [
-          "knowledge_indexes"
+          "knowledge"
         ],
-        "summary": "Sync index",
-        "description": "Enqueue a manual sync of a knowledge index.",
-        "operationId": "sync_index",
+        "summary": "Validate knowledge okf",
+        "operationId": "validate_knowledge_okf",
         "parameters": [
           {
-            "name": "index_id",
+            "name": "collection_id",
             "in": "path",
-            "description": "Knowledge index ID",
+            "description": "Knowledge collection",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "extracted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "length",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OKF metadata validation page",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/knowledge/{collection_id}/sources": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Add knowledge source",
+        "operationId": "add_knowledge_source",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "description": "Knowledge collection",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connected source",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/knowledge/{collection_id}/sync": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Sync knowledge",
+        "operationId": "sync_knowledge",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "description": "Knowledge collection",
             "required": true,
             "schema": {
               "type": "string"
@@ -15572,32 +15423,75 @@
         ],
         "responses": {
           "200": {
-            "description": "Sync enqueued",
+            "description": "Refresh queued",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
-                }
+                "schema": {}
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "knowledge-memory",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/knowledge/{collection_id}/upload": {
+      "put": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Upload knowledge file",
+        "operationId": "upload_knowledge_file",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "description": "Knowledge collection",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mime_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
               }
             }
           },
-          "400": {
-            "description": "Knowledge index is archived",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stored streamed original",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Knowledge index not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
+                "schema": {}
               }
             }
           }
@@ -35663,6 +35557,38 @@
           }
         }
       },
+      "CollectionInput": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexer_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "indexing": {
+            "$ref": "#/components/schemas/IndexMode"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rules": {}
+        },
+        "additionalProperties": false
+      },
       "CommandCatalog": {
         "type": "object",
         "description": "The command contract available to the caller.",
@@ -38197,123 +38123,6 @@
               "research",
               "planning"
             ]
-          }
-        }
-      },
-      "CreateKnowledgeBaseRequest": {
-        "type": "object",
-        "description": "Request body for the `create_knowledge_base` operation.",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Runbooks for the support team"
-          },
-          "embedding_model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional embedding model for hybrid retrieval. Omit or null for keyword search only."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "support-runbooks"
-          }
-        }
-      },
-      "CreateKnowledgeEntryRequest": {
-        "type": "object",
-        "description": "Request body for the `create_knowledge_entry` operation.",
-        "required": [
-          "title",
-          "body"
-        ],
-        "properties": {
-          "body": {
-            "type": "string",
-            "description": "Entry body. Markdown is rendered when displayed.",
-            "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Only the on-call billing engineer can authorize this."
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-            "example": "runbook"
-          },
-          "resource": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional OKF resource URI identifying the underlying asset.",
-            "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
-          },
-          "tags": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "Free-form tags attached to this resource.",
-            "example": [
-              "billing",
-              "refunds"
-            ]
-          },
-          "title": {
-            "type": "string",
-            "description": "Human-readable title. Safe to render in user-facing messages.",
-            "example": "Refund a payment past 30 days"
-          }
-        }
-      },
-      "CreateKnowledgeIndexRequest": {
-        "type": "object",
-        "description": "Request body for the `create_knowledge_index` operation.",
-        "required": [
-          "name",
-          "embedding_model_id"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Synced product documentation"
-          },
-          "embedding_model_id": {
-            "type": "string",
-            "description": "Embedding model used to embed chunks. Required."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "product-docs"
-          },
-          "source_config": {
-            "description": "Non-secret source coordinates. GitHub repositories accept `owner/repo`\nor canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials."
-          },
-          "source_type": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "External source type. One of `github`, `git`. Defaults to `github`.",
-            "example": "github"
           }
         }
       },
@@ -42472,6 +42281,74 @@
           }
         }
       },
+      "FileInput": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_base64": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "metadata": {},
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "readable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "FileMetadataInput": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "indexable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "metadata": {},
+          "path": {
+            "type": "string"
+          },
+          "readable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "FileSource": {
         "type": "object",
         "description": "A package-relative file or glob and its working-directory destination.",
@@ -44784,30 +44661,6 @@
           }
         }
       },
-      "ImportOkfBundleRequest": {
-        "type": "object",
-        "description": "Request body for `okf_import`.",
-        "properties": {
-          "bundle_base64": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`."
-          },
-          "files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OkfFileInput"
-            },
-            "description": "Inline bundle files. Mutually exclusive with `bundle_base64`."
-          },
-          "prune": {
-            "type": "boolean",
-            "description": "When true, delete previously-imported entries absent from this bundle."
-          }
-        }
-      },
       "ImportScore": {
         "type": "object",
         "description": "A single named score from an external scorer.",
@@ -44869,6 +44722,35 @@
             "example": "nonce-from-the-local-helper"
           }
         }
+      },
+      "IndexMode": {
+        "type": "string",
+        "enum": [
+          "off",
+          "lexical",
+          "hybrid"
+        ]
+      },
+      "IndexerInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "endpoint",
+          "credential_binding_id"
+        ],
+        "properties": {
+          "credential_binding_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "InitialFile": {
         "type": "object",
@@ -45083,320 +44965,43 @@
           }
         }
       },
-      "KnowledgeBaseResponse": {
+      "KnowledgeQuery": {
         "type": "object",
-        "description": "Response body for knowledge base.",
         "required": [
-          "id",
-          "name",
-          "status",
-          "created_at",
-          "updated_at"
+          "query"
         ],
         "properties": {
-          "archived_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
-          },
-          "deleted_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
-          },
-          "embedding_model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional embedding model for hybrid retrieval. `null` = keyword search only."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-            "example": "kb_01933b5a000070008000000000000001"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
-          },
-          "status": {
-            "type": "string",
-            "description": "Current lifecycle status."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
-          }
-        }
-      },
-      "KnowledgeEntryResponse": {
-        "type": "object",
-        "description": "Response body for knowledge entry.",
-        "required": [
-          "id",
-          "kb_id",
-          "title",
-          "body",
-          "kind",
-          "tags",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "body": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-            "example": "kbe_01933b5a000070008000000000000001"
-          },
-          "kb_id": {
-            "type": "string",
-            "description": "Knowledge base's prefixed public identifier.",
-            "example": "kb_01933b5a000070008000000000000001"
-          },
-          "kind": {
-            "type": "string",
-            "description": "Discriminator selecting the variant of this resource."
-          },
-          "resource": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional OKF resource URI identifying the underlying asset.",
-            "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
-          },
-          "tags": {
+          "collections": {
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Free-form tags attached to this resource."
+            }
           },
-          "title": {
-            "type": "string",
-            "description": "Human-readable title. Safe to render in user-facing messages."
+          "lexical_only": {
+            "type": "boolean"
           },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
-          }
-        }
-      },
-      "KnowledgeIndexDocumentResponse": {
-        "type": "object",
-        "description": "Response body for a knowledge index document.",
-        "required": [
-          "id",
-          "index_id",
-          "source_uri",
-          "chunk_count",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "chunk_count": {
+          "limit": {
             "type": "integer",
-            "format": "int32",
-            "description": "Denormalized chunk count for this document."
-          },
-          "content_hash": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Content hash driving incremental re-embedding."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-            "example": "kidoc_01933b5a000070008000000000000001"
-          },
-          "index_id": {
-            "type": "string",
-            "description": "Parent index's prefixed public identifier.",
-            "example": "kidx_01933b5a000070008000000000000001"
-          },
-          "last_seen_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp this document was last seen during a sync pass (RFC 3339)."
-          },
-          "mime_type": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Document MIME type, if known."
-          },
-          "size_bytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Document size in bytes, if known."
-          },
-          "source_uri": {
-            "type": "string",
-            "description": "Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`)."
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Document title, if known."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
-          }
-        }
-      },
-      "KnowledgeIndexResponse": {
-        "type": "object",
-        "description": "Response body for a knowledge index.",
-        "required": [
-          "id",
-          "name",
-          "source_type",
-          "source_config",
-          "embedding_model_id",
-          "document_count",
-          "status",
-          "sync_status",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "archived_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
-          },
-          "deleted_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
-          },
-          "document_count": {
-            "type": "integer",
-            "description": "Number of documents currently retained by this index.",
             "minimum": 0
           },
-          "embedding_model_id": {
-            "type": "string",
-            "description": "Embedding model used to embed chunks. Required."
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-            "example": "kidx_01933b5a000070008000000000000001"
-          },
-          "last_sync_error": {
+          "path": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Sanitized failure reason from the last failed sync, if any."
+            ]
           },
-          "last_synced_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp of the last successful sync, if any (RFC 3339)."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
-          },
-          "source_config": {
-            "description": "Non-secret source coordinates. Never holds credentials."
-          },
-          "source_type": {
-            "type": "string",
-            "description": "External source type. One of `github`, `git`."
-          },
-          "status": {
-            "type": "string",
-            "description": "Current lifecycle status."
-          },
-          "sync_status": {
-            "type": "string",
-            "description": "Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
-          },
-          "vector_dim": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Embedding dimension, recorded on first successful sync."
+          "query": {
+            "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "LatestHealthCheckRun": {
         "type": "object",
@@ -45666,72 +45271,6 @@
             ],
             "description": "Filter by execution status",
             "example": "completed"
-          }
-        }
-      },
-      "ListKnowledgeBasesQuery": {
-        "type": "object",
-        "description": "Query parameters for `GET /v1/knowledge-bases` — optional name/desc\nsearch plus a flag to include archived knowledge bases.",
-        "properties": {
-          "include_archived": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "When `true`, also returns archived knowledge bases.",
-            "example": false
-          },
-          "search": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Substring filter applied to knowledge-base name and description.",
-            "example": "runbook"
-          }
-        }
-      },
-      "ListKnowledgeEntriesQuery": {
-        "type": "object",
-        "description": "Query parameters for listing entries inside a knowledge base — optional\ntext search and tag filter.",
-        "properties": {
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-            "example": "runbook"
-          },
-          "search": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Substring filter applied to entry title and body.",
-            "example": "refund"
-          }
-        }
-      },
-      "ListKnowledgeIndexesQuery": {
-        "type": "object",
-        "description": "Query parameters for `GET /v1/knowledge-indexes` — optional name/desc\nsearch plus a flag to include archived indexes.",
-        "properties": {
-          "include_archived": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "When `true`, also returns archived knowledge indexes.",
-            "example": false
-          },
-          "search": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Substring filter applied to index name and description.",
-            "example": "docs"
           }
         }
       },
@@ -47470,373 +47009,6 @@
                 "value": {
                   "type": "string",
                   "description": "The stored value"
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_KnowledgeBaseResponse": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Response body for knowledge base.",
-              "required": [
-                "id",
-                "name",
-                "status",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "archived_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
-                },
-                "deleted_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
-                },
-                "description": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Human-readable description. Safe to render in user-facing messages."
-                },
-                "embedding_model_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Optional embedding model for hybrid retrieval. `null` = keyword search only."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-                  "example": "kb_01933b5a000070008000000000000001"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Human-readable name. Safe to render in user-facing messages."
-                },
-                "status": {
-                  "type": "string",
-                  "description": "Current lifecycle status."
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_KnowledgeEntryResponse": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Response body for knowledge entry.",
-              "required": [
-                "id",
-                "kb_id",
-                "title",
-                "body",
-                "kind",
-                "tags",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "body": {
-                  "type": "string"
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-                  "example": "kbe_01933b5a000070008000000000000001"
-                },
-                "kb_id": {
-                  "type": "string",
-                  "description": "Knowledge base's prefixed public identifier.",
-                  "example": "kb_01933b5a000070008000000000000001"
-                },
-                "kind": {
-                  "type": "string",
-                  "description": "Discriminator selecting the variant of this resource."
-                },
-                "resource": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Optional OKF resource URI identifying the underlying asset.",
-                  "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Free-form tags attached to this resource."
-                },
-                "title": {
-                  "type": "string",
-                  "description": "Human-readable title. Safe to render in user-facing messages."
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_KnowledgeIndexDocumentResponse": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Response body for a knowledge index document.",
-              "required": [
-                "id",
-                "index_id",
-                "source_uri",
-                "chunk_count",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "chunk_count": {
-                  "type": "integer",
-                  "format": "int32",
-                  "description": "Denormalized chunk count for this document."
-                },
-                "content_hash": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Content hash driving incremental re-embedding."
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-                  "example": "kidoc_01933b5a000070008000000000000001"
-                },
-                "index_id": {
-                  "type": "string",
-                  "description": "Parent index's prefixed public identifier.",
-                  "example": "kidx_01933b5a000070008000000000000001"
-                },
-                "last_seen_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp this document was last seen during a sync pass (RFC 3339)."
-                },
-                "mime_type": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Document MIME type, if known."
-                },
-                "size_bytes": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int64",
-                  "description": "Document size in bytes, if known."
-                },
-                "source_uri": {
-                  "type": "string",
-                  "description": "Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`)."
-                },
-                "title": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Document title, if known."
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_KnowledgeIndexResponse": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Response body for a knowledge index.",
-              "required": [
-                "id",
-                "name",
-                "source_type",
-                "source_config",
-                "embedding_model_id",
-                "document_count",
-                "status",
-                "sync_status",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "archived_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
-                },
-                "deleted_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
-                },
-                "description": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Human-readable description. Safe to render in user-facing messages."
-                },
-                "document_count": {
-                  "type": "integer",
-                  "description": "Number of documents currently retained by this index.",
-                  "minimum": 0
-                },
-                "embedding_model_id": {
-                  "type": "string",
-                  "description": "Embedding model used to embed chunks. Required."
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).",
-                  "example": "kidx_01933b5a000070008000000000000001"
-                },
-                "last_sync_error": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Sanitized failure reason from the last failed sync, if any."
-                },
-                "last_synced_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp of the last successful sync, if any (RFC 3339)."
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Human-readable name. Safe to render in user-facing messages."
-                },
-                "source_config": {
-                  "description": "Non-secret source coordinates. Never holds credentials."
-                },
-                "source_type": {
-                  "type": "string",
-                  "description": "External source type. One of `github`, `git`."
-                },
-                "status": {
-                  "type": "string",
-                  "description": "Current lifecycle status."
-                },
-                "sync_status": {
-                  "type": "string",
-                  "description": "Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`."
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
-                },
-                "vector_dim": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "int32",
-                  "description": "Embedding dimension, recorded on first successful sync."
                 }
               }
             },
@@ -54602,62 +53774,6 @@
           "archived",
           "deleted"
         ]
-      },
-      "OkfFileInput": {
-        "type": "object",
-        "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
-        "required": [
-          "path",
-          "content"
-        ],
-        "properties": {
-          "content": {
-            "type": "string",
-            "description": "Raw markdown file content (frontmatter + body)."
-          },
-          "path": {
-            "type": "string",
-            "description": "Bundle-relative path, e.g. `tables/orders.md`."
-          }
-        }
-      },
-      "OkfImportSummary": {
-        "type": "object",
-        "description": "Outcome of an import run.",
-        "required": [
-          "created",
-          "updated",
-          "skipped",
-          "pruned",
-          "warnings"
-        ],
-        "properties": {
-          "created": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "pruned": {
-            "type": "integer",
-            "description": "Entries removed because `prune` was set and they were absent from the bundle.",
-            "minimum": 0
-          },
-          "skipped": {
-            "type": "integer",
-            "description": "Documents skipped (e.g. oversized body); see `warnings`.",
-            "minimum": 0
-          },
-          "updated": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully."
-          }
-        }
       },
       "OrgEgressAllowlistResponse": {
         "type": "object",
@@ -63664,6 +62780,29 @@
           }
         }
       },
+      "SourceInput": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "config": {},
+          "connection_owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "root_path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "SourceLocation": {
         "type": "object",
         "description": "Repository, branch and package path that define an Agent's GitHub source.",
@@ -68278,117 +67417,6 @@
               "null"
             ],
             "description": "New lifecycle status: `active` or `disabled`."
-          }
-        }
-      },
-      "UpdateKnowledgeBaseRequest": {
-        "type": "object",
-        "description": "Request body for the `update_knowledge_base` operation.",
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
-          },
-          "embedding_model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional embedding model for hybrid retrieval. Set to null to clear."
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "support-runbooks-archive"
-          }
-        }
-      },
-      "UpdateKnowledgeEntryRequest": {
-        "type": "object",
-        "description": "Request body for the `update_knowledge_entry` operation.",
-        "properties": {
-          "body": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Updated entry body. Markdown is rendered when displayed.",
-            "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval."
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-            "example": "runbook"
-          },
-          "resource": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional OKF resource URI. Set to null to clear."
-          },
-          "tags": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "Free-form tags attached to this resource.",
-            "example": [
-              "billing",
-              "refunds",
-              "vp-approval"
-            ]
-          },
-          "title": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable title. Safe to render in user-facing messages.",
-            "example": "Refund a payment past 60 days"
-          }
-        }
-      },
-      "UpdateKnowledgeIndexRequest": {
-        "type": "object",
-        "description": "Request body for the `update_knowledge_index` operation.",
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Set to null to clear."
-          },
-          "embedding_model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Embedding model used to embed chunks. Required; cannot be cleared."
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "product-docs-v2"
-          },
-          "source_config": {
-            "description": "Non-secret source coordinates. Never include credentials."
           }
         }
       },
@@ -73553,14 +72581,8 @@
       "x-displayName": "Memory"
     },
     {
-      "name": "knowledge_bases",
-      "description": "Knowledge base and entry management endpoints",
-      "x-displayName": "Knowledge bases"
-    },
-    {
-      "name": "knowledge_indexes",
-      "description": "Knowledge index and document management endpoints",
-      "x-displayName": "Knowledge indexes"
+      "name": "knowledge",
+      "x-displayName": "Knowledge"
     },
     {
       "name": "providers",
@@ -73729,8 +72751,7 @@
       "name": "Knowledge & memory",
       "tags": [
         "memory",
-        "knowledge_bases",
-        "knowledge_indexes"
+        "knowledge"
       ],
       "x-description": "Give agents persistent memory and curated knowledge. Manage indexes and the documents they contain.",
       "x-slug": "knowledge-memory"

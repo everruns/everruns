@@ -241,6 +241,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "user_mcp" => Some("user-mcp-servers"),
         "poppy_client" => Some("poppy-personal-agent"),
         "memory" => Some("memory"),
+        "knowledge" => Some("knowledge"),
         "knowledge_base" => Some("knowledge-base"),
         "knowledge_index" => Some("knowledge-index"),
         "data_knowledge" => Some("data-knowledge"),

@@ -3613,131 +3613,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases": {
+  "/v1/knowledge": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List kbs
-     * @description List knowledge bases.
-     */
-    get: operations["list_kbs"];
+    /** List knowledge */
+    get: operations["list_knowledge"];
     put?: never;
-    /**
-     * Create kb
-     * @description Create a new knowledge base.
-     */
-    post: operations["create_kb"];
+    /** Create knowledge */
+    post: operations["create_knowledge"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases/{kb_id}": {
+  "/v1/knowledge-indexers": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * Get kb
-     * @description Get a knowledge base by ID.
-     */
-    get: operations["get_kb"];
+    /** List knowledge indexers */
+    get: operations["list_knowledge_indexers"];
     put?: never;
-    post?: never;
-    /**
-     * Delete kb
-     * @description Delete a knowledge base.
-     */
-    delete: operations["delete_kb"];
-    options?: never;
-    head?: never;
-    /**
-     * Update kb
-     * @description Update a knowledge base. Only provided fields are modified.
-     */
-    patch: operations["update_kb"];
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/entries": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List entries
-     * @description List knowledge base entries.
-     */
-    get: operations["list_entries"];
-    put?: never;
-    /**
-     * Create entry
-     * @description Create a new knowledge base entry.
-     */
-    post: operations["create_entry"];
+    /** Create knowledge indexer */
+    post: operations["create_knowledge_indexer"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases/{kb_id}/entries/{entry_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get entry
-     * @description Get a knowledge base entry by ID.
-     */
-    get: operations["get_entry"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete entry
-     * @description Delete a knowledge base entry.
-     */
-    delete: operations["delete_entry"];
-    options?: never;
-    head?: never;
-    /**
-     * Update entry
-     * @description Update a knowledge base entry. Only provided fields are modified.
-     */
-    patch: operations["update_entry"];
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/okf_export": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Export okf
-     * @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter).
-     */
-    get: operations["export_okf"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/okf_import": {
+  "/v1/knowledge/search": {
     parameters: {
       query?: never;
       header?: never;
@@ -3746,81 +3658,62 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /**
-     * Import okf
-     * @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates.
-     */
-    post: operations["import_okf"];
+    /** Search knowledge collections */
+    post: operations["search_knowledge_collections"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-indexes": {
+  "/v1/knowledge/{collection_id}": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List indexes
-     * @description List knowledge indexes.
-     */
-    get: operations["list_indexes"];
-    put?: never;
-    /**
-     * Create index
-     * @description Create a new knowledge index.
-     */
-    post: operations["create_index"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/knowledge-indexes/{index_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get index
-     * @description Get a knowledge index by ID.
-     */
-    get: operations["get_index"];
+    /** Get knowledge */
+    get: operations["get_knowledge"];
     put?: never;
     post?: never;
-    /**
-     * Delete index
-     * @description Delete a knowledge index.
-     */
-    delete: operations["delete_index"];
+    /** Archive knowledge */
+    delete: operations["archive_knowledge"];
     options?: never;
     head?: never;
-    /**
-     * Update index
-     * @description Update a knowledge index. Only provided fields are modified.
-     */
-    patch: operations["update_index"];
+    /** Update knowledge */
+    patch: operations["update_knowledge"];
     trace?: never;
   };
-  "/v1/knowledge-indexes/{index_id}/documents": {
+  "/v1/knowledge/{collection_id}/files": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List documents
-     * @description List documents inside a knowledge index.
-     */
-    get: operations["list_documents"];
+    /** List knowledge files */
+    get: operations["list_knowledge_files"];
+    /** Write knowledge file */
+    put: operations["write_knowledge_file"];
+    post?: never;
+    /** Delete knowledge file */
+    delete: operations["delete_knowledge_file"];
+    options?: never;
+    head?: never;
+    /** Update knowledge file metadata */
+    patch: operations["update_knowledge_file_metadata"];
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/files/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get knowledge file content */
+    get: operations["get_knowledge_file_content"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3829,7 +3722,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-indexes/{index_id}/sync": {
+  "/v1/knowledge/{collection_id}/okf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Validate knowledge okf */
+    get: operations["validate_knowledge_okf"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/sources": {
     parameters: {
       query?: never;
       header?: never;
@@ -3838,11 +3748,42 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /**
-     * Sync index
-     * @description Enqueue a manual sync of a knowledge index.
-     */
-    post: operations["sync_index"];
+    /** Add knowledge source */
+    post: operations["add_knowledge_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Sync knowledge */
+    post: operations["sync_knowledge"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/upload": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Upload knowledge file */
+    put: operations["upload_knowledge_file"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -10371,6 +10312,15 @@ export interface components {
        */
       tool_call_id: string;
     };
+    CollectionInput: {
+      description?: string;
+      embedding_model_id?: string | null;
+      /** Format: uuid */
+      indexer_id?: string | null;
+      indexing?: components["schemas"]["IndexMode"];
+      name: string;
+      rules?: unknown;
+    };
     /** @description The command contract available to the caller. */
     CommandCatalog: {
       /**
@@ -11833,78 +11783,6 @@ export interface components {
        *     ]
        */
       tags?: string[];
-    };
-    /** @description Request body for the `create_knowledge_base` operation. */
-    CreateKnowledgeBaseRequest: {
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Runbooks for the support team
-       */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. Omit or null for keyword search only. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example support-runbooks
-       */
-      name: string;
-    };
-    /** @description Request body for the `create_knowledge_entry` operation. */
-    CreateKnowledgeEntryRequest: {
-      /**
-       * @description Entry body. Markdown is rendered when displayed.
-       * @example Use the `/v1/payments/{id}/refund` endpoint with `reason: "past_window"`. Only the on-call billing engineer can authorize this.
-       */
-      body: string;
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /**
-       * @description Optional OKF resource URI identifying the underlying asset.
-       * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-       */
-      resource?: string | null;
-      /**
-       * @description Free-form tags attached to this resource.
-       * @example [
-       *       "billing",
-       *       "refunds"
-       *     ]
-       */
-      tags?: string[] | null;
-      /**
-       * @description Human-readable title. Safe to render in user-facing messages.
-       * @example Refund a payment past 30 days
-       */
-      title: string;
-    };
-    /** @description Request body for the `create_knowledge_index` operation. */
-    CreateKnowledgeIndexRequest: {
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Synced product documentation
-       */
-      description?: string | null;
-      /** @description Embedding model used to embed chunks. Required. */
-      embedding_model_id: string;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example product-docs
-       */
-      name: string;
-      /**
-       * @description Non-secret source coordinates. GitHub repositories accept `owner/repo`
-       *     or canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials.
-       */
-      source_config?: unknown;
-      /**
-       * @description External source type. One of `github`, `git`. Defaults to `github`.
-       * @example github
-       */
-      source_type?: string | null;
     };
     /** @description Request to create a new MCP server */
     CreateMcpServerRequest: {
@@ -14272,6 +14150,21 @@ export interface components {
        */
       size_bytes: number;
     };
+    FileInput: {
+      content?: string | null;
+      content_base64?: string | null;
+      indexable?: boolean | null;
+      metadata?: unknown;
+      mime_type?: string | null;
+      path: string;
+      readable?: boolean | null;
+    };
+    FileMetadataInput: {
+      indexable?: boolean | null;
+      metadata?: unknown;
+      path: string;
+      readable?: boolean | null;
+    };
     /** @description A package-relative file or glob and its working-directory destination. */
     FileSource: {
       /** @description Whether the initial workspace file is read-only. Defaults to true. */
@@ -15541,15 +15434,6 @@ export interface components {
        */
       provider: string;
     };
-    /** @description Request body for `okf_import`. */
-    ImportOkfBundleRequest: {
-      /** @description A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`. */
-      bundle_base64?: string | null;
-      /** @description Inline bundle files. Mutually exclusive with `bundle_base64`. */
-      files?: components["schemas"]["OkfFileInput"][];
-      /** @description When true, delete previously-imported entries absent from this bundle. */
-      prune?: boolean;
-    };
     /** @description A single named score from an external scorer. */
     ImportScore: {
       /**
@@ -15593,6 +15477,14 @@ export interface components {
        * @example nonce-from-the-local-helper
        */
       nonce: string;
+    };
+    /** @enum {string} */
+    IndexMode: "off" | "lexical" | "hybrid";
+    IndexerInput: {
+      /** Format: uuid */
+      credential_binding_id: string;
+      endpoint: string;
+      name: string;
     };
     /** @description Starter file copied into a new session from an agent or harness. */
     InitialFile: {
@@ -15678,178 +15570,15 @@ export interface components {
       /** @description The stored value */
       value: string;
     };
-    /** @description Response body for knowledge base. */
-    KnowledgeBaseResponse: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was archived, if any (RFC 3339).
-       */
-      archived_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kb_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Human-readable name. Safe to render in user-facing messages. */
-      name: string;
-      /** @description Current lifecycle status. */
-      status: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for knowledge entry. */
-    KnowledgeEntryResponse: {
-      body: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kbe_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Knowledge base's prefixed public identifier.
-       * @example kb_01933b5a000070008000000000000001
-       */
-      kb_id: string;
-      /** @description Discriminator selecting the variant of this resource. */
-      kind: string;
-      /**
-       * @description Optional OKF resource URI identifying the underlying asset.
-       * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-       */
-      resource?: string | null;
-      /** @description Free-form tags attached to this resource. */
-      tags: string[];
-      /** @description Human-readable title. Safe to render in user-facing messages. */
-      title: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for a knowledge index document. */
-    KnowledgeIndexDocumentResponse: {
-      /**
-       * Format: int32
-       * @description Denormalized chunk count for this document.
-       */
-      chunk_count: number;
-      /** @description Content hash driving incremental re-embedding. */
-      content_hash?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kidoc_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Parent index's prefixed public identifier.
-       * @example kidx_01933b5a000070008000000000000001
-       */
-      index_id: string;
-      /**
-       * Format: date-time
-       * @description Timestamp this document was last seen during a sync pass (RFC 3339).
-       */
-      last_seen_at?: string | null;
-      /** @description Document MIME type, if known. */
-      mime_type?: string | null;
-      /**
-       * Format: int64
-       * @description Document size in bytes, if known.
-       */
-      size_bytes?: number | null;
-      /** @description Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`). */
-      source_uri: string;
-      /** @description Document title, if known. */
-      title?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for a knowledge index. */
-    KnowledgeIndexResponse: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was archived, if any (RFC 3339).
-       */
-      archived_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Number of documents currently retained by this index. */
-      document_count: number;
-      /** @description Embedding model used to embed chunks. Required. */
-      embedding_model_id: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kidx_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Sanitized failure reason from the last failed sync, if any. */
-      last_sync_error?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp of the last successful sync, if any (RFC 3339).
-       */
-      last_synced_at?: string | null;
-      /** @description Human-readable name. Safe to render in user-facing messages. */
-      name: string;
-      /** @description Non-secret source coordinates. Never holds credentials. */
-      source_config: unknown;
-      /** @description External source type. One of `github`, `git`. */
-      source_type: string;
-      /** @description Current lifecycle status. */
-      status: string;
-      /** @description Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`. */
-      sync_status: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-      /**
-       * Format: int32
-       * @description Embedding dimension, recorded on first successful sync.
-       */
-      vector_dim?: number | null;
+    KnowledgeQuery: {
+      collections?: string[];
+      lexical_only?: boolean;
+      limit?: number;
+      metadata?: {
+        [key: string]: unknown;
+      };
+      path?: string | null;
+      query: string;
     };
     /**
      * @description The most recent health-check run for an agent, paired with whether the
@@ -16022,55 +15751,6 @@ export interface components {
        * @example completed
        */
       status?: string | null;
-    };
-    /**
-     * @description Query parameters for `GET /v1/knowledge-bases` — optional name/desc
-     *     search plus a flag to include archived knowledge bases.
-     */
-    ListKnowledgeBasesQuery: {
-      /**
-       * @description When `true`, also returns archived knowledge bases.
-       * @example false
-       */
-      include_archived?: boolean | null;
-      /**
-       * @description Substring filter applied to knowledge-base name and description.
-       * @example runbook
-       */
-      search?: string | null;
-    };
-    /**
-     * @description Query parameters for listing entries inside a knowledge base — optional
-     *     text search and tag filter.
-     */
-    ListKnowledgeEntriesQuery: {
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /**
-       * @description Substring filter applied to entry title and body.
-       * @example refund
-       */
-      search?: string | null;
-    };
-    /**
-     * @description Query parameters for `GET /v1/knowledge-indexes` — optional name/desc
-     *     search plus a flag to include archived indexes.
-     */
-    ListKnowledgeIndexesQuery: {
-      /**
-       * @description When `true`, also returns archived knowledge indexes.
-       * @example false
-       */
-      include_archived?: boolean | null;
-      /**
-       * @description Substring filter applied to index name and description.
-       * @example docs
-       */
-      search?: string | null;
     };
     /**
      * @description Query parameters for `GET /v1/memories` — optional name search and a
@@ -17136,203 +16816,6 @@ export interface components {
         updated_at: string;
         /** @description The stored value */
         value: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeBaseResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was archived, if any (RFC 3339).
-         */
-        archived_at?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-         */
-        deleted_at?: string | null;
-        /** @description Human-readable description. Safe to render in user-facing messages. */
-        description?: string | null;
-        /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
-        embedding_model_id?: string | null;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kb_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Human-readable name. Safe to render in user-facing messages. */
-        name: string;
-        /** @description Current lifecycle status. */
-        status: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeEntryResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        body: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kbe_01933b5a000070008000000000000001
-         */
-        id: string;
-        /**
-         * @description Knowledge base's prefixed public identifier.
-         * @example kb_01933b5a000070008000000000000001
-         */
-        kb_id: string;
-        /** @description Discriminator selecting the variant of this resource. */
-        kind: string;
-        /**
-         * @description Optional OKF resource URI identifying the underlying asset.
-         * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-         */
-        resource?: string | null;
-        /** @description Free-form tags attached to this resource. */
-        tags: string[];
-        /** @description Human-readable title. Safe to render in user-facing messages. */
-        title: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeIndexDocumentResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: int32
-         * @description Denormalized chunk count for this document.
-         */
-        chunk_count: number;
-        /** @description Content hash driving incremental re-embedding. */
-        content_hash?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kidoc_01933b5a000070008000000000000001
-         */
-        id: string;
-        /**
-         * @description Parent index's prefixed public identifier.
-         * @example kidx_01933b5a000070008000000000000001
-         */
-        index_id: string;
-        /**
-         * Format: date-time
-         * @description Timestamp this document was last seen during a sync pass (RFC 3339).
-         */
-        last_seen_at?: string | null;
-        /** @description Document MIME type, if known. */
-        mime_type?: string | null;
-        /**
-         * Format: int64
-         * @description Document size in bytes, if known.
-         */
-        size_bytes?: number | null;
-        /** @description Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`). */
-        source_uri: string;
-        /** @description Document title, if known. */
-        title?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeIndexResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was archived, if any (RFC 3339).
-         */
-        archived_at?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-         */
-        deleted_at?: string | null;
-        /** @description Human-readable description. Safe to render in user-facing messages. */
-        description?: string | null;
-        /** @description Number of documents currently retained by this index. */
-        document_count: number;
-        /** @description Embedding model used to embed chunks. Required. */
-        embedding_model_id: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kidx_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Sanitized failure reason from the last failed sync, if any. */
-        last_sync_error?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp of the last successful sync, if any (RFC 3339).
-         */
-        last_synced_at?: string | null;
-        /** @description Human-readable name. Safe to render in user-facing messages. */
-        name: string;
-        /** @description Non-secret source coordinates. Never holds credentials. */
-        source_config: unknown;
-        /** @description External source type. One of `github`, `git`. */
-        source_type: string;
-        /** @description Current lifecycle status. */
-        status: string;
-        /** @description Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`. */
-        sync_status: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-        /**
-         * Format: int32
-         * @description Embedding dimension, recorded on first successful sync.
-         */
-        vector_dim?: number | null;
       }[];
     };
     /**
@@ -20978,27 +20461,6 @@ export interface components {
      * @enum {string}
      */
     ObserverStatus: "active" | "paused" | "archived" | "deleted";
-    /**
-     * @description A single inline bundle file, for callers that send files as JSON rather
-     *     than a tarball.
-     */
-    OkfFileInput: {
-      /** @description Raw markdown file content (frontmatter + body). */
-      content: string;
-      /** @description Bundle-relative path, e.g. `tables/orders.md`. */
-      path: string;
-    };
-    /** @description Outcome of an import run. */
-    OkfImportSummary: {
-      created: number;
-      /** @description Entries removed because `prune` was set and they were absent from the bundle. */
-      pruned: number;
-      /** @description Documents skipped (e.g. oversized body); see `warnings`. */
-      skipped: number;
-      updated: number;
-      /** @description Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully. */
-      warnings: string[];
-    };
     /** @description An organization's egress allowlist extension. */
     OrgEgressAllowlistResponse: {
       /**
@@ -26009,6 +25471,13 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    SourceInput: {
+      config?: unknown;
+      /** Format: uuid */
+      connection_owner?: string | null;
+      kind: string;
+      root_path?: string;
+    };
     /** @description Repository, branch and package path that define an Agent's GitHub source. */
     SourceLocation: {
       /**
@@ -28552,62 +28021,6 @@ export interface components {
       } | null;
       /** @description New lifecycle status: `active` or `disabled`. */
       status?: string | null;
-    };
-    /** @description Request body for the `update_knowledge_base` operation. */
-    UpdateKnowledgeBaseRequest: {
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. Set to null to clear. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example support-runbooks-archive
-       */
-      name?: string | null;
-    };
-    /** @description Request body for the `update_knowledge_entry` operation. */
-    UpdateKnowledgeEntryRequest: {
-      /**
-       * @description Updated entry body. Markdown is rendered when displayed.
-       * @example Use the `/v1/payments/{id}/refund` endpoint with `reason: "past_window"`. Now requires VP approval.
-       */
-      body?: string | null;
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /** @description Optional OKF resource URI. Set to null to clear. */
-      resource?: string | null;
-      /**
-       * @description Free-form tags attached to this resource.
-       * @example [
-       *       "billing",
-       *       "refunds",
-       *       "vp-approval"
-       *     ]
-       */
-      tags?: string[] | null;
-      /**
-       * @description Human-readable title. Safe to render in user-facing messages.
-       * @example Refund a payment past 60 days
-       */
-      title?: string | null;
-    };
-    /** @description Request body for the `update_knowledge_index` operation. */
-    UpdateKnowledgeIndexRequest: {
-      /** @description Human-readable description. Set to null to clear. */
-      description?: string | null;
-      /** @description Embedding model used to embed chunks. Required; cannot be cleared. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example product-docs-v2
-       */
-      name?: string | null;
-      /** @description Non-secret source coordinates. Never include credentials. */
-      source_config?: unknown;
     };
     /** @description Request to update an MCP server. Only provided fields will be updated. */
     UpdateMcpServerRequest: {
@@ -41032,13 +40445,16 @@ export interface operations {
       };
     };
   };
-  list_kbs: {
+  list_knowledge: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to knowledge-base name and description. */
-        search?: string | null;
-        /** @description When `true`, also returns archived knowledge bases. */
-        include_archived?: boolean | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
       path?: never;
@@ -41046,18 +40462,18 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List knowledge bases */
+      /** @description Knowledge collections */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeBaseResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  create_kb: {
+  create_knowledge: {
     parameters: {
       query?: never;
       header?: never;
@@ -41066,682 +40482,411 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CreateKnowledgeBaseRequest"];
+        "application/json": components["schemas"]["CollectionInput"];
       };
     };
     responses: {
-      /** @description Knowledge base created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge base name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_kb: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Knowledge base found */
+      /** @description Created collection */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_kb: {
+  list_knowledge_indexers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization search accounts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  create_knowledge_indexer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["IndexerInput"];
+      };
+    };
+    responses: {
+      /** @description Configured search account */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  search_knowledge_collections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["KnowledgeQuery"];
+      };
+    };
+    responses: {
+      /** @description Versioned search results */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  get_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Knowledge base archived */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Knowledge base not found */
-      404: {
+      /** @description Collection and processing status */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  update_kb: {
+  archive_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Archived collection */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  update_knowledge: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeBaseRequest"];
+        "application/json": components["schemas"]["CollectionInput"];
       };
     };
     responses: {
-      /** @description Knowledge base updated */
+      /** @description Updated collection */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge base name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  list_entries: {
+  list_knowledge_files: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to entry title and body. */
-        search?: string | null;
-        /**
-         * @description Discriminator selecting the variant of this resource. One of `note`,
-         *     `table`, `business`, `query`, `runbook`.
-         */
-        kind?: string | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List entries */
+      /** @description File catalog page */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  create_entry: {
+  write_knowledge_file: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CreateKnowledgeEntryRequest"];
+        "application/json": components["schemas"]["FileInput"];
       };
     };
     responses: {
-      /** @description Entry created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_entry: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Entry found */
+      /** @description Stored immutable file version */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Entry not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_entry: {
+  delete_knowledge_file: {
     parameters: {
-      query?: never;
+      query: {
+        /** @description File path */
+        path: string;
+      };
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Entry deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Entry not found */
-      404: {
+      /** @description Deleted file */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  update_entry: {
+  update_knowledge_file_metadata: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeEntryRequest"];
+        "application/json": components["schemas"]["FileMetadataInput"];
       };
     };
     responses: {
-      /** @description Entry updated */
+      /** @description Updated file metadata and policy */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Entry not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  export_okf: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OKF bundle (.tar.gz) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/gzip": unknown;
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  import_okf: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ImportOkfBundleRequest"];
-      };
-    };
-    responses: {
-      /** @description Import summary */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["OkfImportSummary"];
-        };
-      };
-      /** @description Invalid bundle or input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_indexes: {
+  get_knowledge_file_content: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to index name and description. */
-        search?: string | null;
-        /** @description When `true`, also returns archived knowledge indexes. */
-        include_archived?: boolean | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
-      path?: never;
+      path: {
+        /** @description Knowledge collection */
+        collection_id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List knowledge indexes */
+      /** @description Bounded original or extracted bytes */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeIndexResponse"];
+          "text/plain": string;
         };
       };
     };
   };
-  create_index: {
+  validate_knowledge_okf: {
     parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateKnowledgeIndexRequest"];
+      query?: {
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
-    };
-    responses: {
-      /** @description Knowledge index created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge index name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_index: {
-    parameters: {
-      query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Knowledge index found */
+      /** @description OKF metadata validation page */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_index: {
+  add_knowledge_source: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Knowledge index archived */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_index: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeIndexRequest"];
+        "application/json": components["schemas"]["SourceInput"];
       };
     };
     responses: {
-      /** @description Knowledge index updated */
+      /** @description Connected source */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge index name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  list_documents: {
+  sync_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List documents */
+      /** @description Refresh queued */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeIndexDocumentResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  sync_index: {
+  upload_knowledge_file: {
     parameters: {
-      query?: never;
+      query: {
+        path: string;
+        mime_type?: string | null;
+      };
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
     responses: {
-      /** @description Sync enqueued */
+      /** @description Stored streamed original */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Knowledge index is archived */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };

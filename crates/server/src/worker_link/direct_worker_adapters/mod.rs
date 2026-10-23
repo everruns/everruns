@@ -199,48 +199,6 @@ pub struct DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    /// Create new direct adapters with access to storage and services
-    pub fn new(
-        db: Arc<StorageBackend>,
-        event_service: Arc<EventService>,
-        provider_resolver: Arc<ProviderResolverService>,
-        mcp_server_service: Arc<McpServerService>,
-        capability_registry: CapabilityRegistry,
-        driver_registry: DriverRegistry,
-        sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
-    ) -> Self {
-        Self {
-            input_message_id: None,
-            db,
-            event_service,
-            budget_service: None,
-            provider_resolver,
-            mcp_server_service,
-            capability_registry,
-            connector_registry: everruns_contracts::connector::ConnectorRegistry::new(),
-            driver_registry,
-            utility_llm_service: None,
-            decisions: None,
-            egress_service: None,
-            sqldb_store,
-            storage_store: None,
-            connection_resolver: None,
-            vector_store: None,
-            runner: None,
-            encryption: None,
-            in_memory_compaction_checkpoint_store: None,
-            proactive_compaction_attempts: Arc::default(),
-            workflow_store: None,
-            slack_provisioner: None,
-            channels: None,
-            permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
-            virtual_registry: None,
-            org_rate_limiter: None,
-            provider_services: None,
-            quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
-        }
-    }
-
     async fn load_turn_messages(
         &self,
         session: &Session,
@@ -1294,6 +1252,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.command_storage_store(org_id)
     }
 
+    fn knowledge_runtime(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        Some(Arc::new(
+            everruns_worker::internal_commands::knowledge::CommandKnowledgeRuntime::new(
+                self.internal_commands(org_id),
+            ),
+        ))
+    }
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         Some(Arc::new(
             crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),

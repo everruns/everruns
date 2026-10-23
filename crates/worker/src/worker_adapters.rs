@@ -691,6 +691,13 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    fn knowledge_runtime(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        None
+    }
+
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         None
@@ -1286,6 +1293,10 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
 
 #[async_trait]
 impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for SessionAdapter<A> {
+    fn session_scoped_path(&self, path: &str) -> bool {
+        everruns_contracts::knowledge::is_mount(path)
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let org_id = self.require_org("read_file")?;
         self.adapters

@@ -153,24 +153,21 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
-knowledge-bases create	--context-revision --description --embedding-model-id --name! --reason
-knowledge-bases delete	--context-revision --kb-id! --reason
-knowledge-bases entries create	--body! --context-revision --kb-id! --kind --reason --resource --tags... --title!
-knowledge-bases entries delete	--context-revision --entry-id! --kb-id! --reason
-knowledge-bases entries get	--context-revision --entry-id! --kb-id! --reason
-knowledge-bases entries list	--context-revision --kb-id! --kind --reason --search
-knowledge-bases entries update	--body --context-revision --entry-id! --kb-id! --kind --reason --resource --tags... --title
-knowledge-bases get	--context-revision --kb-id --reason <kb_id>
-knowledge-bases list	--context-revision --include-archived --reason --search
-knowledge-bases okf-import import	--bundle-base64 --context-revision --files --kb-id! --prune --reason
-knowledge-bases update	--context-revision --description --embedding-model-id --kb-id! --name --reason
-knowledge-indexes create	--context-revision --description --embedding-model-id! --name! --reason --source-config --source-type
-knowledge-indexes delete	--context-revision --index-id! --reason
-knowledge-indexes documents list	--context-revision --index-id --reason <index_id>
-knowledge-indexes get	--context-revision --index-id --reason <index_id>
-knowledge-indexes list	--context-revision --include-archived --reason --search
-knowledge-indexes sync	--context-revision --index-id --reason <index_id>
-knowledge-indexes update	--context-revision --description --embedding-model-id --index-id! --name --reason --source-config
+knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
+knowledge delete	--collection-id! --context-revision --reason
+knowledge files delete	--collection-id! --context-revision --path! --reason
+knowledge files list	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge files update	--collection-id! --context-revision --indexable --metadata --path! --readable --reason
+knowledge files write	--collection-id! --content --content-base64 --context-revision --indexable --metadata --mime-type --path! --readable --reason
+knowledge get	--collection-id! --context-revision --reason
+knowledge indexers create	--context-revision --credential-binding-id! --endpoint! --name! --reason
+knowledge indexers list	--context-revision --reason
+knowledge list	--after --context-revision --limit --reason
+knowledge okf validate	--after --collection-id! --context-revision --extracted --length --limit --offset --path --reason
+knowledge search	--collections... --context-revision --lexical-only --limit --metadata --path --query! --reason
+knowledge sources add	--collection-id! --config --connection-owner --context-revision --kind! --reason --root-path
+knowledge sync	--collection-id! --context-revision --reason
+knowledge update	--collection-id! --context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 login	--token
 logout
 mcp-servers check-connection	--context-revision --id --reason <id>

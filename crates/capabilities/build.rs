@@ -13,6 +13,25 @@ fn main() {
     }
 
     embed_platform_skills(Path::new(&manifest_dir));
+    let mut files = Vec::new();
+    if docs_dir.is_dir() {
+        collect_files(&docs_dir, &mut files);
+    }
+    files.sort();
+    let mut embedded = String::from("&[\n");
+    for path in files {
+        if path.extension().is_some_and(|e| e == "md") {
+            let name = path.strip_prefix(&docs_dir).unwrap().to_str().unwrap();
+            let text = fs::read_to_string(&path).expect("documentation must be UTF-8");
+            embedded.push_str(&format!("({name:?},{text:?}),\n"));
+        }
+    }
+    embedded.push(']');
+    fs::write(
+        PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("knowledge_docs.rs"),
+        embedded,
+    )
+    .expect("embed knowledge docs");
 }
 
 /// Keep product skills in their authored tree, shared with the MCP catalog.

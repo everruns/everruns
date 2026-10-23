@@ -464,9 +464,40 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             self.reads
                 .prefetch_model(&self.adapters, org_id, model_id.uuid(), session_id);
         }
+        let mut messages = context.messages;
+        let configs = crate::core::runtime_context::resolve_snapshot_capabilities(
+            &snapshot,
+            &self.adapters.capability_registry(),
+        );
+        if configs.resolved_capability_configs.iter().any(|c| {
+            c.capability_id() == "knowledge"
+                && c.config_value()
+                    .get("automatic")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+        }) && let Some(service) = self.adapters.knowledge_runtime(org_id)
+        {
+            let query = messages
+                .iter()
+                .rev()
+                .find(|m| m.role == crate::core::RuntimeMessageRole::User)
+                .and_then(|m| m.text())
+                .unwrap_or("")
+                .to_string();
+            match service
+                .automatic_context(session_id, input_message_id, query)
+                .await
+            {
+                Ok(Some(evidence)) => messages.push(crate::core::RuntimeMessage::user(evidence)),
+                Ok(None) => {}
+                Err(_) => {
+                    tracing::warn!(session_id=%session_id,"Automatic Knowledge retrieval unavailable; file access remains available")
+                }
+            }
+        }
         Ok(ResolvedTurnInputs {
             snapshot,
-            messages: context.messages,
+            messages,
             mcp_tool_definitions: context.mcp_tool_definitions,
         })
     }
@@ -689,6 +720,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             }),
         )));
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
+        if let Some(service) = self.adapters.knowledge_runtime(org_id) {
+            extensions.insert(Arc::new(
+                everruns_contracts::knowledge::KnowledgeRuntimeExt(service),
+            ));
+        }
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
         }

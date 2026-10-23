@@ -61,3 +61,5 @@
 * [Webmcp](webmcp/) - Manual UI cases.
 
 * [Automatic session titles](automatic_session_titles/) - Model defaults and explicit naming.
+
+* [Knowledge](knowledge/) - File collections, original binaries, extracted views and optional indexing.

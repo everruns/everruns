@@ -157,8 +157,8 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
     },
   ),
   {
-    name: "Knowledge indexes",
-    href: "/knowledge-indexes",
+    name: "Knowledge",
+    href: "/knowledge",
     icon: KnowledgeIcon,
     flag: "knowledge",
     experimental: true,

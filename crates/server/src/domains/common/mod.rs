@@ -358,6 +358,12 @@ impl CommandMeta {
         self.path.starts_with(INTERNAL_COMMAND_PATH_PREFIX)
     }
 
+    /// Undeployed split Knowledge commands remain usable by internal migration
+    /// code, but are absent from discovery and public command dispatch.
+    pub fn is_retired(&self) -> bool {
+        matches!(self.category, "knowledge_bases" | "knowledge_indexes")
+    }
+
     /// Feature flag required for this operation to exist in an organization's
     /// API-derived command surfaces.
     pub fn required_feature(&self) -> Option<&'static str> {
@@ -365,7 +371,7 @@ impl CommandMeta {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
             "memories" => Some("memory"),
-            "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
+            "knowledge" | "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "payments" => Some("machine_payments"),
@@ -1050,6 +1056,11 @@ pub async fn dispatch(
     let desc = DISPATCH_TABLE
         .get(name)
         .ok_or_else(|| CommandError::not_found_msg(format!("Unknown command: {name}")))?;
+    if (desc.meta)().is_retired() {
+        return Err(CommandError::not_found_msg(format!(
+            "Unknown command: {name}"
+        )));
+    }
     (desc.dispatch)(params, ctx).await
 }
 
@@ -1058,7 +1069,7 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
-        .filter(|meta| !meta.is_internal())
+        .filter(|meta| !meta.is_internal() && !meta.is_retired())
         .collect()
 }
 
@@ -1094,7 +1105,7 @@ pub fn catalog_entries_with_schemas(
         .into_iter()
         .filter(|desc| {
             let meta = (desc.meta)();
-            !meta.is_internal() && meta.is_enabled(feature_flags)
+            !meta.is_internal() && !meta.is_retired() && meta.is_enabled(feature_flags)
         })
         .map(|desc| {
             let meta = (desc.meta)();

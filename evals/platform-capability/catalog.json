@@ -1,5 +1,59 @@
 [
   {
+    "category": "knowledge",
+    "cli": "knowledge sources add",
+    "description": "Connect an existing GitHub identity or public Git source to knowledge.",
+    "input_schema": {
+      "$defs": {
+        "SourceInput": {
+          "additionalProperties": false,
+          "properties": {
+            "config": {},
+            "connection_owner": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string"
+            },
+            "root_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "add_knowledge_source",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/sources",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions participants add",
     "description": "Add a member participant to a session.",
@@ -726,6 +780,28 @@
     "output_shape": "unknown",
     "path": "/v1/context/{entity_ref}/append",
     "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge delete",
+    "description": "Archive a knowledge collection.",
+    "input_schema": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "archive_knowledge",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}",
+    "positional_arg": null,
     "read_only": false
   },
   {
@@ -4920,140 +4996,103 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases create",
-    "description": "Create a knowledge base in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge create",
+    "description": "Create a knowledge collection; indexing is optional.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Optional embedding model for hybrid retrieval.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_knowledge_base",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries create",
-    "description": "Create an entry inside a knowledge base.",
-    "input_schema": {
-      "properties": {
-        "body": {
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "resource": {
-          "description": "Optional OKF resource URI identifying the underlying asset.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tags": {
-          "description": "Free-form tags attached to this resource.",
-          "items": {
-            "type": "string"
+      "$defs": {
+        "CollectionInput": {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "embedding_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexer_id": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode"
+            },
+            "name": {
+              "type": "string"
+            },
+            "rules": {}
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "required": [
+            "name"
+          ],
+          "type": "object"
         },
-        "title": {
-          "description": "Human-readable title. Safe to render in user-facing messages.",
+        "IndexMode": {
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
           "type": "string"
         }
       },
-      "required": [
-        "kb_id",
-        "title",
-        "body"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/CollectionInput"
+        }
+      ]
     },
     "method": "POST",
-    "name": "create_knowledge_entry",
+    "name": "create_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries",
+    "path": "/v1/knowledge",
     "positional_arg": null,
     "read_only": false
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes create",
-    "description": "Create a knowledge index in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge indexers create",
+    "description": "Configure an organization Turbopuffer account using an existing write-only credential binding.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Embedding model used to embed chunks. Required.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        },
-        "source_config": {
-          "description": "Non-secret source coordinates."
-        },
-        "source_type": {
-          "description": "External source type. One of `github`, `git`. Defaults to `github`.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "IndexerInput": {
+          "additionalProperties": false,
+          "properties": {
+            "credential_binding_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "endpoint",
+            "credential_binding_id"
+          ],
+          "type": "object"
         }
       },
-      "required": [
-        "name",
-        "embedding_model_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/IndexerInput"
+        }
+      ]
     },
     "method": "POST",
-    "name": "create_knowledge_index",
+    "name": "create_knowledge_indexer",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes",
+    "path": "/v1/knowledge-indexers",
     "positional_arg": null,
     "read_only": false
   },
@@ -9149,76 +9188,28 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases delete",
-    "description": "Archive a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge files delete",
+    "description": "Delete a managed knowledge file and stop serving its search results.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_knowledge_base",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries delete",
-    "description": "Delete a knowledge entry.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "path": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id",
-        "entry_id"
+        "collection_id",
+        "path"
       ],
       "type": "object"
     },
     "method": "DELETE",
-    "name": "delete_knowledge_entry",
+    "name": "delete_knowledge_file",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes delete",
-    "description": "Archive a knowledge index.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -11402,77 +11393,25 @@
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases get",
-    "description": "Get a knowledge base by ID.",
+    "category": "knowledge",
+    "cli": "knowledge get",
+    "description": "Inspect a knowledge collection, sources and processing status.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id"
+        "collection_id"
       ],
       "type": "object"
     },
     "method": "GET",
-    "name": "get_knowledge_base",
+    "name": "get_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
-    "positional_arg": "kb_id",
-    "read_only": true
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries get",
-    "description": "Get a knowledge entry by ID.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id",
-        "entry_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_knowledge_entry",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "path": "/v1/knowledge/{collection_id}",
     "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes get",
-    "description": "Get a knowledge index by ID.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
-    "positional_arg": "index_id",
     "read_only": true
   },
   {
@@ -13162,68 +13101,6 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases okf-import import",
-    "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
-    "input_schema": {
-      "$defs": {
-        "OkfFileInput": {
-          "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
-          "properties": {
-            "content": {
-              "description": "Raw markdown file content (frontmatter + body).",
-              "type": "string"
-            },
-            "path": {
-              "description": "Bundle-relative path, e.g. `tables/orders.md`.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "path",
-            "content"
-          ],
-          "type": "object"
-        }
-      },
-      "description": "Import an OKF bundle into a knowledge base.",
-      "properties": {
-        "bundle_base64": {
-          "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "files": {
-          "description": "Inline bundle files. Mutually exclusive with `bundle_base64`.",
-          "items": {
-            "$ref": "#/$defs/OkfFileInput"
-          },
-          "type": "array"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "prune": {
-          "description": "When true, delete previously-imported entries absent from this bundle.",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "import_okf_bundle",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/okf_import",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
     "category": "plugins",
     "cli": "plugins install",
     "description": "Install a plugin from a marketplace catalog entry.",
@@ -14253,22 +14130,22 @@
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases list",
-    "description": "List knowledge bases in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge list",
+    "description": "List versioned knowledge collections.",
     "input_schema": {
       "properties": {
-        "include_archived": {
-          "description": "Include archived knowledge bases.",
+        "after": {
           "type": [
-            "boolean",
+            "string",
             "null"
           ]
         },
-        "search": {
-          "description": "Case-insensitive name filter.",
+        "limit": {
+          "format": "int32",
+          "minimum": 0,
           "type": [
-            "string",
+            "integer",
             "null"
           ]
         }
@@ -14276,99 +14153,108 @@
       "type": "object"
     },
     "method": "GET",
-    "name": "list_knowledge_bases",
+    "name": "list_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases",
+    "path": "/v1/knowledge",
     "positional_arg": null,
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries list",
-    "description": "List entries inside a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge files list",
+    "description": "List knowledge files with bounded cursor pagination.",
     "input_schema": {
-      "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive title or body filter.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
         }
       },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "method": "GET",
-    "name": "list_knowledge_entries",
+    "name": "list_knowledge_files",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": true
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes documents list",
-    "description": "List documents inside a knowledge index.",
+    "category": "knowledge",
+    "cli": "knowledge indexers list",
+    "description": "List organization search-provider accounts without credential values.",
     "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
       "type": "object"
     },
     "method": "GET",
-    "name": "list_knowledge_index_documents",
+    "name": "list_knowledge_indexers",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}/documents",
-    "positional_arg": "index_id",
-    "read_only": true
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes list",
-    "description": "List knowledge indexes in the current organization.",
-    "input_schema": {
-      "properties": {
-        "include_archived": {
-          "description": "Also return archived items.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive substring match on name or description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_knowledge_indexes",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes",
+    "path": "/v1/knowledge-indexers",
     "positional_arg": null,
     "read_only": true
   },
@@ -17978,6 +17864,64 @@
     "read_only": true
   },
   {
+    "category": "knowledge",
+    "cli": "knowledge search",
+    "description": "Search selected knowledge collections with immutable citations.",
+    "input_schema": {
+      "$defs": {
+        "KnowledgeQuery": {
+          "additionalProperties": false,
+          "properties": {
+            "collections": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "lexical_only": {
+              "type": "boolean"
+            },
+            "limit": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "metadata": {
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/KnowledgeQuery"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "search_knowledge_collections",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/search",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "files",
     "cli": "sessions fs - search",
     "description": "Search files in the session filesystem, with surrounding context and paging.",
@@ -18629,26 +18573,25 @@
     "read_only": false
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes sync",
-    "description": "Enqueue a manual sync of a knowledge index.",
+    "category": "knowledge",
+    "cli": "knowledge sync",
+    "description": "Queue source refresh and retry failed indexing jobs.",
     "input_schema": {
       "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         }
       },
       "required": [
-        "index_id"
+        "collection_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "sync_knowledge_index",
+    "name": "sync_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}/sync",
-    "positional_arg": "index_id",
+    "path": "/v1/knowledge/{collection_id}/sync",
+    "positional_arg": null,
     "read_only": false
   },
   {
@@ -22168,214 +22111,129 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases update",
-    "description": "Update a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge update",
+    "description": "Configure knowledge indexing and exclusion rules.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeBaseRequest": {
-          "description": "Request body for the `update_knowledge_base` operation.",
+        "CollectionInput": {
+          "additionalProperties": false,
           "properties": {
             "description": {
-              "description": "Human-readable description. Safe to render in user-facing messages.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "embedding_model_id": {
-              "description": "Optional embedding model for hybrid retrieval. Set to null to clear.",
               "type": [
                 "string",
                 "null"
               ]
             },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "support-runbooks-archive",
+            "indexer_id": {
+              "format": "uuid",
               "type": [
                 "string",
                 "null"
               ]
-            }
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode"
+            },
+            "name": {
+              "type": "string"
+            },
+            "rules": {}
           },
+          "required": [
+            "name"
+          ],
           "type": "object"
+        },
+        "IndexMode": {
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
+          "type": "string"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeBaseRequest"
+          "$ref": "#/$defs/CollectionInput"
         },
         {
           "properties": {
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_knowledge_base",
+    "name": "update_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
+    "path": "/v1/knowledge/{collection_id}",
     "positional_arg": null,
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries update",
-    "description": "Update a knowledge entry.",
+    "category": "knowledge",
+    "cli": "knowledge files update",
+    "description": "Update annotations or file read/index policy without extracting content again.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeEntryRequest": {
-          "description": "Request body for the `update_knowledge_entry` operation.",
+        "FileMetadataInput": {
+          "additionalProperties": false,
           "properties": {
-            "body": {
-              "description": "Updated entry body. Markdown is rendered when displayed.",
-              "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval.",
+            "indexable": {
               "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             },
-            "kind": {
-              "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-              "example": "runbook",
-              "type": [
-                "string",
-                "null"
-              ]
+            "metadata": {},
+            "path": {
+              "type": "string"
             },
-            "resource": {
-              "description": "Optional OKF resource URI. Set to null to clear.",
+            "readable": {
               "type": [
-                "string",
-                "null"
-              ]
-            },
-            "tags": {
-              "description": "Free-form tags attached to this resource.",
-              "example": [
-                "billing",
-                "refunds",
-                "vp-approval"
-              ],
-              "items": {
-                "type": "string"
-              },
-              "type": [
-                "array",
-                "null"
-              ]
-            },
-            "title": {
-              "description": "Human-readable title. Safe to render in user-facing messages.",
-              "example": "Refund a payment past 60 days",
-              "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             }
           },
+          "required": [
+            "path"
+          ],
           "type": "object"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeEntryRequest"
+          "$ref": "#/$defs/FileMetadataInput"
         },
         {
           "properties": {
-            "entry_id": {
-              "description": "Knowledge base entry's prefixed public identifier.",
-              "type": "string"
-            },
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id",
-            "entry_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_knowledge_entry",
+    "name": "update_knowledge_file_metadata",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes update",
-    "description": "Update a knowledge index.",
-    "input_schema": {
-      "$defs": {
-        "UpdateKnowledgeIndexRequest": {
-          "description": "Request body for the `update_knowledge_index` operation.",
-          "properties": {
-            "description": {
-              "description": "Human-readable description. Set to null to clear.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "embedding_model_id": {
-              "description": "Embedding model used to embed chunks. Required; cannot be cleared.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "product-docs-v2",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "source_config": {
-              "description": "Non-secret source coordinates. Never include credentials."
-            }
-          },
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/UpdateKnowledgeIndexRequest"
-        },
-        {
-          "properties": {
-            "index_id": {
-              "description": "Knowledge index's prefixed public identifier.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "index_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "PATCH",
-    "name": "update_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -25979,5 +25837,164 @@
     "path": "/v1/agents/validate",
     "positional_arg": "file",
     "read_only": true
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge okf validate",
+    "description": "Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",
+    "input_schema": {
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "GET",
+    "name": "validate_knowledge_okf",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/okf",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge files write",
+    "description": "Add or update an original file in managed knowledge.",
+    "input_schema": {
+      "$defs": {
+        "FileInput": {
+          "additionalProperties": false,
+          "properties": {
+            "content": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content_base64": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexable": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "metadata": {},
+            "mime_type": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "readable": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/FileInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "write_knowledge_file",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/files",
+    "positional_arg": null,
+    "read_only": false
   }
 ]

@@ -95,8 +95,7 @@ Structured data, knowledge retrieval, and memory.
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
 | [Web Citations](/capabilities/citation-web/) | `citation_web` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
-| [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1; `FEATURE_KNOWLEDGE` grade |
-| [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set); `FEATURE_KNOWLEDGE` grade |
+| [Knowledge](/capabilities/knowledge/) | `knowledge` | 2; `FEATURE_KNOWLEDGE` grade |
 | [Memory](/capabilities/memory/) | `memory` | 0; `FEATURE_MEMORY` grade |
 
 ### Media
@@ -303,6 +302,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Computer Use](/capabilities/computer-use/) | [Storage](/capabilities/session-storage/) |
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | [File System](/capabilities/file-system/) |
 | [Data Knowledge](/capabilities/data-knowledge/) | [File System](/capabilities/file-system/) |
+| [Knowledge](/capabilities/knowledge/) | [File System](/capabilities/file-system/) |
 | [Memory](/capabilities/memory/) | [File System](/capabilities/file-system/) |
 | [Dreaming](/features/dreaming/) | [File System](/capabilities/file-system/) |
 | [Container Sandbox](/capabilities/container-sandbox/) | [Storage](/capabilities/session-storage/) |

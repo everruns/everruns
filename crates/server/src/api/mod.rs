@@ -51,6 +51,7 @@ pub mod history;
 pub mod http_signing_keys;
 pub mod images;
 pub mod internal_images;
+pub mod knowledge;
 pub mod knowledge_bases;
 pub mod knowledge_indexes;
 pub mod manager_context;

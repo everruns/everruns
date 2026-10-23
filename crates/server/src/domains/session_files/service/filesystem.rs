@@ -2,6 +2,10 @@
 use super::*;
 #[async_trait]
 impl SessionFileSystem for WorkspaceFileService {
+    fn session_scoped_path(&self, path: &str) -> bool {
+        everruns_contracts::knowledge::is_mount(path)
+    }
+
     async fn create_file_if_absent(
         &self,
         session: SessionId,
@@ -268,16 +272,9 @@ impl SessionFileSystem for WorkspaceFileService {
         self.restore_virtual_mounts(session_id.uuid())
             .await
             .map_err(file_system_error)?;
-        grep_session_files_with_options(
-            &self.db,
-            self.virtual_registry.as_deref(),
-            session_id.uuid(),
-            pattern,
-            options,
-            None,
-        )
-        .await
-        .map_err(file_system_error)
+        self.grep_with_options_excluding(session_id.uuid(), pattern, options, None)
+            .await
+            .map_err(file_system_error)
     }
 
     async fn create_directory(

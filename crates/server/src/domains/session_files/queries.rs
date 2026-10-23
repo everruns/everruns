@@ -13,6 +13,15 @@ pub struct SessionFileAccess {
 }
 
 impl SessionFileAccess {
+    /// Knowledge grants belong to the session, even when files use a shared workspace.
+    pub fn read_key(&self, session: SessionId, path: &str) -> Uuid {
+        if everruns_contracts::knowledge::is_mount(path) {
+            session.uuid()
+        } else {
+            self.workspace_key
+        }
+    }
+
     pub fn ensure_user_memory_access(&self, path: &str) -> Result<(), CommandError> {
         if !self.user_memory_allowed && is_user_memory_path(path) {
             return Err(user_memory_forbidden());

@@ -1451,3 +1451,5 @@ async fn platform_store_agent_count_isolated_per_org() {
 }
 
 mod deleted_session_events;
+
+mod knowledge;

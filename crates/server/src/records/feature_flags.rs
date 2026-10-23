@@ -182,8 +182,8 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     },
     FeatureFlagDefinition {
         name: "knowledge",
-        label: "Knowledge indexes",
-        description: "Connect external document collections and make them searchable by agents.",
+        label: "Knowledge",
+        description: "Mount versioned files and source trees with optional keyword or hybrid search.",
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
@@ -462,7 +462,7 @@ impl FeatureFlags {
             "parallel" => Some("machine_payments"),
             "skills" => Some("skills"),
             "memory" => Some("memory"),
-            "knowledge_index" | "knowledge_base" => Some("knowledge"),
+            "knowledge" | "knowledge_index" | "knowledge_base" => Some("knowledge"),
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
@@ -873,6 +873,7 @@ mod tests {
             "skills",
             "skill:example",
             "memory",
+            "knowledge",
             "knowledge_base",
             "knowledge_index",
             "plugin:example",

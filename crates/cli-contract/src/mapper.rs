@@ -175,24 +175,18 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("images", "Uploaded images."),
     (
-        "knowledge-bases",
-        "Curated collections of knowledge entries.",
+        "knowledge",
+        "File collections with optional indexed retrieval.",
     ),
+    ("knowledge files", "Original files, paths and metadata."),
     (
-        "knowledge-bases entries",
-        "Individual entries in a knowledge base.",
+        "knowledge sources",
+        "Connected sources and their retained trees.",
     ),
+    ("knowledge indexers", "Organization search accounts."),
     (
-        "knowledge-bases okf-import",
-        "Import an Open Knowledge Format bundle.",
-    ),
-    (
-        "knowledge-indexes",
-        "Searchable indexes synced from external sources.",
-    ),
-    (
-        "knowledge-indexes documents",
-        "Documents held in a knowledge index.",
+        "knowledge okf",
+        "Validate retained Open Knowledge Format metadata.",
     ),
     (
         "mcp-servers",

@@ -207,6 +207,7 @@ fn parse_ls_refs(body: &[u8], branch: &str) -> Result<String> {
 ///
 /// After the `packfile` section header every data line is sideband-multiplexed:
 /// band 1 carries pack data, band 2 progress, band 3 a fatal error.
+#[cfg(test)]
 fn extract_packfile(body: &[u8]) -> Result<Vec<u8>> {
     let mut pack = Vec::new();
     let mut in_packfile_section = false;
@@ -274,6 +275,8 @@ fn client_builder(
         // and reach an internal service. Git hosts do not require redirects
         // for their smart-HTTP endpoints, so fail closed on every 3xx.
         .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(15 * 60))
         // THREAT[TM-API-023]: the storage-time check is static, so a public
         // hostname can resolve to a private, loopback, link-local, or metadata
         // address by the time the worker syncs (EVE-1178). Every connection
@@ -370,16 +373,68 @@ fn checkout_with_client(
     let oid = parse_ls_refs(&refs, request.branch)
         .map_err(|error| FetchError::new(FetchFailure::NotFound, error))?;
 
-    let response = post_upload_pack(
-        client,
-        request,
-        fetch_body(&oid),
-        "fetch objects",
-        max_pack_bytes(),
-    )?;
-    let packfile = extract_packfile(&response).map_err(unreachable)?;
+    let response = upload_pack_response(client, request, fetch_body(&oid), "fetch objects")?;
+    let repository = git2::Repository::init(checkout_dir)
+        .context("failed to initialize checkout")
+        .map_err(unreachable)?;
+    {
+        let odb = repository.odb().map_err(|e| unreachable(e.into()))?;
+        let mut writer = odb.packwriter().map_err(|e| unreachable(e.into()))?;
+        // THREAT[TM-DOS-041]: decode one protocol frame at a time. Large
+        // repositories no longer require two complete pack copies in memory.
+        stream_packfile(response, &mut writer, max_pack_bytes()).map_err(unreachable)?;
+        writer.commit().map_err(|e| unreachable(e.into()))?;
+    }
+    checkout_commit(&repository, &oid).map_err(unreachable)
+}
 
-    checkout_packfile(&packfile, &oid, checkout_dir).map_err(unreachable)
+/// Copy bounded smart-HTTP frames directly into the object database.
+fn stream_packfile(mut reader: impl Read, writer: &mut impl Write, max_bytes: u64) -> Result<()> {
+    let mut consumed = 0u64;
+    let mut in_packfile = false;
+    let mut pack_bytes = 0u64;
+    loop {
+        let mut header = [0; 4];
+        match reader.read(&mut header[..1])? {
+            0 => break,
+            _ => reader.read_exact(&mut header[1..])?,
+        }
+        consumed += 4;
+        let length = usize::from_str_radix(std::str::from_utf8(&header)?, 16)?;
+        if consumed > max_bytes {
+            bail!("git fetch exceeded pack byte limit")
+        }
+        if length <= 2 {
+            in_packfile = false;
+            continue;
+        }
+        if length < 4 {
+            bail!("reserved pkt-line length")
+        }
+        consumed += (length - 4) as u64;
+        if consumed > max_bytes {
+            bail!("git fetch exceeded pack byte limit")
+        }
+        let mut data = vec![0; length - 4];
+        reader.read_exact(&mut data)?;
+        if !in_packfile {
+            in_packfile = data == b"packfile\n";
+            continue;
+        }
+        match data.split_first() {
+            Some((1, payload)) => {
+                writer.write_all(payload)?;
+                pack_bytes += payload.len() as u64;
+            }
+            Some((2, _)) => {}
+            Some((3, _)) => bail!("git remote reported a pack error"),
+            _ => bail!("invalid git sideband"),
+        }
+    }
+    if pack_bytes == 0 {
+        bail!("remote returned no packfile")
+    }
+    Ok(())
 }
 
 /// Posts one protocol-v2 command and returns the response body.
@@ -390,6 +445,17 @@ fn post_upload_pack(
     what: &str,
     max_bytes: u64,
 ) -> std::result::Result<Vec<u8>, FetchError> {
+    let response = upload_pack_response(client, request, body, what)?;
+    read_capped(response, max_bytes, what)
+        .map_err(|error| FetchError::new(FetchFailure::Unreachable, error))
+}
+
+fn upload_pack_response(
+    client: &reqwest::blocking::Client,
+    request: &FetchRequest<'_>,
+    body: Vec<u8>,
+    what: &str,
+) -> std::result::Result<reqwest::blocking::Response, FetchError> {
     let response = authenticated(
         client
             .post(endpoint(request.url, "git-upload-pack"))
@@ -411,8 +477,7 @@ fn post_upload_pack(
         ));
     }
 
-    read_capped(response, max_bytes, what)
-        .map_err(|error| FetchError::new(FetchFailure::Unreachable, error))
+    Ok(response)
 }
 
 /// Reads a response body, refusing to allocate more than `max_bytes`.
@@ -458,6 +523,7 @@ fn ensure_protocol_v2(advertisement: &[u8]) -> Result<()> {
 
 /// Indexes `packfile` into a repository at `checkout_dir` and checks out the
 /// tree of `oid`.
+#[cfg(test)]
 fn checkout_packfile(packfile: &[u8], oid: &str, checkout_dir: &Path) -> Result<()> {
     let repository = git2::Repository::init(checkout_dir)
         .context("failed to initialize the checkout repository")?;
@@ -475,6 +541,10 @@ fn checkout_packfile(packfile: &[u8], oid: &str, checkout_dir: &Path) -> Result<
         writer.commit().context("failed to index the packfile")?;
     }
 
+    checkout_commit(&repository, oid)
+}
+
+fn checkout_commit(repository: &git2::Repository, oid: &str) -> Result<()> {
     let oid = git2::Oid::from_str(oid).context("remote returned a malformed object id")?;
     let commit = repository
         .find_commit(oid)
@@ -486,6 +556,10 @@ fn checkout_packfile(packfile: &[u8], oid: &str, checkout_dir: &Path) -> Result<
     repository
         .checkout_tree(tree.as_object(), Some(&mut options))
         .context("failed to check out the fetched tree")?;
+    // Consumers need the immutable fetched revision, not init's unborn branch.
+    repository
+        .set_head_detached(oid)
+        .context("failed to pin the fetched revision")?;
 
     Ok(())
 }
@@ -496,6 +570,33 @@ mod tests {
 
     fn data(payload: &str) -> Vec<u8> {
         encode_pkt_line(payload)
+    }
+
+    #[test]
+    fn knowledge_checkout_exposes_fetched_revision_and_blob_identity() {
+        let origin = tempfile::TempDir::new().unwrap();
+        let repo = git2::Repository::init(origin.path()).unwrap();
+        std::fs::write(origin.path().join("guide.md"), "Refund policy").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("guide.md")).unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let signature = git2::Signature::now("Test", "test@example.com").unwrap();
+        let oid = repo
+            .commit(None, &signature, &signature, "snapshot", &tree, &[])
+            .unwrap();
+        let blob = tree.get_name("guide.md").unwrap().id();
+        let mut builder = repo.packbuilder().unwrap();
+        builder.insert_commit(oid).unwrap();
+        let mut pack = git2::Buf::new();
+        builder.write_buf(&mut pack).unwrap();
+        let target = tempfile::TempDir::new().unwrap();
+        checkout_packfile(&pack, &oid.to_string(), target.path()).unwrap();
+        let checkout = git2::Repository::open(target.path()).unwrap();
+        assert_eq!(checkout.head().unwrap().peel_to_commit().unwrap().id(), oid);
+        assert_eq!(
+            checkout.revparse_single("HEAD:guide.md").unwrap().id(),
+            blob
+        );
     }
 
     #[test]
@@ -887,5 +988,31 @@ mod tests {
 
         assert!(checkout.path().join("Cargo.toml").is_file());
         assert!(checkout.path().join("src").is_dir());
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::*;
+    #[test]
+    fn knowledge_streaming_pack_enforces_framing_and_budget() {
+        let mut response = encode_pkt_line("packfile\n");
+        response.extend(encode_pkt_line("\u{1}PACKfirst"));
+        response.extend(encode_pkt_line("\u{2}progress"));
+        response.extend(encode_pkt_line("\u{1}second"));
+        response.extend(b"0000");
+        let mut output = Vec::new();
+        stream_packfile(response.as_slice(), &mut output, response.len() as u64).unwrap();
+        assert_eq!(output, b"PACKfirstsecond");
+        assert!(stream_packfile(response.as_slice(), &mut Vec::new(), 10).is_err());
+        assert!(stream_packfile(&response[..response.len() - 2], &mut Vec::new(), 1000).is_err());
+        let mut fatal = encode_pkt_line("packfile\n");
+        fatal.extend(encode_pkt_line("\u{3}secret remote error"));
+        assert!(
+            !stream_packfile(fatal.as_slice(), &mut Vec::new(), 1000)
+                .unwrap_err()
+                .to_string()
+                .contains("secret")
+        );
     }
 }

@@ -321,6 +321,7 @@ fn log_sync_result(provider_id: impl std::fmt::Display, result: domains::models:
 /// background pool (EVE-1081) so they never queue behind request traffic.
 pub(super) struct MaintenanceDeps {
     pub agent_source_ctx: crate::domains::common::Ctx,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub background_db: Arc<StorageBackend>,
     pub background_pool: sqlx::PgPool,
     pub background_runner: Arc<dyn everruns_core::host::TurnBackend>,
@@ -330,9 +331,7 @@ pub(super) struct MaintenanceDeps {
     pub event_delivery: crate::live_updates::event_delivery::EventDelivery,
     pub connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
-    pub provider_resolver: Arc<services::ProviderResolverService>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
-    pub host_composition: Arc<HostComposition>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
 }
@@ -403,20 +402,15 @@ pub(super) async fn start_maintenance(
             deps.background_db.clone(),
             deps.connection_resolver.clone(),
         ),
-        // Reuses Memory sync's GitHub connection resolver, the provider resolver, the
-        // driver registry (embeddings), and the vector store:
-        // knowledge/runtime-resources/knowledge-indexes.md
-        crate::domains::knowledge_indexes::source_sync::knowledge_index_sync_job(
-            deps.background_db.clone(),
-            deps.connection_resolver,
-            deps.provider_resolver.clone(),
-            deps.driver_registry.clone(),
-            deps.host_composition
-                .extension::<everruns_capabilities::VectorStoreExt>()
-                .expect("OSS platform definition installs a vector store")
-                .0
-                .clone(),
-        ),
+        // Unified file collections reuse the GitHub resolver and embeddings drivers.
+        crate::domains::knowledge::worker::job(crate::domains::knowledge::KnowledgeService {
+            db: deps.background_db.clone(),
+            events: None,
+            query_session: None,
+            encryption: deps.encryption.clone(),
+            drivers: deps.driver_registry.clone(),
+            connections: deps.connection_resolver.clone(),
+        }),
         tool_result_timeouts.backstop_job(),
     ];
     if let Some(store) = cluster_jobs_store {

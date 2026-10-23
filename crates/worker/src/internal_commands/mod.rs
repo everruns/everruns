@@ -20,6 +20,7 @@ use serde_json::Value;
 mod connections;
 mod credentials;
 pub mod dreaming;
+pub mod knowledge;
 mod leased_resources;
 mod org_egress_allowlist;
 mod poppy;

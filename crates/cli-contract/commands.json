@@ -6554,693 +6554,667 @@
     ]
   },
   {
-    "wire_name": "create_knowledge_base",
+    "wire_name": "create_knowledge",
     "path": [
-      "knowledge-bases"
+      "knowledge"
     ],
     "verb": "create",
-    "description": "Create a knowledge base in the current organization.",
+    "description": "Create a knowledge collection; indexing is optional.",
     "method": "POST",
-    "http_path": "/v1/knowledge-bases",
+    "http_path": "/v1/knowledge",
     "args": [
       {
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
+        "required": false
       },
       {
         "field": "embedding_model_id",
         "long": "embedding-model-id",
         "kind": "string",
+        "required": false
+      },
+      {
+        "field": "indexer_id",
+        "long": "indexer-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "indexing",
+        "long": "indexing",
+        "kind": "string",
         "required": false,
-        "help": "Optional embedding model for hybrid retrieval."
+        "choices": [
+          "off",
+          "lexical",
+          "hybrid"
+        ]
       },
       {
         "field": "name",
         "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Start a knowledge base for a team's runbooks",
-        "command": "everruns knowledge-bases create --name support-runbooks --description 'How we handle common support cases' --reason 'Give agents a shared source of answers'"
-      }
-    ]
-  },
-  {
-    "wire_name": "delete_knowledge_base",
-    "path": [
-      "knowledge-bases"
-    ],
-    "verb": "delete",
-    "description": "Archive a knowledge base.",
-    "method": "DELETE",
-    "http_path": "/v1/knowledge-bases/{kb_id}",
-    "args": [
-      {
-        "field": "kb_id",
-        "long": "kb-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Archive a knowledge base nobody uses any more",
-        "command": "everruns knowledge-bases delete --kb-id kb_01h9 --reason 'Merged into support-runbooks'"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_knowledge_entry",
-    "path": [
-      "knowledge-bases",
-      "entries"
-    ],
-    "verb": "create",
-    "description": "Create an entry inside a knowledge base.",
-    "method": "POST",
-    "http_path": "/v1/knowledge-bases/{kb_id}/entries",
-    "args": [
-      {
-        "field": "body",
-        "long": "body",
         "kind": "string",
         "required": true
       },
       {
-        "field": "kb_id",
-        "long": "kb-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
-      },
-      {
-        "field": "kind",
-        "long": "kind",
-        "kind": "string",
-        "required": false,
-        "help": "Discriminator selecting the variant of this resource."
-      },
-      {
-        "field": "resource",
-        "long": "resource",
-        "kind": "string",
-        "required": false,
-        "help": "Optional OKF resource URI identifying the underlying asset."
-      },
-      {
-        "field": "tags",
-        "long": "tags",
-        "kind": "string_list",
-        "required": false,
-        "help": "Free-form tags attached to this resource."
-      },
-      {
-        "field": "title",
-        "long": "title",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable title."
+        "field": "rules",
+        "long": "rules",
+        "kind": "json",
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Add a runbook entry to a knowledge base",
-        "command": "everruns knowledge-bases entries create --kb-id kb_01h9 --title 'Refund a payment past 30 days' --body 'Escalate to billing with the order id.' --kind runbook --tags billing,refunds --reason 'Document the refund exception'"
+        "intent": "Create a collection without indexing",
+        "command": "everruns knowledge create --name 'Support handbook' --indexing off"
       }
     ]
   },
   {
-    "wire_name": "delete_knowledge_entry",
+    "wire_name": "archive_knowledge",
     "path": [
-      "knowledge-bases",
-      "entries"
+      "knowledge"
     ],
     "verb": "delete",
-    "description": "Delete a knowledge entry.",
+    "description": "Archive a knowledge collection.",
     "method": "DELETE",
-    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "http_path": "/v1/knowledge/{collection_id}",
     "args": [
       {
-        "field": "entry_id",
-        "long": "entry-id",
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base entry's prefixed public identifier."
-      },
-      {
-        "field": "kb_id",
-        "long": "kb-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "Remove an outdated entry",
-        "command": "everruns knowledge-bases entries delete --kb-id kb_01h9 --entry-id kbe_01h9 --reason 'Policy changed'"
+        "intent": "Remove a collection from active use",
+        "command": "everruns knowledge delete --collection-id kn_01950000000070008000000000000001"
       }
     ]
   },
   {
-    "wire_name": "get_knowledge_entry",
+    "wire_name": "delete_knowledge_file",
     "path": [
-      "knowledge-bases",
-      "entries"
+      "knowledge",
+      "files"
     ],
-    "verb": "get",
-    "description": "Get a knowledge entry by ID.",
-    "method": "GET",
-    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "verb": "delete",
+    "description": "Delete a managed knowledge file and stop serving its search results.",
+    "method": "DELETE",
+    "http_path": "/v1/knowledge/{collection_id}/files",
     "args": [
       {
-        "field": "entry_id",
-        "long": "entry-id",
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base entry's prefixed public identifier."
+        "required": true
       },
       {
-        "field": "kb_id",
-        "long": "kb-id",
+        "field": "path",
+        "long": "path",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "Read one entry's full body",
-        "command": "everruns knowledge-bases entries get --kb-id kb_01h9 --entry-id kbe_01h9"
+        "intent": "Delete a managed file",
+        "command": "everruns knowledge files delete --collection-id kn_01950000000070008000000000000001 --path /policies/obsolete.md"
       }
     ]
   },
   {
-    "wire_name": "list_knowledge_entries",
+    "wire_name": "list_knowledge_files",
     "path": [
-      "knowledge-bases",
-      "entries"
+      "knowledge",
+      "files"
     ],
     "verb": "list",
-    "description": "List entries inside a knowledge base.",
+    "description": "List knowledge files with bounded cursor pagination.",
     "method": "GET",
-    "http_path": "/v1/knowledge-bases/{kb_id}/entries",
+    "http_path": "/v1/knowledge/{collection_id}/files",
     "args": [
       {
-        "field": "kb_id",
-        "long": "kb-id",
+        "field": "after",
+        "long": "after",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
+        "required": false
       },
       {
-        "field": "kind",
-        "long": "kind",
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": false,
-        "help": "Discriminator selecting the variant of this resource."
+        "required": true
       },
       {
-        "field": "search",
-        "long": "search",
+        "field": "extracted",
+        "long": "extracted",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "length",
+        "long": "length",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "path",
+        "long": "path",
         "kind": "string",
-        "required": false,
-        "help": "Case-insensitive title or body filter."
+        "required": false
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "string",
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Find entries about a topic inside one knowledge base",
-        "command": "everruns knowledge-bases entries list --kb-id kb_01h9 --search refund"
+        "intent": "Page through a collection folder",
+        "command": "everruns knowledge files list --collection-id kn_01950000000070008000000000000001 --path /policies/ --limit 20"
       }
     ]
   },
   {
-    "wire_name": "update_knowledge_entry",
+    "wire_name": "update_knowledge_file_metadata",
     "path": [
-      "knowledge-bases",
-      "entries"
+      "knowledge",
+      "files"
     ],
     "verb": "update",
-    "description": "Update a knowledge entry.",
+    "description": "Update annotations or file read/index policy without extracting content again.",
     "method": "PATCH",
-    "http_path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "http_path": "/v1/knowledge/{collection_id}/files",
     "args": [
       {
-        "field": "body",
-        "long": "body",
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": false,
-        "help": "Updated entry body."
+        "required": true
       },
       {
-        "field": "entry_id",
-        "long": "entry-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base entry's prefixed public identifier."
-      },
-      {
-        "field": "kb_id",
-        "long": "kb-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
-      },
-      {
-        "field": "kind",
-        "long": "kind",
-        "kind": "string",
-        "required": false,
-        "help": "Discriminator selecting the variant of this resource."
-      },
-      {
-        "field": "resource",
-        "long": "resource",
-        "kind": "string",
-        "required": false,
-        "help": "Optional OKF resource URI."
-      },
-      {
-        "field": "tags",
-        "long": "tags",
-        "kind": "string_list",
-        "required": false,
-        "help": "Free-form tags attached to this resource."
-      },
-      {
-        "field": "title",
-        "long": "title",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable title."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Correct an entry's body after a policy change",
-        "command": "everruns knowledge-bases entries update --kb-id kb_01h9 --entry-id kbe_01h9 --body 'Escalate to billing within 24 hours.' --reason 'Updated refund policy'"
-      }
-    ]
-  },
-  {
-    "wire_name": "get_knowledge_base",
-    "path": [
-      "knowledge-bases"
-    ],
-    "verb": "get",
-    "description": "Get a knowledge base by ID.",
-    "method": "GET",
-    "http_path": "/v1/knowledge-bases/{kb_id}",
-    "args": [
-      {
-        "field": "kb_id",
-        "long": "kb-id",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Show a knowledge base's settings",
-        "command": "everruns knowledge-bases get kb_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_knowledge_bases",
-    "path": [
-      "knowledge-bases"
-    ],
-    "verb": "list",
-    "description": "List knowledge bases in the current organization.",
-    "method": "GET",
-    "http_path": "/v1/knowledge-bases",
-    "args": [
-      {
-        "field": "include_archived",
-        "long": "include-archived",
+        "field": "indexable",
+        "long": "indexable",
         "kind": "boolean",
-        "required": false,
-        "help": "Include archived knowledge bases."
+        "required": false
       },
       {
-        "field": "search",
-        "long": "search",
-        "kind": "string",
-        "required": false,
-        "help": "Case-insensitive name filter."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Find a knowledge base by name when you do not know the id",
-        "command": "everruns knowledge-bases list --search runbooks"
-      }
-    ]
-  },
-  {
-    "wire_name": "import_okf_bundle",
-    "path": [
-      "knowledge-bases",
-      "okf-import"
-    ],
-    "verb": "import",
-    "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
-    "method": "POST",
-    "http_path": "/v1/knowledge-bases/{kb_id}/okf_import",
-    "args": [
-      {
-        "field": "bundle_base64",
-        "long": "bundle-base64",
-        "kind": "string",
-        "required": false,
-        "help": "A base64-encoded `.tar.gz` OKF bundle."
-      },
-      {
-        "field": "files",
-        "long": "files",
+        "field": "metadata",
+        "long": "metadata",
         "kind": "json",
-        "required": false,
-        "help": "Inline bundle files."
+        "required": false
       },
       {
-        "field": "kb_id",
-        "long": "kb-id",
+        "field": "path",
+        "long": "path",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
+        "required": true
       },
       {
-        "field": "prune",
-        "long": "prune",
+        "field": "readable",
+        "long": "readable",
         "kind": "boolean",
-        "required": false,
-        "help": "When true, delete previously-imported entries absent from this bundle."
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Load an OKF bundle (a .tar.gz of markdown concepts) into a knowledge base",
-        "command": "everruns knowledge-bases okf-import import --kb-id kb_01h9 --bundle-base64 \"$(base64 < bundle.tar.gz)\" --prune true --reason 'Sync the docs repo'"
+        "intent": "Exclude a file from indexing while retaining it",
+        "command": "everruns knowledge files update --collection-id kn_01950000000070008000000000000001 --path /policies/draft.md --indexable false"
       }
     ]
   },
   {
-    "wire_name": "update_knowledge_base",
+    "wire_name": "write_knowledge_file",
     "path": [
-      "knowledge-bases"
+      "knowledge",
+      "files"
     ],
-    "verb": "update",
-    "description": "Update a knowledge base.",
-    "method": "PATCH",
-    "http_path": "/v1/knowledge-bases/{kb_id}",
+    "verb": "write",
+    "description": "Add or update an original file in managed knowledge.",
+    "method": "PUT",
+    "http_path": "/v1/knowledge/{collection_id}/files",
     "args": [
       {
-        "field": "description",
-        "long": "description",
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
+        "required": true
       },
       {
-        "field": "embedding_model_id",
-        "long": "embedding-model-id",
+        "field": "content",
+        "long": "content",
         "kind": "string",
-        "required": false,
-        "help": "Optional embedding model for hybrid retrieval."
+        "required": false
       },
       {
-        "field": "kb_id",
-        "long": "kb-id",
+        "field": "content_base64",
+        "long": "content-base64",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge base's prefixed public identifier."
+        "required": false
       },
       {
-        "field": "name",
-        "long": "name",
+        "field": "indexable",
+        "long": "indexable",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "mime_type",
+        "long": "mime-type",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable name."
+        "required": false
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "readable",
+        "long": "readable",
+        "kind": "boolean",
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Rename a knowledge base",
-        "command": "everruns knowledge-bases update --kb-id kb_01h9 --name support-playbooks --reason 'Broader scope than runbooks'"
+        "intent": "Write a managed note preserving its path",
+        "command": "everruns knowledge files write --collection-id kn_01950000000070008000000000000001 --path /policies/refunds.md --content 'Refunds are available for thirty days.'"
       }
     ]
   },
   {
-    "wire_name": "create_knowledge_index",
+    "wire_name": "get_knowledge",
     "path": [
-      "knowledge-indexes"
+      "knowledge"
+    ],
+    "verb": "get",
+    "description": "Inspect a knowledge collection, sources and processing status.",
+    "method": "GET",
+    "http_path": "/v1/knowledge/{collection_id}",
+    "args": [
+      {
+        "field": "collection_id",
+        "long": "collection-id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect source and indexing freshness",
+        "command": "everruns knowledge get --collection-id kn_01950000000070008000000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_knowledge_indexer",
+    "path": [
+      "knowledge",
+      "indexers"
     ],
     "verb": "create",
-    "description": "Create a knowledge index in the current organization.",
+    "description": "Configure an organization Turbopuffer account using an existing write-only credential binding.",
     "method": "POST",
-    "http_path": "/v1/knowledge-indexes",
+    "http_path": "/v1/knowledge-indexers",
     "args": [
       {
-        "field": "description",
-        "long": "description",
+        "field": "credential_binding_id",
+        "long": "credential-binding-id",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
+        "required": true
       },
       {
-        "field": "embedding_model_id",
-        "long": "embedding-model-id",
+        "field": "endpoint",
+        "long": "endpoint",
         "kind": "string",
-        "required": true,
-        "help": "Embedding model used to embed chunks."
+        "required": true
       },
       {
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "source_config",
-        "long": "source-config",
-        "kind": "json",
-        "required": false,
-        "help": "Non-secret source coordinates."
-      },
-      {
-        "field": "source_type",
-        "long": "source-type",
-        "kind": "string",
-        "required": false,
-        "help": "External source type."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "Index a GitHub repository so agents can search its docs",
-        "command": "everruns knowledge-indexes create --name product-docs --embedding-model-id model_01h9 --source-type github --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\"}' --reason 'Give support agents the product docs'"
+        "intent": "Use an organization service credential for Turbopuffer",
+        "command": "everruns knowledge indexers create --name 'Search account' --endpoint https://gcp-us-central1.turbopuffer.com --credential-binding-id 01950000-0000-7000-8000-000000000002"
       }
     ]
   },
   {
-    "wire_name": "delete_knowledge_index",
+    "wire_name": "list_knowledge_indexers",
     "path": [
-      "knowledge-indexes"
-    ],
-    "verb": "delete",
-    "description": "Archive a knowledge index.",
-    "method": "DELETE",
-    "http_path": "/v1/knowledge-indexes/{index_id}",
-    "args": [
-      {
-        "field": "index_id",
-        "long": "index-id",
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge index's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Archive a knowledge index that agents no longer need",
-        "command": "everruns knowledge-indexes delete --index-id kidx_01h9 --reason 'Docs moved to a new index'"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_knowledge_index_documents",
-    "path": [
-      "knowledge-indexes",
-      "documents"
+      "knowledge",
+      "indexers"
     ],
     "verb": "list",
-    "description": "List documents inside a knowledge index.",
+    "description": "List organization search-provider accounts without credential values.",
     "method": "GET",
-    "http_path": "/v1/knowledge-indexes/{index_id}/documents",
-    "args": [
-      {
-        "field": "index_id",
-        "long": "index-id",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge index's prefixed public identifier."
-      }
-    ],
+    "http_path": "/v1/knowledge-indexers",
+    "args": [],
     "examples": [
       {
-        "intent": "See which documents a sync has indexed",
-        "command": "everruns knowledge-indexes documents list kidx_01h9"
+        "intent": "List organization search accounts without exposing credentials",
+        "command": "everruns knowledge indexers list"
       }
     ]
   },
   {
-    "wire_name": "get_knowledge_index",
+    "wire_name": "list_knowledge",
     "path": [
-      "knowledge-indexes"
-    ],
-    "verb": "get",
-    "description": "Get a knowledge index by ID.",
-    "method": "GET",
-    "http_path": "/v1/knowledge-indexes/{index_id}",
-    "args": [
-      {
-        "field": "index_id",
-        "long": "index-id",
-        "position": 1,
-        "kind": "string",
-        "required": true,
-        "help": "Knowledge index's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Check a knowledge index's source and sync state",
-        "command": "everruns knowledge-indexes get kidx_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_knowledge_indexes",
-    "path": [
-      "knowledge-indexes"
+      "knowledge"
     ],
     "verb": "list",
-    "description": "List knowledge indexes in the current organization.",
+    "description": "List versioned knowledge collections.",
     "method": "GET",
-    "http_path": "/v1/knowledge-indexes",
+    "http_path": "/v1/knowledge",
     "args": [
       {
-        "field": "include_archived",
-        "long": "include-archived",
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find available Knowledge collections",
+        "command": "everruns knowledge list --limit 10"
+      }
+    ]
+  },
+  {
+    "wire_name": "validate_knowledge_okf",
+    "path": [
+      "knowledge",
+      "okf"
+    ],
+    "verb": "validate",
+    "description": "Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",
+    "method": "GET",
+    "http_path": "/v1/knowledge/{collection_id}/okf",
+    "args": [
+      {
+        "field": "after",
+        "long": "after",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "collection_id",
+        "long": "collection-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "extracted",
+        "long": "extracted",
         "kind": "boolean",
-        "required": false,
-        "help": "Also return archived items."
+        "required": false
       },
       {
-        "field": "search",
-        "long": "search",
+        "field": "length",
+        "long": "length",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "path",
+        "long": "path",
         "kind": "string",
-        "required": false,
-        "help": "Case-insensitive substring match on name or description."
+        "required": false
+      },
+      {
+        "field": "version",
+        "long": "version",
+        "kind": "string",
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Find a knowledge index by name when you do not know the id",
-        "command": "everruns knowledge-indexes list --search docs"
+        "intent": "Validate a page of OKF metadata",
+        "command": "everruns knowledge okf validate --collection-id kn_01950000000070008000000000000001 --limit 100"
       }
     ]
   },
   {
-    "wire_name": "sync_knowledge_index",
+    "wire_name": "search_knowledge_collections",
     "path": [
-      "knowledge-indexes"
+      "knowledge"
+    ],
+    "verb": "search",
+    "description": "Search selected knowledge collections with immutable citations.",
+    "method": "POST",
+    "http_path": "/v1/knowledge/search",
+    "args": [
+      {
+        "field": "collections",
+        "long": "collections",
+        "kind": "string_list",
+        "required": false
+      },
+      {
+        "field": "lexical_only",
+        "long": "lexical-only",
+        "kind": "boolean",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "metadata",
+        "long": "metadata",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "path",
+        "long": "path",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "query",
+        "long": "query",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Retrieve cited policy passages",
+        "command": "everruns knowledge search --collections kn_01950000000070008000000000000001 --query 'refund policy' --limit 5"
+      }
+    ]
+  },
+  {
+    "wire_name": "add_knowledge_source",
+    "path": [
+      "knowledge",
+      "sources"
+    ],
+    "verb": "add",
+    "description": "Connect an existing GitHub identity or public Git source to knowledge.",
+    "method": "POST",
+    "http_path": "/v1/knowledge/{collection_id}/sources",
+    "args": [
+      {
+        "field": "collection_id",
+        "long": "collection-id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "config",
+        "long": "config",
+        "kind": "json",
+        "required": false
+      },
+      {
+        "field": "connection_owner",
+        "long": "connection-owner",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "root_path",
+        "long": "root-path",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Attach an existing GitHub connection to a source root",
+        "command": "everruns knowledge sources add --collection-id kn_01950000000070008000000000000001 --kind github --root-path /product --config '{\"repository\":\"everruns/everruns\",\"root_folder\":\"docs\"}'"
+      }
+    ]
+  },
+  {
+    "wire_name": "sync_knowledge",
+    "path": [
+      "knowledge"
     ],
     "verb": "sync",
-    "description": "Enqueue a manual sync of a knowledge index.",
+    "description": "Queue source refresh and retry failed indexing jobs.",
     "method": "POST",
-    "http_path": "/v1/knowledge-indexes/{index_id}/sync",
+    "http_path": "/v1/knowledge/{collection_id}/sync",
     "args": [
       {
-        "field": "index_id",
-        "long": "index-id",
-        "position": 1,
+        "field": "collection_id",
+        "long": "collection-id",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge index's prefixed public identifier."
+        "required": true
       }
     ],
     "examples": [
       {
-        "intent": "Re-index now after the source repository changed",
-        "command": "everruns knowledge-indexes sync kidx_01h9 --reason 'Docs updated upstream'"
+        "intent": "Refresh connected sources incrementally",
+        "command": "everruns knowledge sync --collection-id kn_01950000000070008000000000000001"
       }
     ]
   },
   {
-    "wire_name": "update_knowledge_index",
+    "wire_name": "update_knowledge",
     "path": [
-      "knowledge-indexes"
+      "knowledge"
     ],
     "verb": "update",
-    "description": "Update a knowledge index.",
+    "description": "Configure knowledge indexing and exclusion rules.",
     "method": "PATCH",
-    "http_path": "/v1/knowledge-indexes/{index_id}",
+    "http_path": "/v1/knowledge/{collection_id}",
     "args": [
+      {
+        "field": "collection_id",
+        "long": "collection-id",
+        "kind": "string",
+        "required": true
+      },
       {
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
+        "required": false
       },
       {
         "field": "embedding_model_id",
         "long": "embedding-model-id",
         "kind": "string",
-        "required": false,
-        "help": "Embedding model used to embed chunks."
+        "required": false
       },
       {
-        "field": "index_id",
-        "long": "index-id",
+        "field": "indexer_id",
+        "long": "indexer-id",
         "kind": "string",
-        "required": true,
-        "help": "Knowledge index's prefixed public identifier."
+        "required": false
+      },
+      {
+        "field": "indexing",
+        "long": "indexing",
+        "kind": "string",
+        "required": false,
+        "choices": [
+          "off",
+          "lexical",
+          "hybrid"
+        ]
       },
       {
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": false,
-        "help": "Human-readable name."
+        "required": true
       },
       {
-        "field": "source_config",
-        "long": "source-config",
+        "field": "rules",
+        "long": "rules",
         "kind": "json",
-        "required": false,
-        "help": "Non-secret source coordinates."
+        "required": false
       }
     ],
     "examples": [
       {
-        "intent": "Point an index at a different branch or folder",
-        "command": "everruns knowledge-indexes update --index-id kidx_01h9 --source-config '{\"provider\":\"github\",\"repository\":\"acme/docs\",\"branch\":\"main\"}' --reason 'Track main instead of the release branch'"
+        "intent": "Enable keyword indexing on retained files",
+        "command": "everruns knowledge update --collection-id kn_01950000000070008000000000000001 --name 'Support handbook' --indexing lexical"
       }
     ]
   },

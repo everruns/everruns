@@ -25,6 +25,15 @@ impl WorkspaceFileService {
         options: &GrepOptions,
         excluded_path_prefix: Option<&str>,
     ) -> Result<GrepSearchResult> {
+        if options.path_pattern.as_deref().is_some_and(|p| {
+            crate::domains::knowledge::runtime::is_mount(
+                &everruns_core::session_path::to_session_path(p),
+            )
+        }) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_grep_with_options(session_id, pattern, options, excluded_path_prefix)
+                .await;
+        }
         grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
