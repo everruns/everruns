@@ -71,6 +71,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Saved shell scripts an agent owns and can run as tools.",
     ),
     (
+        "agents source",
+        "Continuous GitHub source sync, status, and local editing ownership.",
+    ),
+    (
+        "agents source options",
+        "GitHub branches and package paths available for Agent source sync.",
+    ),
+    (
         "agents triggers",
         "Schedules and webhooks that start agent runs.",
     ),
