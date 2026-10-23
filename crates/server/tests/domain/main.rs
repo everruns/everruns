@@ -16,6 +16,9 @@
 //! See the "Run domain integration tests" step in `.github/workflows/ci.yml`
 //! for the current list.
 
+// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_harness.rs"]
 mod test_harness;
 

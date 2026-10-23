@@ -108,6 +108,42 @@ fn closed() -> sqlx::Error {
     sqlx::Error::Protocol("the command transaction has already finished".into())
 }
 
+/// A connection with an open transaction, rolled back if dropped before it is
+/// taken.
+struct BegunConnection(Option<PoolConnection<Postgres>>);
+
+impl Drop for BegunConnection {
+    fn drop(&mut self) {
+        if let Some(connection) = self.0.as_mut() {
+            while PgTransactionManager::get_transaction_depth(connection) > 0 {
+                PgTransactionManager::start_rollback(connection);
+            }
+        }
+    }
+}
+
+/// Acquire a connection and open a transaction on it, on a task of its own so
+/// a cancelled caller cannot leave the transaction open on a pooled
+/// connection; see `everruns_durable::begin_transaction` (EVERRUNS-4H). A
+/// caller gone by the time `BEGIN` returns drops the `BegunConnection` on that
+/// task, which queues the rollback.
+async fn begin_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sqlx::Error> {
+    let pool = pool.clone();
+    let begun = tokio::spawn(async move {
+        let mut connection = pool.acquire().await?;
+        PgTransactionManager::begin(&mut connection, None).await?;
+        Ok::<_, sqlx::Error>(BegunConnection(Some(connection)))
+    })
+    .await;
+    match begun {
+        Ok(Ok(mut begun)) => Ok(begun.0.take().expect("set on the task")),
+        Ok(Err(error)) => Err(error),
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        // Only a runtime shutting down cancels the task.
+        Err(_) => Err(sqlx::Error::PoolClosed),
+    }
+}
+
 /// Identity of a pool and its clones. `connect_options` is one `Arc` shared by
 /// every clone of a pool and distinct between pools.
 fn pool_identity(pool: &PgPool) -> usize {
@@ -202,12 +238,7 @@ where
         return body.await;
     }
     let pool = database.tx_pool().pool.clone();
-    let begin = async {
-        let mut connection = pool.acquire().await?;
-        PgTransactionManager::begin(&mut connection, None).await?;
-        Ok::<_, sqlx::Error>(connection)
-    };
-    let connection = match begin.await {
+    let connection = match begin_connection(&pool).await {
         Ok(connection) => connection,
         Err(error) => return Err(internal(error.into())),
     };
@@ -290,7 +321,7 @@ impl TxPool {
     pub async fn begin_detached(
         &self,
     ) -> Result<sqlx::Transaction<'static, Postgres>, sqlx::Error> {
-        self.pool.begin().await
+        everruns_durable::begin_transaction(&self.pool).await
     }
 
     /// Begin a transaction: a savepoint inside the current task's transaction
@@ -310,7 +341,9 @@ impl TxPool {
                 open: true,
             }));
         }
-        Ok(DbTx(Inner::Own(Some(self.pool.begin().await?))))
+        Ok(DbTx(Inner::Own(Some(
+            everruns_durable::begin_transaction(&self.pool).await?,
+        ))))
     }
 }
 

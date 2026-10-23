@@ -349,7 +349,9 @@ async fn prepare(
     canonical.sort_all_objects();
     let serialized = serde_json::to_vec(&canonical).map_err(|_| invalid())?;
     let hash = hex::encode(Sha256::digest(&serialized));
-    let mut tx = ctx.db.pool().begin().await.map_err(db_error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(db_error)?;
     #[derive(sqlx::FromRow)]
     struct Pending {
         id: Uuid,
@@ -594,7 +596,9 @@ async fn commit(
     if values.len() > 8 || serde_json::to_vec(&result).map_err(|_| invalid())?.len() > 1024 * 1024 {
         return Err(invalid());
     }
-    let mut tx = ctx.db.pool().begin().await.map_err(db_error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(db_error)?;
     let row:Option<(Value,Value)>=sqlx::query_as(
             r#"
             SELECT plan,targets FROM credential_capture_requests

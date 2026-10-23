@@ -135,9 +135,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         // NOTE: The `attempt < max_attempts` check is critical for preventing infinite
         // retries when workers panic. Without fail_task being called, the task becomes
         // stale, gets reclaimed, but must not be claimed if attempts are exhausted.
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -445,9 +443,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         // if a reclaimer has already requeued or sealed this task, there is
         // nothing for this caller to fail and we return TaskNotOwned rather than
         // clobbering the reclaimer's decision.
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
