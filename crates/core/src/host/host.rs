@@ -376,6 +376,7 @@ struct RuntimeExecutionCapabilities {
     tool_call_hooks: Vec<Arc<dyn crate::ToolCallHook>>,
     subagent_nesting_policy: crate::delegation_services::SubagentNestingPolicy,
     resolved_capabilities: Vec<CapabilityRef>,
+    tool_surface_plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
 }
 
 fn subagent_nesting_policy_from_configs(
@@ -1359,6 +1360,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let mut atom = ActAtom::new(executor, adapter.event_emitter())
         .with_thread_cpu_clock(super::thread_cpu::clock())
         .with_context_services(context_services)
+        .with_tool_surface_plan(execution_capabilities.tool_surface_plan.clone())
         .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
         .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
         .with_tool_call_hooks(execution_capabilities.tool_call_hooks);

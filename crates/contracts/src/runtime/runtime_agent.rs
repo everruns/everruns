@@ -42,6 +42,15 @@ pub struct RuntimeAgent {
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
 
+    /// Authorized definitions omitted only by bounded discovery. These are
+    /// available to search and execution, never sent as initial model tools.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub catalog_tools: Vec<ToolDefinition>,
+
+    /// Native projection ceiling, including owner-required eager tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_tool_budget: Option<super::capabilities::ModelToolBudget>,
+
     /// Maximum number of tool-calling iterations (prevents infinite loops)
     #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
@@ -106,12 +115,69 @@ pub fn default_max_iterations() -> usize {
 }
 
 impl RuntimeAgent {
+    pub(crate) fn apply_definition_hook(&mut self, hook: &dyn ToolDefinitionHook) {
+        if let Some(budget) = hook.model_tool_budget(&self.tools) {
+            self.model_tool_budget = Some(budget);
+        }
+        if !hook.preserves_execution_scope() && !self.catalog_tools.is_empty() {
+            let names: std::collections::HashSet<_> = self
+                .catalog_tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            // Restrict the whole operation scope once. Calling a hook once
+            // per projection would change count-dependent or stateful policy.
+            let mut scope = std::mem::take(&mut self.tools);
+            scope.append(&mut self.catalog_tools);
+            let (hidden, visible) = hook
+                .transform(scope)
+                .into_iter()
+                .partition(|tool| names.contains(tool.name()));
+            self.catalog_tools = hidden;
+            self.tools = visible;
+            return;
+        }
+        let before = hook.preserves_execution_scope().then(|| self.tools.clone());
+        self.tools = hook.transform(std::mem::take(&mut self.tools));
+        if let Some(before) = before {
+            let visible: std::collections::HashSet<_> = self
+                .tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            self.catalog_tools
+                .retain(|tool| !visible.contains(tool.name()));
+            let hidden: std::collections::HashSet<_> = self
+                .catalog_tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            self.catalog_tools.extend(
+                before
+                    .into_iter()
+                    .filter(|tool| !visible.contains(tool.name()) && !hidden.contains(tool.name())),
+            );
+        }
+    }
+
+    /// The current operation scope, including schemas omitted by discovery.
+    /// Provider requests must use `tools`, not this execution-only union.
+    pub fn execution_tools(&self) -> Vec<ToolDefinition> {
+        self.tools
+            .iter()
+            .chain(&self.catalog_tools)
+            .cloned()
+            .collect()
+    }
+
     /// Create a new runtime agent configuration with required fields only
     pub fn new(system_prompt: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             system_prompt: system_prompt.into(),
             model: model.into(),
             tools: Vec::new(),
+            catalog_tools: Vec::new(),
+            model_tool_budget: None,
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
@@ -135,6 +201,8 @@ impl Default for RuntimeAgent {
             system_prompt: FALLBACK_SYSTEM_PROMPT.to_string(),
             model: "gpt-5.2".to_string(),
             tools: Vec::new(),
+            catalog_tools: Vec::new(),
+            model_tool_budget: None,
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
@@ -555,8 +623,7 @@ impl RuntimeAgentBuilder {
             if native_tool_search && !hook.applies_with_native_tool_search() {
                 continue;
             }
-            self.runtime_agent.tools =
-                hook.transform(std::mem::take(&mut self.runtime_agent.tools));
+            self.runtime_agent.apply_definition_hook(hook.as_ref());
         }
 
         // Clear a hosted config the model can't honor (a direct `openai_tool_search`

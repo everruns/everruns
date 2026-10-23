@@ -1,0 +1,31 @@
+{"id":"d01","query":"Which release is currently running in the billing staging environment?","expected":"get_deployment","domain":"deployment"}
+{"id":"d02","query":"Show the active deployment for production billing.","expected":"get_deployment","domain":"deployment"}
+{"id":"d03","query":"Undo the most recent rollout to the previous version.","expected":"rollback_deployment","domain":"deployment","expected_arguments":{"deployment_id":"dep-bill-stg-2042","reason":"failed staging health checks"}}
+{"id":"d04","query":"What deployments are available for checkout?","expected":"list_deployments","domain":"deployment"}
+{"id":"d05","query":"Has the billing service finished rolling out to staging?","expected":"get_deployment","domain":"deployment"}
+{"id":"o01","query":"Find application log lines mentioning a failed payment.","expected":"search_logs","domain":"observability","expected_arguments":{"service":"billing-api","environment":"staging","query":"failed payment","time_range":"1h"}}
+{"id":"o02","query":"Open log record log-7701 and show its full message.","expected":"get_log_entry","domain":"observability","expected_arguments":{"log_id":"log-7701"}}
+{"id":"o03","query":"How many checkout errors happened in the past hour?","expected":"query_metric","domain":"observability"}
+{"id":"i01","query":"List current incidents affecting customer-facing services.","expected":"list_incidents","domain":"incident"}
+{"id":"i02","query":"What is the status and owner of INC-427?","expected":"get_incident","domain":"incident"}
+{"id":"i03","query":"Append an operator note to incident INC-427 that the platform team is investigating.","expected":"update_incident","domain":"incident","expected_arguments":{"incident_id":"INC-427","note":"Platform team is investigating."}}
+{"id":"t01","query":"Look up ticket OPS-8421.","expected":"get_ticket","domain":"ticket"}
+{"id":"t02","query":"Find support tickets about repeated login failures.","expected":"search_tickets","domain":"ticket"}
+{"id":"t03","query":"Add a note to OPS-8421 saying the customer was contacted.","expected":"add_ticket_comment","domain":"ticket","expected_arguments":{"ticket_id":"OPS-8421","comment":"Customer contacted."}}
+{"id":"s01","query":"Who owns billing-api?","expected":"get_service","domain":"service_catalog","expected_arguments":{"service":"billing-api"}}
+{"id":"s02","query":"What services belong to the identity platform?","expected":"list_services","domain":"service_catalog"}
+{"id":"r01","query":"Find the recovery procedure for restoring billing data.","expected":"search_runbooks","domain":"runbook"}
+{"id":"r02","query":"Read the rollback runbook for billing-api.","expected":"get_runbook","domain":"runbook","expected_arguments":{"service":"billing-api","topic":"rollback"}}
+{"id":"c01","query":"Show approved maintenance windows for the payments team.","expected":"list_change_windows","domain":"change_management"}
+{"id":"c02","query":"When is change CHG-551 scheduled?","expected":"get_change","domain":"change_management","expected_arguments":{"change_id":"CHG-551"}}
+{"id":"x01","query":"For incident INC-427, show the incident details, matching logs, and owning service.","expected":"get_incident","domain":"cross_domain","required_tools":["get_incident","search_logs","get_service"]}
+{"id":"x02","query":"Find the billing incident and its recovery procedure.","expected":"list_incidents","domain":"cross_domain","required_tools":["list_incidents","search_runbooks"]}
+{"id":"x03","query":"Check the billing deployment and compare it with recent error logs.","expected":"get_deployment","domain":"cross_domain","required_tools":["get_deployment","search_logs"]}
+{"id":"n01","query":"What is the weather forecast for Oslo tomorrow?","expected":null,"domain":"negative"}
+{"id":"n02","query":"Translate this paragraph into Italian.","expected":null,"domain":"negative"}
+{"id":"n03","query":"Calculate the square root of 987654321.","expected":null,"domain":"negative"}
+{"id":"n04","query":"Tell me a joke about penguins.","expected":null,"domain":"negative"}
+{"id":"p01","query":"Find the newest deployment for the billing staging service.","expected":"get_deployment","domain":"near_duplicate"}
+{"id":"p02","query":"Show me which billing deployment is live in staging right now.","expected":"get_deployment","domain":"near_duplicate"}
+{"id":"p03","query":"Search the logs for a failed payment request.","expected":"search_logs","domain":"near_duplicate"}
+{"id":"p04","query":"Find log messages about a declined payment.","expected":"search_logs","domain":"near_duplicate"}

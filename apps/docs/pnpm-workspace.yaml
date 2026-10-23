@@ -1,5 +1,7 @@
 packages: []
 overrides:
+  vite: 8.3.3
+  katex: 0.18.2
   '@astrojs/mdx': 6.0.2
   esbuild: 0.28.1
   fast-uri: 3.1.8
