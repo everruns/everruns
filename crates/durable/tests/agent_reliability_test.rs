@@ -14,8 +14,6 @@
 //!   cargo test -p everruns-durable --test agent_reliability_test \
 //!     --features "failpoints,postgres-tests" -- --test-threads=1
 
-// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
-#![allow(clippy::disallowed_methods)]
 #![cfg(all(feature = "failpoints", feature = "postgres-tests"))]
 
 use std::sync::Arc;
@@ -55,8 +53,7 @@ async fn create_test_store() -> PostgresWorkflowEventStore {
 }
 
 async fn reset_durable_tables(pool: &PgPool) {
-    let mut tx = pool
-        .begin()
+    let mut tx = everruns_durable::begin_transaction(pool)
         .await
         .expect("Failed to begin durable test table reset");
 
