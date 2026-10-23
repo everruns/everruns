@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-23
+
+* **Chat adopts retained Engine registrations.** Rebase the Cloudflare demo on
+  current Framework, keep immutable Agent identity across compatible runtime
+  upgrades, retain the verified earlier live/review keys, and show compatibility
+  suspensions. Preserve the historical model for pre-pinning memberships when
+  the new-session default changes. Reuse command exports from one Engine Wasm
+  instead of uploading
+  a second reducer. Correct the obsolete Workers compressed-size restriction.
+  See [The isolate host](framework/wasm-kernel.md).
+
 ## 2026-10-21
 
 * **Large-catalog shipping contracts.** Custom egress adapters support bounded
@@ -18,6 +29,13 @@
   passes. See [Local authority cutover](framework/local-authority-cutover.md).
 
 ## 2026-10-19
+
+* **Chat adopts the public hosting SPI and transactional commands.** Build the
+  authority-side Rust reducer alongside the Engine module and exercise the full
+  chat bundle in dedicated CI. Pin each session's model across host configuration
+  changes and restart. Clarify that the single-build demo cannot upgrade
+  existing Framework sessions without retained-build routing or migration. See
+  [The isolate host](framework/wasm-kernel.md).
 
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
@@ -182,6 +200,8 @@
   callback chains after approval and require a browser check with a second
   callback hop. See [MCP](integrations/mcp.md).
 
+* **Framework-hosted multiplayer chat.** Replace the demo's custom runner and protocol driver with Engine/ObjectHosting and shared OpenRouter execution. Room services retain durable delivery intents, stable tool ownership and a legacy-history migration. See [The isolate host](framework/wasm-kernel.md). The durable architecture publication hold remains in force.
+
 ## 2026-10-17
 
 * **Automatic session titles and Small model.** Add opt-in naming outside the turn path, sparse persistent admission, explicit-title priority, and an independent organization small-model selection. See [Session titles](runtime-resources/session-titles.md).
@@ -215,6 +235,8 @@
   The announcement publication hold remains in force.
 
 ## 2026-10-16
+
+- Added a standalone Cloudflare multiplayer chat host with no celld runtime or sibling-example dependency; recorded its atomic room state, execution-keyed search children, and alarm delivery boundary, explicit OpenRouter credentials, and deployer access responsibilities in [the isolate decision](framework/wasm-kernel.md) and [threat model](security/threat-model.md).
 
 * **Platform operating skills.** Share product, CLI, and agent-authoring skills
   through the Platform capability; publish the general and CLI guides alongside

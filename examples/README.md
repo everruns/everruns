@@ -41,3 +41,8 @@ that import into the Platform or load in Framework and serve hosts.
 AG-UI clients, and [a2a](serve/a2a/) has two agents talking over A2A, one served
 and one delegating to it (`cargo run -p serve-example-a2a --bin researcher`), and
 [voice](serve/voice/) is a front desk people call from the browser.
+
+[Durable multiplayer chat](cloudflare-durable-chat/) runs the Everruns kernel inside a
+Cloudflare Durable Object, with shared conversations, forks, scheduled
+follow-ups, and a recoverable history-search child. It is an experimental
+advanced host example; see its README for build and Wrangler commands.

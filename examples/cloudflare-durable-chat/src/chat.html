@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <title>Everruns · Durable Chat</title>
+  <style>
+    :root {
+      font:
+        15px system-ui,
+        sans-serif;
+      color: #152b40;
+      background: #e7edf2;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+    }
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      border: 1px solid #8499aa;
+      border-radius: 4px;
+      background: #fff;
+      color: #18354c;
+      padding: 8px 11px;
+    }
+    button:hover {
+      background: #e5eff9;
+    }
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid #337dc5;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    header {
+      background: #193954;
+      color: white;
+      padding: 15px 22px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    h1 {
+      font-size: 18px;
+      letter-spacing: -0.4px;
+      margin: 0;
+    }
+    header small {
+      color: #b6d0e8;
+    }
+    header label {
+      margin-left: auto;
+    }
+    header input {
+      width: 150px;
+      padding: 6px;
+      border: 0;
+      border-radius: 3px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 245px minmax(0, 1fr);
+      height: calc(100dvh - 71px);
+      max-width: 1440px;
+      margin: auto;
+    }
+    aside {
+      padding: 20px 14px;
+      border-right: 1px solid #c5d2dc;
+      overflow: auto;
+      background: #f5f8fa;
+    }
+    aside h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #607385;
+      margin: 22px 0 10px;
+    }
+    #conversations button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      margin: 5px 0;
+      overflow-wrap: anywhere;
+    }
+    #conversations button[aria-pressed="true"] {
+      background: #dbeafa;
+      border-color: #326fac;
+    }
+    #conversations small {
+      display: block;
+      color: #607385;
+      margin-top: 3px;
+    }
+    .new {
+      display: flex;
+      gap: 5px;
+    }
+    .new input {
+      min-width: 0;
+      width: 100%;
+      border: 1px solid #b1c0cb;
+      padding: 7px;
+      border-radius: 4px;
+    }
+    section {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      background: white;
+    }
+    .toolbar {
+      padding: 15px 24px;
+      border-bottom: 1px solid #d8e1e8;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .toolbar h2 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .toolbar span {
+      margin-left: auto;
+      color: #607385;
+      font-size: 12px;
+    }
+    #messages {
+      padding: 12px 24px;
+      flex: 1;
+      overflow: auto;
+    }
+    .message {
+      padding: 16px 0;
+      border-bottom: 1px solid #edf1f4;
+    }
+    .message .meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 650;
+      color: #5e7385;
+    }
+    .message button {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 3px 7px;
+    }
+    .message p {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.6;
+      margin: 8px 0;
+    }
+    .message.tool {
+      background: #f4f7fa;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .muted {
+      color: #6b7c89;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    form#compose {
+      border-top: 1px solid #d8e1e8;
+      padding: 16px 24px;
+      display: flex;
+      gap: 10px;
+    }
+    textarea {
+      flex: 1;
+      resize: vertical;
+      min-height: 65px;
+      max-height: 200px;
+      padding: 10px;
+      border: 1px solid #adbfcc;
+      border-radius: 5px;
+    }
+    #compose button {
+      background: #205789;
+      color: white;
+      border-color: #205789;
+    }
+    #error {
+      color: #8c291d;
+      background: #fff0ed;
+      margin: 0;
+      padding: 8px 24px;
+      white-space: pre-wrap;
+    }
+    #error:empty {
+      display: none;
+    }
+    details {
+      border-top: 1px solid #d8e1e8;
+      padding: 12px 24px;
+      color: #607385;
+      font-size: 12px;
+    }
+    #activity {
+      max-height: 170px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    #schedules button {
+      font-size: 11px;
+      padding: 2px 5px;
+    }
+    #schedules p {
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    #people {
+      font-size: 12px;
+      line-height: 1.8;
+      color: #607385;
+    }
+    .empty {
+      margin: 40px auto;
+      max-width: 480px;
+      padding: 24px;
+      line-height: 1.7;
+    }
+    a {
+      color: #27649a;
+    }
+    @media (max-width: 650px) {
+      main {
+        grid-template-columns: 160px minmax(0, 1fr);
+        height: calc(100dvh - 110px);
+      }
+      header {
+        padding: 12px;
+      }
+      header label {
+        margin-left: 0;
+      }
+      aside {
+        padding: 12px 8px;
+      }
+      .toolbar,
+      #messages,
+      form#compose,
+      details {
+        padding: 12px;
+      }
+      #compose {
+        flex-wrap: wrap;
+      }
+      textarea {
+        width: 100%;
+      }
+    }
+  </style>
+  <header>
+    <h1>EVERRUNS / DURABLE CHAT</h1>
+    <small id="connection" role="status">Connecting…</small
+    ><label
+      >Your name
+      <input id="username" aria-label="Your name" maxlength="40" /></label
+    ><button id="share">Copy room link</button>
+  </header>
+  <main>
+    <aside>
+      <div class="new">
+        <input
+          id="title"
+          aria-label="New conversation title"
+          placeholder="Conversation title"
+          maxlength="80"
+        /><button id="create" aria-label="Create conversation">+</button>
+      </div>
+      <h2>Conversations</h2>
+      <nav id="conversations" aria-label="Conversations"></nav>
+      <h2>In this room</h2>
+      <div id="people"></div>
+      <h2>Scheduled work</h2>
+      <div id="schedules"></div>
+      <p class="muted">
+        Try: “Remember that we chose PostgreSQL.” Then start another
+        conversation and ask what you decided.
+      </p>
+      <p class="muted">
+        “Remind us to review the launch in 30 seconds” works with every browser
+        closed.
+      </p>
+    </aside>
+    <section>
+      <div class="toolbar">
+        <h2 id="current">A room for long conversations</h2>
+        <span id="status"></span>
+      </div>
+      <div id="error" role="alert"></div>
+      <div id="messages" aria-live="polite"></div>
+      <details>
+        <summary>Activity</summary>
+        <pre id="activity"></pre>
+      </details>
+      <form id="compose">
+        <textarea
+          id="text"
+          aria-label="Message"
+          placeholder="Message the room’s assistant…"
+          maxlength="8000"
+          required
+        ></textarea
+        ><button id="send">Send</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const url = new URL(location.href);
+    const room = url.searchParams.get("room") || crypto.randomUUID();
+    url.searchParams.set("room", room);
+    history.replaceState(null, "", url);
+    const api = "/rooms/" + encodeURIComponent(room);
+    const key = "everruns-chat:" + room;
+    let selected = sessionStorage.getItem(key + ":selected"),
+      snapshot = { conversations: [], schedules: {}, participants: [] },
+      socket,
+      retry = 500,
+      refreshTimer;
+    let pending = JSON.parse(sessionStorage.getItem(key + ":pending") || "{}");
+    $("username").value = localStorage.getItem("everruns-chat:name") || "Guest";
+    function remember() {
+      sessionStorage.setItem(key + ":pending", JSON.stringify(pending));
+    }
+    function error(text) {
+      $("error").textContent = text || "";
+    }
+    function command(action) {
+      const request_id = crypto.randomUUID();
+      pending[request_id] = { request_id, ...action };
+      remember();
+      flush();
+    }
+    function flush() {
+      if (socket?.readyState === WebSocket.OPEN)
+        for (const cmd of Object.values(pending))
+          socket.send(JSON.stringify(cmd));
+    }
+    function presence() {
+      if (socket?.readyState === WebSocket.OPEN)
+        socket.send(
+          JSON.stringify({
+            type: "select",
+            username: $("username").value,
+            conversation: selected,
+          }),
+        );
+    }
+    function choose(id) {
+      selected = id;
+      sessionStorage.setItem(key + ":selected", id);
+      render();
+      presence();
+    }
+    function node(tag, text, cls) {
+      const n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    }
+    function render() {
+      const list = $("conversations");
+      list.replaceChildren();
+      for (const c of snapshot.conversations) {
+        const b = node("button", (c.owner ? "> " : "") + c.title);
+        b.setAttribute("aria-pressed", String(c.id === selected));
+        b.append(
+          node(
+            "small",
+            c.execution?.phase === "suspended" ||
+              (c.execution?.compatibility &&
+                c.execution.compatibility.status !== "available")
+              ? "Paused — recovery needs attention"
+              : c.owner
+                ? "Search subagent"
+                : c.turn
+                  ? "Working…"
+                  : c.queued
+                    ? c.queued + " queued"
+                    : "Ready",
+          ),
+        );
+        b.onclick = () => choose(c.id);
+        list.append(b);
+      }
+      const c = snapshot.conversations.find((c) => c.id === selected);
+      $("current").textContent = c?.title || "A room for long conversations";
+      $("status").textContent = c
+        ? c.execution?.phase === "suspended" ||
+          (c.execution?.compatibility &&
+            c.execution.compatibility.status !== "available")
+          ? "Paused — this conversation needs a compatible deployment or recovery review."
+          : c.turn
+            ? "Working · " + c.queued + " queued"
+            : c.queued
+              ? "Queued: " + c.queued
+              : "Ready"
+        : "";
+      const box = $("messages"),
+        atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 100;
+      box.replaceChildren();
+      if (!c) {
+        box.append(
+          node(
+            "div",
+            "Create a conversation with the + button. Share the room link to chat together. Messages and scheduled work survive restarts.",
+            "empty",
+          ),
+        );
+      }
+      for (const m of c?.messages || []) {
+        const item = node(
+          "article",
+          undefined,
+          "message" + (m.role === "tool_result" ? " tool" : ""),
+        );
+        const meta = node(
+          "div",
+          m.role === "user"
+            ? "Participant"
+            : m.role === "agent"
+              ? "Assistant"
+              : "Tool result",
+          "meta",
+        );
+        if (
+          !c.owner &&
+          m.sequence &&
+          (m.role === "user" || m.role === "agent") &&
+          !m.tool_calls?.length
+        ) {
+          const fork = node("button", "Fork here");
+          fork.onclick = () =>
+            command({ type: "fork", conversation: c.id, sequence: m.sequence });
+          meta.append(fork);
+        }
+        item.append(meta, node("p", m.text || ""));
+        if (m.tool_calls?.length)
+          item.append(
+            node(
+              "p",
+              m.tool_calls
+                .map((t) => "> " + t.name + " " + JSON.stringify(t.arguments))
+                .join("\n"),
+              "muted",
+            ),
+          );
+        box.append(item);
+      }
+      if (atBottom) box.scrollTop = box.scrollHeight;
+      $("send").disabled = !c || !!c.owner;
+      $("text").disabled = !c || !!c.owner;
+      $("activity").textContent = (c?.activity || [])
+        .slice()
+        .reverse()
+        .map((e) => e.sequence + "  " + e.type + "  " + JSON.stringify(e.data))
+        .join("\n");
+      $("people").replaceChildren(
+        ...snapshot.participants.map((p) =>
+          node("div", "● " + (p.username || "Guest")),
+        ),
+      );
+      const schedules = $("schedules");
+      schedules.replaceChildren();
+      for (const [id, s] of Object.entries(snapshot.schedules).filter(
+        ([, s]) => s.active,
+      )) {
+        const p = node(
+          "p",
+          s.instruction +
+            " · " +
+            new Date(s.due).toLocaleTimeString() +
+            (s.repeat_ms ? " · recurring " : " "),
+        );
+        const cancel = node("button", "Cancel");
+        cancel.onclick = () =>
+          command({ type: "cancel_schedule", schedule: id });
+        p.append(cancel);
+        schedules.append(p);
+      }
+    }
+    async function refresh() {
+      try {
+        const response = await fetch(api + "/state");
+        if (!response.ok) throw new Error(await response.text());
+        apply(await response.json());
+      } catch (e) {
+        error(e.message);
+      }
+    }
+    function apply(value) {
+      if ((value.revision || 0) < (snapshot.revision || 0)) return;
+      snapshot = value;
+      if (!selected && snapshot.conversations.length)
+        selected = snapshot.conversations[0].id;
+      render();
+    }
+    function connect() {
+      socket = new WebSocket(
+        (location.protocol === "https:" ? "wss://" : "ws://") +
+          location.host +
+          api +
+          "/socket",
+      );
+      socket.onopen = () => {
+        retry = 500;
+        $("connection").textContent = "Connected";
+        presence();
+        flush();
+      };
+      socket.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "snapshot") apply(msg);
+        else if (msg.type === "changed") {
+          clearTimeout(refreshTimer);
+          refreshTimer = setTimeout(refresh, 60);
+        } else if (msg.type === "ack") {
+          const cmd = pending[msg.request_id];
+          delete pending[msg.request_id];
+          remember();
+          error("");
+          if (
+            (cmd?.type === "create" || cmd?.type === "fork") &&
+            msg.receipt.conversation
+          )
+            choose(msg.receipt.conversation);
+        } else if (msg.type === "error") {
+          if (msg.request_id) {
+            delete pending[msg.request_id];
+            remember();
+          }
+          error(msg.error);
+        }
+      };
+      socket.onclose = () => {
+        $("connection").textContent = "Reconnecting…";
+        setTimeout(connect, retry);
+        retry = Math.min(retry * 2, 10000);
+      };
+      socket.onerror = () => socket.close();
+    }
+    $("create").onclick = () => {
+      command({
+        type: "create",
+        title: $("title").value.trim() || "New conversation",
+      });
+      $("title").value = "";
+    };
+    $("username").onchange = () => {
+      localStorage.setItem("everruns-chat:name", $("username").value);
+      presence();
+    };
+    $("share").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        $("share").textContent = "Link copied";
+        setTimeout(() => ($("share").textContent = "Copy room link"), 1800);
+      } catch {
+        error("Copy this room URL from the address bar.");
+      }
+    };
+    $("compose").onsubmit = (event) => {
+      event.preventDefault();
+      const text = $("text").value.trim();
+      if (!text || !selected) return;
+      command({
+        type: "send",
+        conversation: selected,
+        username: $("username").value,
+        text,
+      });
+      $("text").value = "";
+    };
+    $("text").onkeydown = (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        $("compose").requestSubmit();
+      }
+    };
+    render();
+    connect();
+  </script>
+</html>
