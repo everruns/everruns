@@ -115,6 +115,7 @@ impl WorkerServiceImpl {
             .capabilities
             .retain(|capability| feature_flags.is_capability_enabled(capability.capability_id()));
         if let Some(agent) = agent.as_mut() {
+            crate::platform_chat_agent::add_page_tools(agent, feature_flags.chat_mode);
             let is_platform_chat =
                 agent.is_built_in && agent.name == crate::platform_chat_agent::NAME;
             agent.capabilities.retain(|capability| {

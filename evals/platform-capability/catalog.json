@@ -17466,6 +17466,24 @@
           "description": "The entity's public id.",
           "type": "string"
         },
+        "expected_revision": {
+          "description": "Refuse if the Agent changed after this revision. Guarded restores are atomic.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fields": {
+          "description": "Restore only these top-level Agent fields; omit to restore the full definition.\nRequires expected_revision. Secrets and fields the update cannot restore are refused.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "kind": {
           "description": "Entity kind, for ids without a prefix.",
           "type": [

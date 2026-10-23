@@ -39,6 +39,8 @@ import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { useRetainedSection } from "@/components/workspace/use-retained-section";
 import { cn } from "@/lib/utils";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { ChatChangeMark } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentSettingsSection =
   | "branding"
@@ -141,12 +143,14 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
+  const chatMode = useChatMode();
   const active = useRetainedSection(section);
   const meta = active ? SECTIONS[active] : null;
 
   return (
-    <Drawer open={section !== null} onOpenChange={onOpenChange}>
+    <Drawer modal={!chatMode?.open} open={section !== null} onOpenChange={onOpenChange}>
       <DrawerContent
+        scopeToPage
         className={cn("gap-0 overflow-y-auto p-0", meta?.wide ? "sm:max-w-3xl" : "sm:max-w-xl")}
       >
         {active && meta && (
@@ -155,7 +159,29 @@ export function AgentSettingsSheet({
               <DrawerTitle>{meta.title}</DrawerTitle>
               <DrawerDescription>{meta.description}</DrawerDescription>
             </DrawerHeader>
-            <div className="flex-1 p-5">
+            <ChatChangeMark
+              className="flex-1 p-5"
+              field={
+                active === "branding"
+                  ? [
+                      "name",
+                      "display_name",
+                      "description",
+                      "intro_markdown",
+                      "short_description",
+                      "starters",
+                    ]
+                  : ((
+                      {
+                        files: "initial_files",
+                        network: "network_access",
+                        sandbox: "sandbox_policy",
+                        mcp: ["mcpServers", "mcp_servers"],
+                        service: "service_virtual_user_id",
+                      } as Record<string, string | string[]>
+                    )[active] ?? active)
+              }
+            >
               {active === "branding" && (
                 <BrandingSection
                   agent={agent}
@@ -208,7 +234,7 @@ export function AgentSettingsSheet({
                 ))}
               {active === "usage" && <UsageSection agent={agent} />}
               {active === "health" && <AgentHealthCheck agentId={agent.id} />}
-            </div>
+            </ChatChangeMark>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 {meta.kind === "draft"

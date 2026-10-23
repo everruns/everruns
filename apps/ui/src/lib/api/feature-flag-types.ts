@@ -1,6 +1,8 @@
 export interface FeatureFlags {
   /** Worker memory consolidation. Organization adoption opt-in. */
   dreaming?: boolean;
+  /** Page-aware split Chat. Organization Adoption opt-in. */
+  chat_mode?: boolean;
   /** Organization execution monitoring. Adoption opt-in. */
   monitoring?: boolean;
   /** Integrated platform Chat workspace. Organization adoption opt-in. */

@@ -358,6 +358,16 @@ impl Database {
         Ok(())
     }
 
+    /// Serialize definition edits and guarded undo within the command transaction.
+    pub async fn lock_agent_for_change(&self, org_id: i64, public_id: &str) -> Result<()> {
+        sqlx::query("SELECT id FROM agents WHERE org_id = $1 AND public_id = $2 FOR UPDATE")
+            .bind(org_id)
+            .bind(public_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn update_agent(
         &self,
         org_id: i64,

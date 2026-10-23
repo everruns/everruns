@@ -27,6 +27,7 @@ export const NOT_DELIVERED_MS = 10_000;
 export type MessageDelivery = "started" | "steered" | "resumed" | "duplicate";
 
 export interface PendingSend {
+  metadata?: Record<string, unknown>;
   clientId: string;
   text: string;
   images: Array<{ imageId: string; filename?: string }>;

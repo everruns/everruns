@@ -24,6 +24,7 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { sideChatNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const [newSideChat, chatHistory] = sideChatNavigation;
 
@@ -45,6 +46,7 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 }
 
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
+  const chatMode = useChatMode();
   const { threads, isLoading } = useChatThreads();
   usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
@@ -52,6 +54,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
   const visible = stableThreads.slice(0, SIDEBAR_THREAD_LIMIT);
 
   if (isLoading && visible.length === 0) return null;
+  if (chatMode && visible.length === 0) return null;
 
   return (
     <div
@@ -66,15 +69,17 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
           <p className="text-[10px] font-medium uppercase tracking-[0.08em]">Side chats</p>
-          <Link
-            href={newSideChat.href}
-            prefetch={false}
-            aria-label={newSideChat.name}
-            title={newSideChat.name}
-            className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <newSideChat.icon className="size-3.5" aria-hidden="true" />
-          </Link>
+          {!chatMode && (
+            <Link
+              href={newSideChat.href}
+              prefetch={false}
+              aria-label={newSideChat.name}
+              title={newSideChat.name}
+              className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <newSideChat.icon className="size-3.5" aria-hidden="true" />
+            </Link>
+          )}
         </div>
         {visible.map((thread) => {
           const href = `/chats/${thread.id}`;
@@ -101,7 +106,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         })}
       </div>
 
-      {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
+      {!chatMode && stableThreads.length > SIDEBAR_THREAD_LIMIT && (
         <Link
           href={chatHistory.href}
           prefetch={false}

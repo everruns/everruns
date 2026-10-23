@@ -2,6 +2,17 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
+
+let mockChatMode: ChatModeState | null = null;
+jest.mock("@/components/chat-mode/chat-mode-context", () => ({
+  ...jest.requireActual("@/components/chat-mode/chat-mode-context"),
+  useChatMode: () => mockChatMode,
+}));
+jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
+  AgentChatBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 let mockSourceManaged = false;
 jest.mock("@/hooks/use-agent-source", () => ({
@@ -261,6 +272,7 @@ async function save() {
 
 beforeEach(() => {
   mockSourceManaged = false;
+  mockChatMode = null;
   jest.clearAllMocks();
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
@@ -913,6 +925,129 @@ describe("AgentPage entity actions", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
     expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("keeps GitHub-owned fields read-only in the Chat draft adapter", async () => {
+    mockSourceManaged = true;
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    const snapshot = adapter!.read(adapter!.describe().binding);
+    expect(snapshot.writable).toBe(false);
+    expect(() =>
+      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" }),
+    ).toThrow(/read-only/);
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("stages a Chat edit in the visible unsaved form, then saves through the ordinary page action", async () => {
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
+      target: { value: "My manual draft" },
+    });
+    const before = adapter!.read(adapter!.describe().binding);
+    expect(before.values.system_prompt).toBe("My manual draft");
+    act(() => {
+      adapter!.patch(before.binding, before.revision, {
+        system_prompt: "My manual draft, improved by Chat",
+      });
+    });
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue(
+      "My manual draft, improved by Chat",
+    );
+    expect(
+      screen.getByText("Chat edited your draft. Save changes to apply it."),
+    ).toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    await save();
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        request: expect.objectContaining({ system_prompt: "My manual draft, improved by Chat" }),
+      }),
+    );
+    expect(
+      screen.queryByText("Chat edited your draft. Save changes to apply it."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a dirty draft and blocks Save when Chat refreshes the saved definition", async () => {
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: () => () => {},
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    const params = Promise.resolve({ agentId: "agent-1" });
+    let rendered: ReturnType<typeof render>;
+    await act(async () => {
+      rendered = render(
+        <Suspense fallback={null}>
+          <AgentPage params={params} />
+        </Suspense>,
+      );
+      await params;
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
+      target: { value: "My unsaved prompt" },
+    });
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...mockAgent,
+        system_prompt: "Chat saved prompt",
+        updated_at: "2026-10-18T10:30:00Z",
+      },
+      isLoading: false,
+    });
+    await act(async () => {
+      rendered!.rerender(
+        <Suspense fallback={null}>
+          <AgentPage params={params} />
+        </Suspense>,
+      );
+    });
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue("My unsaved prompt");
+    expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("saved agent changed");
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.getByTestId("markdown")).toHaveTextContent("Chat saved prompt");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows the manager notes hint only in edit mode", async () => {

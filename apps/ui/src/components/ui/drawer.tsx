@@ -3,6 +3,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 function Drawer({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="drawer" {...props} />;
@@ -30,15 +31,19 @@ function DrawerContent({
   children,
   showCloseButton = true,
   side = "right",
+  scopeToPage = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   side?: "left" | "right";
+  scopeToPage?: boolean;
 }) {
+  const mode = useChatMode();
+  const container = scopeToPage && mode?.open ? mode.pageContainer.current : null;
   // Tailwind's slide utilities change translate, so the transition must include it.
   return (
-    <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay />
+    <DrawerPortal data-slot="drawer-portal" container={container ?? undefined}>
+      <DrawerOverlay className={container ? "absolute" : undefined} />
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
@@ -47,6 +52,7 @@ function DrawerContent({
             ? "right-0 border-l data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full"
             : "left-0 border-r data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full",
           className,
+          container && "absolute w-[440px] max-w-full sm:max-w-full",
         )}
         {...props}
       >

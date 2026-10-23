@@ -67,3 +67,13 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   Chats remain bound to the managed Platform Chat. In edit mode navy Save changes replaces
   the action, with Discard beside it, and the header states that changes apply to new sessions
   only.
+
+## Page-aware Chat rollout
+
+Organizations enrolled in [Chat mode](chat-mode.md) can keep this page beside
+Platform Chat. Chat reads and patches the page's live form, including unsaved
+manual edits. Changes remain in the existing draft until Save, with separate
+draft markers and guarded local Undo. Agent definition saves attributed to that
+conversation refresh the page and receive persisted-change markers with guarded
+undo. A concurrent saved change blocks a dirty draft's Save until the operator discards and
+reviews the latest definition. Marker dismissal never bypasses that conflict.

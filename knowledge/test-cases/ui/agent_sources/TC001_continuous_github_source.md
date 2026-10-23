@@ -48,6 +48,8 @@ read-only ownership and disconnect behavior. The owning contract is
    Agent. Verify rejection and unchanged exported content. Verify users without
    management permission and users in another organization cannot connect,
    rebind or disconnect the source; re-read the original binding afterwards.
+   With Chat mode adopted, ask Chat to patch this Agent. Verify its page draft
+   is read-only, no patch succeeds, and no server save occurs as a fallback.
 4. Advance the branch to the next valid revision. Without requesting manual
    sync, wait up to two minutes for the applied commit and Agent export to change.
    Verify instructions and file content both match that revision.

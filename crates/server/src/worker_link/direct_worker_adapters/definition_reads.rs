@@ -2,6 +2,18 @@
 use super::*;
 
 impl DirectWorkerAdapters {
+    pub(super) async fn configure_agent_for_org(
+        &self,
+        org_id: i64,
+        agent: &mut Agent,
+    ) -> Result<()> {
+        self.filter_dreaming(org_id, &mut agent.capabilities)
+            .await?;
+        crate::platform_chat_agent::configure_page_tools(&self.db, org_id, agent)
+            .await
+            .map_err(|error| store_error(format!("Failed to resolve page tools: {error}")))
+    }
+
     /// Resolve adoption on every load; no replica-local cache may delay revocation.
     pub(super) async fn filter_dreaming(
         &self,
@@ -226,7 +238,9 @@ impl DirectWorkerAdapters {
                     .await
                     .unwrap_or_default();
                 let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
-                Ok(Some(Self::row_to_agent(r, capabilities)))
+                let mut agent = Self::row_to_agent(r, capabilities);
+                self.configure_agent_for_org(org_id, &mut agent).await?;
+                Ok(Some(agent))
             }
             None => Ok(None),
         }

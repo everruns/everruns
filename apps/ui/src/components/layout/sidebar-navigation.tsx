@@ -16,11 +16,13 @@ import { WarningBadge } from "@/components/ui/warning-badge";
 import type { NavigationItem, NavigationSection } from "./sidebar";
 import { visibleNavigationSections } from "@/lib/navigation";
 import { useOrg } from "@/providers/org-provider";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const isDev = process.env.NODE_ENV === "development";
 
 function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
   const router = useRouter();
+  const chatMode = useChatMode();
 
   const activePath = item.activePrefix ?? item.href;
   const isActive = item.exact
@@ -30,6 +32,19 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
   return (
     <Link
       href={item.href}
+      onClick={(event) => {
+        if (
+          item.href === "/chats" &&
+          chatMode &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          !event.altKey
+        ) {
+          event.preventDefault();
+          chatMode.setOpen(true);
+        }
+      }}
       prefetch={false}
       aria-current={isActive ? "page" : undefined}
       onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
@@ -53,6 +68,9 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
     >
       <item.icon className="icon-sharp h-4 w-4 shrink-0" />
       {item.name}
+      {item.href === "/chats" && chatMode && (
+        <kbd className="ml-auto text-[10px] text-muted-foreground">⌘J</kbd>
+      )}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
     </Link>

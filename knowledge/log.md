@@ -1,5 +1,10 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-23
+
+* **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
+  inverses, and bounded untrusted page context in the [threat model](security/threat-model.md).
+
 ## 2026-10-21
 
 * **Large-catalog shipping contracts.** Custom egress adapters support bounded
@@ -22,6 +27,18 @@
   passes. See [Local authority cutover](framework/local-authority-cutover.md).
 
 ## 2026-10-19
+
+* **Agent Chat walkthrough coverage:** Split the real-model draft scenario,
+  overlapping edits and Undo, page/org/browser binding, permissions and saved
+  conflicts, and responsive Adoption rollout into focused
+  [manual test cases](test-cases/ui/agent_chat/index.md). The real-model walkthrough
+  also established transport preservation of client tools, live pause projection,
+  and independent transcript scrolling as [Chat mode](ui/chat-mode.md) invariants.
+
+* **Chat edits the live Agent form:** Connect browser-bound client tools to
+  unsaved Agent drafts, with atomic version-checked patches, separate draft
+  markers, guarded local Undo, and retry-safe result delivery. Save and Discard
+  retain their existing persistence contract. See [Chat mode](ui/chat-mode.md).
 
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
@@ -135,6 +152,11 @@
   [Bound secrets](security/bound-secrets.md).
 
 ## 2026-10-18
+
+* **Page-aware Chat mode:** Record the Adoption-gated shell, per-send context,
+  Agent attribution and guarded field undo, manual-draft conflict handling, and
+  the remaining granularity, navigation and entity migration decisions. See
+  [Chat mode](ui/chat-mode.md).
 
 * **Memory deferred.** Remove memory adoption, compatibility migration, and mount
   authorization changes from the scoped-resource implementation. Memory needs a

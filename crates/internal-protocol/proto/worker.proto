@@ -362,6 +362,8 @@ message Agent {
     repeated string capabilities = 15;
     // How the agent talks: "direct" (absent) or "explicit".
     optional string communication = 17;
+    // Server-resolved custom tool definitions, including org-gated client tools.
+    repeated string tools = 18;
 }
 
 message GetAgentRequest {

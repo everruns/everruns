@@ -160,7 +160,7 @@ export function Sidebar({
         pathname={pathname}
         featureFlags={featureFlags}
         renderSectionExtra={(section) =>
-          section.id === "chats" && !featureFlags.chat_threads ? (
+          section.id === "chats" && (!featureFlags.chat_threads || featureFlags.chat_mode) ? (
             <SidebarChatThreads pathname={pathname} />
           ) : null
         }

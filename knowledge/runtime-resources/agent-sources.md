@@ -15,7 +15,9 @@ repository code is never executed and credentials never enter a package.
 ## Ownership
 
 Connecting applies an explicitly reviewed commit and makes the Agent's authored
-configuration read-only across every command transport. Binding changes and ordinary
+configuration read-only across every command transport. The
+[Chat mode draft adapter](../ui/chat-mode.md) inherits the same read-only state;
+Chat cannot patch a GitHub-owned definition. Binding changes and ordinary
 definition writes lock the same Agent row. Only a task-local scope for the exact
 organization and Agent permits reconciliation writes; no serialized request can
 claim that authority. Package-owned channel configuration follows source ownership.

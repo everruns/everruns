@@ -10,7 +10,7 @@ fn test_proto_agent_includes_capability_ids() {
 
     // Create an Agent with capabilities
     let id = Uuid::now_v7();
-    let agent = crate::domains::agents::record::Agent {
+    let mut agent = crate::domains::agents::record::Agent {
         is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,
@@ -52,6 +52,11 @@ fn test_proto_agent_includes_capability_ids() {
         usage: None,
     };
 
+    agent.is_built_in = true;
+    agent.name = crate::platform_chat_agent::NAME.into();
+    crate::platform_chat_agent::add_page_tools(&mut agent, true);
+    let expected_tools = serde_json::to_value(&agent.tools).unwrap();
+
     // Convert to proto
     let proto_agent = schema_agent_to_proto(&agent);
 
@@ -82,6 +87,10 @@ fn test_proto_agent_includes_capability_ids() {
     assert!(cap_ids.contains(&"tools:read_file"));
     assert!(cap_ids.contains(&"tools:write_file"));
     assert_eq!(schema_agent.max_output_tokens, Some(4096));
+    assert_eq!(
+        serde_json::to_value(schema_agent.tools).unwrap(),
+        expected_tools
+    );
 }
 
 #[test]

@@ -56,6 +56,7 @@ interface UseChatSendsOptions {
 
 function draftOf(send: PendingSend): ChatSendDraft {
   return {
+    metadata: send.metadata,
     text: send.text,
     images: send.images,
     files: send.files,
@@ -126,6 +127,7 @@ export function useChatSends({ sessionId, events, send, cancel }: UseChatSendsOp
     (draft: ChatSendDraft) => {
       const now = Date.now();
       const item: PendingSend = {
+        metadata: draft.metadata,
         clientId: newClientMessageId(now),
         text: draft.text,
         images: draft.images ?? [],
