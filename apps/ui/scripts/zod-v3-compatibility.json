@@ -1,0 +1,447 @@
+{
+  "@ag-ui/client@1.0.2": {
+    "package": "@ag-ui/client",
+    "version": "1.0.2",
+    "declared_zod": "^3.25.76",
+    "files": {}
+  },
+  "@ag-ui/proto@1.0.2": {
+    "package": "@ag-ui/proto",
+    "version": "1.0.2",
+    "declared_zod": "^3.25.76",
+    "files": {}
+  },
+  "@a2ui/web_core@0.10.4": {
+    "package": "@a2ui/web_core",
+    "version": "0.10.4",
+    "declared_zod": "^3.25.76",
+    "files": {
+      "src/v0_8/types/primitives.d.ts": {
+        "before": "fe8e601f0686504e90c274ffe91479c85a062d22738c6063dc304771b9a7d471",
+        "after": "aa71a7b060bf47c01eeaaab605bc6ca07d64e405f1493dbd5c39428cbb23ef5b"
+      },
+      "src/v0_8/types/types.d.ts": {
+        "before": "bc07a6a3e8b97276afb1a118499434b9392ca13a78899494ef8656379922dfba",
+        "after": "2294eabf6e26387206a1321f8c4ecc47d8fb33a055ac005432b8286c66fcfb7c"
+      },
+      "src/v0_8/types/components.d.ts": {
+        "before": "7914a7c1e13ecc6b4595e8110a77194bb02a047647b35666179217a98f00a795",
+        "after": "dbd211ae8cab074a454c2bf4f50c7eb8f56fae723047cb57e3d99a32e86577e8"
+      },
+      "src/v0_8/schema/server-to-client.js": {
+        "before": "f3031544937cce383e1ad3953286a59f5bd92e2b3ce1292b8a2d444157c18fb1",
+        "after": "7861462e83310065ccbb7839580783fcd559be780eef13848e63d307a3975c42"
+      },
+      "src/v0_8/schema/common-types.d.ts": {
+        "before": "621e543cd44b5d0138ff162c0a332ae7197514bdd3f98ec9654fa0936eb41380",
+        "after": "2aaea37ae6a9c14f9c5f0c7cafd709916d48261b983723b7b5358dcf99b6ec02"
+      },
+      "src/v0_8/schema/server-to-client.d.ts": {
+        "before": "628c5f2cc1f2eff9a285609d1151cb48291909028a0432d4bdfe19e6db847375",
+        "after": "f520fae652e4756611bd45dca5ecceaac4af6801f38de6f50c511448a9d5da20"
+      },
+      "src/v0_8/schema/common-types.js": {
+        "before": "3039d77c4ca9738f8b095ca0436f7176c2fa4e9bfa35c4a6d804457cc3df14da",
+        "after": "dd5af27dd5e2845a704e116fdb2dab8f47d9657cc0dab39be2f0805166687e4c"
+      },
+      "src/v0_9/processing/message-processor.test.js": {
+        "before": "56d7487adde228a50d0e25a56fac9e67008d7adfa71632f519cb17d31de59452",
+        "after": "b7766693d8fb31adb5685bb84af6228f29ab12a2905cda57a3b45d652c0f3007"
+      },
+      "src/v0_9/catalog/types.js": {
+        "before": "6b72fc9a56a521a0ea4a4f30609aeeb8717747141f846dd754d152e21981f734",
+        "after": "aa6e874dc578ff22d15ac4103a61cfaf7a808e4d0cdae3ae40cd764943e38738"
+      },
+      "src/v0_9/catalog/types.d.ts": {
+        "before": "f4e1c6370c2c69f72d829631dcc3b27ad5c20cef4a06be0643df40275986ee1c",
+        "after": "9916fbb37bbeadf896827b9fea496e45f4d3b7c080e3dcd04875c41a838b4173"
+      },
+      "src/v0_9/catalog/types.test.js": {
+        "before": "61f2e478705d72004c4ef7e5d0abe09af9948e9eeea1dbf68ea2dd304fc581e2",
+        "after": "02670a116fefd6e83125e6e21c8f1fcf9d7bdc09ff72a69f882ded43d42caf63"
+      },
+      "src/v0_9/schema/server-to-client.js": {
+        "before": "fe839d7da09c53ffeeea48a829d9c04ad10e92f640c7236ad83d63eae2e7e9bf",
+        "after": "f82b46076b19e34f5f69aaf382f310287513cfaed6e0ed18a4cce0a8af835421"
+      },
+      "src/v0_9/schema/common-types.d.ts": {
+        "before": "c2f1b455873990548fb43c7d9ec1954c0132e5d94b8847e46ece122c99d36915",
+        "after": "df780b8d4597dfd71afb535318f10352e441b7735bc192ec1bb26d6a0f374ca8"
+      },
+      "src/v0_9/schema/client-to-server.js": {
+        "before": "ad7f6d70499c4d1080c0b57c5aa28446b5c4f0c5e6cef32500a76f1b56da3899",
+        "after": "2229ef93a21ca165a10c4dd38e41af02a22228a877eef6cb0f2925576505efa0"
+      },
+      "src/v0_9/schema/client-to-server.d.ts": {
+        "before": "1ebd8fb988032c5e38c13d86437ba0cf6fe226018cea2130195223f25394cabe",
+        "after": "8617402fba0e5d837e851c41657c185cafbd1a4a014b57bb1b6fa1efd64096df"
+      },
+      "src/v0_9/schema/server-to-client.d.ts": {
+        "before": "f67bc289f70f948edc925a4a6f939d54c757a7383c13cec210010057562c5c0b",
+        "after": "22102334267a8531b186919c105eaae6cb96ca0f87e5688b6431af558fa7f181"
+      },
+      "src/v0_9/schema/common-types.js": {
+        "before": "c12ff668683b622e586adb44aa11ae035d56279e1d378349e87509777c465006",
+        "after": "18a82ba87c40364c69e505c41b92e2177b6a4aa6da097e64cb4b050959d4e03a"
+      },
+      "src/v0_9/rendering/generic-binder.d.ts": {
+        "before": "0463208ef90b219300d9fed79edca457b588388f03a1d8768fd948884ac0d039",
+        "after": "f7e66ee6fccb6c601b89b811525c46fd169148dfa6eae637080186fb79d27706"
+      },
+      "src/v0_9/rendering/data-context.test.js": {
+        "before": "a1a28b9e8017ea1f28716f36c0427fa04d2f5198feeea5d12d144229c704685f",
+        "after": "310b0f4efed456e4186383b7e9f93d62ef41d201a6810f8756d2f5cbf12aacb9"
+      },
+      "src/v0_9/rendering/generic-binder.test.js": {
+        "before": "729c492a4958d51ca2e2c0f10be28c11c2a03d977f19ebb1a4b7b3644b42bae4",
+        "after": "e67435f263fbe9ae2bac618686e463053f210389e4df96ede1edaea7df548e52"
+      },
+      "src/v0_9/rendering/data-context.js": {
+        "before": "1a0d905ccde78ab6daf72101ff2bb011b29fcd8db03a241a12d8c03d721f536d",
+        "after": "119ceaeb49203744242d25d4ab31e83c2c00ee1138d964334e1eb838dea13b1a"
+      },
+      "src/v0_9/basic_catalog/components/basic_components.d.ts": {
+        "before": "6c282e82681a29b7976317e4019d7663a1b13d9df30a8b5eccd294af1094e006",
+        "after": "1c9974b4496e197d774dd4966c64c3175cd6e7027fce7cfd9ed3f096ab589ea3"
+      },
+      "src/v0_9/basic_catalog/components/basic_components.js": {
+        "before": "3af4f735d4df7066a820991a7a0423b5b0ac12ab68bb5c846226b3ee026eb3cb",
+        "after": "746f335b2a662e9c1303b9b010f75164099c70968879e312d3e3bb30790e56a5"
+      },
+      "src/v0_9/basic_catalog/functions/basic_functions_api.d.ts": {
+        "before": "1f34d48635a74e9f63de47a30207eebfe5abd915c64f64b74341df75e9cd5e28",
+        "after": "1860c03d5f896f3ca4807f801e7f68756ccbb335008d96c30302eb591a6c8d76"
+      },
+      "src/v0_9/basic_catalog/functions/basic_functions_api.js": {
+        "before": "77171dfadf4c3f5b274151f72d807bf855aecf5aea75c9f00dde6fd87d5d21a1",
+        "after": "7fc9e5fb41fb1c97dc031c28582f260a8c134c3a74fcc769fd46085e2871f8e2"
+      }
+    }
+  },
+  "@ag-ui/client@0.0.59": {
+    "package": "@ag-ui/client",
+    "version": "0.0.59",
+    "declared_zod": "^3.22.4",
+    "files": {
+      "dist/index.d.mts": {
+        "before": "89b1cebe7e42bdd6bd40d4fbc10d44b098ccd27fff73596155f2b00b47215bda",
+        "after": "c52fa18470a9198a910b7ead7955e3f2d60df22181e774e9b1144be9e5ead806"
+      },
+      "dist/index.mjs": {
+        "before": "3d42ef9a0c41fe680a04eff14f0ff23c98d2828a79328272c6fc640f2d557be2",
+        "after": "c688d4a95ab7c11166aab94df6445fc71f78dda4575d56e804bcea21ed6a02cc"
+      },
+      "dist/index.d.ts": {
+        "before": "3b4e162150c51c5a29ba7850d599f1372bea256be0fa4488ce04ab55ae3532fe",
+        "after": "1ffcf15fb7db467f031dfb3e88d58240383fe90e7d6e4c1b3b048c6b9f3914e8"
+      }
+    }
+  },
+  "@ag-ui/core@0.0.59": {
+    "package": "@ag-ui/core",
+    "version": "0.0.59",
+    "declared_zod": "^3.22.4",
+    "files": {
+      "dist/index.d.mts": {
+        "before": "97a5d22735e1140d77ea2dd438015c75c3f70ca1331a4ec46845c839d64398b6",
+        "after": "6965f64a15aa210ed31001d3817a6f66d0d5de2f710b96501879605eda79924c"
+      },
+      "dist/index.js": {
+        "before": "3b16b7c16e182805260f6ea4ed10e8e74d5c66095cfeda409932d1893fc2dd9e",
+        "after": "0072f02a6efb7af812e60bc9f06b858ace4db1a5bfbb73f38a32af43daedc255"
+      },
+      "dist/index.mjs": {
+        "before": "90a94861fb17a6230ff9a3b3cd00e25cea09d847225725c3a7243d36b54119ef",
+        "after": "09a3604d510663c6383f21f3b5bc9cdca25f8972b4019569fe3a88ceaf5e0486"
+      },
+      "dist/index.d.ts": {
+        "before": "b8f9ba1abd6f3b8fac934c9e5373a4123d14b2db700cb5fd3e6723ce2740064d",
+        "after": "3c148a7b644f85b8d485d6ab2f875caf8f836279d5682f1b25310aebcc49d8a1"
+      }
+    }
+  },
+  "@copilotkit/a2ui-renderer@1.79.1": {
+    "package": "@copilotkit/a2ui-renderer",
+    "version": "1.79.1",
+    "declared_zod": "^3.25.75",
+    "files": {
+      "dist/index.umd.js": {
+        "before": "3f6e64e7226f73b8310088e6e6f0004088d4c7e12d20039cb4fae3d4da23e520",
+        "after": "2e4f69b75b728423fdfd503cadf6e013af2c3b597a773ba0f004771a53decea1"
+      },
+      "dist/react-renderer/create-catalog.d.mts": {
+        "before": "58d2253bd1e3c80b9a03d0a5eb7d8d76e6ceff99e7b70cd654129fc50b842e66",
+        "after": "a3d75b7da74c030b9c0e77a4749d1c900de2231320d6880ef1fa0ed9aed091e1"
+      },
+      "dist/react-renderer/create-catalog.d.cts": {
+        "before": "6420c8c8575fe0b10743d3befc63cd3daae47aefe4d27c05fb1997b418579558",
+        "after": "a629edb1b2abbf6b57d02552b74c46081cf92ab83f814e121f1c4d9a21e1112f"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/index.cjs": {
+        "before": "b81cddffd98305ba70aabd4c6b79c3b6866d0c897bd1800ecbfae10fb8b34708",
+        "after": "8af7c6a579b11e2cbf1ef029af5f07802718a457f6abfc5bde25be5ce9314069"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/index.mjs": {
+        "before": "95966ffc9fcb70e847217c63ebe5895acfc4346e7244b5e7ef9454955a409ef0",
+        "after": "d4650fca34760702aef9ee138caf94d7622c8d60b7c030920f4dc23e80c3d00b"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.cjs": {
+        "before": "3b5a6fb2c0c64c5b5b075ad39d252a28ea7b86f1eb57a5c87b199b5228eedb9b",
+        "after": "82bbdbd4e319a177d40ce317c6696118ac00aadf619642e0904b9d3d0bca8939"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.mjs": {
+        "before": "7b50a37ee11c6c1fea7a3b726efe7154aa65b0ea80de680cbfca6ba209e5df05",
+        "after": "e20192adf734414dbad4c8e365ffd93899b2af3c23896e6adfb020710bc103b8"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.mjs": {
+        "before": "02244ed0f9d2ea6710d904ca1fd5b437936bcf01e41d5ce8d448a4dac2efb783",
+        "after": "e6925d37276ff7428082d6e548c1539b6c52aceb2cc8c15a1994651854611d77"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.cjs": {
+        "before": "f1dcf62dda8e1756b5a85296478fd725b76e06820df91da8b03bacdaf7690400",
+        "after": "39f0db3f71926be32c9d63a82426e950a6fae8299014f5b87260b0f529eb3d29"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.mjs": {
+        "before": "468dc6fadea67f724738a6cfaba69b751e059af9f2c3e8d66cc6728b3b19e695",
+        "after": "f8cbde1c9fec7d144a3f827961b8a0c37ab94cb493d80ec8f61c993b1eec2e6d"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.cjs": {
+        "before": "9b6f88dfdd1750dfa6c928403c0289b6fb3f820d4b3cc7b3641952e1990c47ba",
+        "after": "4610a9dfa1b82cec062262c9d2e21c34331f7717fe700e216b82a237d9747788"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.mjs": {
+        "before": "1f62d296f5ed6b0f3cdb9fdb4cac01fc8f45294b2ef1f6259b8875b7880d3442",
+        "after": "a1691f5ed9d69fd07b7cf66cc514b826b0a53bc881a41fefdf1233dfe69c619e"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.mjs": {
+        "before": "5d3f0a5c859db48d11ec7b5193eb8c0ea20ee243e67ef1a9c7ef99df44261a1b",
+        "after": "26624839370e5bd599e3de1fa8c9e4d7415251d0aba53198c8d121ac2d5c0cbd"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.cjs": {
+        "before": "b41e9c234714690c3ab2c1b107dc2d2f981a56c6b300ab1f97e6ac5da36a5a9a",
+        "after": "430adff06b190b77271225dc42a473d8da20a05a19f214ba22aa5c9947c92ecc"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.cjs": {
+        "before": "c09a339612a49acfb271b70cb0f84542edc6cd5f7676b1f761f095179e99a382",
+        "after": "a9c9e4a159a4e50947b6d662e8b3b8a0e1425ebc250372cafe05b9dd1e57822d"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Button.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Text.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Row.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/TextField.d.cts": {
+        "before": "4a62953d045581e2910bac1b77d3bd1e2f75728220b9f67d606d12f5fcbfccf9",
+        "after": "cd027a0f94d1dfcbf75ebca97e4896e042debaeb25272d4a585ddc6e67c9f51a"
+      },
+      "dist/react-renderer/a2ui-react/catalog/minimal/components/Column.d.mts": {
+        "before": "1edae6bfec268eadaca2d607517cbf210aa64e3e35b3dfc0aa05f3ec077f43c3",
+        "after": "8599dda773ef9974e24af692773989ec26c9f2b086ddbdc99bca3b5b498d5d00"
+      }
+    }
+  },
+  "@copilotkit/runtime@1.79.1": {
+    "package": "@copilotkit/runtime",
+    "version": "1.79.1",
+    "declared_zod": "^3.25.18",
+    "files": {
+      "dist/agent/index.d.mts": {
+        "before": "580c122c660f63836dfd1c20dbdf7cf69babe7991e5e6387ce7b229b7d5aa77e",
+        "after": "fb0cc4445f44d436399b3efe437ad14a063b35867b2fce425e91317b864e4436"
+      },
+      "dist/agent/index.d.cts": {
+        "before": "db2e52baacac9f83d45413a38447190d7c79d56fa458bb45d2c7d316b6232267",
+        "after": "7debdcb1bf93053c1638b74cd83d137d427813176a140b583cc11c4091827e33"
+      },
+      "dist/agent/index.cjs": {
+        "before": "628d4849a0180e5ebab730c5372b724077529ab2c97f17eaf22a36fe8eacce3b",
+        "after": "b7f74c4eafc812f59b59e21e0d64436ae37d58012b33da51dd400cd79cec214d"
+      },
+      "dist/agent/index.mjs": {
+        "before": "064cb1d4be3cdd328a006ec55a9c5920957e8e63ab8e6e5287a237cb7c1f1458",
+        "after": "bb643d5f9fbf11c43d7f1941d13a952d9a179e0330d2397dc02b81a764ea34d6"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.mjs": {
+        "before": "15a3473924c60fc7eabf3cc8edf545bb8f9a058faa3f16fd1677f508111fd848",
+        "after": "370c3e289d38a98964e64778aec67dd65061da3f9d39e96105150434c3be54fb"
+      },
+      "dist/v2/runtime/intelligence-platform/trajectories.cjs": {
+        "before": "110d1ea17f305eb212287cea52574460449632734c7d96b988cd1b9a4458cb54",
+        "after": "f1d295777a9baf6e8529e8caa52fee3357091a589013fe10437d0f84c458d09d"
+      },
+      "dist/v2/runtime/intelligence-platform/client.mjs": {
+        "before": "5454b1e2a52ed8e2899beeae4caa8ad9a8f1801f0b5e871b1126e76b32543bfe",
+        "after": "6688df789a107c3ccbcc7bc1d486b9f0ea1f1c2f6922cecb83e9a78414e3a7f2"
+      },
+      "dist/v2/runtime/intelligence-platform/client.cjs": {
+        "before": "b097360155bb4f04a8ddc1c5043e3a1d15b78cabe23059bac35321c315c64d23",
+        "after": "fefb140cce34849aa64f4f2aca39ccf85aee05921efaf645f8f9dcba5a5a4989"
+      }
+    }
+  },
+  "@copilotkit/shared@1.79.1": {
+    "package": "@copilotkit/shared",
+    "version": "1.79.1",
+    "declared_zod": "^3.23.3",
+    "files": {
+      "dist/index.umd.js": {
+        "before": "0f8b37782a19e00cf65ed726eb0ff79106ecc6f054c24e0815662d89660ea015",
+        "after": "f3bd5c1ac009c884f09fdc1b1ac99ec97a874262d3e1a997f8c8eedc851b81dc"
+      },
+      "src/utils/json-schema.ts": {
+        "before": "8d5aa31dfcecf4d3778cecb82302fc7d0bbaac4266e8085f5a5019002a8d6c79",
+        "after": "43bddd3ac8ac95495874eb2ecb1a6a05eb28732f093cd779e03fd3ea2687efc8"
+      },
+      "src/__tests__/standard-schema-types.test.ts": {
+        "before": "d0115dd9f38adb047038870d99d2db63d1394bd0615fa89f6b3094991a4681a4",
+        "after": "b77c246f7fb5acebc6db25c3a01241c375f2b10606dc988d11b76337b195ed45"
+      },
+      "src/__tests__/zod-regression.test.ts": {
+        "before": "5c2c17a1f40401560f0e97471141e5f26c0bbfe086deec22f79a54a1a3d4963b",
+        "after": "f90a610acec35e5fb9e4bae8eb48b2ab6ed2c2de7a3731732c5df1c2b4d8f572"
+      },
+      "src/__tests__/standard-schema.test.ts": {
+        "before": "0fc13af6c6237581f306a76e6fe1582e6248015955fc2c8fa53c14ee90abfa9b",
+        "after": "19f4dc54f2ed56f1c3315fd34ea9e7a178f08f2a54bef0e08e28c7f4877fe8d6"
+      },
+      "src/utils/__tests__/json-schema.test.ts": {
+        "before": "be029d4aff52b719920dd4a8c6e79cedc5b351f3d5bd124c630c81acc94d83e8",
+        "after": "c3bd6eafd3b59726778d84e3b34309f6b4805bcd656032e66fd5a9a617b17928"
+      },
+      "dist/utils/json-schema.d.cts": {
+        "before": "4a6ee0e23861c3f6480faaee35723325981720a9abf51492803fa6091bda6db5",
+        "after": "23c3c280ce255d7254196ced2316aabf31db567e12016c58308d198751786df3"
+      },
+      "dist/utils/json-schema.d.mts": {
+        "before": "bf5b53890329ea667a54227698d4b10d0320f807c8e1a1090f5a5525699ee4db",
+        "after": "fd2fb56b4da0612cc38ca772bb5d62b964021c50d9c27a4ce85db6295c372fb2"
+      },
+      "dist/utils/json-schema.cjs": {
+        "before": "f50221edea48dd8284d2b39b7c6ccb1ad35de53a2119ace6761db9e488e20c05",
+        "after": "7ca941a98f365ef6d5d530431fc6098f46933245252b9a34da6d53798b32b849"
+      },
+      "dist/utils/json-schema.mjs": {
+        "before": "77979312c49ba8763127c081575aac0fc1b90bc8ce76b896a77de076c1bb0933",
+        "after": "897e5b5c99436745ca102c25a8c34ddf9b6b93c78c11e8c3e592cc7ec4c921d5"
+      }
+    }
+  },
+  "@google/design.md@0.4.0": {
+    "package": "@google/design.md",
+    "version": "0.4.0",
+    "declared_zod": "^3.24.0",
+    "files": {
+      "dist/linter/dtcg/spec.d.ts": {
+        "before": "46d4e63968643d0bd6745bffc8bc7f8d78d2a2c5077c9b4a259346a074836dbf",
+        "after": "2a44bbb7f3b72dd7a4f67896afe6ee8b9f59dd81459db3a5c7ab9b67449677ff"
+      },
+      "dist/linter/fixer/spec.d.ts": {
+        "before": "fe80784a9a03228286fc82ec2e1f72f7b898e0ff87145b51717cd7fe2ae85c48",
+        "after": "97f4c5b68661e8df697d25991c00c06d6aa348a80a40667e3d00446e9635aa03"
+      },
+      "dist/linter/css-vars/spec.d.ts": {
+        "before": "5fafd069590ad22705da59ffd63aa30b0e9347c0449d1cbd96a281150e1cf439",
+        "after": "2a77f5594b0bd5d1021ab075c993b08bb742adc4b70fbd90400664ec3cc86ad9"
+      },
+      "dist/linter/parser/spec.d.ts": {
+        "before": "9afd1c58ee437c0a514283d84dfce33974ab313117f07fefd56d9db2dee9b13e",
+        "after": "6da6adbdd189b061250331d8bac1ee2968cbc1b703ecdc753a17a92cfd4cadcd"
+      },
+      "dist/linter/tailwind/spec.d.ts": {
+        "before": "dc3ce7ffdad86e8547ea80a347fe8999098aec5b3458a9ebbf56355621c0c993",
+        "after": "cfbe08aaf4a97b077c082c5b4857c6d5567f3720fa021fd561a9885546613289"
+      },
+      "dist/linter/model/spec.d.ts": {
+        "before": "bce45a62024017d1f0103833b9961e80005d75260f55bab26927c9510055601b",
+        "after": "c0378b06ac72c12ab11fad226122ffbb56827cdb9b4841500c1e50faa3f1e235"
+      },
+      "dist/linter/tailwind/v4/spec.d.ts": {
+        "before": "fd0aa3398b340fe411a1ec24f87389944d6e6b26863e2309e6cee54b16604d25",
+        "after": "24944f439fb84fdc4177a7149031827fdb910c91d1e1ee2c5e4c6f24728f6d86"
+      }
+    }
+  },
+  "@copilotkit/react-core@1.79.1": {
+    "package": "@copilotkit/react-core",
+    "version": "1.79.1",
+    "previous_resolution": "3.25.76",
+    "declared_zod": ">=3.25",
+    "files": {
+      "dist/copilotkit-CD3uPUN3.mjs": {
+        "before": "1c322cebb2aaf91121694595064003777e59b91e634eb06d2707791e8de2aa2e",
+        "after": "1e64fbbceee785d8df501d2e0a9688013db13c78a47edfa11f78d8036fd7de00"
+      },
+      "dist/copilotkit-k7IYk2AN.d.cts": {
+        "before": "70faa4e8fdc9078a6560fbe155f01c66fda609da2a720c94b2538cbc900fbfdf",
+        "after": "0f1d47bbc0150cdc1de39f1cf8a8e59ec58c811ef04ea1cea1db65b1d7010bf6"
+      },
+      "dist/index.d.mts": {
+        "before": "f84d5d80dfa3e5db286b04c756634cf9e4ceac8850abb163ebf421cfd3f0c765",
+        "after": "b5a22efd2ae0023c4fe97e8ec888c611e03557e0ea75a6714bf0dc340c18b93a"
+      },
+      "dist/index.d.cts": {
+        "before": "cb88919dc725a90f45ebf803ae37c721aad2ebfa7941400e0469d38470975574",
+        "after": "9abf8ae08c561de8e5c4d4d4b33d69eddc255b6781866d58644af5a49db71aa9"
+      },
+      "dist/copilotkit-DEaA0Cat.cjs": {
+        "before": "d5a26e872690df74b38cefc7bddd7ebdeda516a1e0b402031c5cf61723213158",
+        "after": "611c9a915c4c461e785952f7397cfe38698ead20f5f0414c6cc59ced3b4a0c77"
+      },
+      "dist/copilotkit-Yz8qXx00.d.mts": {
+        "before": "2973acbcf3892d882c81578542412bdc6772fe4e386702dca4ccb4f82aae6464",
+        "after": "daa88ac86b2d6fc8f8091ae9bcca1c9c73119fb7677deb6181d50b659c58e255"
+      },
+      "dist/index.cjs": {
+        "before": "07498ff9e13f61d306b9a5f3a89f2e8b4aed3ab8a4494d419ea6e9a2799ef456",
+        "after": "c970248a49763fbd77a1374126af77f7192f725f310c9e5f4412282ec1a5458e"
+      },
+      "dist/index.mjs": {
+        "before": "7875fc6dc159fd87c4ead8af0c73643869158450c54bad19d296935b86231d8c",
+        "after": "c16864ae184d6942a973207c573f3517653731ebbd7c9d3de3538327c767f302"
+      },
+      "dist/index.umd.js": {
+        "before": "18a11f93d96e9e6c12a835924329471e7d85a8d6f0dea245e19d896ea2ad3593",
+        "after": "af3325836eb77b6bde67375258af63abe86606a5dd7a127080e8be9b34493701"
+      },
+      "dist/v2/headless.cjs": {
+        "before": "314f2ccab9dc3aa89297d6918f67be1ae63e3ebe9e95dda80c587c4903132220",
+        "after": "c21df9df83c73b41766be5137ee9622970ed8714a72dd5c8bd8b824eb59480a0"
+      },
+      "dist/v2/headless.mjs": {
+        "before": "2dbe26958b6159c537163a3e8840f685dbbf2851a184b1ad6ced79eaa5d0bc7f",
+        "after": "ff5bac2d5c57a22c9807dcb0618c72ef39899fbe418f5d0ce80479decd52027f"
+      },
+      "dist/v2/index.umd.js": {
+        "before": "7e20f30fd7e1e1ad5e25d072c8aab8dd9b494b6ddedf7e6dbd9ca2cbc209d00f",
+        "after": "2c9d828ade20a0941272d9fcbc034ff2f78b801444f57d995ba934b73077b6ed"
+      }
+    }
+  }
+}

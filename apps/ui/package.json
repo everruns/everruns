@@ -27,7 +27,9 @@
     "test:watch": "jest --watch",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "postinstall": "node scripts/patch-zod-v3.mjs",
+    "pretest": "node --test scripts/test-zod-size-guards.mjs scripts/test-zod-v3-backport.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -45,7 +47,7 @@
     "cron-parser": "^5.10.1",
     "cronstrue": "^3.27.0",
     "lucide-react": "^1.41.0",
-    "next": "^16.3.8",
+    "next": "16.4.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-easy-crop": "^6.2.3",
