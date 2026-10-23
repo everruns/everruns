@@ -13,12 +13,22 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[derive(Default)]
 struct DiscoverableEgress {
     requests: AtomicUsize,
+    /// Requests that reached the boundary without an org to attribute.
+    unattributed: AtomicUsize,
 }
 
 #[async_trait::async_trait]
 impl EgressService for DiscoverableEgress {
     async fn send(&self, request: EgressRequest) -> everruns_core::EgressResult<EgressResponse> {
         self.requests.fetch_add(1, Ordering::SeqCst);
+        if request
+            .scope
+            .as_ref()
+            .and_then(|scope| scope.org_id)
+            .is_none()
+        {
+            self.unattributed.fetch_add(1, Ordering::SeqCst);
+        }
         let body = match (request.method.as_str(), request.url.as_str()) {
             ("GET", "https://8.8.8.8/.well-known/oauth-protected-resource") => {
                 serde_json::json!({ "authorization_servers": ["https://1.1.1.1"] })
@@ -185,10 +195,14 @@ async fn stored_settings(
 #[tokio::test]
 async fn adding_an_oauth_preset_registers_it_and_reports_ready() {
     let db = Arc::new(StorageBackend::test_database());
-    let state = connections_state(db, Arc::new(DiscoverableEgress::default()));
+    let egress = Arc::new(DiscoverableEgress::default());
+    let state = connections_state(db, egress.clone());
 
     let server = create(&admin_ctx(&state), "oauth").await;
 
+    // Discovery and registration count against the org, like its turns do.
+    assert!(egress.requests.load(Ordering::SeqCst) > 0);
+    assert_eq!(egress.unattributed.load(Ordering::SeqCst), 0);
     let check = server
         .clone()
         .connection_check

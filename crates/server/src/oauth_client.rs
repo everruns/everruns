@@ -1,7 +1,7 @@
 //! Shared OAuth token-exchange client for MCP connection flows.
 
 use crate::kernel_imports::{
-    EgressRequest, EgressRequestKind, EgressResponse, EgressService,
+    EgressRequest, EgressRequestKind, EgressResponse, EgressService, ScopedEgressService,
     contracts::url_validation::validate_safe_url,
     contracts::url_validation::validate_url_dns_pinned,
 };
@@ -30,6 +30,9 @@ pub(crate) struct OAuthRefreshRequest {
     pub client_secret: Option<String>,
     pub refresh_token: String,
     pub resource: Option<String>,
+    /// Internal id of the org the connection belongs to; the refresh is
+    /// attributed to it at the egress boundary.
+    pub org_id: i64,
 }
 
 pub(crate) struct OAuthCodeExchangeRequest<'a> {
@@ -71,8 +74,9 @@ impl OAuthRefreshExchange for EgressOAuthRefreshExchange {
         &self,
         request: OAuthRefreshRequest,
     ) -> Result<OAuthTokenResponse, OAuthRefreshError> {
+        let egress = org_scoped_egress(self.egress.clone(), request.org_id);
         exchange_oauth_refresh_token(
-            self.egress.as_ref(),
+            egress.as_ref(),
             &request.token_endpoint,
             &request.client_id,
             request.client_secret.as_deref(),
@@ -81,6 +85,22 @@ impl OAuthRefreshExchange for EgressOAuthRefreshExchange {
         )
         .await
     }
+}
+
+/// `egress` with every request attributed to `org_id`.
+///
+/// OAuth sign-in runs outside a turn, so nothing upstream stamps a tenant on
+/// its requests. Without one, the tenant egress proxy and the audit log see
+/// discovery, client registration and token traffic as nobody's: no
+/// per-org limits, allowlist or kill switch apply to it.
+pub(crate) fn org_scoped_egress(
+    egress: Arc<dyn EgressService>,
+    org_id: i64,
+) -> Arc<dyn EgressService> {
+    Arc::new(ScopedEgressService::new(
+        egress,
+        crate::domains::mcp_servers::presentation::org_scope(org_id),
+    ))
 }
 
 pub(crate) async fn exchange_oauth_code(
@@ -388,5 +408,56 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, OAuthRefreshError::InvalidGrant);
+    }
+
+    struct RecordingEgress(std::sync::Mutex<Vec<EgressRequest>>);
+
+    #[async_trait]
+    impl EgressService for RecordingEgress {
+        async fn send(
+            &self,
+            request: EgressRequest,
+        ) -> everruns_core::EgressResult<EgressResponse> {
+            self.0.lock().unwrap().push(request);
+            Ok(EgressResponse {
+                status: 200,
+                headers: BTreeMap::new(),
+                body: br#"{"access_token":"fresh"}"#.to_vec(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            _request: EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            panic!("streaming egress is not used by OAuth refresh")
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_is_attributed_to_the_connections_org() {
+        let egress = Arc::new(RecordingEgress(Default::default()));
+        let exchange = EgressOAuthRefreshExchange::new(egress.clone());
+
+        let token = exchange
+            .exchange(OAuthRefreshRequest {
+                token_endpoint: "https://8.8.8.8/token".to_string(),
+                client_id: "client".to_string(),
+                client_secret: None,
+                refresh_token: "refresh".to_string(),
+                resource: None,
+                org_id: 7,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(token.access_token, "fresh");
+        let sent = egress.0.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(
+            sent[0].scope,
+            Some(crate::domains::mcp_servers::presentation::org_scope(7))
+        );
+        assert!(sent[0].scope.as_ref().unwrap().org_id.is_some());
     }
 }

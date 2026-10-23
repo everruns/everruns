@@ -9,7 +9,7 @@ use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_o
 use crate::api::common::{sanitized_bad_gateway, sanitized_internal_error};
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerSettings};
 use crate::kernel_imports::contracts::url_validation::validate_safe_url;
-use crate::oauth_client::{egress_oauth_discovery_json, egress_oauth_json};
+use crate::oauth_client::{egress_oauth_discovery_json, egress_oauth_json, org_scoped_egress};
 
 #[derive(Debug, Deserialize)]
 pub(super) struct OAuthProtectedResourceMetadata {
@@ -40,6 +40,7 @@ pub(super) struct OAuthClientRegistration {
 
 pub(super) async fn ensure_mcp_oauth_registration(
     state: &AppState,
+    org_id: i64,
     row: &crate::storage::McpServerRow,
     settings: McpServerSettings,
     provider: &str,
@@ -51,7 +52,7 @@ pub(super) async fn ensure_mcp_oauth_registration(
     ),
     (StatusCode, String),
 > {
-    let egress = state.mcp_service.egress_service();
+    let egress = org_scoped_egress(state.mcp_service.egress_service(), org_id);
     ensure_mcp_oauth_registration_via(state, egress.as_ref(), row, settings, provider).await
 }
 

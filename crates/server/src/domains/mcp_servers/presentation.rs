@@ -523,8 +523,9 @@ fn origin_of(url: &Url) -> String {
 }
 
 /// The org a background MCP request is made for. No session: these run for
-/// a list page, a server add or an event delivery, not a turn.
-pub(super) fn org_scope(org_id: i64) -> EgressScope {
+/// a list page, a server add, an event delivery or an OAuth sign-in, not a
+/// turn.
+pub(crate) fn org_scope(org_id: i64) -> EgressScope {
     EgressScope {
         org_id: everruns_core::org_public_id_from_internal(org_id)
             .parse::<OrgId>()

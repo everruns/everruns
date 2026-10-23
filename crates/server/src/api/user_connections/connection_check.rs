@@ -24,6 +24,7 @@ use crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker;
 use crate::domains::mcp_servers::record::{McpConnectionCheck, McpConnectionCheckStatus};
 use crate::domains::mcp_servers::{McpServerService, McpServerSettings};
 use crate::kernel_imports::{McpServerAuthMode, mcp_oauth_provider_id_for_uuid};
+use crate::oauth_client::org_scoped_egress;
 
 /// Runs the connection check with the OAuth connect flow's state.
 pub struct OAuthConnectionChecker {
@@ -43,7 +44,10 @@ impl McpOAuthConnectionChecker for OAuthConnectionChecker {
             return McpConnectionCheck::not_checked();
         };
         let settings = McpServerService::settings_from_row(&row);
-        let egress = HostRecordingEgress::new(self.state.mcp_service.egress_service());
+        let egress = HostRecordingEgress::new(org_scoped_egress(
+            self.state.mcp_service.egress_service(),
+            org_id,
+        ));
         let outcome = probe(&self.state, &egress, &row, settings).await;
         let (check, registered) = match outcome {
             Ok(registered) => (
