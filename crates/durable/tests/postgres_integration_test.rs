@@ -7,6 +7,8 @@
 //! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:{DB_PORT:-9332}/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
+// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
+#![allow(clippy::disallowed_methods)]
 #![cfg(feature = "postgres-tests")]
 
 use std::{sync::Arc, time::Duration};
@@ -2373,4 +2375,51 @@ async fn test_fail_task_and_reclaim_no_double_increment() {
 
     cleanup_workflow(&store, workflow_id).await;
     cleanup_worker(&store, "race-worker").await;
+}
+
+/// Whether the connection the pool hands out next is inside an open
+/// transaction: `SAVEPOINT` succeeds only there.
+async fn next_connection_in_transaction(pool: &PgPool) -> bool {
+    let mut connection = pool.acquire().await.expect("acquire");
+    match sqlx::raw_sql("SAVEPOINT probe")
+        .execute(&mut *connection)
+        .await
+    {
+        Ok(_) => {
+            sqlx::raw_sql("ROLLBACK")
+                .execute(&mut *connection)
+                .await
+                .expect("roll back the leaked transaction");
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// EVERRUNS-4H: a caller cancelled while `BEGIN` is in flight (a gRPC handler
+/// past its deadline) must not return the connection to the pool inside an
+/// open transaction. With sqlx's own `pool.begin()` about one cancellation in
+/// seven leaked one.
+#[tokio::test]
+async fn cancelled_begin_leaves_no_open_transaction() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&get_database_url())
+        .await
+        .expect("connect");
+    assert!(!next_connection_in_transaction(&pool).await);
+
+    let mut leaked = 0;
+    for i in 0..200u64 {
+        // Cancel at varying points between sending BEGIN and its reply.
+        let deadline = Duration::from_micros((i % 40) * 10);
+        let _ = tokio::time::timeout(deadline, everruns_durable::begin_transaction(&pool)).await;
+        if next_connection_in_transaction(&pool).await {
+            leaked += 1;
+        }
+    }
+    assert_eq!(
+        leaked, 0,
+        "{leaked} of 200 cancelled BEGINs left a transaction open"
+    );
 }

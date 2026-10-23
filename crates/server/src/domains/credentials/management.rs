@@ -314,7 +314,9 @@ pub async fn create(ctx: &Ctx, input: CreateScopedCredential) -> Result<Uuid, Co
         }
     }
     let r = owner(ctx, &input.owner).await?;
-    let mut tx = ctx.db.pool().begin().await.map_err(error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(error)?;
     sqlx::query(
             r#"
             INSERT INTO resource_access(id,org_id,kind,scope,owner_agent_id,owner_session_id,owner_virtual_user_id,subject_id,usage)
@@ -394,7 +396,9 @@ pub async fn set_value(
         .ok_or_else(|| CommandError::unavailable("Credential encryption unavailable"))?
         .encrypt_string(&value)
         .map_err(|_| CommandError::unavailable("Credential encryption failed"))?;
-    let mut tx = ctx.db.pool().begin().await.map_err(error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(error)?;
     let live:Option<i64>=sqlx::query_scalar("SELECT revision FROM resource_access WHERE id=$1 AND org_id=$2 AND revoked_at IS NULL FOR UPDATE")
         .bind(id)
         .bind(ctx.org_id())
@@ -430,7 +434,9 @@ pub async fn revoke(ctx: &Ctx, id: Uuid, revision: i64) -> Result<(), CommandErr
     if record.kind != "credential_binding" {
         return Err(CommandError::not_found("Credential"));
     }
-    let mut tx = ctx.db.pool().begin().await.map_err(error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(error)?;
     let updated = sqlx::query(
         r#"
             UPDATE resource_access
@@ -532,7 +538,9 @@ pub async fn grant(ctx: &Ctx, id: Uuid, input: GrantCredential) -> Result<Uuid, 
         },
     )
     .await?;
-    let mut tx = ctx.db.pool().begin().await.map_err(error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(error)?;
     let live:Option<Uuid>=sqlx::query_scalar("SELECT id FROM resource_access WHERE id=$1 AND org_id=$2 AND revoked_at IS NULL FOR UPDATE")
         .bind(id)
         .bind(ctx.org_id())
@@ -621,7 +629,9 @@ pub async fn grants(ctx: &Ctx, id: Uuid) -> Result<Vec<ManagedResourceGrant>, Co
 pub async fn revoke_grant(ctx: &Ctx, id: Uuid, grant_id: Uuid) -> Result<(), CommandError> {
     let r = access::record(ctx, id).await?;
     access::require_manage(ctx, &r).await?;
-    let mut tx = ctx.db.pool().begin().await.map_err(error)?;
+    let mut tx = everruns_durable::begin_transaction(ctx.db.pool())
+        .await
+        .map_err(error)?;
     sqlx::query(
         r#"
             UPDATE resource_grants

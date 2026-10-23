@@ -15,7 +15,7 @@ mod store;
 pub(crate) use db_failure::log_database_failure;
 
 pub use memory::InMemoryWorkflowEventStore;
-pub use postgres::PostgresWorkflowEventStore;
+pub use postgres::{PostgresWorkflowEventStore, begin_transaction};
 pub use store::{
     CapacitySnapshot, CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow,
     DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, DEFAULT_NO_PROGRESS_SEAL_THRESHOLD,

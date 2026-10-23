@@ -65,7 +65,7 @@ pub async fn purge_deleted_sandboxes(
     retention_days: u64,
 ) -> Result<u64, sqlx::Error> {
     let days = i32::try_from(retention_days).unwrap_or(i32::MAX);
-    let mut tx = pool.begin().await?;
+    let mut tx = everruns_durable::begin_transaction(pool).await?;
     // The current-checkpoint pointer restricts deletes; clear it first.
     sqlx::query(
         "UPDATE sandboxes SET current_checkpoint_id = NULL \
