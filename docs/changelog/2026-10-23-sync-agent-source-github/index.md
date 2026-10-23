@@ -1,7 +1,7 @@
 ---
 title: Sync Agent source continuously from GitHub
 description: Connect an Agent to a GitHub repository package, review its changes, and apply future updates automatically while keeping source fields read-only.
-date: 2026-10-21
+date: 2026-10-23
 kind: feature
 significance: notable
 products: [platform]
