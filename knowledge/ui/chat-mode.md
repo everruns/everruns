@@ -51,7 +51,9 @@ respond to the width of the page pane, not the browser viewport.
 
 Rail destinations and visibility come from the existing navigation model,
 including organization role, feature and policy restrictions. The rail must
-not grow an independent page catalog. Agent settings drawers mount within the
+not grow an independent page catalog. Embedding hosts may supply their existing
+composed navigation sections, so stricter host visibility and loading rules
+remain effective in the rail. Shared role, feature and policy checks still apply. Agent settings drawers mount within the
 page pane with a page-only backdrop, leaving Chat accessible.
 
 ## Page context is data

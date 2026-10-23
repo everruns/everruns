@@ -14,6 +14,7 @@ import {
   defaultNavigationSections,
   isDurableNavigationSection,
   visibleNavigationSections,
+  type NavigationSection,
 } from "@/lib/navigation";
 import { usePolicies } from "@/hooks/use-policies";
 import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
@@ -34,7 +35,14 @@ const ChatPanel = dynamic(() =>
   import("@/components/chat/chat-panel").then((module) => module.ChatPanel),
 );
 
-export function ChatModeShell({ children }: { children: ReactNode }) {
+export function ChatModeShell({
+  children,
+  navigation,
+}: {
+  children: ReactNode;
+  /** Host-composed sections; the rail retains shared role, feature and policy gates. */
+  navigation?: NavigationSection[];
+}) {
   const enabled = useFeatureFlag("chat_mode");
   const { currentOrg } = useOrg();
   if (!enabled) {
@@ -47,10 +55,20 @@ export function ChatModeShell({ children }: { children: ReactNode }) {
     );
   }
   // No UI state, transcript, or page metadata crosses an organization switch.
-  return <EnabledShell key={currentOrg?.public_id}>{children}</EnabledShell>;
+  return (
+    <EnabledShell key={currentOrg?.public_id} navigation={navigation}>
+      {children}
+    </EnabledShell>
+  );
 }
 
-function EnabledShell({ children }: { children: ReactNode }) {
+function EnabledShell({
+  children,
+  navigation,
+}: {
+  children: ReactNode;
+  navigation?: NavigationSection[];
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -195,13 +213,19 @@ function EnabledShell({ children }: { children: ReactNode }) {
             {children}
           </main>
         </section>
-        <IconRail open={open} />
+        <IconRail open={open} navigation={navigation} />
       </div>
     </ChatModeContext.Provider>
   );
 }
 
-function IconRail({ open }: { open: boolean }) {
+function IconRail({
+  open,
+  navigation = defaultNavigationSections,
+}: {
+  open: boolean;
+  navigation?: NavigationSection[];
+}) {
   const mode = useChatMode();
   const pathname = usePathname();
   const flags = useFeatureFlags();
@@ -209,7 +233,7 @@ function IconRail({ open }: { open: boolean }) {
   const durable = usePolicies("durable");
   const canNavigate = useNavigationPolicy();
   const sections = visibleNavigationSections(
-    defaultNavigationSections.filter(
+    navigation.filter(
       (section) => !isDurableNavigationSection(section) || durable.can("durable.view"),
     ),
     flags,

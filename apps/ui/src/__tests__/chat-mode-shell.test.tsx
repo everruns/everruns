@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
+import { defaultNavigationSections } from "@/lib/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 let mockEnabled = false;
+let mockCanNavigate = false;
 let mockOrg = "org_1";
 const mockSearch = jest.fn();
 const mockQuery = new URLSearchParams();
@@ -44,7 +46,9 @@ jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: mockOrg }, hasRole: () => true }),
 }));
 jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => false }) }));
-jest.mock("@/hooks/use-navigation-policy", () => ({ useNavigationPolicy: () => () => false }));
+jest.mock("@/hooks/use-navigation-policy", () => ({
+  useNavigationPolicy: () => () => mockCanNavigate,
+}));
 jest.mock("@/hooks/use-command-palette", () => ({
   useCommandPalette: () => ({ setOpen: mockSearch }),
 }));
@@ -68,6 +72,7 @@ function Page() {
 }
 beforeEach(() => {
   mockEnabled = false;
+  mockCanNavigate = false;
   mockOrg = "org_1";
   jest.clearAllMocks();
 });
@@ -119,4 +124,26 @@ it("resets the chat shell on organization switch", () => {
   expect(screen.queryByLabelText("Chat draft")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Chat entry"));
   expect(screen.getByLabelText("Chat draft")).toHaveValue("");
+});
+
+it("uses the host's navigation sections in the shared rail", () => {
+  mockEnabled = true;
+  mockCanNavigate = true;
+  const navigation = defaultNavigationSections.map((section) => ({
+    ...section,
+    items: section.items
+      .filter((item) => item.href === "/settings/organization")
+      .map((item) => ({
+        ...item,
+        name: "Hosted settings",
+      })),
+  }));
+  render(
+    <ChatModeShell navigation={navigation}>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Chat entry" }));
+  expect(screen.getByRole("link", { name: "Hosted settings" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Agents" })).not.toBeInTheDocument();
 });
