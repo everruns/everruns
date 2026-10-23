@@ -92,6 +92,7 @@ pub mod truncation_info;
 pub mod user_hook_types;
 pub mod utility_llm;
 pub mod web_search;
+pub mod work_report;
 
 pub use self::agent_definition::AgentDefinition;
 pub use self::background::{
