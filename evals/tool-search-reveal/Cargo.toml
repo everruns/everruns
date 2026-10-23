@@ -27,7 +27,7 @@ regex = "1"
 async-trait = "0.1"
 # Already in the dependency tree through everruns-core; the fake tools use it
 # to validate the arguments they receive against their own schemas.
-jsonschema = { version = "0.59.0", default-features = false }
+jsonschema = { version = "0.58.1", default-features = false }
 
 [dev-dependencies]
 everruns-llmsim = { path = "../../crates/drivers/llmsim" }

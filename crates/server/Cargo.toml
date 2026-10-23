@@ -148,7 +148,7 @@ everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
 wiremock = "0.6"
-jsonschema = { version = "0.59.0", default-features = false }
+jsonschema = { version = "0.58.1", default-features = false }
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).
