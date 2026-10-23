@@ -36,7 +36,6 @@
   markers, guarded local Undo, and retry-safe result delivery. Save and Discard
   retain their existing persistence contract. See [Chat mode](ui/chat-mode.md).
 
-
 * **Large MCP catalogs implemented.** Everruns now paginates and bounds
   per-server plus aggregate session discovery, caches complete catalogs within
   a weighted runtime budget, and shares authorized server-aware search between
