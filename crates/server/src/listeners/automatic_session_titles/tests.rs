@@ -583,7 +583,9 @@ async fn manual_transaction_does_not_deadlock_with_advisory_write() {
             .unwrap()
             .is_some()
     );
-    let mut manual = f.db.pool().begin().await.unwrap();
+    let mut manual = everruns_durable::begin_transaction(f.db.pool())
+        .await
+        .unwrap();
     sqlx::query(
         "UPDATE sessions SET title = 'Explicit title', title_is_automatic = FALSE WHERE id = $1",
     )
