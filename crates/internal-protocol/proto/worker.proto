@@ -1146,6 +1146,9 @@ message McpServerInfo {
     // (default, also what an empty string means) or "never", which reports a
     // tool error carrying the setup link instead.
     string connect_in_chat = 12;
+    // Configured tools/call timeout in milliseconds. Absent (also from an
+    // older control plane) means the 60 s default.
+    optional uint64 tool_timeout_ms = 13;
 }
 
 message McpSecretBinding {

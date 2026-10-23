@@ -94,6 +94,7 @@ fn server_info(
         auth_mode,
         protocol_mode: crate::core::McpProtocolMode::Auto,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth_provider_id: Some(format!("mcp_oauth_{}", Uuid::new_v4())),
         acts_as,
         connect_in_chat: Default::default(),

@@ -138,6 +138,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     auth_mode: server.auth_mode.clone(),
                     protocol_mode: server.protocol_mode,
                     elicitation_policy: server.elicitation_policy,
+                    tool_timeout_ms: server.tool_timeout_ms,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                     pending_oauth_provider: None,
                     connect_in_chat: server.connect_in_chat,

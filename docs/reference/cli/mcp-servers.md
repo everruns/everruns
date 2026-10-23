@@ -60,6 +60,7 @@ everruns mcp-servers create [OPTIONS] --name <name> --url <url>
 | `--name <NAME>` | Required. The name of the MCP server. |
 | `--protocol-mode <PROTOCOL_MODE>` |  |
 | `--service-connection-provider <SERVICE_CONNECTION_PROVIDER>` | Connection provider whose connection on an agent's service virtual user supplies the service ... |
+| `--tool-timeout-ms <TOOL_TIMEOUT_MS>` | How long one tool call may take, in milliseconds (1000 to 1800000). Defaults to 60000. |
 | `--transport-type <TRANSPORT_TYPE>` | MCP Server transport type. One of `http`, `stdio`. |
 | `--url <URL>` | Required. The URL of the MCP server endpoint. |
 
@@ -226,6 +227,7 @@ everruns mcp-servers update [OPTIONS] [ID]
 | `--protocol-mode <PROTOCOL_MODE>` |  |
 | `--service-connection-provider <SERVICE_CONNECTION_PROVIDER>` | Connection provider whose connection on an agent's service virtual user supplies the service ... |
 | `--status <STATUS>` |  |
+| `--tool-timeout-ms <TOOL_TIMEOUT_MS>` | How long one tool call may take, in milliseconds (1000 to 1800000). `0` clears it back to the... |
 | `--transport-type <TRANSPORT_TYPE>` |  |
 | `--url <URL>` | The URL of the MCP server endpoint. |
 

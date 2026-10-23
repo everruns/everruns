@@ -21,6 +21,7 @@ fn fixture_connection() -> McpConnection {
         auth_mode: McpServerAuthMode::None,
         protocol_mode: McpProtocolMode::Auto,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth_provider_id: None,
         pending_oauth_provider: None,
         connect_in_chat: Default::default(),

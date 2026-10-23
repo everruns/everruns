@@ -433,6 +433,12 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         resolved.name = name;
         resolved.acts_as = server.acts_as;
         resolved.connect_in_chat = server.connect_in_chat;
+        // Unlike auth and elicitation, the timeout is not a trust decision: an
+        // attachment may set its own (validated to the same range) and
+        // otherwise inherits the catalog's.
+        if server.tool_timeout_ms.is_some() {
+            resolved.tool_timeout_ms = server.tool_timeout_ms;
+        }
 
         if !server.acts_as.is_none() {
             // A non-`none` attachment resolves its credential from a connection
@@ -472,6 +478,7 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         auth_mode: server.auth_mode,
         protocol_mode: server.protocol_mode,
         elicitation_policy: server.elicitation_policy,
+        tool_timeout_ms: server.tool_timeout_ms,
         oauth_provider_id: server.oauth_provider_id,
         acts_as: server.acts_as,
         connect_in_chat: server.connect_in_chat,
@@ -518,6 +525,7 @@ pub async fn materialize_scoped_mcp_servers(
                 // The catalog record is the operator's decision; an attachment
                 // that references it cannot widen it (TM-TOOL-045).
                 elicitation_policy: settings.elicitation_policy,
+                tool_timeout_ms: server.tool_timeout_ms.or(settings.tool_timeout_ms),
                 acts_as: server.acts_as,
                 ..Default::default()
             },
@@ -1384,3 +1392,5 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod cache_tests;
 #[cfg(test)]
 pub(super) mod tests;
+#[cfg(test)]
+mod timeout_tests;

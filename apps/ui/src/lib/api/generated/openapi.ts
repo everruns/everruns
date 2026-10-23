@@ -9416,6 +9416,14 @@ export interface components {
         tool_labels?: {
           [key: string]: components["schemas"]["McpToolLabel"];
         };
+        /**
+         * Format: int64
+         * @description How long one `tools/call` to this server may take, in milliseconds.
+         *     Unset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is
+         *     [`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`
+         *     is accepted as an alias, matching common `mcpServers` config files.
+         */
+        tool_timeout_ms?: number | null;
         /** @description MCP transport type. Only remote HTTP is supported today. */
         type?: components["schemas"]["McpServerTransportType"];
         /**
@@ -11778,6 +11786,13 @@ export interface components {
        * @example github
        */
       service_connection_provider?: string | null;
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds (1000 to 1800000).
+       *     Defaults to 60000.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /**
        * @description Transport type. Currently only "http" is supported.
        *     Example shape is defined on `McpServerTransportType`.
@@ -17234,6 +17249,13 @@ export interface components {
         service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
+        /**
+         * Format: int64
+         * @description How long one tool call may take, in milliseconds. Absent means the
+         *     60000 default.
+         * @example 300000
+         */
+        tool_timeout_ms?: number | null;
         /** @description Transport type (currently only HTTP supported). */
         transport_type: components["schemas"]["McpServerTransportType"];
         /**
@@ -18021,6 +18043,13 @@ export interface components {
         service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
+        /**
+         * Format: int64
+         * @description How long one tool call may take, in milliseconds. Absent means the
+         *     60000 default.
+         * @example 300000
+         */
+        tool_timeout_ms?: number | null;
         /** @description Transport type (currently only HTTP supported). */
         transport_type: components["schemas"]["McpServerTransportType"];
         /**
@@ -19322,6 +19351,13 @@ export interface components {
       service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds. Absent means the
+       *     60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /** @description Transport type (currently only HTTP supported). */
       transport_type: components["schemas"]["McpServerTransportType"];
       /**
@@ -24497,6 +24533,14 @@ export interface components {
       tool_labels?: {
         [key: string]: components["schemas"]["McpToolLabel"];
       };
+      /**
+       * Format: int64
+       * @description How long one `tools/call` to this server may take, in milliseconds.
+       *     Unset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is
+       *     [`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`
+       *     is accepted as an alias, matching common `mcpServers` config files.
+       */
+      tool_timeout_ms?: number | null;
       /** @description MCP transport type. Only remote HTTP is supported today. */
       type?: components["schemas"]["McpServerTransportType"];
       /**
@@ -28437,6 +28481,13 @@ export interface components {
        */
       service_connection_provider?: string | null;
       status?: components["schemas"]["McpServerStatus"] | null;
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds (1000 to 1800000).
+       *     `0` clears it back to the 60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       transport_type?: components["schemas"]["McpServerTransportType"] | null;
       /**
        * @description The URL of the MCP server endpoint.
@@ -30214,6 +30265,13 @@ export interface components {
       service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds. Absent means the
+       *     60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /** @description Transport type (currently only HTTP supported). */
       transport_type: components["schemas"]["McpServerTransportType"];
       /**
