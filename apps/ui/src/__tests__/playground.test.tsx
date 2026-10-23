@@ -7,6 +7,14 @@ import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
 import { getSessionFacets, listSessions } from "@/lib/api/sessions";
 import type { Event, Session } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const mockSession: Session = {
   id: "session_test",
   source: "playground",

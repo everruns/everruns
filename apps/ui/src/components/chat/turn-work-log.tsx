@@ -9,7 +9,8 @@
  *   failed tool call went back to the model and the turn carried on, so it is
  *   an "issue": amber warning triangle, never destructive red. Red is kept for
  *   runtime-marked errors, i.e. work that stopped (EVE-1236).
- * - `attention` renders outside the collapsible body, so cards that need the
+ * - `pinned` (the work report's plan while running, its result once done) and
+ *   `attention` render outside the collapsible body, so the plan and cards that need the
  *   user (approvals, ask_user, connection setup) are never hidden by the fold.
  * - The body mounts only while open (and through the collapse transition). A
  *   turn can carry thousands of tool calls; rendering them folded made every
@@ -49,6 +50,8 @@ interface TurnWorkLogProps {
   issueCount?: number;
   /** Failures the runtime marked fatal. */
   errorCount?: number;
+  /** Work report content shown under the header: the plan, or the result. */
+  pinned?: ReactNode;
   /** Content that must stay visible regardless of the fold. */
   attention?: ReactNode;
   children: ReactNode | (() => ReactNode);
@@ -77,6 +80,7 @@ export function TurnWorkLog({
   status,
   issueCount = 0,
   errorCount = 0,
+  pinned,
   attention,
   children,
 }: TurnWorkLogProps) {
@@ -208,6 +212,7 @@ export function TurnWorkLog({
         </span>
       </button>
 
+      {pinned != null && <div className="ml-7">{pinned}</div>}
       {attention != null && <div className="ml-7 space-y-3">{attention}</div>}
 
       <div

@@ -5,6 +5,14 @@ import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session, SessionTask } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 let mockPath = "/chats";
 let mockTaskId: string | null = null;
 const mockPush = jest.fn();

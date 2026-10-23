@@ -13,6 +13,7 @@ import type { SessionTask, SessionTaskState } from "@/lib/api/types";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { runDurationMs, type ChatRun } from "@/components/chat/run-cards";
 import { Button, LinkButton } from "@/components/ui/button";
+import { WorkHeadline } from "@/components/chat/work-headline";
 import { cn } from "@/lib/utils";
 
 const STATUS_DOT: Record<SessionTaskState, string> = {
@@ -69,7 +70,12 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
       </span>
 
       <span className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span>{STATUS_LABEL[task.state]}</span>
+        <WorkHeadline
+          sessionId={task.links?.child_session_id ?? undefined}
+          live={task.state === "running" || task.state === "awaiting_input"}
+          className="max-w-80"
+          fallback={<span>{STATUS_LABEL[task.state]}</span>}
+        />
         {subagentCount > 0 && (
           <span>
             {subagentCount} {subagentCount === 1 ? "subagent" : "subagents"}

@@ -4,6 +4,8 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { WORK_LOG_PAGE_SIZE } from "@/components/chat/turn-work-log";
 import type { Event } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 jest.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));

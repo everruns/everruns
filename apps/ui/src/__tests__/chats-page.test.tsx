@@ -6,6 +6,14 @@ import { ChatThreadView } from "@/components/chat/chat-thread-view";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const mockPinMutate = jest.fn();
 const mockUnpinMutate = jest.fn();
 const mockArchiveMutate = jest.fn();
