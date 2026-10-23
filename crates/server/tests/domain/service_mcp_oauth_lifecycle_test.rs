@@ -107,9 +107,14 @@ impl EgressService for MockOAuthAndMcpServers {
 
     async fn send_stream(
         &self,
-        _request: EgressRequest,
+        request: EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
-        panic!("streaming egress is not used by this test")
+        let response = self.send(request).await?;
+        Ok(everruns_core::EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 

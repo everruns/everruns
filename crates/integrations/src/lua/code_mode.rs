@@ -32,8 +32,8 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::is_code_mode_eligible;
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, ToolDefinitionHook};
+use super::{ToolContext, ToolHints};
 use crate::lua::tool_types::ToolDefinition;
 
 pub const LUA_CODE_MODE_CAPABILITY_ID: &str = "lua_code_mode";
@@ -257,6 +257,11 @@ struct HideCodeModeToolsHook {
 }
 
 impl ToolDefinitionHook for HideCodeModeToolsHook {
+    fn preserves_execution_scope(&self) -> bool {
+        // Routing through Lua hides native schemas, not executable operations.
+        true
+    }
+
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         let mut kept: Vec<ToolDefinition> = Vec::new();
         let mut catalog: Vec<String> = Vec::new();
@@ -401,6 +406,59 @@ Argument types follow each name:\n{}",
     }
 }
 
+/// Whether a tool is eligible to be driven through Lua "code mode" (the
+/// `tools.<name>` table) rather than called directly.
+///
+/// This is the single source of truth shared by two call sites so they can
+/// never drift apart: the engine's code-mode exposure
+/// (`gated_code_mode_tools`) and the `lua_code_mode` capability's
+/// tool-definition filter (which *hides* exactly this set from the model). If
+/// the two used different predicates a tool could be hidden from the model yet
+/// not re-exposed in Lua — an unreachable tool.
+///
+/// Conservative gate (TM-LUA-009): `Auto` policy only (never approval- or
+/// client-side tools), non-destructive, non-`cpu_bound`, and never the
+/// execution tools themselves (`lua`/`bash` are excluded so code mode cannot
+/// re-enter a shell or itself).
+pub fn is_code_mode_eligible(
+    name: &str,
+    policy: &super::tool_types::ToolPolicy,
+    hints: &ToolHints,
+) -> bool {
+    use super::tool_types::ToolPolicy;
+    name != "lua"
+        && name != "bash"
+        && *policy == ToolPolicy::Auto
+        && hints.destructive != Some(true)
+        && hints.cpu_bound != Some(true)
+}
+
+/// Sibling tools exposed to Lua "code mode" via the `tools` table.
+///
+/// Filters the live tool registry through [`is_code_mode_eligible`]. Returns an
+/// empty list when no tool registry is present.
+pub(super) fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
+    let Some(reg) = context.tool_registry.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for name in reg.tool_names() {
+        if context
+            .visible_tool_names
+            .as_ref()
+            .is_some_and(|names| !names.contains(name))
+        {
+            continue;
+        }
+        let Some(tool) = reg.get(name) else { continue };
+        if is_code_mode_eligible(name, &tool.policy(), &tool.hints()) {
+            out.push(name.to_string());
+        }
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -425,6 +483,36 @@ mod tests {
     }
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
+
+    #[tokio::test]
+    async fn lua_routing_hides_schemas_without_revoking_operations() {
+        use everruns_contracts::runtime::capabilities::{CapabilityRegistry, SystemPromptContext};
+        use everruns_contracts::runtime::runtime_agent::RuntimeAgentBuilder;
+        use everruns_contracts::typed_id::SessionId;
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(LuaCodeModeCapability);
+        let agent = RuntimeAgentBuilder::new()
+            .with_capabilities(
+                &[LUA_CODE_MODE_CAPABILITY_ID.to_string()],
+                &registry,
+                &SystemPromptContext::without_file_store(SessionId::new()),
+            )
+            .await
+            .tools([
+                builtin("lua", ToolPolicy::Auto, ToolHints::default()),
+                builtin("add", ToolPolicy::Auto, ToolHints::default()),
+            ])
+            .build();
+        assert_eq!(names(&agent.tools), vec!["lua"]);
+        assert!(
+            agent
+                .execution_tools()
+                .iter()
+                .any(|tool| tool.name() == "add"),
+            "Lua-routed operations must remain in the effective execution scope"
+        );
+    }
 
     #[test]
     fn hides_eligible_tools_keeps_lua_and_essential() {

@@ -302,6 +302,7 @@ pub trait Tool: Send + Sync {
 #[derive(Default, Clone)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
+    search_index: std::sync::OnceLock<Arc<crate::runtime::tool_catalog::ToolSearchIndex>>,
 }
 
 impl ToolRegistry {
@@ -309,6 +310,7 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            search_index: Default::default(),
         }
     }
 
@@ -355,16 +357,19 @@ impl ToolRegistry {
     ///
     /// If a tool with the same name already exists, it will be replaced.
     pub fn register(&mut self, tool: impl Tool + 'static) {
+        self.search_index.take();
         self.tools.insert(tool.name().to_string(), Arc::new(tool));
     }
 
     /// Register a boxed tool
     pub fn register_boxed(&mut self, tool: Box<dyn Tool>) {
+        self.search_index.take();
         self.tools.insert(tool.name().to_string(), Arc::from(tool));
     }
 
     /// Register an Arc-wrapped tool
     pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
+        self.search_index.take();
         self.tools.insert(tool.name().to_string(), tool);
     }
 
@@ -401,6 +406,18 @@ impl ToolRegistry {
         self.tools.values().map(|t| t.to_definition()).collect()
     }
 
+    /// Reuse a lexical index until registration, replacement or removal changes
+    /// this registry. Callers must still supply their current scope to search.
+    pub fn search_index(&self) -> Arc<crate::runtime::tool_catalog::ToolSearchIndex> {
+        self.search_index
+            .get_or_init(|| {
+                Arc::new(crate::runtime::tool_catalog::ToolSearchIndex::new(
+                    &self.tool_definitions(),
+                ))
+            })
+            .clone()
+    }
+
     /// Fail configuration before model exposure when a registered tool is
     /// missing a runtime service it declares as required.
     pub fn validate_context_services(&self, services: &ToolContextServices) -> Result<()> {
@@ -422,11 +439,13 @@ impl ToolRegistry {
 
     /// Remove a tool from the registry
     pub fn unregister(&mut self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.search_index.take();
         self.tools.remove(name)
     }
 
     /// Clear all tools from the registry
     pub fn clear(&mut self) {
+        self.search_index.take();
         self.tools.clear();
     }
 

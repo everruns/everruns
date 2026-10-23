@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-21
+
+* **Large-catalog shipping contracts.** Custom egress adapters support bounded
+  streaming discovery for JSON replies; generated API contracts retain MCP
+  server descriptions. Bashkit uses an immutable upstream security fix across
+  active workspaces, and archived probe manifests remain snapshots. See
+  [large MCP catalogs](execution/large-mcp-catalogs.md) and
+  [dependency surface](project/dependency-surface.md#bashkit-security-source-pin).
+
 ## 2026-10-20
 
 * **Conversation branches.** SQLite hosting owns the active conversation
@@ -9,6 +18,32 @@
   passes. See [Local authority cutover](framework/local-authority-cutover.md).
 
 ## 2026-10-19
+
+* **Large MCP catalogs implemented.** Everruns now paginates and bounds
+  per-server plus aggregate session discovery, caches complete catalogs within
+  a weighted runtime budget, and shares authorized server-aware search between
+  bounded native `tool_search` and the Tools in Shell CLI. Bounded native
+  disclosure remains opt-in; CLI mode is default and hybrid preserves both
+  routes. The canonical Rust/Mira study passed all 54 synthetic Muse trials at
+  600 and 2,000 tools; earlier provider failures remain separate evidence.
+  Ten-thousand-tool stress and lifecycle/cache-prefix regressions passed.
+  Older Python/gateway findings are historical prototype evidence. Yolop adoption
+  remains future work. See [Large MCP Catalogs](execution/large-mcp-catalogs.md),
+  [Tool Search](execution/tool-search.md), and
+  [Native and CLI Tool Surfaces](execution/tool-surfaces.md).
+
+* **Hosted MCP discovery and replay.** Native disclosure accepts DB-restored
+  JSON-text results. Attached and preset source descriptions survive eager and
+  deferred discovery, worker transport, and deferred CLI child loading.
+  Retrieval metadata remains separate from current execution authority.
+  Hosted validation and its synthetic coverage limits are recorded in the
+  [qualification report](../evals/mcp-scale/HOSTED_QUALIFICATION.md) and
+  [evidence manifest](../evals/mcp-scale/results/hosted-manual-2026-10-19.manifest.json).
+
+* **Server-aware tool search.** Made MCP server descriptions an explicit signal
+  shared by native and CLI discovery. Extended the catalog prototype and tests
+  for identical tools on different servers, metadata refresh and scoped
+  visibility. See [Large MCP Catalogs](execution/large-mcp-catalogs.md).
 
 * **serve moves legacy child sessions.** Children found from the legacy
   journal move with their parent; the pre-authority build is registered under
@@ -132,6 +167,16 @@
   object hosting invokes the same reducer as Wasm and the platform reuses its
   client-result validation. Default embedding remains in-memory. See
   [Engine-owned durable sessions](framework/engine-durable-sessions.md).
+* **Native and CLI surfaces.** Extended the large-MCP proposal with a capability-
+  readable surface plan, shared operation adapters, hybrid discovery and reuse
+  of implemented prompt-cache transitions. Verified Codex's client Code Mode,
+  Cloudflare's individual-endpoint mode and Yolop's attached CLI integration
+  point. See [Native and CLI Tool Surfaces](execution/tool-surfaces.md).
+
+* **Large MCP catalogs.** Added a design for paginated discovery, indexed retrieval,
+  bounded disclosure and Yolop adoption, with a runnable fake platform MCP and
+  separate retrieval and execution evidence. See
+  [Large MCP Catalogs](execution/large-mcp-catalogs.md).
 
 * **MCP OAuth consent redirects.** Let the browser complete client-controlled
   callback chains after approval and require a browser check with a second

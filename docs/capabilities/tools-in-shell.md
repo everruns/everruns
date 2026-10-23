@@ -12,11 +12,13 @@ appliesTo: [framework, platform, cloud]
 | **Depends on** | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | **Rollout** | Experimental; adding the capability is the opt-in |
 
-An agent with many tools spends most of its prompt on tool schemas and most of
-its turns on one call at a time. Tools in Shell moves most tools out of the
-model's direct tool list and into one shell command, `tools`, inside the
-[Bashkit Shell](/capabilities/bashkit-shell/). One script can call several
-tools, filter the results with `jq`, and print only what the model needs:
+Tools in Shell adds a `tools` command inside the
+[Bashkit Shell](/capabilities/bashkit-shell/). In the default `cli` mode,
+eligible operations move out of the model's direct tool list. `hybrid` mode
+keeps those operations available both through the shell and as native tools,
+with native schemas eager by default. To defer optional native schemas, also
+enable bounded `tool_search`. One script can call several tools, filter results
+with `jq`, and print only what the model needs:
 
 ```bash
 tools github list-pulls '{"repo":"acme/api","state":"open"}' \
@@ -36,6 +38,28 @@ tools github list-pulls '{"repo":"acme/api","state":"open"}' \
 | `tools search <words>` | Finds tools by name and description |
 | `tools <server> <tool> '{...}'` | Calls an MCP tool |
 | `tools <tool> '{...}'` | Calls any other tool |
+
+### Surface mode
+
+The default `mode: "cli"` routes eligible operations through the shell. Set
+`mode: "hybrid"` to keep the CLI route while allowing native discovery and
+calls. Hybrid mode alone keeps native schemas eager. If `tool_search` is also
+configured with `bounded: true`, it can reveal optional native schemas within
+its configured limits; eager owner-required schemas remain visible. The shell
+source inventory is available from `tools --help` and does not change the
+static Bash tool description.
+
+```json
+{
+  "ref": "tools_in_shell",
+  "config": { "mode": "hybrid" }
+}
+```
+
+The CLI and bounded native search use the same authorized, server-aware index.
+Legacy native `tool_search` remains unchanged unless configured with
+`bounded: true`. See [Large MCP catalogs](/features/large-mcp-catalogs/) for
+discovery bounds, search configuration, and cache and authorization behavior.
 
 MCP tools are grouped by server (`mcp_github__list_pulls` is
 `tools github list-pulls`); every other tool is a top-level command
@@ -89,8 +113,13 @@ These stay direct tool calls:
 MCP servers set to "Load tools on demand" move behind `tools` too. `tools
 --help` lists them as `(not loaded)`; the first command that names one, such as
 `tools docs --help` or `tools docs search-docs q=refunds`, or a `tools search`
-that matches the server, loads its tools inside the same shell call. From the
-next step on the server is listed like any other.
+that matches deferred server descriptions, loads its tools inside the same
+shell call. One `tools search` loads at most eight matching deferred servers;
+the others stay `(not loaded)` for a later search. A load adds that server's
+tools atomically and respects the combined 10,000-tool/32 MiB shell catalog
+limit. Search, help and calls use only tools in the current turn's visible
+scope, and loaded child tools retain the scope of their server placeholder.
+From the next step on a loaded server is listed like any other.
 
 Every call from a script goes through the same checks as a direct call: the
 turn's guardrails and hooks run before it, the tool's schema is checked, and
@@ -225,24 +254,29 @@ tools scripts triage-prs repo=a/b  # run one
 
 ## Tool search
 
-Tools in Shell replaces tool search. When both are enabled, the tool search
-capabilities (`tool_search`, `auto_tool_search`, `openai_tool_search`,
-`claude_tool_search`) contribute nothing, and
-[Agent Checks](/features/agent-checks/) report the redundant capability as a
-`capabilities.superseded` suggestion.
+In the default `cli` mode, Tools in Shell replaces tool search. When both are
+enabled, the tool search capabilities (`tool_search`, `auto_tool_search`,
+`openai_tool_search`, `claude_tool_search`) contribute nothing. In `hybrid`
+mode, bounded `tool_search` can reveal native schemas while Tools in Shell
+provides the same operations through `tools`. See [Large MCP catalogs and
+tool surfaces](/features/large-mcp-catalogs/) for the shared registry model.
+[Agent Checks](/features/agent-checks/) report a redundant capability as a
+`capabilities.superseded` suggestion when it is not active for the selected
+mode.
 
 ## Configuration
 
 ```json
 {
   "capabilities": [
-    { "ref": "tools_in_shell", "config": { "keep_visible": ["web_fetch"] } }
+    { "ref": "tools_in_shell", "config": { "mode": "cli", "keep_visible": ["web_fetch"] } }
   ]
 }
 ```
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
+| `mode` | string | `cli` | `cli` routes eligible tools through the `tools` command; `hybrid` also retains native tool discovery where configured. |
 | `keep_visible` | string array | `[]` | Tools the model can still call directly. They stay callable from the shell too. |
 | `manage_scripts` | boolean | `false` | Let the agent save scripts with `tools scripts save`. |
 | `rate_unlabeled_tools` | boolean | `true` | Ask the decision service whether a tool that declares nothing about its risk changes things, and ask for approval before it if so. Off: such tools run without asking in Tool Approval's `normal` mode. |

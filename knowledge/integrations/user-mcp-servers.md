@@ -219,16 +219,22 @@ User servers multiply the number of servers a turn might touch, and each
   servers). Its tools are not listed at turn
   start. The model sees one line per deferred server (name and description) and
   reveals a server's tools through `tool_search`, which then fetches
-  `tools/list` once and uses the existing identity-scoped cache.
+  `tools/list` once and uses the existing identity-scoped cache. Hosted
+  placeholders prefer the attached server description, then the catalog preset
+  description, then the hostname. Listed tools retain the same authorized
+  source metadata for [server-aware search](../execution/tool-search.md).
 - **Session servers** generalize ARD's session resource: `attach_resource`,
   `user_mcp` *add* and a future "add for this chat only" all write the same
   session record, folded into session `mcpServers` on the next turn. Removing
   it drops the tools on the next turn.
-- **Prompt cache.** Changing the tool set mid-session currently rewrites the
-  tools array and misses the provider cache. The planned cache-stable tool
-  reveals (inline tool additions) fix this for reveals and list MCP attach as
-  a later step. This proposal depends on that work for cost, not for
-  correctness, and does not duplicate it.
+- **Prompt cache.** Disclosure uses the existing
+  [tool-change and replay contract](../execution/cache-stable-tool-changes.md).
+  Incremental additions and fallback wire holds depend on the actual driver and
+  endpoint; native schema additions or redefinitions can rewrite the tools array.
+  The [CLI surface](../execution/tools-in-shell.md) keeps its model-facing schema
+  and inventory-independent instructions stable during deferred loading. Current
+  attachment and authorization still govern every execution, including held wire
+  definitions and replayed history.
 
 ### D7. yolop uses the same code
 

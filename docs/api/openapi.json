@@ -33701,6 +33701,13 @@
               "type": "boolean",
               "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart)."
             },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential."
+            },
             "elicitation_policy": {
               "$ref": "#/components/schemas/McpElicitationPolicy",
               "description": "Which elicitation modes this server may use (`url` by default)."
@@ -60539,6 +60546,13 @@
           "deferred": {
             "type": "boolean",
             "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential."
           },
           "elicitation_policy": {
             "$ref": "#/components/schemas/McpElicitationPolicy",
