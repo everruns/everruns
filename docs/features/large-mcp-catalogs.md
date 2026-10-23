@@ -11,6 +11,15 @@ current agent, and reveals schemas as they are needed. This lets an agent work
 with catalogs containing thousands of operations without sending every
 parameter schema to the model at the start of a turn.
 
+The runtime catalog, model-visible schemas, and tool-result history are separate
+budgets. A session can index 2,000 operations and use only a few: the initial
+native surface contains the search entry point and required eager tools; a
+search adds the selected operations to a bounded working set. Unselected
+schemas stay in the runtime. A deferred MCP server is enumerated when selected,
+then its operations can be searched without sending its complete catalog to the
+model. Native disclosure defaults to retaining up to 32 optional schemas, not
+reserving 32 slots that every search must fill.
+
 ## Complete catalog discovery
 
 The MCP client follows every `tools/list` cursor and keeps the negotiated
@@ -52,6 +61,12 @@ a server refinement rather than labeling its tools as operation matches. The
 CLI marks these separately and points to `tools <server> --help`. Legacy native
 `tool_search` keeps its existing matcher and does not use this server-aware
 index.
+
+When a query names an exact operation, search returns matching authorized
+identities without padding the result with weaker description matches. An
+unqualified operation shared by several servers can still return several
+identities; include the server name to disambiguate it. Broader task queries
+continue to use ranked retrieval.
 
 By default, `tool_search` keeps its existing behavior. To opt into bounded
 schema disclosure, set `bounded` and the three limits on the capability:
@@ -123,6 +138,13 @@ The CLI is useful when a script should chain operations or filter intermediate
 results; native calls are useful for one typed operation. Both routes use the
 same operation identity, schema validation, authorization, and execution
 policy.
+
+For CLI discovery, start with `tools search <task or server purpose>`, then
+inspect one selected operation with `tools <server> <tool> --help`. Root and
+server help are bounded to 64 entries and 12 KiB, with explicit omission counts
+and search guidance. A selected operation's schema remains available through
+its own help. Filtering intermediate results inside the shell also keeps large
+response bodies out of the conversation.
 
 When a CLI search matches deferred MCP servers, it loads at most eight per
 query. Other matching servers stay marked as not loaded for a later search.

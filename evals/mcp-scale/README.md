@@ -67,7 +67,7 @@ The canonical serial qualification contains 54 Muse 1.3 Contributor trials: 36 r
 
 An earlier concurrency-3 attempt of the 600-tool, ten-server description case produced six passes and three OpenRouter “model not available” responses. These are provider availability failures, not subject failures. The report retains the earlier runner's raw `Subject` label; the qualification summary normalizes these three responses to infrastructure errors and documents that the classifier regression was added before serial retries. A first 600-tool/one-server command briefly used a substring filter that also matched `servers=10`; it was stopped immediately, flushed no JSONL report, and is excluded because its completed count is unknown.
 
-Full event traces are retained as deterministic gzip JSONL under `results/`; `results/qualification-summary.json` contains every case's scorer, usage, metrics, report path, and compressed-report SHA-256. Qualification rows sum to 2,467,860 input tokens, 159,575 output tokens, and 5,839,280 cache-read tokens. The provider returned `cost_usd: 0.0`; actual billing is unknown, so this is not a claim that the run was free. No cache benefit is inferred. The 54-trial run used the build before final CLI scope and deferred-server bound fixes; the separate two-case smoke used the rebuilt source at the end of that Framework qualification phase, whose 36 changed production Rust files and executable hash are recorded in the summary. The exact pre-fix binary was overwritten, so its source snapshot cannot be reconstructed from the recorded baseline commit alone. See the summary for baseline commit, dirty working-tree status, source hashes, token totals, separate retry lineage, and that phase's smoke distinction. Subsequent DB-backed platform checks and hosted fixes are recorded separately in [Hosted qualification](HOSTED_QUALIFICATION.md). To inspect a trace, run `gzip -dc results/live-read-rollback-600-1.jsonl.gz | less`.
+Full event traces are retained as deterministic gzip JSONL under `results/`; `results/qualification-summary.json` contains every case's scorer, usage, metrics, report path, and compressed-report SHA-256. Corrected qualification totals are 493,572 uncached input, 31,915 output, and 1,167,856 cache-read tokens. Per-generation events report $0.058076 of effective cost; this is provider evidence, not invoice reconciliation. No causal cache benefit is inferred. The 54-trial run used the build before final CLI scope and deferred-server bound fixes; the separate two-case smoke used the rebuilt source at the end of that Framework qualification phase, whose 36 changed production Rust files and executable hash are recorded in the summary. The exact pre-fix binary was overwritten, so its source snapshot cannot be reconstructed from the recorded baseline commit alone. See the summary for baseline commit, dirty working-tree status, source hashes, token totals, separate retry lineage, and that phase's smoke distinction. Subsequent DB-backed platform checks and hosted fixes are recorded separately in [Hosted qualification](HOSTED_QUALIFICATION.md). To inspect a trace, run `gzip -dc results/live-read-rollback-600-1.jsonl.gz | less`.
 
 ## Shipping rebuild smoke (2026-10-21)
 
@@ -77,12 +77,38 @@ Token totals across the two tasks per surface:
 
 | Surface | Uncached input | Cache-read input | Output |
 | --- | ---: | ---: | ---: |
-| Native | 84,690 | 34,260 | 4,725 |
-| CLI | 480,180 | 502,780 | 11,485 |
-| Hybrid | 122,325 | 83,540 | 4,345 |
-| Total | 687,195 | 620,580 | 20,555 |
+| Native | 16,938 | 6,852 | 945 |
+| CLI | 96,036 | 100,556 | 2,297 |
+| Hybrid | 24,465 | 16,708 | 869 |
+| Total | 137,439 | 124,116 | 4,111 |
 
-These accumulate over all model turns. The CLI rollback requested full server help, putting the 2,000-tool listing into its transcript. Stable initial prompts do not bound model-requested output or total task tokens. Two tasks per surface do not establish a stable efficiency ranking or causal cache savings. The provider reported `cost_usd: 0.0`; actual billing is unknown.
+These accumulate over all model calls. The CLI rollback requested the 2,000-tool server listing, with output cut at the shell's 64-KiB limit. Stable initial prompts do not bound model-requested output or total task tokens. Two tasks per surface do not establish a stable efficiency ranking or causal cache savings. The corrected provider-reported effective cost is $0.014814 across these six trials.
+
+## Usage accounting correction (2026-10-23)
+
+The original generic recursive event walk counted the same tokens in generation,
+message, reason, turn, and session records: the published totals were **5× too
+large**. It also missed Everruns' actual/estimated cost fields and reported zero.
+The summaries above now use the shared [Rust usage projection](../common/README.md),
+which selects each iteration once, retains folded compaction cost, and records
+usage/capture coverage. Actual schema bytes come from captured driver requests,
+not display summaries. The [correction manifest](results/usage-correction-2026-10-23.json)
+records unchanged input archive hashes. Raw traces, source provenance, task
+scores and fixture results remain unchanged; this is a recalculation, not a
+model rerun. Hosted qualification already used per-generation accounting.
+
+To reproduce one correction with the rebuilt study:
+
+```bash
+gzip -dc results/shipping-2026-10-21-live.jsonl.gz |
+  ./target/debug/mcp_scale --reaccount-report - --output /tmp/corrected-usage.json
+```
+
+New runs also record accumulated/first/peak input, model-call and usage-record
+counts, actual captured tool-array bytes, and provider cost coverage. Accumulated
+input includes uncached, cache-read and cache-creation buckets; it is not a
+single context-window size. Disjoint Everruns input must not be treated as
+Mira's provider-dependent inclusive input convention.
 
 ## What gets measured
 

@@ -540,14 +540,31 @@ fn platform_calls(events: &[Value]) -> Vec<(String, String)> {
                 .get("commands")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            // The dataset names v1's tools. On the shell arm there is one
-            // tool, so the role a call plays is read off its script; see
-            // `control_plane::script_mutates`.
+            // Offline dispatch supplies the actual canonical operations. Keep
+            // the script heuristic only for historical or hosted events that
+            // do not carry this executor audit.
             let name = call.get("name")?.as_str()?;
             let role = match name {
-                "bash" if crate::control_plane::script_mutates(script) => "execute",
-                "bash" => "query",
-                other => other,
+                "bash" => match event
+                    .pointer("/data/operation_calls")
+                    .and_then(Value::as_array)
+                {
+                    Some(operations)
+                        if operations
+                            .iter()
+                            .any(|operation| operation["read_only"] == false) =>
+                    {
+                        "execute"
+                    }
+                    Some(_) => "query",
+                    None if crate::control_plane::script_mutates(script) => "execute",
+                    None => "query",
+                },
+                other => match crate::control_plane::operation_read_only(other) {
+                    Some(true) => "query",
+                    Some(false) => "execute",
+                    None => other,
+                },
             };
             Some((
                 role.to_string(),
@@ -587,6 +604,108 @@ fn cron_matches(expected: &str, cadence: Option<&str>, actual: &str) -> bool {
             ["0", "*", "*", "*", "*"] | ["0", "0", "*", "*", "*", "*", "*"]
         ),
         Some(_) => false,
+    }
+}
+
+/// Surface-neutral success: dispatched canonical operations and actual mock
+/// state, never command text or the assistant's claim.
+pub fn operation_state() -> Box<dyn Scorer> {
+    scorer("operation_state", |sample: &Sample, t: &Transcript| {
+        if sample
+            .metadata
+            .get("surface_comparison")
+            .and_then(Value::as_bool)
+            != Some(true)
+        {
+            return Score::na("operation_state", "not a matched surface case");
+        }
+        let Some(state) = t.metadata.get("control_plane_state") else {
+            return Score::na(
+                "operation_state",
+                "requires the in-process comparison subject",
+            );
+        };
+        let ops = state["operations"].as_array().cloned().unwrap_or_default();
+        let mut failures = Vec::new();
+        for op in sample
+            .metadata
+            .get("expect_operations")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let count = ops
+                .iter()
+                .filter(|entry| entry["name"] == op["name"])
+                .count();
+            if count < op["min"].as_u64().unwrap_or(1) as usize {
+                failures.push(format!("missing operation {}", op["name"]));
+            }
+        }
+        if sample
+            .metadata
+            .get("forbid_mutations")
+            .and_then(Value::as_bool)
+            == Some(true)
+            && ops.iter().any(|op| op["read_only"] == false)
+        {
+            failures.push("dispatched a forbidden mutation".into());
+        }
+        if let Some(families) = sample
+            .metadata
+            .get("expect_state")
+            .and_then(Value::as_object)
+        {
+            for (family, expected) in families {
+                let rows = state["families"][family]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                if let Some(count) = expected["count"].as_u64() {
+                    if rows.len() != count as usize {
+                        failures.push(format!("{family}: {} rows, expected {count}", rows.len()));
+                    }
+                }
+                for wanted in expected["contains"].as_array().into_iter().flatten() {
+                    if !rows.iter().any(|row| includes(row, wanted)) {
+                        failures.push(format!("{family}: missing row matching {wanted}"));
+                    }
+                }
+            }
+        }
+        for term in sample
+            .metadata
+            .get("expect_response_contains")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            if !t
+                .final_response
+                .to_lowercase()
+                .contains(&term.to_lowercase())
+            {
+                failures.push(format!("final response omitted {term:?}"));
+            }
+        }
+        if failures.is_empty() {
+            Score::pass(
+                "operation_state",
+                "canonical operations and mock state match",
+            )
+        } else {
+            Score::fail("operation_state", failures.join("; "))
+        }
+    })
+}
+
+fn includes(actual: &Value, wanted: &Value) -> bool {
+    match wanted.as_object() {
+        Some(fields) => fields
+            .iter()
+            .all(|(key, value)| includes(&actual[key], value)),
+        None => actual == wanted,
     }
 }
 

@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'evals/tools-in-shell/**'
+      - 'evals/common/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/tools-in-shell-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/tools-in-shell/**'
+      - 'evals/common/**'
       - 'evals/platform-capability/src/friction.rs'
       - '.github/workflows/tools-in-shell-evals.yml'
 

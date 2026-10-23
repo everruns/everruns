@@ -96,6 +96,15 @@
   `tool.progress` can carry a count. See
   [Tool narration](execution/tool-narration.md#saying-what-came-out).
 
+* **Sparse tool sessions and accurate evaluation.** Exact authorized operation
+  search avoids incidental schema padding; CLI browsing has a separate bounded
+  output budget. Shared Rust event accounting excludes repeated rollups and
+  retains cache/cost coverage. Platform evals compare the CLI with all captured
+  operations exposed as eager native functions over matched fixture tasks.
+  See [large MCP catalogs](execution/large-mcp-catalogs.md),
+  [Platform Chat](harnesses/platform-chat.md), and
+  [sparse-session acceptance](test-cases/agents/large_mcp_catalogs/TC007_sparse_session_context.md).
+
 ## 2026-10-21
 
 * **Large-catalog shipping contracts.** Custom egress adapters support bounded

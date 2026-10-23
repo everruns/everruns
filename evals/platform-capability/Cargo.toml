@@ -18,7 +18,7 @@ path = "src/main.rs"
 [dependencies]
 mira-eval = "0.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
@@ -30,3 +30,6 @@ async-trait = "0.1"
 # guess at it: loops, pipes, redirection and `jq` are the interpreter's, and
 # `everruns` is a builtin in it exactly as the harness ships it.
 bashkit = { version = "0.20.1", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
+
+# Validate both adapters against the captured canonical operation schema.
+jsonschema = { version = "0.26", default-features = false }

@@ -134,3 +134,11 @@ The offline evaluation defaults to the canonical shell surface. A frozen
 historical three-tool subject remains selectable as `legacy` for comparisons;
 it is not provisioned as a product harness. See
 [the eval study](../../evals/platform-capability/README.md).
+
+A separate `surface-comparison` experiment exposes the captured platform
+operation schemas as eager native functions, against the same in-process state
+and policy prompt as CLI. It measures interface selection, arguments, operation
+evidence, state and request/usage costs; production Platform Chat remains the
+canonical shell composition. Offline fixture results do not qualify domain
+authorization or hosted persistence, and eager native is distinct from bounded
+native search over large MCP catalogs.

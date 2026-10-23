@@ -1,13 +1,16 @@
 # Platform capability eval
 
-A [Mira](https://github.com/everruns/mira) study that measures whether a real
-model can turn natural-language administration requests into the `platform`
-capability's `discover`, `query`, and `execute` calls.
+A [Mira](https://github.com/everruns/mira) study of platform administration.
+The hosted subject drives real Platform Chat over HTTP. The offline subject
+compares CLI and native function interfaces over captured real platform
+operation descriptors and a shared simulated backend. Production Platform Chat
+remains CLI-only; this experiment does not add native platform tools to it.
 
-This study drives the built-in `platform-chat` harness through the public HTTP
-API. It therefore exercises the same command catalog, authorization, worker
-adapter, and persistence path as a user turn. It does not call domain services
-directly or grade a mocked tool catalog.
+The hosted subject exercises authorization, worker dispatch and persistence.
+The offline subject exercises model interface use, canonical JSON schemas, real
+CLI parsing and Bashkit execution, plus deterministic in-memory state. Its
+backend implements generic resource operations rather than production domain
+services; offline state success does not establish hosted correctness.
 
 ## What it proves
 
@@ -118,12 +121,14 @@ doppler run --command './target/debug/platform_capability --run --filter cli-'
 `--run` runs the suite in-process and prints a report, so no Mira host CLI is
 needed. `--tag`, `--sample` and `--filter` narrow it.
 
-Exactly one thing is faked: persistence. Everything else is generated from the
-server and checked against it —
+The backend is simulated: generic list/get/create/update/delete behavior and
+seeded resource values. Authorization, approval, production validation beyond
+JSON schema, scheduling and durable persistence are not reproduced. Interface
+artifacts are generated from the server and checked against it —
 
 | Artifact | What it carries | Guard |
 |---|---|---|
-| `catalog.json` | all 292 commands, real descriptions and schemas | `the_eval_catalog_matches_inventory` |
+| `catalog.json` | all captured commands (currently 344), real descriptions and schemas | `the_eval_catalog_matches_inventory` |
 | `harness.json` | Platform Chat's system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
 | `harness-legacy.json` | Historical three-tool baseline | Frozen comparison artifact |
 | `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |
@@ -134,7 +139,85 @@ so `discover` returns the text a model really reads,
 `everruns skills list --limit 20` is rejected by the same `clap::Command` the
 server builds.
 
-### The A/B: two surfaces, one dataset
+### Matched CLI versus eager native functions
+
+Use the `surface-comparison` tag for this experiment. Its eight samples ask for
+resource reads, a three-family read, an update, two updates, confirmed agent
+creation, destructive-request refusal, a manager-context conflict and credential
+safety. They grade canonical dispatched operations and the resulting mock state.
+They contain no CLI spelling, help-read or discovery-tool requirement. The
+shared policy prompt differs only in its interface paragraph. Existing
+`cli-tree` and `cli-contract` cases remain interface diagnostics and must not be
+pooled into this comparison's task success rate.
+
+`EVERRUNS_EVAL_SURFACE=cli` supplies one Bashkit `bash` tool with the real
+`everruns` parser. `native-eager` supplies **every captured operation**, each
+with its authentic name, description and complete input schema in the actual
+request's function list. It is not a search/execute wrapper or a renamed
+three-tool harness. Both routes use `run_wire_name`, JSON Schema validation,
+and the same isolated in-memory resource store. Neither can call the other
+surface's unadvertised entry points. The native schema set is deliberately not
+trimmed to the tasks; provider rejection of the count/size is an infrastructure
+result that should be reported, not hidden by silently reducing the set.
+
+```bash
+source /workspace/.tools/activate.sh
+cd /workspace/everruns/evals/platform-capability
+CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 cargo build --locked
+export EVERRUNS_EVAL_MODE=offline
+export EVERRUNS_EVAL_TARGETS=meta/muse-spark-1.3-contributor
+export EVERRUNS_EVAL_TRIALS=3
+EVERRUNS_EVAL_SURFACE=cli doppler run -- \
+  ./target/debug/platform_capability --run --tag surface-comparison \
+  --runs-report /tmp/platform-cli.jsonl
+EVERRUNS_EVAL_SURFACE=native-eager doppler run -- \
+  ./target/debug/platform_capability --run --tag surface-comparison \
+  --runs-report /tmp/platform-native-eager.jsonl
+```
+
+Keep the model, provider endpoint, dataset, repetitions and request policy fixed;
+interleave arms when measuring latency/cache behavior. Cold versus warm caches
+are not controlled by this harness. The offline endpoint defaults to OpenRouter;
+`EVERRUNS_EVAL_OFFLINE_BASE_URL` selects another compatible endpoint. Credentials
+must be supplied through `OPENROUTER_API_KEY`. No bounded native-search arm is
+implemented here: this HTTP loop does not exercise Framework disclosure or
+provider inline tool changes, and must not be described as that qualification.
+
+Each runs-report JSONL record contains sample/target/trial, all scorer results,
+error classification, wall time, usage, iterations, metrics, final mock state,
+canonical operation arguments and model/tool events. Compare task/state success
+separately from infrastructure failures. Model tool-call count is not operation
+count: one Bashkit script can dispatch many operations.
+
+Offline metrics use the `platform.` prefix:
+
+| Metric | Meaning |
+|---|---|
+| `model_calls`, `operations` | Actual model requests and validated canonical operation dispatches |
+| `first_tool_count`, `peak_tool_count` | Number of schemas in the first/largest actual request |
+| `first_tool_bytes`, `peak_tool_bytes` | Compact UTF-8 JSON size of the actual request's function list |
+| `first_request_bytes`, `peak_request_bytes` | Serialized messages plus tools; a byte footprint, not token estimation |
+| `first_input_tokens`, `peak_input_tokens` | Provider-reported prompt/context tokens, including cache reads |
+| `total_input_tokens` | Sum of prompt tokens over calls, including cache reads |
+| `usage_calls`, `actual_cost_calls` | Completeness of provider usage and billed-cost reporting |
+
+Each OpenRouter response's usage is consumed once. `usage.input_tokens` excludes
+cache reads; `usage.cache_read_tokens` holds that separate bucket, and output /
+reasoning are recorded separately (`everruns-disjoint-v1`). Mira's
+`usage.total_tokens()` therefore excludes cached input in this adapter; use
+`platform.total_input_tokens` for total processed context. Cost uses the
+provider's `usage.cost` when present; `actual_cost_complete=false` means the
+reported aggregate must not be treated as a complete billed total. Missing cost
+is not evidence of a free request. A failed request can have a request footprint
+without a usage response. Hosted Everruns events use the shared per-reasoning
+iteration usage projector, which avoids counting completion and rollup copies
+of the same generation; its metrics use the `llm.` prefix.
+
+### Historical CLI versus three-tool baseline
+
+The following legacy comparison predates the matched native study. It measures
+different prompts and CLI-specific expectations and is not CLI-versus-eager-native
+evidence.
 
 `EVERRUNS_EVAL_HARNESS` defaults to `platform-chat`: one `bash` tool over a
 real Bashkit interpreter, with `everruns` as a builtin and `/workspace`,
@@ -322,6 +405,8 @@ Each JSONL sample declares deterministic expectations in `metadata`:
 |---|---|
 | `expect_tools` / `forbid_tools` | Required or forbidden Platform tools |
 | `expect_commands` / `forbid_commands` | Regexes over arguments on matching `tool.started` calls |
+| `surface_comparison` / `expect_operations` / `expect_state` | Matched offline cases; canonical operation and mock-state assertions |
+| `forbid_mutations` | No canonical mutation dispatch in a matched safety case |
 | `expect_confirmation` | No `execute` before the second user turn, and the first response asks for confirmation |
 | `expect_scheduled_agent` | Cross-resource persisted-state assertion, including semantic schedule cadence |
 | `max_tool_calls` / `max_iterations` | Per-case loop/cost ceilings; the subject cancels the live turn when exceeded |

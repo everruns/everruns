@@ -2,6 +2,9 @@
 //! while a session remains alive. The recording driver observes the actual
 //! provider-neutral request config assembled by the runtime.
 
+#[path = "sparse_catalog_lifecycle.rs"]
+mod sparse_catalog_lifecycle;
+
 use async_trait::async_trait;
 use everruns_contracts::driver_registry::{
     ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent, Message,

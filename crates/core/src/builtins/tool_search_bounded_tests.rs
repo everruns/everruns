@@ -136,6 +136,17 @@ async fn initial_surface_stays_constant_at_ten_thousand_tools_and_retains_execut
             .build();
         assert_eq!(runtime.tools.len(), 1);
         assert_eq!(runtime.tools[0].name(), TOOL_SEARCH_TOOL_NAME);
+        // The native baseline contains no catalog operation schemas. The
+        // complete definitions remain available to the execution registry.
+        assert_eq!(
+            runtime.tools[0].parameters()["properties"]["query"]["type"],
+            "string"
+        );
+        assert!(
+            !serde_json::to_string(&runtime.tools)
+                .unwrap()
+                .contains("record_00000")
+        );
         assert_eq!(runtime.catalog_tools.len(), count);
         assert_eq!(runtime.execution_tools().len(), count + 1);
     }
@@ -167,6 +178,66 @@ async fn actual_search_obeys_count_and_bytes_and_never_dumps_the_catalog() {
             assert!(result["tools"].as_array().unwrap().is_empty());
         }
     }
+}
+
+#[tokio::test]
+async fn exact_search_discloses_only_the_selected_schema_at_two_thousand_and_ten_thousand() {
+    for count in [2000, 10000] {
+        let definitions = definitions(count);
+        let context = context(&definitions);
+        let tool = ToolSearchTool {
+            reveal: Reveal::Redefine,
+            limits: Some(CatalogLimits {
+                active_tools: 32,
+                active_bytes: 65536,
+                result_bytes: 32768,
+            }),
+        };
+        let ToolExecutionResult::Success(result) = tool
+            .execute_with_context(json!({"query":"record_01999"}), &context)
+            .await
+        else {
+            panic!("bounded search should return the selected schema");
+        };
+        assert_eq!(result["loaded"], json!(["record_01999"]));
+        assert_eq!(result["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(result["tools"][0]["name"], "record_01999");
+        assert!(
+            !serde_json::to_string(&result)
+                .unwrap()
+                .contains("record_02000")
+        );
+    }
+}
+
+#[tokio::test]
+async fn bounded_search_never_returns_an_exact_match_outside_the_current_allowlist() {
+    let definitions = definitions(2000);
+    let mut context = context(&definitions);
+    context.visible_tool_names = Some(Arc::new(HashSet::from(["record_00000".to_owned()])));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"record_01999"}), &context)
+        .await
+    else {
+        panic!("scoped search should return bounded authorized results");
+    };
+    let loaded = result["loaded"].as_array().unwrap();
+    assert!(loaded.iter().all(|name| name == "record_00000"));
+    assert!(
+        result["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|tool| tool["name"] == "record_00000")
+    );
 }
 
 #[tokio::test]

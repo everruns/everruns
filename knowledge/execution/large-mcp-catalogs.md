@@ -221,6 +221,20 @@ listing every operation. Bounded mode uses the default `reveal: redefine`
 behavior so selected schemas become callable typed native tools on the next
 step.
 
+Sparse use is the intended profile: catalog completeness belongs to the
+runtime, while only task-selected schemas belong in the model's working set.
+Exact authorized operation identities suppress incidental lexical matches;
+ambiguous unqualified MCP operations retain each matching server identity.
+Broad task queries keep ranked retrieval so a workflow can discover several
+related operations together. The shared index applies this rule to native and
+CLI discovery without a task-calibrated global score threshold.
+
+CLI browsing has its own output budget: root/server help returns at most 64
+entries and 12 KiB, explicitly reports omissions, and directs the model to
+search. One operation's help still supplies its schema. This closes the observed
+path where full server help inserted a large inventory into subsequent model
+requests; a stable initial prompt alone cannot prevent that history growth.
+
 ### Native and CLI surfaces, disclosure and caching
 
 The resolved `ToolSurfacePlan` is available to capability context and hooks.

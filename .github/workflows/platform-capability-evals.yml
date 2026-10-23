@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'evals/platform-capability/**'
+      - 'evals/common/**'
       - 'crates/cli-contract/commands.json'
       - '.github/workflows/platform-capability-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/platform-capability/**'
+      - 'evals/common/**'
       - 'crates/cli-contract/commands.json'
       - '.github/workflows/platform-capability-evals.yml'
 

@@ -280,7 +280,7 @@ impl ToolsBuiltin {
         let source_matches = catalog.source_matches(&query, SEARCH_LIMIT);
         if matches.is_empty() && source_matches.is_empty() {
             return text(format!(
-                "No tools match `{query}`. Run `tools --help` to list everything.\n"
+                "No tools match `{query}`. Refine the search terms, or use `tools --help` to browse the bounded server list.\n"
             ));
         }
         let mut out = String::new();

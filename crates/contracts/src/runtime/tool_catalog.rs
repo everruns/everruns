@@ -9,6 +9,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::tool_types::ToolDefinition;
 use serde_json::Value;
 
+const EXACT_NAME_BONUS: f64 = 10_000.0;
+
+fn normalized_tool_name(name: &str) -> String {
+    name.trim()
+        .trim_matches(|character: char| {
+            !character.is_alphanumeric() && character != '_' && character != '-'
+        })
+        .to_lowercase()
+        .replace('-', "_")
+}
+
 #[derive(Debug, Clone)]
 struct Document {
     name: String,
@@ -33,6 +44,7 @@ pub struct ToolSearchIndex {
     documents: Vec<Document>,
     sources: BTreeMap<String, HashMap<String, usize>>,
     postings: HashMap<String, Vec<(usize, usize)>>,
+    exact_names: HashMap<String, Vec<usize>>,
 }
 
 fn tokens(text: &str) -> Vec<String> {
@@ -140,6 +152,18 @@ impl ToolSearchIndex {
             schema_terms(definition.full_parameters(), &mut terms);
             let length = terms.values().sum();
             let position = index.documents.len();
+            index
+                .exact_names
+                .entry(normalized_tool_name(definition.name()))
+                .or_default()
+                .push(position);
+            if let Some((_, operation)) = &parsed {
+                index
+                    .exact_names
+                    .entry(normalized_tool_name(operation))
+                    .or_default()
+                    .push(position);
+            }
             for (term, frequency) in &terms {
                 index
                     .postings
@@ -248,10 +272,15 @@ impl ToolSearchIndex {
                 scores[position] += idf * frequency * 2.5 / (frequency + normalization);
             }
         }
-        let exact = query
-            .trim()
-            .trim_matches(|character: char| !character.is_alphanumeric())
-            .to_lowercase();
+        let exact = normalized_tool_name(query);
+        let exact_names: HashSet<_> = self
+            .exact_names
+            .get(&exact)
+            .into_iter()
+            .flatten()
+            .filter(|position| visible[**position])
+            .map(|position| self.documents[*position].name.as_str())
+            .collect();
         let mut hits: Vec<_> = self
             .documents
             .iter()
@@ -264,10 +293,11 @@ impl ToolSearchIndex {
                     .and_then(|source| source_scores.get(source))
                     .copied()
                     .unwrap_or(0.0);
-                let exact_match = exact == document.name.to_lowercase();
+                let exact_match = exact_names.contains(document.name.as_str());
                 let tool_match = scores[position] > 0.0 || exact_match;
-                let score =
-                    scores[position] + source_score + if exact_match { 10_000.0 } else { 0.0 };
+                let score = scores[position]
+                    + source_score
+                    + if exact_match { EXACT_NAME_BONUS } else { 0.0 };
                 ((score > 0.0 || terms.is_empty()) && (!operations_only || tool_match)).then(|| {
                     ToolSearchHit {
                         name: document.name.clone(),
@@ -284,6 +314,12 @@ impl ToolSearchIndex {
                 .total_cmp(&left.score)
                 .then_with(|| left.name.cmp(&right.name))
         });
+        // A canonical exact name or unqualified MCP operation name expresses
+        // unambiguous intent. Keep every exact identity (including the same
+        // operation on multiple servers) and discard incidental word hits.
+        if !exact_names.is_empty() {
+            hits.retain(|hit| exact_names.contains(hit.name.as_str()));
+        }
         hits.truncate(limit);
         hits
     }
@@ -353,6 +389,132 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].score, isolated[0].score);
         assert!(index.search("warehouse", 8, |_| false).is_empty());
+    }
+
+    #[test]
+    fn broad_rollback_search_preserves_all_four_specific_operations() {
+        let mut definitions = vec![
+            operation("ops", "rollback_deployment", "Restore one deployment"),
+            operation("ops", "rollback_transaction", "Restore one transaction"),
+            operation("ops", "rollback_release", "Restore one release"),
+            operation("ops", "rollback_migration", "Restore one migration"),
+        ];
+        for definition in &mut definitions {
+            if let ToolDefinition::Builtin(tool) = definition {
+                // Keep server metadata out of this operation-domain retrieval case.
+                tool.hints.metadata = None;
+            }
+        }
+        definitions.extend((0..2000).map(|index| {
+            let mut definition =
+                operation("misc", &format!("get_{index:04}"), "A rollback endpoint");
+            if let ToolDefinition::Builtin(tool) = &mut definition {
+                tool.hints.metadata = None;
+            }
+            definition
+        }));
+
+        let index = ToolSearchIndex::new(&definitions);
+        let hits = index.search_operations(
+            "rollback deployment transaction release migration",
+            8,
+            |_| true,
+        );
+        let names: HashSet<_> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        for operation in [
+            "mcp_ops__rollback_deployment",
+            "mcp_ops__rollback_transaction",
+            "mcp_ops__rollback_release",
+            "mcp_ops__rollback_migration",
+        ] {
+            assert!(names.contains(operation), "missing {operation}");
+        }
+    }
+
+    #[test]
+    fn fixture_deployment_query_keeps_the_complete_four_operation_workflow() {
+        let fixture_server = json!({
+            "name":"telemetry",
+            "description":"Geothermal drilling telemetry and field operations records"
+        });
+        let mut definitions = vec![
+            operation(
+                "telemetry",
+                "list_deployments",
+                "Find deployments by service, environment, and status. Use this first to identify the exact deployment before inspection or change.",
+            ),
+            operation(
+                "telemetry",
+                "get_deployment",
+                "Read one deployment, including current version, previous version, health checks, and rollback eligibility.",
+            ),
+            operation(
+                "telemetry",
+                "rollback_deployment",
+                "Roll a failed deployment back to its recorded previous version. Requires the exact deployment id and an explicit reason; this mutates deployment state.",
+            ),
+            operation(
+                "telemetry",
+                "verify_deployment",
+                "Verify deployment health and report the observed version and state.",
+            ),
+        ];
+        for definition in &mut definitions {
+            if let ToolDefinition::Builtin(tool) = definition {
+                tool.hints.metadata = Some(json!({"mcp_server": fixture_server}));
+                tool.parameters = json!({"type":"object","properties":{
+                    "deployment_id":{"type":"string","description":"Exact deployment identifier returned by list_deployments."},
+                    "service":{"type":"string","description":"Service slug, for example billing-api."},
+                    "environment":{"type":"string","description":"Deployment environment.","enum":["dev","staging","prod"]}
+                }});
+            }
+        }
+        definitions.extend((0..1996).map(|index| {
+            let mut definition = operation(
+                "telemetry",
+                &format!("inspect_billing_record_{index:04}"),
+                "Inspect a billing operation record by its exact key.",
+            );
+            if let ToolDefinition::Builtin(tool) = &mut definition {
+                tool.hints.metadata = Some(json!({"mcp_server": fixture_server}));
+            }
+            definition
+        }));
+
+        let index = ToolSearchIndex::new(&definitions);
+        let hits = index.search_operations("deployment staging billing", 8, |_| true);
+        let names: HashSet<_> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        for operation in [
+            "mcp_telemetry__list_deployments",
+            "mcp_telemetry__get_deployment",
+            "mcp_telemetry__rollback_deployment",
+            "mcp_telemetry__verify_deployment",
+        ] {
+            assert!(names.contains(operation), "missing {operation}");
+        }
+    }
+
+    #[test]
+    fn exact_mcp_identity_discards_incidental_hits_and_unqualified_name_keeps_server_twins() {
+        let definitions = [
+            operation("telemetry", "get_deployment", "Read one deployment"),
+            operation("platform", "get_deployment", "Read one deployment"),
+            operation("misc", "get_status", "Get deployment status"),
+        ];
+        let index = ToolSearchIndex::new(&definitions);
+
+        let qualified = index.search_operations("mcp_telemetry__get_deployment", 8, |_| true);
+        assert_eq!(qualified.len(), 1);
+        assert_eq!(qualified[0].name, "mcp_telemetry__get_deployment");
+
+        let unqualified = index.search_operations("get-deployment", 8, |_| true);
+        let names: HashSet<_> = unqualified.iter().map(|hit| hit.name.as_str()).collect();
+        assert_eq!(unqualified.len(), 2);
+        assert!(names.contains("mcp_telemetry__get_deployment"));
+        assert!(names.contains("mcp_platform__get_deployment"));
+
+        let phrase = index.search_operations("get deployment", 8, |_| true);
+        assert_eq!(phrase.len(), 3, "a phrase should keep BM25 semantics");
     }
 
     #[test]
@@ -432,7 +594,7 @@ mod tests {
         for n in 0..100 {
             let name = format!("mcp_cloud__get_{:05}", n * 97);
             let hits = index.search(&name, 8, |_| true);
-            assert_eq!(hits.len(), 8);
+            assert_eq!(hits.len(), 1);
             assert_eq!(hits[0].name, name);
             assert!(hits[0].tool_match);
         }

@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use mira::subject::summarize_events;
+use crate::everruns_usage::summarize_events;
 use mira::{ErrorKind, RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
@@ -351,6 +351,17 @@ impl EverrunsServerSubject {
 #[async_trait::async_trait]
 impl Subject for EverrunsServerSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
+        if sample
+            .metadata
+            .get("surface_comparison")
+            .and_then(Value::as_bool)
+            == Some(true)
+        {
+            return Transcript::infra_error("surface-comparison fixtures require EVERRUNS_EVAL_MODE=offline; hosted Platform Chat remains CLI-only".to_string());
+        }
+        if std::env::var("EVERRUNS_EVAL_SURFACE").is_ok() {
+            return Transcript::infra_error("EVERRUNS_EVAL_SURFACE selects an offline comparison; set EVERRUNS_EVAL_MODE=offline".to_string());
+        }
         let started = Instant::now();
 
         if let Some(server) = sample.metadata.get("ensure_catalog_mcp") {
@@ -470,8 +481,7 @@ impl Subject for EverrunsServerSubject {
                 if let Some(final_text) = extract_final_response(&events) {
                     transcript.final_response = final_text;
                 }
-                let (usage, _tools) = summarize_events(&events);
-                transcript.usage = usage;
+                summarize_events(&events).apply_to(&mut transcript);
                 if transcript.error.is_none() {
                     if let Some(error) = extract_terminal_error(&events) {
                         transcript.error_kind = classify(&error);
