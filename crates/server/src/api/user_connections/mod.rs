@@ -17,7 +17,7 @@ use crate::kernel_imports::{
     contracts::url_validation::validate_safe_url,
     mcp_oauth_provider_id_for_uuid,
 };
-use crate::oauth_client::{OAuthCodeExchangeRequest, exchange_oauth_code};
+use crate::oauth_client::{OAuthCodeExchangeRequest, exchange_oauth_code, org_scoped_egress};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -1004,7 +1004,7 @@ async fn authorize_connection_inner(
     let code_challenge = pkce_challenge(&code_verifier);
 
     let (metadata, registration, mut updated_settings) =
-        ensure_mcp_oauth_registration(&state, &row, settings, &provider).await?;
+        ensure_mcp_oauth_registration(&state, authority.org_id, &row, settings, &provider).await?;
     // Discovery and registration just worked: a preset nobody checked yet
     // (one saved before checks existed) now reads "Ready to connect". A
     // recorded result is left to the check that produced it.
@@ -1243,8 +1243,9 @@ async fn complete_mcp_oauth_callback(
     ))?;
     let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, provider);
 
+    let egress = org_scoped_egress(state.mcp_service.egress_service(), authority.org_id);
     let token = exchange_oauth_code(
-        state.mcp_service.egress_service().as_ref(),
+        egress.as_ref(),
         OAuthCodeExchangeRequest {
             token_endpoint: &token_endpoint,
             client_id: &client_id,

@@ -291,7 +291,10 @@ LLM) never use it. Two reasons:
   `Proxy-Authorization: Bearer v1.<org>.<session>.<exp>.<hmac>`: org and session
   public ids (`-` when missing), a unix expiry five minutes out, and a hex
   HMAC-SHA256 over everything before the last dot with the shared secret. The
-  scope comes from `ScopedEgressService`, never from the tool.
+  scope comes from `ScopedEgressService`, never from the tool. Control-plane
+  requests made outside a turn for an org (MCP icons and event delivery, MCP
+  OAuth discovery, client registration, code exchange and token refresh) carry
+  the org with no session, so they count against the same limits.
 
 With a proxy, the proxy opens the connection, so it must re-resolve the target
 and refuse non-public addresses itself; the in-process checks still run first.
