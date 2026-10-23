@@ -281,6 +281,15 @@ There is no gateway or second search implementation between the subject and
 fixture. The fixture exercises real `tools/list` pagination and `tools/call`,
 with synthetic ticket and deployment state.
 
+Usage projection belongs to the Everruns adapter, not a generic recursive
+event walk: generation/message/reason/turn/session records can repeat the same
+usage. The shared [Rust projection](../../evals/common/README.md) separates
+uncached input, cached input, request coverage and actual schema-array bytes.
+The retained study summaries were corrected without rewriting their raw traces
+or task outcomes. A separate [platform surface experiment](../../evals/platform-capability/README.md#matched-cli-versus-eager-native-functions)
+uses real operation schemas over an in-process state fixture; eager native
+there is distinct from bounded native discovery here.
+
 The study varies catalog size (50, 600, 2,000, 10,000), one or ten servers, and
 native, CLI, and hybrid surfaces. Its cases cover a normal read, a request
 resolved only by server description, a read-only constraint, and a staged

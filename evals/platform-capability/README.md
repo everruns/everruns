@@ -150,6 +150,11 @@ shared policy prompt differs only in its interface paragraph. Existing
 `cli-tree` and `cli-contract` cases remain interface diagnostics and must not be
 pooled into this comparison's task success rate.
 
+The shell role scorer reads the executor's per-call operation audit when
+available. Reading `everruns agents create --help` is a read, including when
+followed by semicolons, pipes or other commands. Historical/hosted events
+without this audit retain the existing script heuristic.
+
 `EVERRUNS_EVAL_SURFACE=cli` supplies one Bashkit `bash` tool with the real
 `everruns` parser. `native-eager` supplies **every captured operation**, each
 with its authentic name, description and complete input schema in the actual
@@ -204,6 +209,8 @@ Offline metrics use the `platform.` prefix:
 Each OpenRouter response's usage is consumed once. `usage.input_tokens` excludes
 cache reads; `usage.cache_read_tokens` holds that separate bucket, and output /
 reasoning are recorded separately (`everruns-disjoint-v1`). Mira's
+reasoning count is a provider-reported subset of output and must not be added
+to output again. Mira's
 `usage.total_tokens()` therefore excludes cached input in this adapter; use
 `platform.total_input_tokens` for total processed context. Cost uses the
 provider's `usage.cost` when present; `actual_cost_complete=false` means the
@@ -212,6 +219,50 @@ is not evidence of a free request. A failed request can have a request footprint
 without a usage response. Hosted Everruns events use the shared per-reasoning
 iteration usage projector, which avoids counting completion and rollup copies
 of the same generation; its metrics use the `llm.` prefix.
+
+### Recorded Muse comparison (2026-10-23)
+
+**48/48 trials passed**: eight matched tasks, three repetitions per surface,
+using `meta/muse-spark-1.3-contributor` through OpenRouter. The study ran serially
+in three rounds, alternating arm order. Separate paired smoke runs preceded it;
+caches were neither isolated nor forced cold. Another MCP study overlapped part
+of execution, so durations are observations rather than a controlled latency
+claim. The [summary](results/surfaces-2026-10-23-summary.json) retains per-case
+results, source/binary hashes, exact batch order, and line ranges into the
+[verbatim traces](results/surfaces-2026-10-23-live.jsonl.gz).
+
+| Measure | CLI | Eager native |
+|---|---:|---:|
+| Trials passed | 24/24 | 24/24 |
+| Initial function schemas | 1 | 344 |
+| Initial schema-array bytes | 1,205 | 505,177 |
+| Mean processed input per task | 21,732 | 399,468 |
+| Mean model calls per task | 6.79 | 3.13 |
+| Mean observed duration | 16.7 s | 14.1 s |
+| Uncached input, all 24 tasks | 321,293 | 4,234,091 |
+| Cache-read input, all 24 tasks | 200,284 | 5,353,145 |
+| Output, all 24 tasks | 36,316 | 20,240 |
+| Provider-reported cost, all 24 tasks | $0.03979 | $0.43816 |
+
+Eager native used 18.4× processed input and 11.0× reported cost while taking
+fewer model calls. Its 55.8% observed cache-read share exceeded CLI's 38.4%,
+but its uncached input was still 13.2× larger. Stable tool arrays do not
+guarantee provider cache hits, and a higher cached share does not imply a
+smaller task cost. These are synthetic task observations from one model and
+endpoint, not universal surface rankings or invoice reconciliation.
+
+This experiment deliberately exposes every platform schema. The separate
+[MCP scale study](../mcp-scale/README.md) measures bounded native discovery,
+which keeps unselected schemas outside the model prompt. Its native results
+must not be pooled with this eager-native arm. The production Platform Chat
+composition remains CLI; this experiment does not add a production native route.
+
+An initial eight-trial CLI attempt scored 7/8 because the old script heuristic
+misclassified a harmless mutation `--help;` command as a write. The state and
+executor log showed only reads. The [diagnostic archive](results/surfaces-2026-10-23-scorer-diagnostic.jsonl.gz)
+and its prior provenance are retained separately. After adding audit-based
+scoring and regression tests, the unchanged dataset was rerun in full. Those
+eight attempts are excluded from the 48-trial comparison.
 
 ### Historical CLI versus three-tool baseline
 

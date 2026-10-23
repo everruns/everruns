@@ -110,6 +110,49 @@ input includes uncached, cache-read and cache-creation buckets; it is not a
 single context-window size. Disjoint Everruns input must not be treated as
 Mira's provider-dependent inclusive input convention.
 
+## Sparse-session follow-up (2026-10-23)
+
+The follow-up bounds CLI browsing to 64 entries / 12 KiB, recommends search
+first, and suppresses incidental matches when an authorized exact operation
+identity exists. Normal task queries retain the full ranked result window.
+Normalized exact identities are indexed once, avoiding a catalog-wide
+normalization/parsing pass on every search.
+
+The [18-trial behavior matrix](results/sparse-2026-10-23-summary.json) passed
+at 2,000 tools, with three repetitions per task/surface and no infrastructure
+errors or skips. Mean input below includes uncached plus cache-read tokens:
+
+| Surface | Mean input per task | Mean model calls | Largest request |
+|---|---:|---:|---:|
+| Bounded native | 11,955 | 4.50 | 4,102 |
+| CLI | 19,404 | 5.67 | 5,346 |
+| Hybrid | 20,177 | 4.50 | 5,651 |
+
+CLI used 1.62× native's processed input in this matrix. None of its six trials
+dumped server help. This is smaller than the earlier shipping smoke's 8.26×
+ratio, whose CLI rollback requested the entire server listing; the small,
+different run sizes do not establish a stable causal percentage saving.
+
+After the behavior-preserving exact-lookup cache optimization, a clean-source
+rebuild at `a6b4825af` passed a separate [6/6 final smoke](results/sparse-final-2026-10-23-summary.json).
+Each surface used just **one distinct MCP operation** for the read and **four**
+for rollback, from the 2,000-operation catalog. The complete runtime inventory
+and the small used-operation set are separate measurements.
+
+The [final eight-row offline stress report](results/sparse-2026-10-23-final-stress.json)
+covers one and ten servers through 10,000 tools. In the recorded dev build
+(`CARGO_PROFILE_DEV_DEBUG=0`, rustc 1.96.0, four logical CPUs), query p95 was
+1.35–3.09 ms at 2,000 tools and 6.01–15.08 ms at 10,000 tools; index-build p95
+was 99–101 ms and 453–500 ms respectively. The
+[pre-cache report](results/sparse-2026-10-23-precache-stress.json) retained the
+slower per-query identity normalization for comparison. These local timings
+exclude model latency and MCP process/network startup. Ten-thousand-tool
+coverage remains offline stress, not successful live model task qualification.
+
+The [platform capability comparison](../platform-capability/README.md#recorded-muse-comparison-2026-10-23)
+separately compares CLI with all 344 real platform operation schemas exposed
+eagerly; it does not exercise Framework bounded discovery or hosted persistence.
+
 ## What gets measured
 
 - **Tool evidence** requires at least one completed MCP operation in the Framework transcript.

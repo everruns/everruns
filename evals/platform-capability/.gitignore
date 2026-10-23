@@ -1,3 +1,6 @@
 /target
 # Saved mira run folders (re-render with `mira report <run_id>`)
-/results
+/results/*
+!/results/surfaces-2026-10-23-summary.json
+!/results/surfaces-2026-10-23-live.jsonl.gz
+!/results/surfaces-2026-10-23-scorer-diagnostic.jsonl.gz

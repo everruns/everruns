@@ -24,6 +24,12 @@ Provider-reported cost coverage is explicit; effective cost prefers the stored
 effective total, then actual, then estimated cost. This is not invoice
 reconciliation or a causal prompt-cache measurement.
 
+Token/call metrics cover the recorded reasoning generations. Separate provider
+compaction calls can contribute a folded cost while their billed token usage
+is absent from this event contract; context-size estimates before/after
+compaction are not substitutes for billed token counts. Unreported transport
+retries are also outside these counts.
+
 The platform study's in-process HTTP subject consumes each provider response
 directly instead. It subtracts cached reads from OpenRouter's inclusive prompt
 count exactly once and uses the same disjoint reporting convention.
