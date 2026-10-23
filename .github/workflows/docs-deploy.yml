@@ -17,6 +17,8 @@ on:
     branches: [main]
     paths:
       - 'apps/docs/**'
+      - 'apps/ui/scripts/patch-zod-v3.mjs'
+      - 'apps/ui/scripts/zod-v3-compatibility.json'
       - 'docs/**'
       - '.github/workflows/docs-deploy.yml'
   schedule:

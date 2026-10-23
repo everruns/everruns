@@ -168,7 +168,7 @@ impl KnowledgeService {
                 let name = p.clone();
                 let mime = mime.clone();
                 let bytes = stored.extraction;
-                // THREAT[TM-DOS-049]: archive/cell budgets are per extraction;
+                // THREAT[TM-DOS-050]: archive/cell budgets are per extraction;
                 // also bound parallel CPU/memory work across uploads and jobs.
                 static EXTRACTIONS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
                 let permit = EXTRACTIONS
