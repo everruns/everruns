@@ -460,15 +460,15 @@ impl Tool for DaytonaExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let fallback = self.display_name().unwrap_or("Daytona");
         Some(
             everruns_contracts::runtime::tool_narration::narrate_shell_exec(
                 &tool_call.arguments,
-                fallback,
+                self.display_name().unwrap_or("Daytona"),
                 phase,
                 locale,
+                ctx,
             ),
         )
     }

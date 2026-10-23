@@ -532,13 +532,14 @@ impl Tool for ToolsMarkerTool {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: ToolNarrationContext<'_>,
+        ctx: ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_shell_exec(
             &tool_call.arguments,
             TOOLS_COMMAND,
             phase,
             locale,
+            ctx,
         ))
     }
 }

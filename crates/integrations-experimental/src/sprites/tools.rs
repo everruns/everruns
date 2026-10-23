@@ -228,7 +228,7 @@ impl Tool for SpritesExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sprites");
         Some(
@@ -237,6 +237,7 @@ impl Tool for SpritesExecTool {
                 fallback,
                 phase,
                 locale,
+                ctx,
             ),
         )
     }

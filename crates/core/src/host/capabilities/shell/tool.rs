@@ -408,13 +408,14 @@ impl Tool for BashTool {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
-        _context: ToolNarrationContext<'_>,
+        ctx: ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_shell_exec(
             &tool_call.arguments,
             self.display_name().unwrap_or("Bash"),
             phase,
             locale,
+            ctx,
         ))
     }
 

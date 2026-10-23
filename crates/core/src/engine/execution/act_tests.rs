@@ -54,12 +54,13 @@ impl crate::engine::tools::Tool for NarratingGrepTool {
         tool_call: &ToolCall,
         phase: crate::engine::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::engine::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::engine::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::engine::tool_narration::narrate_grep_files(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 }
