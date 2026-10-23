@@ -13,6 +13,16 @@ const sandboxRoot = dirname(deepsecRequire.resolve("@vercel/sandbox/package.json
 const sandboxRequire = createRequire(join(sandboxRoot, "package.json"));
 const zodRoot = dirname(sandboxRequire.resolve("zod/package.json"));
 
+test("MCP rate limiter uses patched IPv6 validation", () => {
+  const mcpRequire = createRequire(require.resolve("@modelcontextprotocol/sdk/server/index.js"));
+  const rateLimitRequire = createRequire(mcpRequire.resolve("express-rate-limit"));
+  const { Address6 } = rateLimitRequire("ip-address");
+  assert.equal(rateLimitRequire("ip-address/package.json").version, "10.7.4");
+  assert.equal(Address6.isValid("fe80::1%eth0"), true);
+  assert.equal(Address6.isValid("%".repeat(1000) + "\n"), false);
+  assert.equal(Address6.isValid("invalid"), false);
+});
+
 async function verifyBounds(z) {
   let visits = 0;
   const item = z.string().superRefine(() => visits++);

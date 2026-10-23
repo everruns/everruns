@@ -56,7 +56,8 @@ The committed pnpm patches backport Zod's leading collection bounds into
 its v3 compatibility engine and Deepsec's embedded v3 copies. The Sandbox
 consumer keeps its v3 API through `zod/v3`; it does not switch to the v4 API.
 Patch hashes and regression tests must be reviewed when updating these packages.
-Unconstrained collections still need application-level limits.
+Unconstrained collections still need application-level limits. The MCP rate limiter's
+`ip-address` dependency is pinned to the patched 10.7.4 release.
 
 ## Reference
 
