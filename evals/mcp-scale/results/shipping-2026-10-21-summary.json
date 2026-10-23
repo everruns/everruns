@@ -1,0 +1,320 @@
+{
+  "cases": [
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "duration_ms": 15768,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 60345.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 32415,
+        "cost_usd": 0.0,
+        "input_tokens": 60345,
+        "output_tokens": 3500
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 37737,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 7.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 411695.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "7 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 453800,
+        "cost_usd": 0.0,
+        "input_tokens": 411695,
+        "output_tokens": 7505
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "duration_ms": 11426,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 59575.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 83540,
+        "cost_usd": 0.0,
+        "input_tokens": 59575,
+        "output_tokens": 3180
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]",
+      "duration_ms": 6934,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 24345.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 1845,
+        "cost_usd": 0.0,
+        "input_tokens": 24345,
+        "output_tokens": 1225
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 15606,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 68485.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cache_read_tokens": 48980,
+        "cost_usd": 0.0,
+        "input_tokens": 68485,
+        "output_tokens": 3980
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]",
+      "duration_ms": 7602,
+      "error": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 62750.0
+      },
+      "passed": true,
+      "scores": [
+        {
+          "na": false,
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "na": false,
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "cost_usd": 0.0,
+        "input_tokens": 62750,
+        "output_tokens": 1165
+      }
+    }
+  ],
+  "limits": "Six one-trial task/state smoke checks at 2,000 tools on one server after the final behavior fixes and dependency patch. Does not replace the original 54-trial study, qualify model success at 10,000 tools, or rerun hosted DB/UI/OAuth scenarios. Offline stress is synthetic and does not measure model latency or heap allocation.",
+  "provenance": {
+    "bashkit_revision": "05c6e01c99f513775e0afd89ca1d7938aa9956c2",
+    "binary_sha256": "a92cb04a4f8828b0078f5b1c8f25cbafef8b80b88aab3fd456d63d5b2f2b9019",
+    "build_command": "CARGO_TARGET_DIR=/workspace/everruns/target CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo run --locked --manifest-path evals/mcp-scale/Cargo.toml -- --offline-catalog",
+    "catalog_size": 2000,
+    "concurrency": 1,
+    "dependency_manifest": "evals/mcp-scale/Cargo.toml",
+    "environment_note": "Synthetic local MCP servers only. Provider credentials supplied by the configured secret runner. The managed cloud adapter canonicalized the inherited trusted proxy hostname to its IP, preserving endpoint, port, TLS, and network policy.",
+    "lockfile_sha256": "ffdff3a7b9976e1dbbf20becfe18e0fe8858964900e56e90fe78f149988f82ae",
+    "recorded_at": "2026-10-21T21:48:01.409601+00:00",
+    "run_command": "EVERRUNS_EVAL_TARGETS=openrouter/meta/muse-spark-1.3-contributor EVERRUNS_EVAL_TRIALS=1 EVERRUNS_EVAL_CONCURRENCY=1 target/debug/mcp_scale --run --sample readonly-ticket,staged-rollback --filter catalog_size=2000,servers=1, --runs-report /tmp/mcp-ship-mira-live-2000.jsonl",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "samples": [
+      "readonly-ticket",
+      "staged-rollback"
+    ],
+    "servers": 1,
+    "source_commit": "c5d3360a4225024f6b9a2c2a97b32ea9626cee3a",
+    "surfaces": [
+      "native",
+      "cli",
+      "hybrid"
+    ],
+    "target": "openrouter/meta/muse-spark-1.3-contributor",
+    "trials_per_case": 1,
+    "working_tree": ""
+  },
+  "qualification": {
+    "executed": 6,
+    "failed": 0,
+    "infrastructure_errors": 0,
+    "passed": 6,
+    "skipped": 0
+  },
+  "reports": {
+    "shipping-2026-10-21-live.jsonl.gz": {
+      "records": 6,
+      "sha256": "fcf3b525c17069b8dd2b96e41b4bce0b2937f900277c596c4bc9a67c5bc458e3"
+    },
+    "shipping-2026-10-21-stress.json": {
+      "matrix_rows": 8,
+      "sha256": "8a75b30fac9408f59a4c4b6e3df51f6b8e8f6272d9b590c2b8d70e47d431fbe0"
+    }
+  },
+  "synthetic_only": true,
+  "title": "Shipping rebuild smoke, separate from the original qualification",
+  "usage_by_surface": {
+    "cli": {
+      "cache_read_tokens": 502780,
+      "cost_usd": 0.0,
+      "input_tokens": 480180,
+      "output_tokens": 11485,
+      "trials": 2
+    },
+    "hybrid": {
+      "cache_read_tokens": 83540,
+      "cost_usd": 0.0,
+      "input_tokens": 122325,
+      "output_tokens": 4345,
+      "trials": 2
+    },
+    "native": {
+      "cache_read_tokens": 34260,
+      "cost_usd": 0.0,
+      "input_tokens": 84690,
+      "output_tokens": 4725,
+      "trials": 2
+    }
+  },
+  "usage_note": "Input tokens are uncached; cache-read is a separate bucket. Totals accumulate over all model turns. Missing cache-read fields contribute zero. Provider reported cost_usd 0.0; billing is unknown. Two tasks per surface are not a stable efficiency estimate or proof of causal cache savings. The CLI rollback requested full server help, adding the 2,000-tool listing to its transcript.",
+  "usage_total": {
+    "cache_read_tokens": 620580,
+    "input_tokens": 687195,
+    "output_tokens": 20555,
+    "trials": 6
+  }
+}

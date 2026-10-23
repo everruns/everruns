@@ -2,6 +2,39 @@ use super::*;
 use uuid::Uuid;
 
 #[test]
+fn mcp_search_metadata_survives_grpc_and_ranks_source_only_terms() {
+    let metadata = serde_json::json!({"mcp_server":{
+        "name":"alpha", "description":"Basalt borehole surveying"
+    }});
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__search".into(),
+        description: "Search records".into(),
+        readonly: Some(true),
+        search_metadata: Some(everruns_internal_protocol::json_to_proto_struct(&metadata)),
+        ..Default::default()
+    });
+    assert_eq!(definition.hints().metadata.as_ref(), Some(&metadata));
+    assert_eq!(definition.hints().readonly, Some(true));
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    let hits = index.search("basalt borehole", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].name, "mcp_alpha__search");
+    assert!(hits[0].server_match);
+    assert!(!hits[0].tool_match);
+}
+
+#[test]
+fn mcp_search_metadata_is_optional_for_older_servers() {
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__search".into(),
+        description: "Search records".into(),
+        ..Default::default()
+    });
+    assert!(definition.hints().metadata.is_none());
+    assert_eq!(definition.hints().open_world, Some(true));
+}
+
+#[test]
 fn worker_parses_the_neutral_capability_reference_shape() {
     // EVE-873: worker resolution consumes the same `{"ref", "config"}`
     // representation the Framework serializes and the control plane

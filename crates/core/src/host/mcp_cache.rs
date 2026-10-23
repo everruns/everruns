@@ -39,10 +39,13 @@ pub(crate) const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 const MAX_CACHE_ENTRIES: usize = 1024;
 
 /// Maximum number of tools retained for one scoped MCP server.
-const MAX_TOOLS_PER_ENTRY: usize = 256;
+const MAX_TOOLS_PER_ENTRY: usize = crate::mcp::MCP_DISCOVERY_MAX_TOOLS;
 
 /// Maximum serialized size retained for one scoped MCP server discovery.
-const MAX_ENTRY_BYTES: usize = 1024 * 1024;
+const MAX_ENTRY_BYTES: usize = crate::mcp::MCP_DISCOVERY_MAX_BYTES;
+
+/// Maximum serialized tool data retained across one runtime's discovery cache.
+const MAX_CACHE_BYTES: usize = 128 * 1024 * 1024;
 
 /// Identifies one attachment: session, sanitized name, and configuration digest.
 pub(crate) type CacheKey = (Uuid, String, [u8; 32]);
@@ -55,9 +58,16 @@ pub(crate) enum DiscoveryFailure {
 
 struct CacheEntry {
     tools: Vec<ToolDefinition>,
+    serialized_bytes: usize,
     cached_at: Instant,
     last_used: Instant,
     failure: Option<DiscoveryFailure>,
+}
+
+fn cached_bytes(entries: &HashMap<CacheKey, CacheEntry>) -> usize {
+    entries.values().fold(0usize, |total, entry| {
+        total.saturating_add(entry.serialized_bytes)
+    })
 }
 
 /// Counts serialized bytes without retaining them, erroring once the running
@@ -116,6 +126,7 @@ pub(crate) struct McpDiscoveryCache {
     entries: Mutex<HashMap<CacheKey, CacheEntry>>,
     locks: KeyedLocks,
     ttl: Duration,
+    byte_budget: usize,
 }
 
 impl McpDiscoveryCache {
@@ -128,6 +139,15 @@ impl McpDiscoveryCache {
             entries: Mutex::new(HashMap::new()),
             locks: KeyedLocks::default(),
             ttl,
+            byte_budget: MAX_CACHE_BYTES,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_test_byte_budget(ttl: Duration, byte_budget: usize) -> Self {
+        Self {
+            byte_budget,
+            ..Self::with_ttl(ttl)
         }
     }
 
@@ -198,17 +218,19 @@ impl McpDiscoveryCache {
         now: Instant,
         failure: Option<DiscoveryFailure>,
     ) {
+        let serialized_bytes = Self::serialized_size(&tools).unwrap_or(0);
         let mut entries = self.entries();
         entries.insert(
             key.clone(),
             CacheEntry {
                 tools,
+                serialized_bytes,
                 cached_at: now,
                 last_used: now,
                 failure,
             },
         );
-        while entries.len() > MAX_CACHE_ENTRIES {
+        while entries.len() > MAX_CACHE_ENTRIES || cached_bytes(&entries) > self.byte_budget {
             let Some(evict_key) = entries
                 .iter()
                 .filter(|(candidate, _)| *candidate != &key)
@@ -254,6 +276,10 @@ impl McpDiscoveryCache {
         if tools.len() > MAX_TOOLS_PER_ENTRY {
             return false;
         }
+        Self::serialized_size(tools).is_some()
+    }
+
+    fn serialized_size(tools: &[ToolDefinition]) -> Option<usize> {
         // Measure the serialized size by streaming into a counting writer that
         // short-circuits once the running total crosses MAX_ENTRY_BYTES. This
         // avoids materializing a full serialized buffer per tool just to size
@@ -265,10 +291,10 @@ impl McpDiscoveryCache {
         };
         for tool in tools {
             if serde_json::to_writer(&mut writer, tool).is_err() {
-                return false;
+                return None;
             }
         }
-        true
+        Some(writer.written)
     }
 
     /// Resolve tools for `key`, applying stale-while-revalidate + single-flight.
@@ -361,6 +387,20 @@ mod tests {
             name: name.to_string(),
             display_name: None,
             description: String::new(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::default(),
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        })
+    }
+
+    fn described_def(name: &str, size: usize) -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: name.to_string(),
+            display_name: None,
+            description: "x".repeat(size),
             parameters: serde_json::json!({}),
             policy: ToolPolicy::default(),
             category: None,
@@ -474,6 +514,66 @@ mod tests {
     }
 
     #[test]
+    fn oversized_serialized_catalog_is_not_cached() {
+        let cache = McpDiscoveryCache::new();
+        cache.store(
+            key(),
+            vec![described_def("too_large", MAX_ENTRY_BYTES)],
+            Instant::now(),
+        );
+        assert!(matches!(
+            cache.classify(&key(), Instant::now()),
+            Freshness::Cold
+        ));
+    }
+
+    #[test]
+    fn two_thousand_tool_discovery_is_cached_and_served_as_a_hit() {
+        let cache = McpDiscoveryCache::new();
+        let tools = (0..2_000)
+            .map(|i| def(&format!("tool_{i}")))
+            .collect::<Vec<_>>();
+        cache.store(key(), tools, Instant::now());
+        assert!(matches!(
+            cache.classify(&key(), Instant::now()),
+            Freshness::Fresh(tools) if tools.len() == 2_000
+        ));
+    }
+
+    #[test]
+    fn ten_thousand_tool_catalog_fits_the_per_entry_cache_bound() {
+        let cache = McpDiscoveryCache::new();
+        let tools = (0..MAX_TOOLS_PER_ENTRY)
+            .map(|i| def(&format!("tool_{i}")))
+            .collect::<Vec<_>>();
+        cache.store(key(), tools, Instant::now());
+        assert!(matches!(
+            cache.classify(&key(), Instant::now()),
+            Freshness::Fresh(tools) if tools.len() == MAX_TOOLS_PER_ENTRY
+        ));
+    }
+
+    #[test]
+    fn weighted_global_budget_evicts_least_recently_used_catalog() {
+        let tools = vec![described_def("large", 1_000)];
+        let bytes = McpDiscoveryCache::serialized_size(&tools).unwrap();
+        let cache = McpDiscoveryCache::with_test_byte_budget(TOOL_CACHE_TTL, bytes + 1);
+        let first = (Uuid::from_u128(1), "first".into(), [0; 32]);
+        let second = (Uuid::from_u128(2), "second".into(), [0; 32]);
+        let base = Instant::now();
+        cache.store(first.clone(), tools.clone(), base);
+        cache.store(second.clone(), tools, base + Duration::from_millis(1));
+        assert!(matches!(
+            cache.classify(&first, Instant::now()),
+            Freshness::Cold
+        ));
+        assert!(matches!(
+            cache.classify(&second, Instant::now()),
+            Freshness::Fresh(_)
+        ));
+    }
+
+    #[test]
     fn cache_evicts_least_recently_used_entry_at_capacity() {
         let cache = McpDiscoveryCache::with_ttl(TOOL_CACHE_TTL);
         let base = Instant::now();
@@ -553,6 +653,20 @@ mod tests {
         }
         assert!(updated, "background refresh must replace the stale entry");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn failed_catalog_refresh_keeps_only_the_previous_complete_catalog() {
+        let cache = Arc::new(McpDiscoveryCache::with_ttl(Duration::ZERO));
+        cache.store(key(), vec![def("complete_v1")], Instant::now());
+        let served = cache
+            .resolve(key(), || async { Err(DiscoveryFailure::Transient) })
+            .await;
+        assert_eq!(names(&served), ["complete_v1"]);
+        assert!(matches!(
+            cache.classify(&key(), Instant::now()),
+            Freshness::Stale(tools) if names(&tools) == ["complete_v1"]
+        ));
     }
 }
 

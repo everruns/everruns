@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Tools in Shell"
-description: "Proposed tools_in_shell capability: every tool an agent has becomes a `tools` command in the Bashkit shell, taking and returning JSON, plus saved scripts an agent keeps and a schedule can run without an LLM turn."
+description: "Implemented tools_in_shell capability: eligible tools are callable through the Bashkit shell, with CLI-only and hybrid native-plus-CLI modes."
 tags:
   - everruns
   - execution
@@ -11,8 +11,7 @@ tags:
 
 # Tools in Shell
 
-> Status: **Accepted 2026-10-08; plan steps 1, 2, 4 and 5, and the early and
-> run-time stops of step 3, implemented** in
+> Status: **Implemented** in
 > `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
@@ -20,9 +19,10 @@ tags:
 
 ## Summary
 
-An agent with the `tools_in_shell` capability reaches its tools through the
-shell instead of as separate tool calls. Every tool it has, built-in, MCP or
-integration, becomes a command:
+An agent with the `tools_in_shell` capability can reach eligible built-in, MCP,
+and integration operations through the shell. In the default `cli` mode those
+operations use the shell instead of separate model calls; `hybrid` keeps both
+routes available:
 
 ```bash
 tools --help                                   # sources: github, linear, slack (not loaded), ...
@@ -37,8 +37,11 @@ JSON
 
 What this changes for the person using the agent:
 
-- **The prompt stops growing with every MCP server.** The model sees `bash`
-  and a one-line list of sources, not hundreds of tool schemas.
+- **Native schemas can stay bounded.** In CLI mode eligible operations are
+  represented through `bash`; hybrid mode also keeps them available natively.
+  Hybrid alone leaves those schemas eager; configure bounded `tool_search`
+  explicitly to defer optional native schemas. The inventory is discovered
+  with `tools --help`, not copied into the static Bash tool description.
 - **Multi-service tasks take one or two steps instead of many.** The agent
   calls several tools in one script, filters with `jq`, and only the result it
   prints reaches the conversation.
@@ -65,15 +68,20 @@ investment; if `tools_in_shell` wins its eval, Lua code mode is removed.
 ### D1. One capability, `tools_in_shell`, per agent
 
 Turned on per agent like any capability ("Tools in Shell"); it depends on
-`bashkit_shell` and installs one command, `tools`. Turning it on does two
-things:
+`bashkit_shell` and installs one command, `tools`. `mode` defaults to `cli`;
+`mode: "hybrid"` also exposes eligible operations as native tools. Turning it
+on does two things:
 
 1. **Installs the `tools` builtin**, rebuilt from the session's tool registry
    on every shell call, so it always reflects what the agent can call now.
-2. **Moves eligible tools behind it.** A `ToolDefinitionHook` (the mechanism
-   `lua_code_mode` uses) drops them from the model's direct tool list and adds
-   the list of sources to the `bash` tool description. They stay in the
-   executable registry, so the builtin can still run them.
+2. **Adds the configured CLI route for eligible tools.** In `cli` mode those
+   operations are removed from the model's direct tool list. In `hybrid` mode
+   they remain callable through both routes. Hybrid mode alone keeps native
+   schemas eager; enabling `tool_search` with `bounded: true` separately defers
+   optional schemas under its limits. Owner-required `Never` schemas remain
+   eager. The live source list is discoverable through `tools --help`; it is
+   not copied into the static Bash tool description. Operations remain in the
+   same executable registry.
 
 #### Which tools go behind `tools`
 
@@ -88,23 +96,32 @@ tool call. Concretely, these stay direct:
 | The execution tools (`bash`, `lua`) and structured file editing | They are the way in, or the hot path where a structured call beats a heredoc. |
 | Anything in the capability's `keep_visible` config | Per-agent override. |
 
-Everything else goes behind: MCP tools, integration tools, search and fetch,
-platform and data tools. Approval-gated and destructive tools also go behind
-once D7 lands (they ask); until then they stay direct. The tool's owner marks the exceptions with a per-tool "stays direct" flag,
-the same way owners mark `DeferrablePolicy::Never` for tool search today, so
-new tools default to going behind and nobody maintains a central list.
+Eligible operations use the configured CLI route. Client-side, turn-control,
+image-returning, execution, and owner-constrained tools retain required native
+access. `keep_visible` keeps an eligible tool on both routes in CLI mode. In
+hybrid mode eligible tools are already on both routes with native schemas
+eager; bounded `tool_search` must be explicitly enabled to defer optional
+schemas. Owner-required `DeferrablePolicy::Never` schemas remain eager.
 
 #### Relationship to tool search
 
-`tools_in_shell` replaces tool search, so an agent should not have both:
+The [native and CLI surface plan](tool-surfaces.md) implements per-operation
+routes. CLI mode supersedes generic and hosted tool-search capabilities because
+eligible operations are absent from the model's native list. Hybrid mode
+allows native search capabilities alongside the CLI route. Hybrid mode alone
+keeps native schemas eager; bounded native discovery requires
+`tool_search` configured with `bounded: true`.
 
-- **At run time `tools_in_shell` wins.** The tools it hides are not in the
-  model's tool list, so there is nothing for `tool_search` or
-  `auto_tool_search` to defer, and `tools search` inside the shell takes over
-  discovery with the same ranking. When both capabilities are on, tool search
-  is skipped for the agent rather than run over the few direct tools. Deferred
-  MCP placeholders (`mcp_<server>`) are hidden too and appear in the shell as
-  `(not loaded)` sources (D6).
+`tools_in_shell` in CLI mode supersedes tool search; an agent should not have
+both unless it uses hybrid mode:
+
+- **In CLI mode, `tools_in_shell` wins.** Eligible tools are absent from the
+  model's native list, and `tools search` provides CLI discovery. In hybrid
+  mode, an explicitly configured bounded `tool_search` can reveal optional
+  native schemas while shell search discovers the same authorized registry.
+  Without it, native schemas stay eager. Deferred MCP placeholders
+  (`mcp_<server>`) are represented in the shell as `(not loaded)` sources (D6).
+
 - **The agent checks report it.** A built-in deterministic rule in
   [Agent Checks](../evaluation/agent-checks.md), `capabilities.superseded`,
   flags an agent that has `tools_in_shell` together with a tool search
@@ -151,20 +168,26 @@ workspace and their path printed; binary data never goes to stdout.
 `tools --help` lists sources, one line each. `tools <source> --help` lists its
 tools. `tools <source> <tool> --help` prints a compact signature
 (`get-pull({ number: integer, repo?: string })`), the description and the full
-input schema. `tools search <words>` reuses the ranking of the
-[`tool_search`](tool-search.md) tool and prints each match as a runnable line.
+input schema. `tools search <words>` uses the same server-aware index as bounded
+native [`tool_search`](tool-search.md). Operation matches print runnable
+commands; server-description-only matches are labeled as server refinements,
+not operation matches, and point to `tools <server> --help`. Legacy native
+search retains its existing matcher.
 Names: an MCP tool `mcp_<server>__<tool>` is `tools <server> <tool>`; every
 other tool is a top-level command (`tools web-fetch`), because registry tools
 carry no capability attribution to group them by; underscores become hyphens.
-`tools search` ranks name hits over description hits within the shell's own
-catalog rather than calling the `tool_search` tool, which tool search's
-removal (D1) leaves absent.
+`tools search` ranks the shell's current authorized catalog rather than calling
+the `tool_search` tool. In CLI mode the generic search tool is superseded; in
+hybrid mode both routes share the bounded index.
 
 ### D5. Every call is an ordinary tool call
 
 Each command runs its tool through `ToolContext::nested_tool_policy`, as Lua
 code mode and `spawn_background` do: pre-tool hooks, the schema check and
-post-tool hooks run per call. A nested call is not emitted as its own
+post-tool hooks run per call. The shell catalog, search, help and invocation
+are restricted to the current turn's visible-tool allowlist. A loaded MCP
+child retains the scope of its visible server placeholder, and the nested
+policy checks scope again before dispatch. A nested call is not emitted as its own
 `tool.started`/`tool.completed`: those events materialize as conversation
 messages, and a call the model never made would break the tool-call pairing
 the conversation history relies on. Each call is recorded instead as one
@@ -181,19 +204,29 @@ MCP tools are already registry proxies, so every server is a source:
 |---|---|
 | Agent-attached and catalog servers | Listed from turn start; calls use the attachment's `actsAs`. |
 | A person's own servers ([user MCP servers](../integrations/user-mcp-servers.md)) | Same, acting as that person; a missing grant is an error naming the server, and the usual Connect card applies. |
-| Deferred servers (load on demand) | Listed as `(not loaded)`. The first call or search hit **loads it inside the same shell call** through the identity-scoped discovery cache and writes the usual `mcp_reveal:<server>` record. Today a reveal only takes effect on the next step; the builtin must not wait for that. |
+| Deferred servers (load on demand) | Visible placeholders are listed as `(not loaded)`. Naming one directly loads it in the same shell call. One `tools search` may load up to eight deferred servers whose names/descriptions match; any remaining placeholders stay pending for a later query. Successful loads write the usual `mcp_reveal:<server>` record. |
 | Added mid-session (ARD, chat-only servers) | Present from the next shell call, because the builtin is rebuilt from the registry each time. |
 
-The one new host piece is loading a deferred server's tools on demand from
-inside a tool call: `McpToolInvoker::list_server_tools` lists one server
-through the connection and account a call would use. The turn's scope wrapper
-allows it, and calls to the listed tools, only for servers whose placeholder is
-in the turn, so loading never widens what the agent was given. The in-call
-listing is not cached; the reveal record it writes moves the server onto the
-cached discovery path from the next step. A server that needs a sign-in
-returns `connection_required` and is not revealed; a host whose invoker cannot
-list mid-call still writes the reveal and answers `unavailable` (retryable),
-so the tools arrive on the next step.
+`McpToolInvoker::list_server_tools` lists through the connection and account a
+call would use. Only placeholders in the current turn scope can be searched,
+shown in help, or loaded; calls to returned children retain that parent scope
+and are checked again at dispatch. One shell search loads at most eight matching
+deferred servers, then searches the tools returned by those loads. Unselected
+pending servers remain available to later queries. A server's tools are added
+atomically only if the resulting shell catalog stays within 10,000 tools and
+32 MiB of serialized definitions; on overflow the server remains pending and
+none of its operations become visible. Each listing is not cached by the
+in-call path; its reveal record moves that server onto the host's cached
+discovery path from the next step. A server that needs a sign-in returns
+`connection_required` and is not revealed; a host that cannot list mid-call
+still writes the reveal and answers `unavailable` (retryable), so the tools
+arrive on the next step.
+
+Loaded children retain the authorized placeholder's server name and description
+as search context. Missing or blank values fall back to its prefix and visible
+description; operation risk hints and unrelated metadata remain intact. A
+repeated description-only query therefore still identifies the loaded source
+without listing it again or treating the description as an operation match.
 
 ### D7. Approvals: most scripts never ask; a risky call stops the script
 
@@ -370,12 +403,11 @@ rollback, multi-step resumable workflows for scripts, per-app web UI, and
 publishing or copying apps between people. Storage per app is covered by
 `session_sqldb`.
 
-## Success bar
+## Qualification status
 
-- An eval slice with 50 to 300 MCP tools across several servers, where tasks
-  need two or three of them, compares an agent with `tools_in_shell` against
-  `auto_tool_search`: task success at least equal, fewer tokens and steps per
-  task, wrong-tool calls reported. The capability stays opt-in until it passes.
+- The canonical Rust/Mira synthetic qualification is complete; see
+  [Large MCP Catalogs](large-mcp-catalogs.md#canonical-rust-mira-study) for its
+  matrix and interpretation.
 - Every nested call is visible in the session events and audit log.
 - No tool is reachable through `tools` that the agent could not call directly.
 
@@ -404,14 +436,11 @@ calls, not that a 50 to 300 tool slice beats tool search.
   the shell, one-off approvals reused by a rebuilt script, and unattended script runs, alongside
   the existing `TM-BASH` coverage ([threat model](../security/threat-model.md)).
 
-## Plan
+## Implementation status
 
-1. `tools` builtin and `tools_in_shell` capability (D1 to D5), with tool search
-   skipped when both are on and the `capabilities.superseded`
-   agent check, behind a feature flag, with the eval slice.
-2. MCP on-demand loading inside a shell call (D6).
-3. Approvals from the shell (D7): per-call risk, early stop from analysis,
-   stop-and-report at run time, then hint ratings from the decision service.
-4. Saved scripts (D8).
-5. Trigger-run of saved scripts (D9).
-6. If the eval favors it, remove Lua code mode.
+1. The shell builtin, capability routing, MCP loading, approval handling,
+   saved scripts, and trigger execution described above are implemented.
+2. The Rust/Mira synthetic qualification is complete; see
+   [Large MCP Catalogs](large-mcp-catalogs.md#canonical-rust-mira-study). The
+   prior Python prototype is historical evidence only.
+3. Removing Lua code mode remains a separate decision based on evaluation.
