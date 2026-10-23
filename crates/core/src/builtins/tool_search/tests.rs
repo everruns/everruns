@@ -39,6 +39,7 @@ fn hook(threshold: usize) -> DeferSchemaHook {
         never_defer: Arc::new(HashSet::new()),
         disclosure: ToolDisclosure::default(),
         reveal: Reveal::Redefine,
+        limits: None,
     }
 }
 

@@ -4,6 +4,9 @@ use super::*;
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::{MessageFilter, MessageFilterProvider, MessageQuery};
 use crate::runtime::runtime_agent::RuntimeAgent;
+use crate::runtime::tool_surface::{
+    NativeToolDisclosure, NativeToolDisclosurePolicy, ToolSurface, ToolSurfaceRoute,
+};
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::typed_id::SessionId;
 use std::sync::Arc;
@@ -924,5 +927,82 @@ async fn superseded_capability_contributes_nothing() {
     assert_eq!(
         superseded_capability_ids(&configs, &registry),
         std::collections::HashSet::from(["loser_cap".to_string()])
+    );
+}
+
+#[tokio::test]
+async fn collector_seeds_native_routes_before_bounded_disclosure_policy() {
+    struct NativeTools;
+    impl Capability for NativeTools {
+        fn id(&self) -> &str {
+            "native_tools"
+        }
+        fn name(&self) -> &str {
+            "Native tools"
+        }
+        fn description(&self) -> &str {
+            "Test native tool owner."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![
+                Box::new(FixtureTool("ordinary_data_operation")),
+                Box::new(FixtureTool("request_approval")),
+            ]
+        }
+    }
+
+    struct BoundedSearchPolicy;
+    impl Capability for BoundedSearchPolicy {
+        fn id(&self) -> &str {
+            "bounded_search_policy"
+        }
+        fn name(&self) -> &str {
+            "Bounded search policy"
+        }
+        fn description(&self) -> &str {
+            "Test generic native disclosure contribution."
+        }
+        fn native_tool_disclosure_policy_with_config(
+            &self,
+            _config: &serde_json::Value,
+            _definitions: &[ToolDefinition],
+        ) -> Option<NativeToolDisclosurePolicy> {
+            Some(NativeToolDisclosurePolicy {
+                default: NativeToolDisclosure::Deferred,
+                overrides: Default::default(),
+            })
+        }
+    }
+
+    let mut registry = CapabilityRegistry::new();
+    registry.register(NativeTools);
+    registry.register(BoundedSearchPolicy);
+    let configs = vec![
+        AgentCapabilityConfig::with_config(
+            CapabilityId::new("native_tools"),
+            serde_json::json!({}),
+        ),
+        AgentCapabilityConfig::with_config(
+            CapabilityId::new("bounded_search_policy"),
+            serde_json::json!({}),
+        ),
+    ];
+
+    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    assert_eq!(
+        collected
+            .tool_surface_plan
+            .route_for("ordinary_data_operation"),
+        Some(ToolSurfaceRoute {
+            surface: ToolSurface::Native,
+            native_disclosure: NativeToolDisclosure::Deferred,
+        })
+    );
+    assert_eq!(
+        collected.tool_surface_plan.route_for("request_approval"),
+        Some(ToolSurfaceRoute {
+            surface: ToolSurface::Native,
+            native_disclosure: NativeToolDisclosure::Eager,
+        })
     );
 }

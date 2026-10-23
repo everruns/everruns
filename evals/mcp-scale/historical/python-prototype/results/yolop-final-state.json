@@ -1,0 +1,60 @@
+{
+  "calls": 13,
+  "deployments": {
+    "dep-bill-prd-9911": {
+      "deployment_id": "dep-bill-prd-9911",
+      "environment": "prod",
+      "health_checks": {
+        "desired_replicas": 6,
+        "http_5xx_rate": 0.001,
+        "ready_replicas": 6
+      },
+      "previous_version": "3.8.0",
+      "rollback_eligible": false,
+      "service": "billing-api",
+      "status": "healthy",
+      "version": "3.8.1"
+    },
+    "dep-bill-stg-2042": {
+      "deployment_id": "dep-bill-stg-2042",
+      "environment": "staging",
+      "health_checks": {
+        "desired_replicas": 3,
+        "http_5xx_rate": 0.002,
+        "ready_replicas": 3
+      },
+      "previous_version": "3.8.1",
+      "rollback_eligible": false,
+      "rollback_reason": "Failed staging deployment 3.8.1 produced HTTP 500 from missing account_region column and ledger timeout after schema v4 migration; restore recorded previous version 3.8.0.",
+      "service": "billing-api",
+      "status": "rolled_back",
+      "version": "3.8.0"
+    }
+  },
+  "incidents": {
+    "INC-427": {
+      "environment": "staging",
+      "incident_id": "INC-427",
+      "linked_ticket": "OPS-8421",
+      "owner": "Ava Li",
+      "service": "billing-api",
+      "severity": "SEV-2",
+      "status": "investigating",
+      "summary": "Elevated 5xx responses after staging release 3.8.1.",
+      "timeline": [
+        "09:14 UTC: alert triggered after dep-bill-stg-2042."
+      ]
+    }
+  },
+  "ticket_sequence": 9000,
+  "tickets": {
+    "OPS-8421": {
+      "comments": [],
+      "linked_incident": "INC-427",
+      "owner": "Ava Li",
+      "status": "in_progress",
+      "ticket_id": "OPS-8421",
+      "title": "Investigate billing-api staging 5xx after 3.8.1"
+    }
+  }
+}

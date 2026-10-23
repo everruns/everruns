@@ -298,6 +298,10 @@ impl From<&str> for McpServerTransportType {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(try_from = "ScopedMcpServerWire", into = "ScopedMcpServerWire")]
 pub struct ScopedMcpServer {
+    /// Searchable server context supplied by its attachment or catalog. It is
+    /// metadata, not an instruction or a credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// MCP transport type. Only remote HTTP is supported today.
     #[serde(
         default = "default_scoped_transport_type",
@@ -380,6 +384,8 @@ pub struct ScopedMcpServer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ScopedMcpServerWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     #[serde(
         rename = "type",
         alias = "transport_type",
@@ -435,6 +441,13 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
     type Error = String;
 
     fn try_from(wire: ScopedMcpServerWire) -> Result<Self, Self::Error> {
+        if wire
+            .description
+            .as_ref()
+            .is_some_and(|description| description.len() > 4096)
+        {
+            return Err("MCP server description exceeds 4096 UTF-8 bytes".into());
+        }
         if wire.preset.is_some() && wire.transport_type.is_some() {
             return Err(
                 "MCP server preset reference cannot be combined with inline field 'type'"
@@ -442,6 +455,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             );
         }
         Ok(Self {
+            description: wire.description,
             transport_type: wire
                 .transport_type
                 .unwrap_or_else(default_scoped_transport_type),
@@ -467,6 +481,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
 impl From<ScopedMcpServer> for ScopedMcpServerWire {
     fn from(server: ScopedMcpServer) -> Self {
         Self {
+            description: server.description,
             transport_type: server.preset.is_none().then_some(server.transport_type),
             url: server.url,
             headers: server.headers,
@@ -490,6 +505,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
 impl Default for ScopedMcpServer {
     fn default() -> Self {
         Self {
+            description: None,
             transport_type: McpServerTransportType::Http,
             url: String::new(),
             headers: HashMap::new(),

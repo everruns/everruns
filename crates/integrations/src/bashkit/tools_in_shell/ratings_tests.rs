@@ -143,6 +143,7 @@ fn ratings_off_context(
     let mut registry = ToolRegistry::new();
     registry.register(EchoTool::named(name));
     registry.register(ToolsMarkerTool);
+    install_cli_surface(&mut context, &registry);
     context.tool_registry = Some(Arc::new(registry));
     context.decisions = Some(ratings.clone());
     let context = context.with_extension(Arc::new(UnlabeledToolRatingsOff));

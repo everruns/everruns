@@ -109,3 +109,5 @@ deny = []
 # Ensure all dependencies come from crates.io or known Git repos
 unknown-registry = "deny"
 unknown-git = "deny"
+# Exact source revisions are pinned in the root and standalone eval manifests.
+allow-git = ["https://github.com/everruns/bashkit"]

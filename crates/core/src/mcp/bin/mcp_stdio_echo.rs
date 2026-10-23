@@ -35,17 +35,25 @@ fn main() {
                 "serverInfo": { "name": "mcp_stdio_echo", "version": "0" }
             })),
             "notifications/initialized" => None,
-            "tools/list" => Some(json!({
-                "tools": [{
-                    "name": "echo",
-                    "description": "Echo the provided message back",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": { "message": { "type": "string" } },
-                        "required": ["message"]
-                    }
-                }]
-            })),
+            "tools/list" => Some(match params.get("cursor").and_then(Value::as_str) {
+                None => json!({
+                    "tools": [{
+                        "name": "echo",
+                        "description": "Echo the provided message back",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": { "message": { "type": "string" } },
+                            "required": ["message"]
+                        }
+                    }],
+                    "nextCursor": "tools-page-2"
+                }),
+                Some(_) => json!({"tools": [{
+                    "name": "echo_length",
+                    "description": "Return the length of a message",
+                    "inputSchema": {"type":"object"}
+                }]}),
+            }),
             "tools/call" => {
                 let message = request
                     .get("params")

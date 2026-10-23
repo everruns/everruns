@@ -168,12 +168,27 @@ fn context(policy: Option<Arc<Policy>>, marker: bool) -> ToolContext {
     if marker {
         registry.register(ToolsMarkerTool);
     }
+    install_cli_surface(&mut context, &registry);
     context.tool_registry = Some(Arc::new(registry));
     context.tool_call_id = Some("call_outer".to_string());
     if let Some(policy) = policy {
         context = context.with_nested_tool_policy(policy);
     }
     context
+}
+
+fn install_cli_surface(context: &mut ToolContext, registry: &ToolRegistry) {
+    let definitions: Vec<_> = registry
+        .tool_names()
+        .into_iter()
+        .filter_map(|name| registry.get(name))
+        .map(|tool| tool.to_definition())
+        .collect();
+    let routes = ToolsInShellCapability.tool_surface_routes_with_config(&json!({}), &definitions);
+    let mut plan =
+        everruns_contracts::runtime::tool_surface::ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli);
+    plan.extend(routes);
+    context.tool_surface_plan = plan;
 }
 
 async fn run(script: &str, context: &ToolContext) -> Value {
@@ -328,9 +343,10 @@ fn definition(name: &str, policy: ToolPolicy, hints: ToolHints) -> ToolDefinitio
 }
 
 #[test]
-fn hook_hides_reachable_tools_and_names_them_on_bash() {
+fn hook_hides_cli_tools_without_rewriting_bash_description() {
     let hook = HideBehindToolsHook {
         keep_visible: HashSet::from(["kept".to_string()]),
+        mode: ToolSurfaceMode::Cli,
     };
     let defs = vec![
         definition("bash", ToolPolicy::Auto, ToolHints::default()),
@@ -370,9 +386,164 @@ fn hook_hides_reachable_tools_and_names_them_on_bash() {
     // call from a script, and one it holds stops the script.
     assert_eq!(names, ["bash", "kept", "spawn_agent", "client_tool"]);
     let bash = kept[0].description();
-    assert!(
-        bash.contains("github (2), approve-me, rm-rf, web-fetch"),
-        "{bash}"
+    assert_eq!(bash, "bash tool");
+    assert!(goes_behind_tools(
+        "write_todos",
+        false,
+        &ToolPolicy::Auto,
+        &ToolHints::default(),
+    ));
+}
+
+#[test]
+fn hybrid_keeps_native_definitions_and_bash_schema_stable_as_catalog_changes() {
+    let hook = HideBehindToolsHook {
+        keep_visible: HashSet::new(),
+        mode: ToolSurfaceMode::Hybrid,
+    };
+    let first = hook.transform(vec![
+        definition("bash", ToolPolicy::Auto, ToolHints::default()),
+        definition("tools", ToolPolicy::Auto, ToolHints::default()),
+        definition("mcp_docs__search", ToolPolicy::Auto, ToolHints::default()),
+    ]);
+    let second = hook.transform(vec![
+        definition("bash", ToolPolicy::Auto, ToolHints::default()),
+        definition("tools", ToolPolicy::Auto, ToolHints::default()),
+        definition("mcp_docs__search", ToolPolicy::Auto, ToolHints::default()),
+        definition("mcp_docs__get_page", ToolPolicy::Auto, ToolHints::default()),
+    ]);
+    assert_eq!(first[0].description(), second[0].description());
+    assert_eq!(first[0].parameters(), second[0].parameters());
+    assert_eq!(
+        first.iter().map(ToolDefinition::name).collect::<Vec<_>>(),
+        ["bash", "mcp_docs__search"]
+    );
+    assert_eq!(
+        second.iter().map(ToolDefinition::name).collect::<Vec<_>>(),
+        ["bash", "mcp_docs__search", "mcp_docs__get_page"]
+    );
+}
+
+#[test]
+fn resolved_routes_separate_cli_eligibility_from_native_schema_loading() {
+    let capability = ToolsInShellCapability;
+    let mut eager = definition("write_todos", ToolPolicy::Auto, ToolHints::default());
+    if let ToolDefinition::Builtin(tool) = &mut eager {
+        tool.deferrable = DeferrablePolicy::Never;
+    }
+    let automatic = definition("search_docs", ToolPolicy::Auto, ToolHints::default());
+    let direct = definition(
+        "computer",
+        ToolPolicy::Auto,
+        ToolHints::default().with_stays_direct(true),
+    );
+    let routes = capability
+        .tool_surface_routes_with_config(&json!({"mode": "hybrid"}), &[eager, automatic, direct]);
+    assert_eq!(
+        routes["write_todos"],
+        ToolSurfaceRoute {
+            surface: ToolSurface::Both,
+            native_disclosure: NativeToolDisclosure::Eager,
+        }
+    );
+    assert_eq!(
+        routes["search_docs"],
+        ToolSurfaceRoute {
+            surface: ToolSurface::Both,
+            native_disclosure: NativeToolDisclosure::Eager,
+        }
+    );
+    assert_eq!(routes["computer"].surface, ToolSurface::Native);
+
+    let visible = capability.tool_surface_routes_with_config(
+        &json!({"mode": "cli", "keep_visible": ["search_docs"]}),
+        &[definition(
+            "search_docs",
+            ToolPolicy::Auto,
+            ToolHints::default(),
+        )],
+    );
+    assert_eq!(visible["search_docs"].surface, ToolSurface::Both);
+}
+
+#[test]
+fn bounded_native_disclosure_policy_respects_never_defer_and_native_only_tools() {
+    let mut plan = everruns_contracts::runtime::tool_surface::ToolSurfacePlan::for_mode(
+        ToolSurfaceMode::Native,
+    );
+    plan.set_native_disclosure_policy(
+        everruns_contracts::runtime::tool_surface::NativeToolDisclosurePolicy {
+            default: NativeToolDisclosure::Deferred,
+            overrides: [("pinned_operation".to_string(), NativeToolDisclosure::Eager)].into(),
+        },
+    );
+    let mut never_defer = definition("pinned_operation", ToolPolicy::Auto, ToolHints::default());
+    if let ToolDefinition::Builtin(tool) = &mut never_defer {
+        tool.deferrable = DeferrablePolicy::Never;
+    }
+    let definitions = [
+        definition("ordinary_operation", ToolPolicy::Auto, ToolHints::default()),
+        never_defer,
+        definition("ask_user", ToolPolicy::Auto, ToolHints::default()),
+        definition("request_approval", ToolPolicy::Auto, ToolHints::default()),
+        definition("generate_image", ToolPolicy::Auto, ToolHints::default()),
+    ];
+    plan.extend_definitions(&definitions, |_| false);
+
+    assert_eq!(
+        plan.route_for("ordinary_operation")
+            .unwrap()
+            .native_disclosure,
+        NativeToolDisclosure::Deferred
+    );
+    assert_eq!(
+        plan.route_for("pinned_operation")
+            .unwrap()
+            .native_disclosure,
+        NativeToolDisclosure::Eager
+    );
+    assert_eq!(
+        plan.route_for("generate_image").unwrap().native_disclosure,
+        NativeToolDisclosure::Eager
+    );
+    assert_eq!(
+        plan.route_for("ask_user").unwrap().native_disclosure,
+        NativeToolDisclosure::Eager
+    );
+    assert_eq!(
+        plan.route_for("request_approval")
+            .unwrap()
+            .native_disclosure,
+        NativeToolDisclosure::Eager
+    );
+
+    let hybrid = everruns_contracts::runtime::tool_surface::ToolSurfacePlan::for_mode(
+        ToolSurfaceMode::Hybrid,
+    );
+    let late = definition("late_operation", ToolPolicy::Auto, ToolHints::default());
+    assert_eq!(
+        hybrid.route_for_definition(&late, |_| true),
+        ToolSurfaceRoute {
+            surface: ToolSurface::Both,
+            native_disclosure: NativeToolDisclosure::Eager,
+        }
+    );
+
+    let mut bounded_hybrid = everruns_contracts::runtime::tool_surface::ToolSurfacePlan::for_mode(
+        ToolSurfaceMode::Hybrid,
+    );
+    bounded_hybrid.set_native_disclosure_policy(
+        everruns_contracts::runtime::tool_surface::NativeToolDisclosurePolicy {
+            default: NativeToolDisclosure::Deferred,
+            overrides: Default::default(),
+        },
+    );
+    assert_eq!(
+        bounded_hybrid.route_for_definition(&late, |_| true),
+        ToolSurfaceRoute {
+            surface: ToolSurface::Both,
+            native_disclosure: NativeToolDisclosure::Deferred,
+        }
     );
 }
 
@@ -388,12 +559,79 @@ fn hook_leaves_bash_alone_when_nothing_is_hidden() {
 }
 
 #[test]
+fn shell_catalog_fails_closed_when_a_tool_has_no_resolved_cli_route() {
+    let mut context = context(Some(Arc::new(Policy::default())), true);
+    context.tool_surface_plan = Default::default();
+    let catalog = catalog::Catalog::from_context(&context);
+    assert!(catalog.search("web fetch", 10).is_empty());
+    assert!(!catalog.root_help().contains("web-fetch"));
+}
+
+#[tokio::test]
+async fn shell_catalog_obeys_the_full_operation_scope_even_when_registry_is_a_superset() {
+    let policy = Arc::new(Policy::default());
+    let mut context = context(Some(policy.clone()), true);
+    context.visible_tool_names = Some(Arc::new(std::collections::HashSet::new()));
+
+    let catalog = catalog::Catalog::from_context(&context);
+    assert!(catalog.root_help().contains("No tools are available"));
+    assert!(catalog.search("web fetch", 10).is_empty());
+
+    let output = run("tools web-fetch", &context).await;
+    assert_eq!(error_code(&output), "unknown_command", "{output}");
+    assert!(policy.after.lock().unwrap().is_empty());
+}
+
+#[test]
+fn shell_search_loads_at_most_eight_matching_deferred_servers() {
+    use everruns_contracts::runtime::mcp_deferred::{
+        DeferredMcpServerTool, deferred_mcp_server_definition,
+    };
+
+    let (mut context, _) = crate::bashkit::tests::create_context_with_mock_store();
+    let mut registry = ToolRegistry::new();
+    for index in 0..12 {
+        let mut definition = deferred_mcp_server_definition(
+            &format!("docs{index}"),
+            Some("Product documentation server"),
+        );
+        let everruns_contracts::tool_types::ToolDefinition::Builtin(tool) = &mut definition else {
+            unreachable!()
+        };
+        tool.hints.metadata = Some(json!({"mcp_server": {
+            "name": format!("docs{index}"),
+            "description": "Product documentation server"
+        }}));
+        registry.register(DeferredMcpServerTool::new(tool.clone()));
+    }
+    install_cli_surface(&mut context, &registry);
+    context.tool_registry = Some(Arc::new(registry));
+
+    let mut catalog = catalog::Catalog::from_context(&context);
+    assert_eq!(catalog.pending_matching("product documentation").len(), 8);
+
+    let loaded = catalog.pending_source("docs0").unwrap();
+    catalog
+        .add_loaded(
+            &loaded.prefix,
+            vec![Arc::new(EchoTool::named("mcp_docs0__search_docs"))],
+        )
+        .unwrap();
+    assert!(
+        catalog
+            .pending_matching("docs11")
+            .iter()
+            .any(|pending| pending.prefix == "docs11"),
+        "remaining pending servers stay searchable after another server loads"
+    );
+}
+
+#[test]
 fn deferred_mcp_placeholders_go_behind_tools() {
     assert!(goes_behind_tools(
         "mcp_github",
         false,
         &ToolPolicy::Auto,
-        &DeferrablePolicy::Never,
         &ToolHints::default(),
     ));
 }
@@ -405,6 +643,30 @@ fn capability_contract() {
     assert!(capability.supersedes().contains(&"tool_search"));
     assert_eq!(capability.tools()[0].name(), TOOLS_COMMAND);
     assert!(capability.validate_config(&Value::Null).is_ok());
+    assert_eq!(surface_mode(&json!({})), ToolSurfaceMode::Cli);
+    assert_eq!(
+        surface_mode(&json!({"mode": "hybrid"})),
+        ToolSurfaceMode::Hybrid
+    );
+    assert!(
+        capability
+            .validate_config(&json!({"mode": "hybrid"}))
+            .is_ok()
+    );
+    assert!(
+        capability
+            .validate_config(&json!({"mode": "native"}))
+            .is_err()
+    );
+    assert!(
+        capability
+            .supersedes_with_config(&json!({"mode": "hybrid"}))
+            .is_empty()
+    );
+    assert_eq!(
+        capability.tool_surface_mode_with_config(&json!({"mode": "hybrid"})),
+        ToolSurfaceMode::Hybrid
+    );
     assert!(
         capability
             .validate_config(&json!({"keep_visible": ["a"]}))

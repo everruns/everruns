@@ -2059,7 +2059,7 @@ impl ReasonAtom {
             commentary: explicit_communication,
             tool_calls,
             has_tool_calls,
-            tool_definitions: runtime_agent.tools.clone(),
+            tool_definitions: runtime_agent.execution_tools(),
             max_iterations: runtime_agent.max_iterations,
             usage,
             output_message_id: Some(output_message_id),

@@ -1,0 +1,499 @@
+{
+  "evaluation": "mcp-scale-offline-v1",
+  "generated_at_utc": "2026-10-19T02:54:16.030973+00:00",
+  "git_revision": "07f2e7a176b709e7193295e7966515d91ea832f8",
+  "sha256": {
+    "cases.jsonl": "9e87e1ea9b69a8066c024e1f2236e1667b13e9c87f9a30bad5284abe0dfd8951",
+    "fixture/server.py": "517405f58e8bb1125e67026dbaf79e9d75c193c1cc84aa8bbbcad7999ffde5b0",
+    "retrieval.py": "ec4406cd90fa37c37fbf9145308e58afe72e11b07f3172d48ea718b09f1c8ae4",
+    "gateway.py": "8c2cf20081fb5c5000322d61b913936d3418856e57d96c7dd552542cca3d2b78"
+  },
+  "cases_file": "cases.jsonl",
+  "case_status": "fixed synthetic queries; not a held-out study",
+  "case_count": 31,
+  "metric_note": "Positive queries have one intended target, so recall@k equals target hit rate. Recall/MRR measure retrieval only; no model task success is inferred.",
+  "size_reports": [
+    {
+      "catalog_size": 50,
+      "catalog_order": "fixture deterministic SHA-256 order by tool name",
+      "serialized_schemas": {
+        "full_catalog_bytes": 26926,
+        "full_catalog_chars_div_4_estimate": 6731.5,
+        "deferred_stub_catalog_bytes": 15739,
+        "deferred_stub_chars_div_4_estimate": 3934.8,
+        "schema_reduction_percent": 41.55
+      },
+      "aliases_present": false,
+      "retrieval": {
+        "everruns_keyword": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.4074,
+          "recall_at_5": 0.6296,
+          "recall_at_8": 0.7037,
+          "mrr": 0.4994,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o02",
+              "query": "Open log record log-7701 and show its full message.",
+              "expected": "get_log_entry"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "s02",
+              "query": "What services belong to the identity platform?",
+              "expected": "list_services"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "p01",
+              "query": "Find the newest deployment for the billing staging service.",
+              "expected": "get_deployment"
+            }
+          ],
+          "latency": {
+            "p50_ms": 0.1194,
+            "p95_ms": 0.2178,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.6667,
+            "all_tools_recalled_cases": 1
+          }
+        },
+        "bm25": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.4815,
+          "recall_at_5": 0.6296,
+          "recall_at_8": 0.6667,
+          "mrr": 0.5491,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o01",
+              "query": "Find application log lines mentioning a failed payment.",
+              "expected": "search_logs"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "x02",
+              "query": "Find the billing incident and its recovery procedure.",
+              "expected": "list_incidents"
+            },
+            {
+              "id": "p01",
+              "query": "Find the newest deployment for the billing staging service.",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "p04",
+              "query": "Find log messages about a declined payment.",
+              "expected": "search_logs"
+            }
+          ],
+          "latency": {
+            "p50_ms": 0.5924,
+            "p95_ms": 0.8503,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.5556,
+            "all_tools_recalled_cases": 1
+          }
+        }
+      },
+      "constant_gateway_search_call_schema_bytes": 1246
+    },
+    {
+      "catalog_size": 600,
+      "catalog_order": "fixture deterministic SHA-256 order by tool name",
+      "serialized_schemas": {
+        "full_catalog_bytes": 329034,
+        "full_catalog_chars_div_4_estimate": 82258.5,
+        "deferred_stub_catalog_bytes": 200697,
+        "deferred_stub_chars_div_4_estimate": 50174.2,
+        "schema_reduction_percent": 39.0
+      },
+      "aliases_present": false,
+      "retrieval": {
+        "everruns_keyword": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.3704,
+          "recall_at_5": 0.4444,
+          "recall_at_8": 0.4815,
+          "mrr": 0.4136,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d02",
+              "query": "Show the active deployment for production billing.",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d03",
+              "query": "Undo the most recent rollout to the previous version.",
+              "expected": "rollback_deployment"
+            },
+            {
+              "id": "d04",
+              "query": "What deployments are available for checkout?",
+              "expected": "list_deployments"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o02",
+              "query": "Open log record log-7701 and show its full message.",
+              "expected": "get_log_entry"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "t01",
+              "query": "Look up ticket OPS-8421.",
+              "expected": "get_ticket"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "s02",
+              "query": "What services belong to the identity platform?",
+              "expected": "list_services"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "x02",
+              "query": "Find the billing incident and its recovery procedure.",
+              "expected": "list_incidents"
+            },
+            {
+              "id": "x03",
+              "query": "Check the billing deployment and compare it with recent error logs.",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "p01",
+              "query": "Find the newest deployment for the billing staging service.",
+              "expected": "get_deployment"
+            }
+          ],
+          "latency": {
+            "p50_ms": 1.4151,
+            "p95_ms": 2.3291,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.3333,
+            "all_tools_recalled_cases": 1
+          }
+        },
+        "bm25": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.4444,
+          "recall_at_5": 0.6667,
+          "recall_at_8": 0.7037,
+          "mrr": 0.5509,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o01",
+              "query": "Find application log lines mentioning a failed payment.",
+              "expected": "search_logs"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "x02",
+              "query": "Find the billing incident and its recovery procedure.",
+              "expected": "list_incidents"
+            },
+            {
+              "id": "p04",
+              "query": "Find log messages about a declined payment.",
+              "expected": "search_logs"
+            }
+          ],
+          "latency": {
+            "p50_ms": 8.6523,
+            "p95_ms": 10.617,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.5556,
+            "all_tools_recalled_cases": 1
+          }
+        }
+      },
+      "constant_gateway_search_call_schema_bytes": 1246
+    },
+    {
+      "catalog_size": 2000,
+      "catalog_order": "fixture deterministic SHA-256 order by tool name",
+      "serialized_schemas": {
+        "full_catalog_bytes": 1098149,
+        "full_catalog_chars_div_4_estimate": 274537.2,
+        "deferred_stub_catalog_bytes": 671612,
+        "deferred_stub_chars_div_4_estimate": 167903.0,
+        "schema_reduction_percent": 38.84
+      },
+      "aliases_present": false,
+      "retrieval": {
+        "everruns_keyword": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.3704,
+          "recall_at_5": 0.4444,
+          "recall_at_8": 0.4815,
+          "mrr": 0.4136,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d02",
+              "query": "Show the active deployment for production billing.",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d03",
+              "query": "Undo the most recent rollout to the previous version.",
+              "expected": "rollback_deployment"
+            },
+            {
+              "id": "d04",
+              "query": "What deployments are available for checkout?",
+              "expected": "list_deployments"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o02",
+              "query": "Open log record log-7701 and show its full message.",
+              "expected": "get_log_entry"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "t01",
+              "query": "Look up ticket OPS-8421.",
+              "expected": "get_ticket"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "s02",
+              "query": "What services belong to the identity platform?",
+              "expected": "list_services"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "x02",
+              "query": "Find the billing incident and its recovery procedure.",
+              "expected": "list_incidents"
+            },
+            {
+              "id": "x03",
+              "query": "Check the billing deployment and compare it with recent error logs.",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "p01",
+              "query": "Find the newest deployment for the billing staging service.",
+              "expected": "get_deployment"
+            }
+          ],
+          "latency": {
+            "p50_ms": 5.3431,
+            "p95_ms": 10.7734,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.3333,
+            "all_tools_recalled_cases": 1
+          }
+        },
+        "bm25": {
+          "positive_cases": 27,
+          "negative_cases": 4,
+          "recall_at_1": 0.4444,
+          "recall_at_5": 0.6667,
+          "recall_at_8": 0.7037,
+          "mrr": 0.5509,
+          "negative_false_positive_count": 4,
+          "negative_false_positive_rate": 1.0,
+          "misses": [
+            {
+              "id": "d01",
+              "query": "Which release is currently running in the billing staging environment?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "d05",
+              "query": "Has the billing service finished rolling out to staging?",
+              "expected": "get_deployment"
+            },
+            {
+              "id": "o01",
+              "query": "Find application log lines mentioning a failed payment.",
+              "expected": "search_logs"
+            },
+            {
+              "id": "o03",
+              "query": "How many checkout errors happened in the past hour?",
+              "expected": "query_metric"
+            },
+            {
+              "id": "s01",
+              "query": "Who owns billing-api?",
+              "expected": "get_service"
+            },
+            {
+              "id": "r01",
+              "query": "Find the recovery procedure for restoring billing data.",
+              "expected": "search_runbooks"
+            },
+            {
+              "id": "x02",
+              "query": "Find the billing incident and its recovery procedure.",
+              "expected": "list_incidents"
+            },
+            {
+              "id": "p04",
+              "query": "Find log messages about a declined payment.",
+              "expected": "search_logs"
+            }
+          ],
+          "latency": {
+            "p50_ms": 31.6401,
+            "p95_ms": 60.3881,
+            "samples": 155
+          },
+          "all_required_recall_at_8": {
+            "cases": 3,
+            "score": 0.5556,
+            "all_tools_recalled_cases": 1
+          }
+        }
+      },
+      "constant_gateway_search_call_schema_bytes": 1246
+    }
+  ]
+}

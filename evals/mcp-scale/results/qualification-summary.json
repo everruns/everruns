@@ -1,0 +1,2972 @@
+{
+  "cases": [
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#0",
+      "duration_ms": 16548,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 26695.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 70665,
+        "input_tokens": 26695,
+        "output_tokens": 3535,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#1",
+      "duration_ms": 11144,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 11340.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 85310,
+        "input_tokens": 11340,
+        "output_tokens": 3605,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#2",
+      "duration_ms": 8211,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 25275.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 70025,
+        "input_tokens": 25275,
+        "output_tokens": 3635,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
+      "duration_ms": 18974,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 6.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 103000.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "6 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 283560,
+        "input_tokens": 103000,
+        "output_tokens": 6060,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
+      "duration_ms": 20001,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 78500.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 600775,
+        "input_tokens": 78500,
+        "output_tokens": 6105,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
+      "duration_ms": 19425,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 137060.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 318835,
+        "input_tokens": 137060,
+        "output_tokens": 5985,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
+      "duration_ms": 15692,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 61590.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 104660,
+        "input_tokens": 61590,
+        "output_tokens": 3060,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
+      "duration_ms": 9738,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 44045.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 156990,
+        "input_tokens": 44045,
+        "output_tokens": 4405,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
+      "duration_ms": 9825,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 23295.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 142270,
+        "input_tokens": 23295,
+        "output_tokens": 2805,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#0",
+      "duration_ms": 4526,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 10200.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 18335,
+        "input_tokens": 10200,
+        "output_tokens": 1370,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#1",
+      "duration_ms": 3935,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 16440.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 12010,
+        "input_tokens": 16440,
+        "output_tokens": 1320,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=native]#2",
+      "duration_ms": 3460,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 5400.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 22815,
+        "input_tokens": 5400,
+        "output_tokens": 1175,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#0",
+      "duration_ms": 10579,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 43290.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 130185,
+        "input_tokens": 43290,
+        "output_tokens": 3370,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#1",
+      "duration_ms": 9814,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 43195.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 130185,
+        "input_tokens": 43195,
+        "output_tokens": 3015,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=cli]#2",
+      "duration_ms": 10471,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 34030.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 100105,
+        "input_tokens": 34030,
+        "output_tokens": 2665,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#0",
+      "duration_ms": 5029,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 38640.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 20330,
+        "input_tokens": 38640,
+        "output_tokens": 1030,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#1",
+      "duration_ms": 5489,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 40855.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 33770,
+        "input_tokens": 40855,
+        "output_tokens": 1135,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=1,surface=hybrid]#2",
+      "duration_ms": 5774,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 68295.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 6325,
+        "input_tokens": 68295,
+        "output_tokens": 1185,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
+      "duration_ms": 22626,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 60825.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 36895,
+        "input_tokens": 60825,
+        "output_tokens": 3720,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
+      "duration_ms": 18033,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 49995.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 45140,
+        "input_tokens": 49995,
+        "output_tokens": 3070,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#2",
+      "duration_ms": 16665,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 31240.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 66825,
+        "input_tokens": 31240,
+        "output_tokens": 4050,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#0",
+      "duration_ms": 22006,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 6.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 140090.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "6 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 244520,
+        "input_tokens": 140090,
+        "output_tokens": 6140,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#1",
+      "duration_ms": 27468,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 131005.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 468370,
+        "input_tokens": 131005,
+        "output_tokens": 8300,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#2",
+      "duration_ms": 34342,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 5.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 298175.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "5 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 515090,
+        "input_tokens": 298175,
+        "output_tokens": 8030,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#0",
+      "duration_ms": 13215,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 11190.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 155070,
+        "input_tokens": 11190,
+        "output_tokens": 3415,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#1",
+      "duration_ms": 28793,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 11415.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 155710,
+        "input_tokens": 11415,
+        "output_tokens": 3395,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#2",
+      "duration_ms": 13887,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 4.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 64070.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "4 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 86100,
+        "input_tokens": 64070,
+        "output_tokens": 3070,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#0",
+      "duration_ms": 4822,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 16340.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 12010,
+        "input_tokens": 16340,
+        "output_tokens": 1255,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#1",
+      "duration_ms": 5568,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 5055.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 23455,
+        "input_tokens": 5055,
+        "output_tokens": 1310,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=native]#2",
+      "duration_ms": 5499,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 26390.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 1845,
+        "input_tokens": 26390,
+        "output_tokens": 1215,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#0",
+      "duration_ms": 12130,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 111115.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 80905,
+        "input_tokens": 111115,
+        "output_tokens": 2900,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#1",
+      "duration_ms": 12417,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 74075.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 107785,
+        "input_tokens": 74075,
+        "output_tokens": 3505,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]#2",
+      "duration_ms": 13012,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 65440.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 105225,
+        "input_tokens": 65440,
+        "output_tokens": 2940,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#0",
+      "duration_ms": 5160,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 30625.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 43935,
+        "input_tokens": 30625,
+        "output_tokens": 1180,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#1",
+      "duration_ms": 6581,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 47800.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 26730,
+        "input_tokens": 47800,
+        "output_tokens": 1190,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=hybrid]#2",
+      "duration_ms": 5732,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 11890.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 47135,
+        "input_tokens": 11890,
+        "output_tokens": 1105,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#0",
+      "duration_ms": 6960,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 18905.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18905,
+        "output_tokens": 1370,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#1",
+      "duration_ms": 4349,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 18575.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18575,
+        "output_tokens": 1180,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#2",
+      "duration_ms": 16819,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 18610.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18610,
+        "output_tokens": 1160,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#0",
+      "duration_ms": 12592,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 28220.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 100745,
+        "input_tokens": 28220,
+        "output_tokens": 3000,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#1",
+      "duration_ms": 14131,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 12025.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 92425,
+        "input_tokens": 12025,
+        "output_tokens": 2100,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#2",
+      "duration_ms": 7923,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 12485.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 91145,
+        "input_tokens": 12485,
+        "output_tokens": 3035,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#0",
+      "duration_ms": 6383,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 33500.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 35050,
+        "input_tokens": 33500,
+        "output_tokens": 1170,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#1",
+      "duration_ms": 4484,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 5965.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 62495,
+        "input_tokens": 5965,
+        "output_tokens": 1125,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#2",
+      "duration_ms": 5976,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 6120.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 62495,
+        "input_tokens": 6120,
+        "output_tokens": 1225,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=native]#0",
+      "duration_ms": 22844,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 64220.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 89075,
+        "input_tokens": 64220,
+        "output_tokens": 8395,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=native]#1",
+      "duration_ms": 6452,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 20810.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 12725,
+        "input_tokens": 20810,
+        "output_tokens": 1355,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=native]#2",
+      "duration_ms": 7445,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 18975.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18975,
+        "output_tokens": 1345,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=cli]#0",
+      "duration_ms": 9019,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 10080.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 87945,
+        "input_tokens": 10080,
+        "output_tokens": 2175,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=cli]#1",
+      "duration_ms": 9384,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 31305.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 65620,
+        "input_tokens": 31305,
+        "output_tokens": 2085,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=cli]#2",
+      "duration_ms": 10743,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 13960.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 94345,
+        "input_tokens": 13960,
+        "output_tokens": 2730,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=hybrid]#0",
+      "duration_ms": 5119,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 16115.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 52255,
+        "input_tokens": 16115,
+        "output_tokens": 1020,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=hybrid]#1",
+      "duration_ms": 20197,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 30785.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 37610,
+        "input_tokens": 30785,
+        "output_tokens": 1060,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=10,surface=hybrid]#2",
+      "duration_ms": 30488,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 109325.0
+      },
+      "passed": true,
+      "qualification": true,
+      "raw_error_kind": null,
+      "role": "qualification",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 367175,
+        "input_tokens": 109325,
+        "output_tokens": 8795,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#0",
+      "duration_ms": 5170,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 18695.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18695,
+        "output_tokens": 1265,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#1",
+      "duration_ms": 4235,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 18930.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 14570,
+        "input_tokens": 18930,
+        "output_tokens": 1390,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=native]#2",
+      "duration_ms": 3982,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 31520.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 1845,
+        "input_tokens": 31520,
+        "output_tokens": 1300,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#0",
+      "duration_ms": 7803,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 21870.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 51615,
+        "input_tokens": 21870,
+        "output_tokens": 1870,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#1",
+      "duration_ms": 543,
+      "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+      "error_kind": "Infra",
+      "metrics": {
+        "mcp.calls": 0.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 0.0
+      },
+      "passed": false,
+      "qualification": false,
+      "raw_error_kind": "Subject",
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": false,
+          "reason": "error: The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+          "value": 0.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": false,
+          "reason": "no MCP operation completion recorded in Framework events",
+          "value": 0.0
+        },
+        {
+          "name": "state_verified",
+          "passed": false,
+          "reason": "Framework turn failed before state evidence was collected",
+          "value": 0.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": null,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=cli]#2",
+      "duration_ms": 3626,
+      "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+      "error_kind": "Infra",
+      "metrics": {
+        "mcp.calls": 0.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 8931.0
+      },
+      "passed": false,
+      "qualification": false,
+      "raw_error_kind": "Subject",
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": false,
+          "reason": "error: The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+          "value": 0.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": false,
+          "reason": "no MCP operation completion recorded in Framework events",
+          "value": 0.0
+        },
+        {
+          "name": "state_verified",
+          "passed": false,
+          "reason": "Framework turn failed before state evidence was collected",
+          "value": 0.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": null,
+        "input_tokens": 8931,
+        "output_tokens": 306,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#0",
+      "duration_ms": 5005,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 43235.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 25450,
+        "input_tokens": 43235,
+        "output_tokens": 1275,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#1",
+      "duration_ms": 6509,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 58340.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 10165,
+        "input_tokens": 58340,
+        "output_tokens": 1170,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/server-description@openrouter/meta/muse-spark-1.3-contributor[catalog_size=600,servers=10,surface=hybrid]#2",
+      "duration_ms": 2682,
+      "error": "The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+      "error_kind": "Infra",
+      "metrics": {
+        "mcp.calls": 0.0,
+        "mcp.catalog_tools": 600.0,
+        "mcp.input_tokens": 10668.0
+      },
+      "passed": false,
+      "qualification": false,
+      "raw_error_kind": "Subject",
+      "role": "concurrency-3-provider-availability-attempt",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": false,
+          "reason": "error: The model `meta/muse-spark-1.3-contributor` is not available. It may have been removed, renamed, or your API key may not have access to it. Please select a different model.",
+          "value": 0.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": false,
+          "reason": "no MCP operation completion recorded in Framework events",
+          "value": 0.0
+        },
+        {
+          "name": "state_verified",
+          "passed": false,
+          "reason": "Framework turn failed before state evidence was collected",
+          "value": 0.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": null,
+        "input_tokens": 10668,
+        "output_tokens": 261,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/staged-rollback@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 24228,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 7.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 83030.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "post-fix-smoke",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "7 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 208680,
+        "input_tokens": 83030,
+        "output_tokens": 6805,
+        "reported_cost_usd": 0.0
+      }
+    },
+    {
+      "case": "mcp_scale/readonly-ticket@openrouter/meta/muse-spark-1.3-contributor[catalog_size=2000,servers=1,surface=cli]",
+      "duration_ms": 12087,
+      "error": null,
+      "error_kind": null,
+      "metrics": {
+        "mcp.calls": 1.0,
+        "mcp.catalog_tools": 2000.0,
+        "mcp.input_tokens": 38615.0
+      },
+      "passed": true,
+      "qualification": false,
+      "raw_error_kind": null,
+      "role": "post-fix-smoke",
+      "scores": [
+        {
+          "name": "succeeded",
+          "passed": true,
+          "reason": "no error",
+          "value": 1.0
+        },
+        {
+          "name": "tool_evidence",
+          "passed": true,
+          "reason": "1 MCP operation call(s) in Framework events",
+          "value": 1.0
+        },
+        {
+          "name": "state_verified",
+          "passed": true,
+          "reason": "fixture operation results establish the requested state",
+          "value": 1.0
+        }
+      ],
+      "usage": {
+        "actual_cost_status": "unknown; provider-reported zero is not a billing measurement",
+        "cache_read_tokens": 165310,
+        "input_tokens": 38615,
+        "output_tokens": 3405,
+        "reported_cost_usd": 0.0
+      }
+    }
+  ],
+  "provenance": {
+    "baseline_commit": "9a68f988f72cae2b20ad00d44ac529d10637ce40",
+    "dirty_status": [
+      " M crates/contracts/src/runtime/capabilities/collect.rs",
+      " M crates/contracts/src/runtime/capabilities/mod.rs",
+      " M crates/contracts/src/runtime/capabilities/tests_collect_tests.rs",
+      " M crates/contracts/src/runtime/mcp_server.rs",
+      " M crates/contracts/src/runtime/mcp_server_tests.rs",
+      " M crates/contracts/src/runtime/mod.rs",
+      " M crates/contracts/src/runtime/runtime_agent.rs",
+      " M crates/contracts/src/runtime/tool_context.rs",
+      " M crates/contracts/src/runtime/tools/mod.rs",
+      " M crates/core/src/builtins/tool_search.rs",
+      " M crates/core/src/builtins/tool_search/tests.rs",
+      " M crates/core/src/engine/execution/act.rs",
+      " M crates/core/src/engine/execution/act_client_policy.rs",
+      " M crates/core/src/engine/execution/reason.rs",
+      " M crates/core/src/engine/execution/reason/tool_changes.rs",
+      " M crates/core/src/host/host.rs",
+      " M crates/core/src/host/host/execution_capabilities.rs",
+      " M crates/core/src/host/mcp.rs",
+      " M crates/core/src/host/mcp_cache.rs",
+      " M crates/core/src/lib.rs",
+      " M crates/core/src/mcp/bin/mcp_stdio_echo.rs",
+      " M crates/core/src/mcp/capability.rs",
+      " M crates/core/src/mcp/http.rs",
+      " M crates/core/src/mcp/mod.rs",
+      " M crates/core/src/mcp/stdio.rs",
+      " M crates/core/src/runtime_context.rs",
+      " M crates/core/tests/consolidated/mcp/http_transport.rs",
+      " M crates/core/tests/consolidated/mcp/protocol_negotiation.rs",
+      " M crates/core/tests/consolidated/mcp/stdio_transport.rs",
+      " M crates/everruns/src/capability.rs",
+      " M crates/everruns/src/mcp.rs",
+      " M crates/everruns/tests/host/main.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/builtin.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/catalog.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/deferred_tests.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/mod.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/ratings_tests.rs",
+      " M crates/integrations/src/bashkit/tools_in_shell/tests.rs",
+      " M crates/integrations/src/lua/code_mode.rs",
+      " M crates/integrations/src/lua/mod.rs",
+      " M crates/integrations/src/lua/nested_tool.rs",
+      " M crates/integrations/src/lua/nested_tool_tests.rs",
+      " M docs/capabilities/tool-search.md",
+      " M docs/capabilities/tools-in-shell.md",
+      " M docs/features/mcp.md",
+      " M knowledge/execution/capabilities.md",
+      " M knowledge/execution/index.md",
+      " M knowledge/execution/lua-execution.md",
+      " M knowledge/execution/tool-search.md",
+      " M knowledge/execution/tools-in-shell.md",
+      " M knowledge/log.md",
+      " M knowledge/test-cases/agents/index.md",
+      "?? .github/workflows/mcp-scale-evals.yml",
+      "?? crates/contracts/src/runtime/tool_catalog.rs",
+      "?? crates/contracts/src/runtime/tool_surface.rs",
+      "?? crates/core/src/builtins/tool_search_bounded_tests.rs",
+      "?? crates/core/src/mcp/discovery.rs",
+      "?? crates/everruns/tests/host/mcp_catalog_lifecycle.rs",
+      "?? crates/everruns/tests/host/tool_catalog_lifecycle.rs",
+      "?? docs/changelog/2026-10-19-large-mcp-catalogs/",
+      "?? docs/features/large-mcp-catalogs.md",
+      "?? evals/mcp-scale/",
+      "?? knowledge/execution/large-mcp-catalogs.md",
+      "?? knowledge/execution/tool-surfaces.md",
+      "?? knowledge/test-cases/agents/large_mcp_catalogs/"
+    ],
+    "dirty_status_entries": 65,
+    "eval_source_sha256": {
+      ".github/workflows/mcp-scale-evals.yml": "90610dcb4d83ad1e8cbb85419e40ab002f96dcd7273366089594fdff98a76774",
+      "evals/mcp-scale/Cargo.lock": "16ff801cff09811a32013dbdc4a96599d2f4c68b030b95c04d788d50c25f18b0",
+      "evals/mcp-scale/Cargo.toml": "03d4dff6f611a60b225ad61958c0b01bceef369653d7adaf8fcb9b8ce4105d92",
+      "evals/mcp-scale/dataset.jsonl": "cbf73b75b068785e04ae01075e2854d7b7d87d909736e85e18586affd2635a4c",
+      "evals/mcp-scale/src/fixture.rs": "cf636f45cf3e5196b15699b393a247ff9d917f1a6a946f4d6f4616086a7c86bd",
+      "evals/mcp-scale/src/main.rs": "bfbc5086d071cd094452ba3becfa974d3243df35473025b7587ebd8cdb72851b",
+      "evals/mcp-scale/src/scorers.rs": "682f5cd658edb7e9dcc4725f0dbd1aeb59949bcff03f353e2e62d0ff9beea31f",
+      "evals/mcp-scale/src/stress.rs": "c255252ed8e3ceb9d6969c40650ec4afd2060cc2fc5297de87039c4d9c96fd31",
+      "evals/mcp-scale/src/subject.rs": "50f39fea6ad850f03ed6bdfccd587ab6368e10c2c1d850098b0844b3098ca437"
+    },
+    "host": "Linux x86_64",
+    "offline_stress_report": {
+      "bytes": 61408,
+      "measurements": "synthetic local ToolSearchIndex build/search only; no provider/cache-refresh measurements",
+      "path": "results/tool-search-index-stress.json",
+      "sha256": "53998a9858c52b4a054809c2b5eb7acee85906af847fd4a50c04f824fc7a26fa"
+    },
+    "post_fix_runtime_binary_bytes": 273352728,
+    "post_fix_runtime_binary_sha256": "35692cdb51a546174d359111ee975c2c6e4f216874bdb77bee150159bf0188cc",
+    "qualification_runtime_note": "The 54 qualification trials used a binary built before the final CLI restrictive-hook scope and aggregate/deferred-server bound fixes. That binary was overwritten by the final rebuild, and no matching pre-fix binary or full source hash snapshot was retained. The post-fix smoke used the rebuilt final binary.",
+    "report_format": "full Mira JSONL transcripts compressed with deterministic gzip (mtime 0); hashes below cover compressed bytes",
+    "runtime_files_hashed": 36,
+    "runtime_source_sha256": {
+      "crates/contracts/src/runtime/capabilities/collect.rs": "f4f3b2081cb1a79ae30de94a0ee8b43ef177f590e0f6136f91b02dce4f96f983",
+      "crates/contracts/src/runtime/capabilities/mod.rs": "d4af4a2fd560f02ad0a93e934745d38df5f4e4e95350cc36bbe2e995d66dc118",
+      "crates/contracts/src/runtime/mcp_server.rs": "6d3e7929d11e4676bbb86d97678ac98a680b298a69b2a6087d5f8bf302295607",
+      "crates/contracts/src/runtime/mod.rs": "15c3b91527727013f9367b77ada602cde72968ad4f3ea82c957989052719693a",
+      "crates/contracts/src/runtime/runtime_agent.rs": "29bd2993fc7d02393585ee83bebddf46fe5686a032515c6d7fc4227a4ab3b5ab",
+      "crates/contracts/src/runtime/tool_catalog.rs": "5e02dab741ee63f5fbd1120bad2be667b25528f7c33d36177d0b2c77eb6050a7",
+      "crates/contracts/src/runtime/tool_context.rs": "0841a208d9dba8caf983d0e2f82e88eaecd95f1d75cc982f209d98d0e4302a15",
+      "crates/contracts/src/runtime/tool_surface.rs": "d4e80962dd8d013b8cbf3dea4315e2f30de0e725a3815149cc1d5a64f819ea6c",
+      "crates/contracts/src/runtime/tools/mod.rs": "aed53dac8cb1eaabb62aef29031993a14554838e8f35b9b3a1bb33d618dd0bf8",
+      "crates/core/src/builtins/tool_search.rs": "d55aafd387b570bb9ab81450302d0d0b67761b9b58a200640fc85f8a3c78bd02",
+      "crates/core/src/builtins/tool_search/tests.rs": "ea48dea124eed62b1b82448d671f82e48df1bf6f0b6f952a9af22ba3b4b93649",
+      "crates/core/src/engine/execution/act.rs": "d5b00a21e61d5b89005a1808cb0ccf489717314be434d6941a28ba6cab05f5ca",
+      "crates/core/src/engine/execution/act_client_policy.rs": "257b6da2606d91f5d1a5ce815966ef4460014160414fc9d72a247c3e97f5b930",
+      "crates/core/src/engine/execution/reason.rs": "64d6496b4cf33bcdbc54d6e14946fb291f9434464639371f2b64a3bc41bb528f",
+      "crates/core/src/engine/execution/reason/tool_changes.rs": "007617a5f2a50d4fa8d2c7cb30aabe711b6d2fc9945ba92b373143ba8de636c9",
+      "crates/core/src/host/host.rs": "c5bd71401d15887e84b2c63005099a3e94ad16c7d40e281015baa930be79094f",
+      "crates/core/src/host/host/execution_capabilities.rs": "de33a6d2f56165abc0ce3e881e70460fe963db740ba9b60d361ff4b0bec9266e",
+      "crates/core/src/host/mcp.rs": "01c378143237e80fb1a4ff4c5883092bdcda5fda4f0292d508442d34fb74e639",
+      "crates/core/src/host/mcp_cache.rs": "df0d13820e19241557bd1615286bba467958ff4d5ea0e631350d97b298832f16",
+      "crates/core/src/lib.rs": "76dabd54740caf17182b30cd1373a8893eb31104d3a4ca4ac197b2f69065fe04",
+      "crates/core/src/mcp/bin/mcp_stdio_echo.rs": "ebf48ae376f7395af260bf1427ef6f96d82ce0b08f430693047695e314881167",
+      "crates/core/src/mcp/capability.rs": "7fa3132b81c08addd835533f265dac1f3458830f072612d2e7a00c8ace1d56e4",
+      "crates/core/src/mcp/discovery.rs": "98e45f32bfbcc5be4f7b83ad2bfb20776a1a167c40d73e873aacfeb36f6e1832",
+      "crates/core/src/mcp/http.rs": "5f4f8fc2cf17343d3bfa60b43fad386f6320a008aff5493bb177a6338950d74c",
+      "crates/core/src/mcp/mod.rs": "411f79e1dd89bbd051734471bd4e35cb7302af5c5a4850031ebee7345500577a",
+      "crates/core/src/mcp/stdio.rs": "43b4291497986cd84a2f525b5dadb151146502fa6dec19a330f9632ad8d37bca",
+      "crates/core/src/runtime_context.rs": "0a67dfb7f9086f3675b0bad3d4dd4a1533f18dc4d82d7c646cc574000b7b8d34",
+      "crates/everruns/src/capability.rs": "930b5b85a065f509299330b8f6cd35d7b1df874f5b6baa13c18ad063e8df22a8",
+      "crates/everruns/src/mcp.rs": "8dc81b762522aeca4f54f4b12c42cf85fba3f2cd5487f527089ab1d7e7b4c527",
+      "crates/integrations/src/bashkit/tools_in_shell/builtin.rs": "ad71231c77bbaf21487f97b80d2d33b67182e3acda203ce30c68074fb2048432",
+      "crates/integrations/src/bashkit/tools_in_shell/catalog.rs": "846d35aaf6df5a9e8f9d867d2336838a227009d923951f2355d7c03b0fe9a044",
+      "crates/integrations/src/bashkit/tools_in_shell/mod.rs": "2fe1ed1d0622607493ab9ba9ce8ce7502df0e932f89e9506b2bb19851f131df8",
+      "crates/integrations/src/bashkit/tools_in_shell/tests.rs": "3f562998a76c85d903be8c6ca90ad3ee2dae618990a44431eafbcfbe2d0b2658",
+      "crates/integrations/src/lua/code_mode.rs": "3c48a76b89233efdbf3764433dfb031ae52d08b9ce76ef849541b29f368d4b62",
+      "crates/integrations/src/lua/mod.rs": "15fec35a6401f7a00ce0998d477ee13e42e11a6113b3298e15801293dc9ed9aa",
+      "crates/integrations/src/lua/nested_tool.rs": "fb7a6e55caced09a9c0a58a1b8e09ebedf3748950424abec3475bdb75f142d2b"
+    },
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "source_state_note": "The study ran against the shared working tree, which contained uncommitted Framework/platform changes; baseline commit alone does not reproduce the tested source state.",
+    "tracked_paths_changed_from_baseline": 52,
+    "working_tree_dirty_at_capture": true
+  },
+  "qualification": {
+    "axes": {
+      "primary": "readonly-ticket + staged-rollback; catalogs 600 and 2000; one server; native, cli, hybrid; 3 trials each",
+      "server_description": "description-only disambiguation; catalogs 600 and 2000; ten servers; native, cli, hybrid; 3 trials each"
+    },
+    "infra_failures": 0,
+    "model": "openrouter/meta/muse-spark-1.3-contributor",
+    "passed": 54,
+    "planned_trials": 54,
+    "schedule": "serial (EVERRUNS_EVAL_CONCURRENCY=1), three trials per case/surface",
+    "skipped": 0,
+    "subject_failures": 0,
+    "token_totals": {
+      "actual_cost_status": "unknown/unpriced; provider reports 0.0 per row, not a billing measurement",
+      "cache_read_tokens": 5839280,
+      "input_tokens": 2467860,
+      "output_tokens": 159575
+    },
+    "valid_trials": 54
+  },
+  "raw_reports": [
+    {
+      "attempts": 18,
+      "bytes_compressed": 1206002,
+      "bytes_uncompressed": 7665572,
+      "failed_subject": 0,
+      "passed": 18,
+      "path": "results/live-read-rollback-600-1.jsonl.gz",
+      "provider_model_unavailable": 0,
+      "qualification": true,
+      "role": "qualification",
+      "sha256": "9a307ea8f4d1874326cf274c5cb4f3c83f26204b421a551a48c104391435d4c5"
+    },
+    {
+      "attempts": 18,
+      "bytes_compressed": 1315066,
+      "bytes_uncompressed": 8482166,
+      "failed_subject": 0,
+      "passed": 18,
+      "path": "results/live-read-rollback-2000-1.jsonl.gz",
+      "provider_model_unavailable": 0,
+      "qualification": true,
+      "role": "qualification",
+      "sha256": "0a6358fb6504853715ac0bf99d615eff540d5ece4c5726f0fa0ce703bf4d2af5"
+    },
+    {
+      "attempts": 9,
+      "bytes_compressed": 199298,
+      "bytes_uncompressed": 1658446,
+      "failed_subject": 0,
+      "passed": 9,
+      "path": "results/live-description-600-10-serial-retry.jsonl.gz",
+      "provider_model_unavailable": 0,
+      "qualification": true,
+      "role": "qualification",
+      "sha256": "b291d59e1823163764e5de3c9e9f3562e9921bfe65a1d04e5fd831675845883f"
+    },
+    {
+      "attempts": 9,
+      "bytes_compressed": 545195,
+      "bytes_uncompressed": 3118013,
+      "failed_subject": 0,
+      "passed": 9,
+      "path": "results/live-description-2000-10.jsonl.gz",
+      "provider_model_unavailable": 0,
+      "qualification": true,
+      "role": "qualification",
+      "sha256": "6ec3825105aeee8619526f44fc78e6493f41e355a3ed58d8d4decad51bf154d2"
+    },
+    {
+      "attempts": 9,
+      "bytes_compressed": 99487,
+      "bytes_uncompressed": 1001467,
+      "failed_subject": 0,
+      "passed": 6,
+      "path": "results/live-description-600-10.jsonl.gz",
+      "provider_model_unavailable": 3,
+      "qualification": false,
+      "role": "concurrency-3-provider-availability-attempt",
+      "sha256": "bc93c40b83bbd5cf906edfebd45c574e5c032c45c7db1dc72aa06d9de06f3f2d"
+    },
+    {
+      "attempts": 2,
+      "bytes_compressed": 228568,
+      "bytes_uncompressed": 1188479,
+      "failed_subject": 0,
+      "passed": 2,
+      "path": "results/post-fix-cli-2000-smoke.jsonl.gz",
+      "provider_model_unavailable": 0,
+      "qualification": false,
+      "role": "post-fix-smoke",
+      "sha256": "58819a4edbfacfb87bfd25c8813d3068e706691ebd3f03ce3ade686bc1baccb8"
+    }
+  ],
+  "separate_evidence": {
+    "concurrency3_initial_attempt": "9 attempts: 6 passes and 3 model-not-available provider errors; errors are infrastructure availability, not subject failures. The original run used the earlier classifier, so raw error_kind remains Subject; normalized classification is Infra in this summary.",
+    "interrupted_filter_attempt": "A 600-tool command used substring filter servers=1, which also selected servers=10. It was interrupted after a ten-server case appeared; the runner had not flushed a JSONL report, so the number of completed trials is unknown. Excluded from qualification and no output report retained.",
+    "post_fix_smoke": "2 CLI cases at 2000 tools, one server: read-only and staged rollback; 2/2 passed. Excluded from qualification count.",
+    "smoke_from_initial_connectivity_check": "one old-binary 50-tool native ticket read passed, but it was kept in /tmp and excluded from canonical evidence."
+  },
+  "study": "MCP scale Rust/Mira study",
+  "usage_note": "Usage tokens are raw provider/Mira report values. cost_usd was returned as 0.0, but actual billing is unknown/unpriced; zero is not a price claim. Cache-read token counts are reported without a cache-benefit claim."
+}

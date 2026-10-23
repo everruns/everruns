@@ -27,6 +27,7 @@ use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::runtime::message::RuntimeMessage;
 use crate::runtime::message_filter::MessageFilterProvider;
 use crate::runtime::runtime_agent::RuntimeAgent;
+use crate::runtime::tool_surface::{NativeToolDisclosurePolicy, ToolSurfaceMode, ToolSurfacePlan};
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::tools::{Tool, ToolRegistry};
 use crate::runtime::typed_id::SessionId;
@@ -107,6 +108,8 @@ pub struct CollectedCapabilities {
     pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
     /// Scoped remote MCP servers contributed by capabilities.
     pub mcp_servers: ScopedMcpServers,
+    /// Requested tool surface resolved before prompt assembly.
+    pub tool_surface_plan: ToolSurfacePlan,
     // NOTE: output guardrails are intentionally NOT collected here. They are
     // re-derived per turn in `ReasonAtom` directly from the resolved capability
     // configs + registry, because they need the assembled system prompt at
@@ -449,9 +452,14 @@ pub fn superseded_capability_ids(
 ) -> std::collections::HashSet<String> {
     capability_configs
         .iter()
-        .filter_map(|config| registry.get(config.capability_id()))
-        .filter(|capability| capability.status().is_active())
-        .flat_map(|capability| capability.supersedes())
+        .filter_map(|config| {
+            let capability = registry.get(config.capability_id())?;
+            capability
+                .status()
+                .is_active()
+                .then(|| capability.supersedes_with_config(config.config_value()))
+        })
+        .flatten()
         .map(str::to_string)
         .collect()
 }
@@ -554,6 +562,24 @@ pub async fn collect_capabilities_with_configs(
         }
         _ => capability_configs,
     };
+    // Resolve the session-wide mode before any prompt or hook receives its
+    // context. Individual definitions are previewed below; late MCP operations
+    // are added by the execution host after it assembles the canonical registry.
+    let surface_mode = capability_configs
+        .iter()
+        .filter_map(|config| {
+            let cap = registry.get(config.capability_id())?;
+            if !cap.status().is_active() {
+                return None;
+            }
+            let effective = cap
+                .resolve_for_model(ctx.model.as_deref())
+                .unwrap_or(cap.as_ref());
+            Some(effective.tool_surface_mode_with_config(config.config_value()))
+        })
+        .find(|mode| *mode != ToolSurfaceMode::Native)
+        .unwrap_or_default();
+    let mut resolved_ctx = ctx.clone();
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut conversation_context_parts: Vec<String> = Vec::new();
@@ -594,6 +620,74 @@ pub async fn collect_capabilities_with_configs(
                     .features()
                     .contains(&sandbox_file_tools::MANAGED_SANDBOX_FEATURE)
         });
+    let mut preview_definitions_by_capability = HashMap::new();
+    let mut preview_definitions = Vec::new();
+    for config in capability_configs {
+        let id = config.capability_id();
+        if superseded.contains(id) {
+            continue;
+        }
+        let Some(capability) = registry.get(id) else {
+            continue;
+        };
+        if !capability.status().is_active() {
+            continue;
+        }
+        let effective: &dyn Capability = capability
+            .resolve_for_model(ctx.model.as_deref())
+            .unwrap_or(capability.as_ref());
+        let yields_files =
+            sandbox_owns_files && sandbox_file_tools::yields_file_tools(&effective.features());
+        let definitions: Vec<_> = effective
+            .tool_definitions_with_config(config.config_value())
+            .into_iter()
+            .filter(|definition| {
+                !(yields_files && sandbox_file_tools::is_session_file_tool(definition.name()))
+            })
+            .map(|definition| {
+                match (definition.category(), effective.category()) {
+                    (None, Some(category)) => definition.with_category(category),
+                    _ => definition,
+                }
+                .with_capability_attribution(id, Some(capability.name()))
+            })
+            .collect();
+        preview_definitions.extend(definitions.iter().cloned());
+        preview_definitions_by_capability.insert(id.to_string(), definitions);
+    }
+    let mut surface_plan = ToolSurfacePlan::for_mode(surface_mode);
+    // Every canonical preview definition has a native route unless an active
+    // adapter capability overrides it below. This lets ordinary capabilities
+    // inspect their own effective route even when no adapter was selected.
+    surface_plan.extend_definitions(&preview_definitions, |_| false);
+    let mut native_disclosure_policy = NativeToolDisclosurePolicy::default();
+    for config in capability_configs {
+        let id = config.capability_id();
+        if superseded.contains(id) {
+            continue;
+        }
+        let Some(capability) = registry.get(id) else {
+            continue;
+        };
+        let effective = capability
+            .resolve_for_model(ctx.model.as_deref())
+            .unwrap_or(capability.as_ref());
+        if let Some(policy) = effective
+            .native_tool_disclosure_policy_with_config(config.config_value(), &preview_definitions)
+        {
+            native_disclosure_policy.merge(policy);
+        }
+        let routes =
+            effective.tool_surface_routes_with_config(config.config_value(), &preview_definitions);
+        surface_plan.extend(routes);
+    }
+    surface_plan.set_native_disclosure_policy(native_disclosure_policy);
+    // Capability-owned route declarations describe their preferred surfaces;
+    // apply the combined schema policy to known definitions before prompts and
+    // definition hooks read the effective plan.
+    surface_plan.apply_native_disclosure_policy(&preview_definitions);
+    resolved_ctx.tool_surface_plan = surface_plan;
+    let ctx = &resolved_ctx;
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
         if superseded.contains(cap_id) {
@@ -741,16 +835,13 @@ pub async fn collect_capabilities_with_configs(
             // for rationale. ReasonAtom re-derives them at stream-arming time.
 
             // Collect tool definitions, propagating capability category if not already set
-            let cap_category = effective.category();
-            for def in effective.tool_definitions_with_config(cap_config.config_value()) {
+            for def in preview_definitions_by_capability
+                .remove(cap_id)
+                .unwrap_or_default()
+            {
                 if !keeps_tool(def.name()) {
                     continue;
                 }
-                let def = match (def.category(), cap_category) {
-                    (None, Some(cat)) => def.with_category(cat),
-                    _ => def,
-                }
-                .with_capability_attribution(cap_id, Some(capability.name()));
                 tool_definitions.push(def);
             }
 
@@ -886,6 +977,7 @@ pub async fn collect_capabilities_with_configs(
         tool_definition_hooks,
         tool_call_hooks,
         mcp_servers,
+        tool_surface_plan: resolved_ctx.tool_surface_plan.clone(),
     }
 }
 
@@ -963,15 +1055,12 @@ pub async fn apply_capabilities(
     }
 
     // Create modified runtime agent
-    let mut tools = collected.tool_definitions;
-    for hook in &collected.tool_definition_hooks {
-        tools = hook.transform(tools);
-    }
-
-    let runtime_agent = RuntimeAgent {
+    let mut runtime_agent = RuntimeAgent {
         system_prompt: final_system_prompt,
         model: base_runtime_agent.model,
-        tools,
+        tools: collected.tool_definitions,
+        catalog_tools: base_runtime_agent.catalog_tools,
+        model_tool_budget: base_runtime_agent.model_tool_budget,
         max_iterations: base_runtime_agent.max_iterations,
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
@@ -989,6 +1078,10 @@ pub async fn apply_capabilities(
         conversation_context,
         communication: base_runtime_agent.communication,
     };
+
+    for hook in &collected.tool_definition_hooks {
+        runtime_agent.apply_definition_hook(hook.as_ref());
+    }
 
     AppliedCapabilities {
         runtime_agent,
