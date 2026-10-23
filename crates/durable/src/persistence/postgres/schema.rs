@@ -8,7 +8,7 @@
 
 use sqlx::PgPool;
 
-use super::PostgresWorkflowEventStore;
+use super::{PostgresWorkflowEventStore, begin_transaction};
 
 /// Arbitrary, stable key for the transaction-scoped advisory lock that
 /// serializes concurrent [`PostgresWorkflowEventStore::migrate`] calls.
@@ -84,7 +84,7 @@ impl PostgresWorkflowEventStore {
         if applied_marker(pool).await?.as_deref() == Some(marker.as_str()) {
             return Ok(());
         }
-        let mut tx = pool.begin().await?;
+        let mut tx = begin_transaction(pool).await?;
         // `CREATE ... IF NOT EXISTS` reports every existing object as a
         // NOTICE; keep re-runs quiet.
         sqlx::query("SET LOCAL client_min_messages = warning")
