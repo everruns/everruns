@@ -7,6 +7,10 @@ function getRenderer() {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
+      // Mermaid 12 defaults to the ELK layout and the "neo" look; pin the
+      // dagre layout and classic look this theme and flowchart config target.
+      layout: "dagre",
+      look: "classic",
       theme: "base",
       themeVariables: {
         background: "#FFFFFF",
