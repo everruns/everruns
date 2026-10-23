@@ -58,7 +58,7 @@ impl Database {
         &self,
         id: Uuid,
     ) -> Result<Option<LockedApiEndpointChannel>> {
-        let mut tx = self.pool.raw().begin().await?;
+        let mut tx = everruns_durable::begin_transaction(self.pool.raw()).await?;
         let row = sqlx::query_as::<_, ApiEndpointChannelRow>(
             r#"
             SELECT ae.id, ae.public_id, a.org_id, ae.channel_config,
