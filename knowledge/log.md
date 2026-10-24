@@ -8,7 +8,6 @@
   Immediate actions and credentials retain their existing controls. See
   [Page-aware Chat mode](ui/chat-mode.md).
 
-
 * **Chat navigation discovery.** Explain rail icons on hover and focus, and expose
   the same permitted destinations in a labeled Pages menu for keyboard and touch.
   See [Page-aware Chat mode](ui/chat-mode.md).
