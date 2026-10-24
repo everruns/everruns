@@ -1,12 +1,22 @@
+"use client";
+
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 function Drawer({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="drawer" {...props} />;
+  const mode = usePageChatMode();
+  return (
+    <DialogPrimitive.Root
+      data-slot="drawer"
+      {...props}
+      modal={mode?.open ? false : props.modal}
+      disablePointerDismissal={mode?.open || props.disablePointerDismissal}
+    />
+  );
 }
 
 function DrawerPortal({ ...props }: DialogPrimitive.Portal.Props) {
@@ -31,15 +41,18 @@ function DrawerContent({
   children,
   showCloseButton = true,
   side = "right",
-  scopeToPage = false,
+  scopeToPage = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   side?: "left" | "right";
   scopeToPage?: boolean;
 }) {
-  const mode = useChatMode();
-  const container = scopeToPage && mode?.open ? mode.pageContainer.current : null;
+  const mode = usePageChatMode();
+  // Keep the same portal parent while Chat opens/closes, preserving form state.
+  const container = scopeToPage
+    ? (mode?.pageContainerElement ?? mode?.pageContainer.current ?? null)
+    : null;
   // Tailwind's slide utilities change translate, so the transition must include it.
   return (
     <DrawerPortal data-slot="drawer-portal" container={container ?? undefined}>

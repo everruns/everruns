@@ -5,6 +5,8 @@
  */
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState } from "react";
 import Link from "next/link";
 import { ChatIcon } from "@/components/icons/facet-icons";
@@ -83,6 +85,7 @@ export default function ChatsPageClient() {
   const [showArchived, setShowArchived] = useState(false);
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState("");
+  useChatPageFilters({ show_archived: showArchived, offset: offset, search: search });
   const { threads, isLoading, total } = useChatThreads({
     includeArchived: showArchived,
     offset,

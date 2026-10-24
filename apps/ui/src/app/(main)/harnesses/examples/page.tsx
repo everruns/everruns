@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState, useCallback, useMemo } from "react";
 import {
   useHarnessExamples,
@@ -18,6 +20,7 @@ export default function AllHarnessExamplesPage() {
   usePageTitle("Examples", "Harnesses");
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
+  useChatPageFilters({ search: exampleSearch });
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading, error } = useHarnessExamples();
   const importExample = useImportHarnessExample();

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,25 +27,33 @@ export default function ProfilePage() {
   const { user } = useAuth();
   const updateProfile = useUpdateProfile();
 
-  const [name, setName] = useState("");
-  const [hasChanges, setHasChanges] = useState(false);
+  const [nameOverride, setName] = useState<string | undefined>();
+  const name = nameOverride ?? user?.name ?? "";
+  const hasChanges = name !== (user?.name ?? "");
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name"],
+    values: { name },
+    entityId: user?.id,
+    entityType: "profile",
+    label: "Profile",
+    baseline: user?.name ?? "",
+    dirty: hasChanges,
+    writable: !!user && !updateProfile.isPending,
+    apply: (values) => setName(values.name),
+  });
 
   useEffect(() => {
-    if (user?.name) {
-      setName(user.name);
-      setHasChanges(false);
-    }
-  }, [user?.name]);
+    if (!chatDraft.adopted && user?.name) setName(undefined);
+  }, [chatDraft.adopted, user?.name]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
-    setHasChanges(e.target.value !== (user?.name ?? ""));
   };
 
   const handleSave = async () => {
-    if (!hasChanges || !name.trim()) return;
+    if (chatDraft.blocked || !hasChanges || !name.trim()) return;
     await updateProfile.mutateAsync({ name: name.trim() });
-    setHasChanges(false);
+    setName(undefined);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -62,6 +72,7 @@ export default function ProfilePage() {
           <p className="text-sm text-muted-foreground">Manage your personal profile.</p>
         </div>
 
+        {chatDraft.notice}
         <Card className="p-6">
           <div className="flex items-center gap-3 mb-6">
             <Avatar className="h-12 w-12">
@@ -93,11 +104,18 @@ export default function ProfilePage() {
                 />
                 <Button
                   onClick={handleSave}
-                  disabled={!hasChanges || !name.trim() || updateProfile.isPending}
+                  disabled={
+                    chatDraft.blocked || !hasChanges || !name.trim() || updateProfile.isPending
+                  }
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {updateProfile.isPending ? "Saving..." : "Save"}
                 </Button>
+                {hasChanges && chatDraft.adopted && (
+                  <Button variant="outline" onClick={() => setName(undefined)}>
+                    Discard
+                  </Button>
+                )}
               </div>
               {updateProfile.isError && (
                 <p className="text-sm text-destructive">

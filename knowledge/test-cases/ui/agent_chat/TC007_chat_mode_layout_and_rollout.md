@@ -32,6 +32,14 @@ tags: [ui, test-case, agents, platform-chat, feature-flags]
    workspace. Verify side-chat URLs retain their existing behavior.
 8. Turn the flag off and reload. Confirm the ordinary shell returns and browser
    draft tools are absent from the managed Agent's runtime tool definitions.
+9. Re-enable Chat mode. Hover and keyboard-focus each rail icon: its tooltip must
+   show a page name and short explanation, stay within the viewport and dismiss
+   with Escape. The search and expand-page controls also have explanations.
+10. Open Pages by click, keyboard and touch. Verify a grouped, scrollable menu of
+    names and descriptions; the current page is identified. Escape returns focus
+    to Pages. Disabled flags and role/policy restrictions hide destinations in both
+    the rail and this menu. Open and close it with unsaved Agent/Chat drafts: both
+    drafts survive. Closing Chat removes every open rail overlay.
 
 ## Expected result
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
+
 import { use, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Radio } from "lucide-react";
@@ -48,6 +50,13 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
 
+  const chatDraft = useChannelChatDraft({
+    state: formState,
+    setState: setFormState,
+    baseline: "new",
+    available: !!agent,
+    writable: !!agent && canManage && !createChannel.isPending,
+  });
   useEffect(() => {
     if (agent && !policiesLoading && !canManage) router.replace(returnHref);
   }, [agent, canManage, policiesLoading, returnHref, router]);
@@ -84,6 +93,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
 
   return (
     <PageContainer>
+      {chatDraft.notice}
       <PageBreadcrumb
         items={[
           { label: "Agents", href: "/agents" },
@@ -120,6 +130,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
         id="channel-edit-form"
         onSubmit={(event) => {
           event.preventDefault();
+          if (chatDraft.blocked) return;
           const hasManualSlackCredentials = Boolean(
             formState.slackCredentialsConfigured ||
             formState.slackSigningSecret ||

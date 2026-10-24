@@ -1,5 +1,9 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -20,13 +24,14 @@ import {
 import type { SandboxPolicy, SandboxTemplate } from "@/lib/api/types";
 
 export default function SandboxTemplatePage() {
+  const chatMode = usePageChatMode();
   const { sandboxTemplateId } = useParams<{ sandboxTemplateId: string }>();
   const { data: template, isLoading } = useSandboxTemplate(sandboxTemplateId);
   usePageTitle(template?.display_name || "Sandbox Template", "Sandbox Templates");
   if (isLoading || !template) return null;
   return (
     <SandboxTemplateEditor
-      key={`${template.id}:${template.current_revision.id}`}
+      key={chatMode ? template.id : `${template.id}:${template.current_revision.id}`}
       template={template}
     />
   );
@@ -44,7 +49,26 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
     templates: { [template.name]: template.current_revision.spec },
   }));
   const spec = configuration?.templates?.[configuration.default];
+  const chatDraft = useTextPageFormDraft({
+    fields: ["display_name", "description"],
+    values: { display_name: displayName, description },
+    entityId: template.id,
+    entityType: "sandbox_template",
+    label: template.display_name,
+    baseline: template.current_revision.id,
+    dirty:
+      displayName !== template.display_name ||
+      description !== (template.description ?? "") ||
+      JSON.stringify(spec) !== JSON.stringify(template.current_revision.spec),
+    writable: !template.is_managed && !revise.isPending,
+    // Sandbox environment values remain in the manual configuration editor.
+    apply: (values) => {
+      setDisplayName(values.display_name);
+      setDescription(values.description);
+    },
+  });
   const save = async () => {
+    if (chatDraft.blocked) return;
     if (!spec) return;
     await revise.mutateAsync({
       id: template.id,
@@ -68,6 +92,7 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
         description={`${template.name} · revision ${template.current_revision.revision}${template.is_managed ? " · managed" : ""}`}
       />
       <PageMain className="max-w-3xl space-y-5">
+        {chatDraft.notice}
         <Card>
           <CardHeader>
             <CardTitle>Configuration</CardTitle>
@@ -105,6 +130,22 @@ function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
               {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Save new
               revision
             </Button>
+            {chatDraft.blocked && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDisplayName(template.display_name);
+                  setDescription(template.description ?? "");
+                  setConfiguration({
+                    mode: "fixed",
+                    default: template.name,
+                    templates: { [template.name]: template.current_revision.spec },
+                  });
+                }}
+              >
+                Discard
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={async () => {

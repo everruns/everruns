@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -111,7 +113,7 @@ import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
 import { AgentChatBoundary } from "@/components/chat-mode/agent-chat-boundary";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { chatPageRoute } from "@/lib/chat-page-context";
 import { useAgentChatDraft } from "@/components/chat-mode/use-agent-chat-draft";
 import {
@@ -151,6 +153,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const tabParam = searchParams.get("tab");
   const deepLink = resolveAgentTab(tabParam);
   const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
+  useChatPageFilters({ tab: activeTab });
   const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
   // Follow the address bar when it changes without a click (refresh already
   // lands here; back/forward and a replaced query must too).
@@ -205,7 +208,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const copyAgent = useCopyAgent();
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
-  const chatMode = useChatMode();
+  const chatMode = usePageChatMode();
   const chatChanges = useChatChanges();
 
   const draft = useAgentDraft(agent);

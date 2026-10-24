@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,6 +57,7 @@ function CopyButton({ data }: { data: unknown }) {
 export default function EventsPage() {
   const { events, eventsLoading, sessionId } = useSessionContext();
   const [currentPage, setCurrentPage] = useState(1);
+  useChatPageFilters({ page: currentPage });
   const [hasNewEvents, setHasNewEvents] = useState(false);
   const [hideDeltaEvents, setHideDeltaEvents] = useState(true);
   const [onlyLlmGeneration, setOnlyLlmGeneration] = useState(false);

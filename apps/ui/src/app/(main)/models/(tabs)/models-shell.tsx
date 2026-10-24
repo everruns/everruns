@@ -351,7 +351,12 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         applying={setModelsEnabled.isPending || reviewModels.isPending}
         error={selectionError}
       />
-      <AddModelDialog providers={providers} open={addModelOpen} onOpenChange={setAddModelOpen} />
+      <AddModelDialog
+        writable={canManage}
+        providers={providers}
+        open={addModelOpen}
+        onOpenChange={setAddModelOpen}
+      />
       {children}
     </PageContainer>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 /**
  * Sessions — the operational list (EVE-853).
  *
@@ -99,6 +101,16 @@ export default function SessionsPageClient() {
   // every keystroke into the URL would make Back walk letter by letter.
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const [committedSearch, setCommittedSearch] = useState(filters.search);
+  useChatPageFilters({
+    search: committedSearch,
+    status: filters.status,
+    source: filters.source,
+    agent_id: filters.agent,
+    range: filters.window,
+    mine: filters.mine,
+    show_archived: filters.includeArchived,
+    page: filters.page,
+  });
   const [exporting, setExporting] = useState(false);
 
   // The URL can change without the field being touched — selecting a saved view,

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +56,12 @@ export default function QueuesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  useChatPageFilters({
+    tab: activeTab,
+    status: statusFilter,
+    type: typeFilter,
+    search: searchQuery,
+  });
   const [enqueueOpen, setEnqueueOpen] = useState(false);
 
   const taskParams = {

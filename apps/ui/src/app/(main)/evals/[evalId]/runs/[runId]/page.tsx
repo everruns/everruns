@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { use, useCallback, useState } from "react";
 import { useEval, useEvalRun, useCancelEvalRun, usePageTitle } from "@/hooks";
 import Link from "next/link";
@@ -198,6 +200,7 @@ export default function EvalRunDetailPage({
   // null = follow the default (matrix when the run spans multiple targets);
   // a user choice sticks once made.
   const [view, setView] = useState<"table" | "matrix" | null>(null);
+  useChatPageFilters({ tab: view });
 
   const handleCancel = useCallback(async () => {
     try {

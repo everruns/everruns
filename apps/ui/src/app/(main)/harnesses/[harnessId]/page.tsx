@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 // Harness page: one layout for reading and editing a harness.
 //
 // Capabilities are the page (wide left pane). A harness is the capability set
@@ -79,6 +81,7 @@ import {
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
+import { useHarnessChatDraft } from "@/components/chat-mode/use-harness-chat-draft";
 import { HarnessIcon } from "@/lib/harness-icons";
 
 const count = (n: number, singular: string, plural?: string) =>
@@ -91,6 +94,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const [activeTab, setActiveTab] = useState<HarnessTab>(
     resolveHarnessTab(searchParams.get("tab")),
   );
+  useChatPageFilters({ tab: activeTab });
   const [openSection, setOpenSection] = useState<HarnessSettingsSection | null>(null);
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
@@ -130,6 +134,15 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   }, [editing, draft.isDirty]);
 
   const startEdit = useCallback(() => setEditRequested(true), []);
+  const chatDraft = useHarnessChatDraft({
+    id: harnessId,
+    label: harness ? getDisplayName(harness) : "Harness",
+    updatedAt: harness?.updated_at,
+    draft,
+    available: !!harness,
+    writable: !!harness && !readOnly && !updateHarness.isPending && can("harness.manage"),
+    beginEdit: startEdit,
+  });
   const onDraftChange = useCallback(
     <T,>(apply: (value: T) => void) =>
       (value: T) => {
@@ -151,6 +164,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   };
 
   const handleSave = async () => {
+    if (chatDraft.blocked) return;
     const result = draft.buildRequest();
     if (!result.ok) {
       setActiveTab("harness");
@@ -278,7 +292,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
   const actions = editing ? (
     <>
-      <Button onClick={handleSave} disabled={updateHarness.isPending}>
+      <Button onClick={handleSave} disabled={updateHarness.isPending || chatDraft.blocked}>
         <Check className="size-4" />
         {updateHarness.isPending ? "Saving..." : "Save changes"}
       </Button>
@@ -301,6 +315,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   return (
     <div className="min-h-full bg-brand-dots">
       <PageContainer>
+        {chatDraft.notice}
         <PageBreadcrumb
           items={[{ label: "Harnesses", href: "/harnesses" }, { label: displayName }]}
         />

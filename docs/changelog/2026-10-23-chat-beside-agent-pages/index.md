@@ -10,20 +10,23 @@ links:
   docs: [/built-ins/harnesses/platform-chat/]
 ---
 
-Organization owners and admins can enable **Chat mode** in **Settings > Features**.
-Open an Agent and press **Command-J** or **Ctrl-J** to bring the permanent Chat
-beside it. Ask, for example, “Make this agent’s instructions suitable for children.”
-Chat reads the current form, including unsaved work, and stages the requested
-change in your draft. The page marks **Draft edited by Chat** with **Undo**;
-use **Save changes** to apply the result or **Discard** to reset it. Version
-checks protect edits made while Chat thinks.
-Back to app keeps your conversation and draft.
-
-Saved Agent changes attributed to Chat also support **Undo all**, with revision
-checks and a recorded inverse. Conflicts fail without saving. Concurrent saved
-changes keep your dirty draft and block Save until you discard and review them.
-See [Platform Chat](/built-ins/harnesses/platform-chat/) for the opt-in and scope.
+Enable **Chat mode** in **Settings > Features**. Open an Agent and press
+**Command-J** or **Ctrl-J**. Ask “Make this agent’s instructions suitable for children.”
+Chat reads your unsaved form and stages a draft with **Undo**. Review it, then use
+**Save changes** or **Discard**. Version checks protect concurrent edits.
+Back to app preserves the conversation and draft. Saved Agent changes support
+revision-checked **Undo all**; see [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 <video src="./walkthrough.mp4" poster="./workspace-poster@2x.png" controls playsinline></video>
 
 Fictional demo data; synthetic narration; waiting periods shortened.
+
+## Update 2026-10-24
+
+Page context follows every app page, including filters and loaded records.
+Chat stages supported fields in Harnesses, Virtual Users, Observers, Knowledge
+and other forms. Use each form’s existing Save or Create action. Credentials
+and immediate actions keep their normal controls. Hover navigation icons for
+explanations, or open **Pages** for a labeled menu.
+
+![Chat stages Harness instructions beside the open page](./harness-workspace@2x.png)

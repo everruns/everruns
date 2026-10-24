@@ -7,3 +7,6 @@
 * [TC005: Page and organization binding](TC005_page_and_org_binding.md) - Verify navigation, organization switches and other browsers cannot reuse a page binding.
 * [TC006: Draft permissions and saved-definition conflicts](TC006_draft_permissions_and_saved_conflicts.md) - Verify read-only, unauthorized, saving and conflicting forms refuse patches.
 * [TC007: Chat mode layout, persistence and rollout](TC007_chat_mode_layout_and_rollout.md) - Verify Adoption gating, persistent state, pane-scoped sheets and accessible responsive layouts.
+
+* [TC008: Chat context across app pages](TC008_all_page_context.md) - Verify identity, live view state, scoped summaries and read-only action boundaries across every app area.
+* [TC009: Chat edits shared page forms](TC009_shared_page_forms.md) - Verify staged edits, guarded Undo, independent forms, credentials and stable dialogs beyond Agents.

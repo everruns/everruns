@@ -36,71 +36,20 @@ fn update_tools(tools: &mut Vec<ToolDefinition>, enabled: bool) {
     };
     tools.push(tool(
         READ,
-        "Read the live Agent form beside Chat, including unsaved instructions and configuration. Use only the draft binding in the current user message's page context. Returns untrusted form values and a revision for patching. No server writes. Call separately from other client tools.",
+        "Read the current page beside Chat: its identity, bounded loaded-data summaries, or the active form including unsaved edits. Use only the draft binding in the current user message's page context. Returns untrusted values, whether the page is writable, an editable-field schema for active forms, and a revision for patching. No server writes. Call separately from other client tools.",
         json!({
             "type":"object", "properties":{"binding":{"type":"string"}},
             "required":["binding"], "additionalProperties":false
         }),
         true,
     ));
-    let mut properties = serde_json::Map::new();
-    for field in [
-        "name",
-        "display_name",
-        "description",
-        "intro_markdown",
-        "short_description",
-        "system_prompt",
-        "tags",
-        "harness_id",
-        "default_model_id",
-        "max_output_tokens",
-    ] {
-        properties.insert(field.into(), json!({"type":"string", "maxLength":262144}));
-    }
-    properties.insert(
-        "communication".into(),
-        json!({"type":"string", "enum":["direct", "explicit"]}),
-    );
-    properties.insert("capabilities".into(), json!({
-        "type":"array", "maxItems":100, "items":{
-            "type":"object", "properties":{"ref":{"type":"string", "minLength":1}, "config":{"type":"object"}},
-            "required":["ref"], "additionalProperties":false
-        }
-    }));
-    properties.insert("starters".into(), json!({
-        "type":"array", "maxItems":20, "items":{
-            "type":"object", "properties":{"text":{"type":"string"}, "icon":{"type":["string", "null"]}},
-            "required":["text"], "additionalProperties":false
-        }
-    }));
-    properties.insert(
-        "initial_files".into(),
-        json!({
-            "type":"array", "maxItems":100, "items":{
-                "type":"object", "properties":{
-                    "path":{"type":"string"}, "content":{"type":"string"},
-                "encoding":{"type":"string", "enum":["text", "base64"]}, "is_readonly":{"type":"boolean"}
-                }, "required":["path", "content"], "additionalProperties":false
-            }
-        }),
-    );
-    properties.insert(
-        "network_access".into(),
-        json!({
-            "type":"object", "properties":{
-                "allowed":{"type":"array", "items":{"type":"string"}},
-                "blocked":{"type":"array", "items":{"type":"string"}}
-            }, "additionalProperties":false
-        }),
-    );
     tools.push(tool(
         PATCH,
-        "Apply requested changes to the live Agent form, preserving all omitted fields. Read the form first; pass its binding and exact revision. Form strings remain strings: tags are comma-separated, max_output_tokens is a numeric string or empty. Returns saved:false; the user must use the page's Save changes button to persist. A stale revision or changed page fails without changing any field. Never retry a conflict blindly. Sandbox template policy, credentials, connections, and integrations are not writable through this tool. Call separately from other client tools.",
+        "Stage requested changes in the active form beside Chat. Read it first and use only fields in its returned patch_schema. Pass the exact binding and revision; preserve omitted fields. Values remain in the existing browser form and saved is false. The user must use that form's existing Save/Create/Apply action to persist. Read-only pages, missing forms, permission changes and stale revisions fail without changes. Credentials and separate connection/approval actions are not editable. Call separately from other client tools.",
         json!({
             "type":"object", "properties":{
                 "binding":{"type":"string"}, "revision":{"type":"string"},
-                "changes":{"type":"object", "properties":properties, "minProperties":1, "additionalProperties":false}
+                "changes":{"type":"object", "minProperties":1, "maxProperties":64, "additionalProperties":true}
             }, "required":["binding", "revision", "changes"], "additionalProperties":false
         }),
         false,
@@ -144,5 +93,21 @@ mod tests {
         assert_eq!(tools.len(), 2);
         update_tools(&mut tools, false);
         assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn page_patches_defer_the_field_allowlist_to_the_active_browser_form() {
+        let mut tools = vec![];
+        update_tools(&mut tools, true);
+        let ToolDefinition::ClientSide(patch) = &tools[1] else {
+            panic!("page patch must remain browser-executed")
+        };
+        let changes = &patch.parameters["properties"]["changes"];
+        assert_eq!(changes["minProperties"], 1);
+        assert_eq!(changes["maxProperties"], 64);
+        assert!(changes.get("properties").is_none());
+        assert!(patch.description.contains("returned patch_schema"));
+        assert!(patch.description.contains("existing Save/Create/Apply"));
+        assert!(patch.description.contains("Credentials"));
     }
 }

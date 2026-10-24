@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
 import { defaultNavigationSections } from "@/lib/navigation";
@@ -7,8 +8,17 @@ import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 let mockEnabled = false;
 let mockCanNavigate = false;
 let mockOrg = "org_1";
+let mockHasRole = true;
 const mockSearch = jest.fn();
 const mockQuery = new URLSearchParams();
+function render(ui: ReactNode) {
+  const client = new QueryClient();
+  return rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_1",
   useSearchParams: () => mockQuery,
@@ -43,7 +53,7 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({}),
 }));
 jest.mock("@/providers/org-provider", () => ({
-  useOrg: () => ({ currentOrg: { public_id: mockOrg }, hasRole: () => true }),
+  useOrg: () => ({ currentOrg: { public_id: mockOrg }, hasRole: () => mockHasRole }),
 }));
 jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => false }) }));
 jest.mock("@/hooks/use-navigation-policy", () => ({
@@ -74,7 +84,39 @@ beforeEach(() => {
   mockEnabled = false;
   mockCanNavigate = false;
   mockOrg = "org_1";
+  mockHasRole = true;
   jest.clearAllMocks();
+});
+
+it("keeps unavailable pages out of both the rail and the labeled menu", async () => {
+  mockEnabled = true;
+  mockHasRole = false;
+  const icon = defaultNavigationSections[0].items[0].icon;
+  const navigation = [
+    {
+      label: "Pages",
+      items: [
+        { name: "Allowed page", href: "/allowed", icon },
+        { name: "Policy restricted", href: "/restricted", icon, policy: "secret.view" },
+        { name: "Owner only", href: "/owner", icon, minimumRole: "owner" as const },
+        { name: "Disabled feature", href: "/voice", icon, flag: "voice" as const },
+      ],
+    },
+  ];
+  render(
+    <ChatModeShell navigation={navigation}>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.click(screen.getByText("Chat entry"));
+  expect(screen.getByRole("link", { name: "Allowed page" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Browse pages" }));
+  await screen.findByRole("menu");
+  expect(screen.getByRole("menuitem", { name: "Allowed page" })).toBeInTheDocument();
+  for (const name of ["Policy restricted", "Owner only", "Disabled feature"]) {
+    expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name })).not.toBeInTheDocument();
+  }
 });
 
 it("keeps the existing shell when the organization has not opted in", () => {

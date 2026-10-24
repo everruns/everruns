@@ -1,4 +1,6 @@
 "use client";
+
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { use, useState, useRef } from "react";
 import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Download, RefreshCw, Search, Upload, FileText } from "lucide-react";
@@ -50,6 +52,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
   const [preview, setPreview] = useState("");
   const [notePath, setNotePath] = useState("notes/new-note.md");
   const [note, setNote] = useState("");
+  useChatPageFilters({ search: query, file_path: selected?.path ?? prefix });
   const files = useInfiniteQuery({
     queryKey: ["knowledge-files", org, collectionId, prefix],
     queryFn: ({ pageParam }) => listKnowledgeFiles(collectionId, prefix, pageParam),

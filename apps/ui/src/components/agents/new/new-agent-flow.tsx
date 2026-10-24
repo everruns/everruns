@@ -1,5 +1,7 @@
 "use client";
 
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 // New agent page. Four ways to start, one result: a normal
 // agent. Describe it is the default (design note "Describe first"); examples,
 // a blank form and package import are one tab away. Describe and Blank share
@@ -63,7 +65,19 @@ export function NewAgentFlow() {
     [router, searchParams],
   );
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["display_name", "name", "description", "system_prompt"],
+    values: draft,
+    entityType: "agent",
+    label: "New agent",
+    baseline: "new",
+    enabled: tab === "blank" || tab === "describe",
+    dirty: [draft.display_name, draft.name, draft.description, draft.system_prompt].some(Boolean),
+    writable: !pending,
+    apply: (values) => setDraft((previous) => ({ ...previous, ...values })),
+  });
   const createFromDraft = async () => {
+    if (chatDraft.blocked) return;
     setCreateError(null);
     try {
       const { agentId, failedChannels, githubSetupHref } = await create(draft);
@@ -88,6 +102,7 @@ export function NewAgentFlow() {
         title="New agent"
         description="Every path creates a normal agent. Channels start as drafts and take no traffic until you publish them."
       />
+      {chatDraft.notice}
       <SectionTabs
         value={tab}
         onValueChange={(value) => setTab(value as NewAgentTab)}

@@ -57,6 +57,14 @@ it("reads unsaved form values and applies an atomic draft patch without losing o
   const before = adapter.read(adapter.describe().binding);
   expect(before.dirty).toBe(true);
   expect(before.values.description).toBe("My unsaved description");
+  expect(before.patch_schema).toMatchObject({
+    type: "object",
+    additionalProperties: false,
+    properties: { system_prompt: { type: "string" }, name: { type: "string" } },
+  });
+  expect(
+    (before.patch_schema?.properties as Record<string, unknown>).sandbox_policy,
+  ).toBeUndefined();
   let revision = "";
   act(() => {
     revision = adapter.patch(before.binding, before.revision, {

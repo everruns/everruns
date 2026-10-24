@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useMemo, useState } from "react";
 import {
@@ -189,6 +191,7 @@ export default function CapabilitiesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [statusTab, setStatusTab] = useState<StatusTab>("all");
+  useChatPageFilters({ search: searchQuery, category: selectedCategory, status: statusTab });
 
   const { categories } = useMemo(() => {
     const counts: Record<string, number> = {};

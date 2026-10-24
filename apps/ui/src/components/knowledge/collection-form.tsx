@@ -1,4 +1,7 @@
 "use client";
+
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { collectionDraftSchema } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useModels } from "@/hooks/use-providers";
@@ -49,11 +52,49 @@ export function CollectionForm({
     queryFn: listKnowledgeIndexers,
     enabled: !!currentOrg,
   });
+  const values = { name, description, mode, model, indexer, rules };
+  const savedValues = {
+    name: initial?.name ?? "",
+    description: initial?.description ?? "",
+    mode: initial?.indexing ?? "off",
+    model: initial?.embedding_model_id
+      ? `model_${initial.embedding_model_id.replaceAll("-", "")}`
+      : "",
+    indexer: initial?.indexer_id ?? "",
+    rules: JSON.stringify(
+      initial?.rules && Object.keys(initial.rules).length
+        ? initial.rules
+        : { ingest_exclude: [], index_exclude: [], read_exclude: [] },
+      null,
+      2,
+    ),
+  };
+  const chatDraft = usePageFormDraft({
+    schema: collectionDraftSchema,
+    values,
+    entityId: initial?.id,
+    entityType: "knowledge_collection",
+    formId: "settings",
+    label: initial?.name ?? "New collection",
+    baseline: String(initial?.revision ?? "new"),
+    dirty: JSON.stringify(values) !== JSON.stringify(savedValues),
+    writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
+    readonlyFields: initial?.name === "everruns-docs" ? ["name"] : [],
+    apply: (next) => {
+      setName(next.name);
+      setDescription(next.description);
+      setMode(next.mode);
+      setModel(next.model);
+      setIndexer(next.indexer);
+      setRules(next.rules);
+    },
+  });
   return (
     <form
       className="space-y-4"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (chatDraft.blocked) return;
         setError("");
         setPending(true);
         try {
@@ -72,6 +113,7 @@ export function CollectionForm({
         }
       }}
     >
+      {chatDraft.notice}
       <div className="space-y-2">
         <Label htmlFor="knowledge-name">Name</Label>
         <Input
@@ -175,9 +217,29 @@ export function CollectionForm({
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" disabled={pending} variant="accent">
+        <Button type="submit" disabled={pending || chatDraft.blocked} variant="accent">
           {pending ? "Saving…" : initial ? "Save settings" : "Create collection"}
         </Button>
+        {chatDraft.blocked && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setName(initial?.name ?? "");
+              setDescription(initial?.description ?? "");
+              setMode(initial?.indexing ?? "off");
+              setModel(
+                initial?.embedding_model_id
+                  ? `model_${initial.embedding_model_id.replaceAll("-", "")}`
+                  : "",
+              );
+              setIndexer(initial?.indexer_id ?? "");
+              setRules(savedValues.rules);
+            }}
+          >
+            Discard
+          </Button>
+        )}
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel

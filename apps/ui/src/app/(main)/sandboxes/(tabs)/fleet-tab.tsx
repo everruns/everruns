@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 // Sandboxes tab: every Sandbox in the organization, across providers and
 // states. The page header and tabs come from the shell (sandboxes-shell.tsx).
 //
@@ -57,6 +59,18 @@ export function SandboxFleetTab() {
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("sandbox"));
+
+  useChatPageFilters({
+    search,
+    status: state,
+    provider_id: provider,
+    filter: needsAttention ? "needs_attention" : null,
+    range: windowKey,
+    tab: view,
+    page,
+    limit: PAGE_SIZE,
+    selected_id: selectedId,
+  });
 
   const update = useCallback(
     (changes: Record<string, string | null>) => {

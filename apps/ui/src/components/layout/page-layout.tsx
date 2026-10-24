@@ -494,7 +494,12 @@ export function EmptyState({ icon, title, description, action, className }: Empt
  */
 export function PageColumns({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]", className)}>
+    <div
+      className={cn(
+        "page-columns grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_280px]",
+        className,
+      )}
+    >
       {children}
     </div>
   );

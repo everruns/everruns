@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -256,6 +258,7 @@ export default function ObserverDetailPage({
   const { observerId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("configuration");
+  useChatPageFilters({ tab: activeTab });
 
   const { data: observer, isLoading } = useObserver(observerId);
   usePageTitle(observer?.name ?? null, "Observer");

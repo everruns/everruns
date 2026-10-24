@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+
 // Web search → Defaults: edits the organization's `web_search_defaults`
 // (PATCH /v1/orgs/{org}). Every change saves the whole object at once, the
 // way the server stores it, from a local draft so quick edits build on each
@@ -103,6 +105,28 @@ export function SearchDefaultsTab({
     });
   }
 
+  usePageReadContext({
+    fields: [
+      "provider",
+      "account_id",
+      "automatic_order",
+      "allow_native",
+      "fallback",
+      "results_per_search",
+      "blocked_domains",
+    ],
+    values: {
+      provider: draft.provider ?? "auto",
+      account_id: draft.account_id ?? "",
+      automatic_order: JSON.stringify(draft.automatic_order ?? []),
+      allow_native: String(draft.allow_native ?? true),
+      fallback: draft.fallback ?? "next",
+      results_per_search: String(draft.results_per_search ?? 8),
+      blocked_domains: JSON.stringify(draft.blocked_domains ?? []),
+    },
+    entityType: "web_search_defaults",
+    label: "Web search defaults",
+  });
   const blocked = draft.blocked_domains ?? [];
 
   return (

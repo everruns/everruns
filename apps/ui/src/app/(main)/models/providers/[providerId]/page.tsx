@@ -1,5 +1,13 @@
 "use client";
 
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  providerTraceDraftSchema,
+  providerAdvancedDraftSchema,
+  isPublicDraftLocation,
+} from "@/components/chat-mode/page-form-schemas";
+
 import { ModelsIcon } from "@/components/icons/facet-icons";
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -63,12 +71,30 @@ export default function ProviderDetailPage({
     );
   }, [models, providerId]);
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name"],
+    values: { name },
+    entityId: providerId,
+    entityType: "provider",
+    formId: "details",
+    label: "Provider details",
+    enabled: !!provider && isPlatformProviderVisible(provider.provider_type),
+    baseline: provider?.name ?? "",
+    dirty: !!provider && name !== provider.name,
+    writable:
+      !!provider &&
+      nameProviderId === provider.id &&
+      canManage &&
+      !provider.managed &&
+      !updateProvider.isPending,
+    apply: (next) => setName(next.name),
+  });
   const trimmedName = name.trim();
   const nameChanged = !!provider && trimmedName !== provider.name;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!provider || !trimmedName || !nameChanged) return;
+    if (chatDraft.blocked || !provider || !trimmedName || !nameChanged) return;
     setErrorMessage(null);
     try {
       await updateProvider.mutateAsync({ name: trimmedName });
@@ -157,6 +183,7 @@ export default function ProviderDetailPage({
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
+              {chatDraft.notice}
               <div className="space-y-2">
                 <Label htmlFor="provider-name">Name</Label>
                 <Input
@@ -181,10 +208,17 @@ export default function ProviderDetailPage({
               {!provider.managed && canManage && (
                 <Button
                   type="submit"
-                  disabled={updateProvider.isPending || !trimmedName || !nameChanged}
+                  disabled={
+                    chatDraft.blocked || updateProvider.isPending || !trimmedName || !nameChanged
+                  }
                 >
                   <Save className="h-4 w-4 mr-2" />
                   {updateProvider.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              )}
+              {chatDraft.blocked && (
+                <Button type="button" variant="outline" onClick={() => setName(provider.name)}>
+                  Discard
                 </Button>
               )}
             </form>
@@ -258,8 +292,39 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
     }
   }, [provider, seededId]);
 
+  const { can } = usePolicies("providers");
+  const traceValues = {
+    enabled,
+    generation_url_template: generationTemplate,
+    session_url_template: sessionTemplate,
+  };
+  const savedTrace = {
+    enabled: provider.trace?.enabled ?? false,
+    generation_url_template: provider.trace?.generation_url_template ?? "",
+    session_url_template: provider.trace?.session_url_template ?? "",
+  };
+  const chatDraft = usePageFormDraft({
+    schema: providerTraceDraftSchema,
+    values: traceValues,
+    entityId: providerId,
+    entityType: "provider",
+    formId: "tracing",
+    label: "Trace links",
+    baseline: JSON.stringify(savedTrace),
+    dirty: JSON.stringify(traceValues) !== JSON.stringify(savedTrace),
+    writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
+    enabled: isPublicDraftLocation(generationTemplate) && isPublicDraftLocation(sessionTemplate),
+    apply: (next) => {
+      setEnabled(next.enabled);
+      setGenerationTemplate(next.generation_url_template);
+      setSessionTemplate(next.session_url_template);
+      setSaved(false);
+    },
+  });
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setErrorMessage(null);
     setSaved(false);
     try {
@@ -283,6 +348,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4 max-w-xl">
+          {chatDraft.notice}
           <p className="text-sm text-muted-foreground">
             Show links from session chats to this provider&apos;s trace/logs dashboard. Enable this
             only after turning on request logging for the account — most providers retain
@@ -316,10 +382,23 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
           {saved && !errorMessage && (
             <p className="text-sm text-muted-foreground">Trace settings saved.</p>
           )}
-          <Button type="submit" disabled={updateProvider.isPending}>
+          <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
             {updateProvider.isPending ? "Saving..." : "Save Trace Settings"}
           </Button>
+          {chatDraft.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEnabled(savedTrace.enabled);
+                setGenerationTemplate(savedTrace.generation_url_template);
+                setSessionTemplate(savedTrace.session_url_template);
+              }}
+            >
+              Discard
+            </Button>
+          )}
         </form>
       </CardContent>
     </Card>
@@ -371,8 +450,27 @@ function ProviderAdvancedCard({
       current.map((header, i) => (i === index ? { ...header, ...patch } : header)),
     );
 
+  const { can } = usePolicies("providers");
+  const chatDraft = usePageFormDraft({
+    schema: providerAdvancedDraftSchema,
+    values: { cache_diagnostics: cacheDiagnostics },
+    entityId: providerId,
+    entityType: "provider",
+    formId: "advanced",
+    label: "Advanced request settings",
+    baseline: JSON.stringify(provider.request_options?.cache_diagnostics ?? false),
+    dirty: cacheDiagnostics !== (provider.request_options?.cache_diagnostics ?? false),
+    writable: can("provider.manage") && !provider.managed && !updateProvider.isPending,
+    // Header names and values are deliberately absent from the allowlist.
+    apply: (next) => {
+      setCacheDiagnostics(next.cache_diagnostics);
+      setSaved(false);
+    },
+  });
+
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setErrorMessage(null);
     setSaved(false);
     // Blank rows are how a user clears one; drop them instead of sending an
@@ -408,6 +506,7 @@ function ProviderAdvancedCard({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-6 max-w-xl">
+          {chatDraft.notice}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor="cache-diagnostics">Prompt cache diagnostics</Label>
@@ -475,10 +574,21 @@ function ProviderAdvancedCard({
           {saved && !errorMessage && (
             <p className="text-sm text-muted-foreground">Advanced settings saved.</p>
           )}
-          <Button type="submit" disabled={updateProvider.isPending}>
+          <Button type="submit" disabled={updateProvider.isPending || chatDraft.blocked}>
             <Save className="h-4 w-4 mr-2" />
             {updateProvider.isPending ? "Saving..." : "Save Advanced Settings"}
           </Button>
+          {chatDraft.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setCacheDiagnostics(provider.request_options?.cache_diagnostics ?? false)
+              }
+            >
+              Discard
+            </Button>
+          )}
         </form>
       </CardContent>
     </Card>

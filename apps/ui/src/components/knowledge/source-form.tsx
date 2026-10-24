@@ -1,4 +1,7 @@
 "use client";
+
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { sourceDraftSchema, isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
@@ -28,11 +31,40 @@ export function SourceForm({
     queryFn: () => listVirtualUsers(false, { usage: "service" }),
     enabled: !!currentOrg,
   });
+  const values = { kind: kind as "github" | "git", coordinates, branch, folder, root, identity };
+  const chatDraft = usePageFormDraft({
+    schema: sourceDraftSchema,
+    values,
+    entityId: collectionId,
+    entityType: "knowledge_collection",
+    formId: "source",
+    label: "Connect source",
+    baseline: "new",
+    dirty: !!(
+      coordinates ||
+      folder ||
+      identity ||
+      branch !== "main" ||
+      root !== "sources" ||
+      kind !== "github"
+    ),
+    writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
+    enabled: !coordinates.includes("://") || isPublicDraftLocation(coordinates),
+    apply: (next) => {
+      setKind(next.kind);
+      setCoordinates(next.coordinates);
+      setBranch(next.branch);
+      setFolder(next.folder);
+      setRoot(next.root);
+      setIdentity(next.identity);
+    },
+  });
   return (
     <form
       className="space-y-4"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (chatDraft.blocked) return;
         setPending(true);
         setError("");
         try {
@@ -55,6 +87,7 @@ export function SourceForm({
         }
       }}
     >
+      {chatDraft.notice}
       <p className="text-sm text-muted-foreground">
         Connected files are read-only. Refreshing keeps their file structure and replaces only
         changed content.
@@ -140,7 +173,7 @@ export function SourceForm({
           {error}
         </p>
       )}
-      <Button type="submit" variant="accent" disabled={pending}>
+      <Button type="submit" variant="accent" disabled={pending || chatDraft.blocked}>
         {pending ? "Connecting…" : "Connect source"}
       </Button>
     </form>

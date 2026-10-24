@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
@@ -55,6 +57,7 @@ export default function VirtualUsersPage() {
   const [search, setSearch] = useState("");
   const [usage, setUsage] = useState("all");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  useChatPageFilters({ search, status: statusTab, usage });
   const {
     data: identities,
     isLoading,

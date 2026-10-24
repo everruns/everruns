@@ -53,6 +53,10 @@ export const agentDraftPatchSchema = z
   .refine((patch) => Object.keys(patch).length > 0, "Provide at least one form field");
 
 export type AgentDraftPatch = z.infer<typeof agentDraftPatchSchema>;
+export const agentDraftPatchJsonSchema = {
+  ...z.toJSONSchema(agentDraftPatchSchema, { unrepresentable: "any" }),
+  minProperties: 1,
+};
 
 export interface PageDraftDescriptor {
   binding: string;
@@ -61,17 +65,24 @@ export interface PageDraftDescriptor {
   writable: boolean;
 }
 
-export interface PageDraftSnapshot extends PageDraftDescriptor {
+export interface PageDraftSnapshot<
+  T extends object = Record<string, unknown>,
+> extends PageDraftDescriptor {
   entity_id: string;
-  values: AgentDraftPatch;
+  entity_type?: string;
+  values: T;
+  patch_schema?: Record<string, unknown>;
+  forms?: Record<string, { label: string; writable: boolean; dirty: boolean }>;
   // Shown for context. Template snapshots require the dedicated sandbox editor.
-  sandbox_policy: unknown;
+  sandbox_policy?: unknown;
 }
 
-export interface PageDraftAdapter {
+export interface PageDraftAdapter<T extends object = Record<string, unknown>> {
+  readonly binding?: string;
   describe: () => PageDraftDescriptor;
-  read: (binding: string) => PageDraftSnapshot;
-  patch: (binding: string, revision: string, changes: unknown) => PageDraftSnapshot;
+  read: (binding: string) => PageDraftSnapshot<T>;
+  patch: (binding: string, revision: string, changes: unknown) => PageDraftSnapshot<T>;
+  previewPatch?: (binding: string, revision: string, changes: unknown) => PageDraftSnapshot<T>;
 }
 
 export function assertDraftSize(value: unknown) {

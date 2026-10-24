@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Page-aware Chat mode"
-description: "How the Adoption-gated split shell connects permanent Platform Chat to the current page, with Agents as the first editing integration."
+description: "How the Adoption-gated split shell connects permanent Platform Chat to the current page, with shared context across app pages and typed draft editing."
 tags:
   - ui
   - agents
@@ -20,9 +20,9 @@ change markers. The subsequent product decision also connects Chat to the actual
 Agent form: adjacent-page edits stage in that existing draft and use its Save
 and Discard actions. There is no separate Chat draft or per-change acceptance queue.
 
-This is an incremental UI program. Agents is the first integration; the shell
-and page registration contract must support subsequent entity pages without
-duplicating the transcript, composer, or navigation model.
+The authenticated app shares one context and registration contract. Read-only
+views, editable forms and host-composed pages reuse the same transcript, composer
+and navigation model. Adoption does not make immediate page actions model-callable.
 
 ## Rollout and ownership
 
@@ -56,13 +56,30 @@ composed navigation sections, so stricter host visibility and loading rules
 remain effective in the rail. Shared role, feature and policy checks still apply. Agent settings drawers mount within the
 page pane with a page-only backdrop, leaving Chat accessible.
 
+Every rail destination has a short explanation in the shared navigation model.
+Hover or keyboard focus reveals its name and purpose in a tooltip to the left of
+the rail. The always-labeled Pages control opens the same permitted destinations
+as a grouped menu with names and descriptions, including on touch screens.
+Escape dismisses an overlay and the menu returns focus to its trigger. Closing
+Chat removes rail overlays without remounting the page or conversation. Discovery
+does not prefetch destination content or render hidden, disabled or restricted pages.
+
 ## Page context is data
 
 [`ChatModeContext`](../../apps/ui/src/components/chat-mode/chat-mode-context.tsx)
-is an optional page adapter. Agents registers its identity, readable label,
-route including tab/sheet query, and editing state. Unregistered pages still
-supply their route; entity-aware registration and change marking are separate
-steps in their migration.
+is an optional page adapter. Every page within the adopted authenticated shell
+receives a browser binding, route and resource identity. Existing page-title hooks
+supply readable labels. Explicit forms register their own identity and fields;
+registration cleanup removes only its own adapter, so nested pages and dialogs do
+not clear a parent's context.
+
+An explicit read can return bounded summaries from active, successful query-cache
+entries for the current organization and resource. A fixed projection excludes
+credentials, configuration objects, conversation bodies and file contents; it is
+not a cache dump or a background fetch. Operational/global queries without a known
+tenant scope are omitted. Summary limits and truncation are reported. A right-pane
+registry reads explicit React filters/tabs and mounted entity references; it never
+scrapes the DOM or observes inputs in Chat, the sidebar or credential controls.
 
 Each send snapshots context into **request-level message metadata**. Retrying a
 send retains that snapshot and the original client message id even if the user
@@ -84,6 +101,51 @@ Manual Save, Discard and Undo create quiet UI action notes. Pending notes travel
 with the next authored message, then render with that message's transcript.
 They do not start unsolicited model turns. This deliberately reuses the current
 message protocol instead of inventing a second conversation transport.
+
+## Shared forms and read-only views
+
+[`usePageFormDraft`](../../apps/ui/src/components/chat-mode/use-page-form-draft.tsx)
+connects explicit, strict field schemas to existing React setters. The controller
+has no API client or Save callback. Text-only integrations project an independent
+field-name allowlist, so passing additional local state cannot expose a credential.
+The returned patch schema describes the fields actually supported on that form;
+unknown fields, invalid values, read-only fields and stale revisions fail before
+any setter. Patches preserve omitted values. A notice names changed fields and
+offers guarded draft Undo, preserving later manual edits. Saved-baseline conflicts
+keep dirty work and block the integration's Save action until it is discarded.
+
+Beyond Agents, integrations cover Harness creation/editing, Virtual Users,
+Observer definitions, Eval creation, Model ID/display-name dialogs, declarative Capability metadata/skills/files,
+Knowledge collection/source/account forms, Memory and legacy Knowledge-index
+metadata dialogs, Skill creation, Sandbox-template metadata and non-credential
+Channel text. Each exposes its supported subset; MCP headers/environment values,
+API keys, channel auth, sandbox environment values and grants remain manual.
+Existing scorer variants unsupported by the current Observer editor remain readable
+with their scorer collection read-only; metadata edits preserve them.
+Credential-bearing URL fields disable their adapter and incoming URL patches are
+validated. No redacted credential is ever written back as a form value.
+
+Providers have independent details, tracing and advanced Save forms. Their shared
+page binding returns named forms and permits one named form per patch. Child
+validation and the aggregate size check run before mutation. Opening/closing or
+replacing a form rotates the collection binding. A dialog may take priority over
+the underlying page form, then unmount cleanly back to that page.
+
+Immediate-save settings (Organization, Model defaults, Web search defaults) expose
+explicit readable values without exposing their onChange save handlers. Other
+operational pages, credential setup, approvals, financial actions, imports and
+uploads provide read-only context and retain their normal page controls. A missing
+writable form is not permission to save the adjacent page through server commands.
+Separately requested saved-resource operations retain the normal Platform Chat
+command flow; a failed form patch must never be reinterpreted as permission for
+a direct server save. Saved-change attribution and versioned inverse Undo remain
+Agent-specific.
+
+Dialogs and drawers originating in the right page portal into its stable container.
+Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
+non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the form
+mounted. Explicit Close/Escape still work. The common two-column page body responds
+to the page pane's width. Feature-off pages retain their normal controls and shell.
 
 ## Live Agent drafts
 
@@ -183,9 +245,9 @@ could silently save an older prompt over the Chat's work.
   definition follow its history. Credential values, independent connection
   grants, channel state and other child resources require their own attribution
   adapters and safe inverse policies; restoring an Agent must not restore a secret.
-- **Other pages:** add typed context first, then history attribution and field
-  markers, then inverse support and pane-scoped sheets. Reuse this shell for
-  Harnesses, registries and operational surfaces; do not clone it per page.
+- **Resource history:** shared context and form drafts do not imply saved-change
+  attribution or inverse Undo. Add those only with that resource's authorization
+  and revision-guarded history contract; do not clone the shell per page.
 - **Model choice:** Chat mode hides the model chip when a model resolves; retain
   the recovery picker when none is configured. It uses the existing managed
   session/model resolution instead of creating another model setting.
