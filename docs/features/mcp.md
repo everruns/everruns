@@ -236,6 +236,15 @@ it uses the catalog's timeout.
 }
 ```
 
+A server that supports the
+[MCP Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
+does not need a longer timeout. Everruns declares the extension on every tool
+call, so such a server can answer with a task instead of holding the request
+open. The agent then checks on the task until it finishes, for up to 30 minutes.
+Questions the task asks reach the agent's user the same way as a server's
+[form questions](#when-a-tool-needs-a-person). If the turn is cancelled or the
+wait runs out, Everruns cancels the task on the server.
+
 ### Waking an agent on a server's events (experimental)
 
 With the **MCP Events** flag on, an agent can also subscribe to events that one

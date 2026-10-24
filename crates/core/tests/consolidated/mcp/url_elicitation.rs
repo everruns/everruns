@@ -187,10 +187,7 @@ async fn consent_retries_the_call_with_the_accept_response() {
     let calls = egress.calls();
     assert_eq!(calls.len(), 2, "exactly one retry");
     // Capability declared on every request, since this host can reach a human.
-    assert_eq!(
-        capabilities(&calls[0]),
-        &json!({ "elicitation": { "url": {} } })
-    );
+    assert_eq!(capabilities(&calls[0])["elicitation"], json!({ "url": {} }));
     // The retry echoes the opaque state verbatim, answers under the server's
     // own key, and is an independent request (different JSON-RPC id).
     assert_eq!(calls[1]["params"]["requestState"], "opaque-state");
@@ -240,7 +237,7 @@ async fn a_host_with_no_handler_declares_nothing_and_refuses_the_elicitation() {
     let calls = egress.calls();
     assert_eq!(calls.len(), 1);
     // The declaration is what makes the server's request out of contract.
-    assert_eq!(capabilities(&calls[0]), &json!({}));
+    assert_eq!(capabilities(&calls[0])["elicitation"], Value::Null);
 }
 
 #[tokio::test]

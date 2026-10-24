@@ -20,6 +20,7 @@ use crate::mcp::form_elicitation::{
 };
 use crate::mcp::protocol::{self, ClientCapabilities, Negotiated};
 use crate::mcp::result::extract_json_from_response;
+use crate::mcp::tasks;
 use crate::mcp::transport::{McpConnection, McpEndpoint, McpTransport};
 use crate::{
     EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpToolCallResponse,
@@ -277,7 +278,7 @@ async fn do_handshake(
 /// Send an already-built operation body under a negotiated protocol, attaching
 /// routable headers and the session id when stateful.
 #[allow(clippy::too_many_arguments)]
-async fn send_op(
+pub(super) async fn send_op(
     egress: &dyn EgressService,
     url: &str,
     headers: &HashMap<String, String>,
@@ -692,7 +693,7 @@ pub async fn http_request(
 }
 
 /// Parse a JSON-RPC response body into its `result`, or an [`McpRpcError`].
-fn parse_rpc_result(text: &str) -> Result<Value> {
+pub(super) fn parse_rpc_result(text: &str) -> Result<Value> {
     let json_str = extract_json_from_response(text)
         .ok_or_else(|| anyhow!("SSE response missing data line"))?;
     let mut response: Value = serde_json::from_str(json_str)?;
@@ -733,6 +734,8 @@ pub async fn http_call_tool(
     let capabilities = ClientCapabilities {
         url_elicitation: elicitation.is_some(),
         form_elicitation: false,
+        // A connection-less call has no transport to keep polling with.
+        tasks: false,
     };
     let (text, negotiated) = negotiate_and_send(
         egress,
@@ -773,7 +776,7 @@ pub async fn http_call_tool(
 /// narrowed to what was declared to this server. A `None` here means the
 /// capability was not declared, so a server asking for it is in error.
 #[derive(Clone, Copy)]
-struct InputHandlers<'a> {
+pub(super) struct InputHandlers<'a> {
     url: Option<&'a dyn UrlElicitationHandler>,
     form: Option<&'a dyn FormElicitationHandler>,
 }
@@ -894,7 +897,7 @@ async fn resolve_input_required(
 /// Every request must be an elicitation mode this client declared to this
 /// server; anything else is a server sending an input type this client never
 /// declared, and is reported rather than answered.
-async fn gather_input_responses(
+pub(super) async fn gather_input_responses(
     input_required: &protocol::InputRequired,
     server_name: &str,
     tool_name: &str,
@@ -1194,6 +1197,8 @@ pub struct HttpTransport {
     /// (the default) declares no form mode to any server; with one, form mode
     /// is still declared only to servers whose policy opts in.
     form_elicitation: Option<Arc<dyn FormElicitationHandler>>,
+    /// How long a `tools/call` that became a task may run.
+    task_wait_limit: Duration,
 }
 
 impl HttpTransport {
@@ -1204,7 +1209,15 @@ impl HttpTransport {
             tools: Mutex::new(HashMap::new()),
             elicitation: None,
             form_elicitation: None,
+            task_wait_limit: tasks::TASK_WAIT_LIMIT,
         }
+    }
+
+    /// Bound how long a `tools/call` that the server turned into a task may
+    /// run (default [`tasks::TASK_WAIT_LIMIT`]).
+    pub fn with_task_wait_limit(mut self, limit: Duration) -> Self {
+        self.task_wait_limit = limit;
+        self
     }
 
     /// Enable URL mode elicitation, routing consent through `handler`.
@@ -1245,6 +1258,7 @@ impl HttpTransport {
         ClientCapabilities {
             url_elicitation: handlers.url.is_some(),
             form_elicitation: handlers.form.is_some(),
+            tasks: false,
         }
     }
 
@@ -1364,7 +1378,11 @@ impl McpTransport for HttpTransport {
     ) -> Result<McpToolCallResult> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
-        let capabilities = self.capabilities(connection);
+        // This transport can keep polling, so `tools/call` may become a task.
+        let capabilities = ClientCapabilities {
+            tasks: true,
+            ..self.capabilities(connection)
+        };
         let cached = self.cached_negotiation(&cache_key);
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -1400,7 +1418,27 @@ impl McpTransport for HttpTransport {
             text,
         )
         .await?;
-        self.store_negotiation(cache_key, negotiated);
+        self.store_negotiation(cache_key, negotiated.clone());
+        if let Some(task) = tasks::created_task_from_response(&text) {
+            let task_connection = tasks::TaskConnection {
+                egress: self.egress.clone(),
+                url: url.to_string(),
+                headers: headers.clone(),
+                credential: credential.cloned(),
+                negotiated,
+                capabilities,
+                request_timeout: CALL_TIMEOUT,
+            };
+            return tasks::await_task(
+                task_connection,
+                task,
+                &connection.name,
+                tool_name,
+                self.handlers(connection),
+                self.task_wait_limit,
+            )
+            .await;
+        }
         parse_tool_call(&text)
     }
 
