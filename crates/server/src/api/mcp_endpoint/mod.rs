@@ -571,26 +571,26 @@ async fn handle_mcp(
         "resources/directory/read" if negotiated_version == MCP_PROTOCOL_VERSION_LATEST => {
             skills::handle_directory_read(req.id, req.params)
         }
-        // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
-        // sessions; these methods delegate to the same session logic the
-        // agent_run/session_get_status/session_send_message tools use. Gated to
-        // both the negotiated 2026-07-28 protocol and per-request client
-        // capability opt-in; clients outside the extension contract get
-        // method_not_found, matching "the method does not exist here".
+        // MCP 2026-07-28 Tasks extension (SEP-2663). A task is the turn one
+        // agent_run / session_send_message started; see `tasks`. The methods
+        // exist only for the 2026-07-28 protocol, and a client that did not
+        // declare the extension on the request gets -32021.
         "tasks/get" | "tasks/cancel" | "tasks/update"
-            if protocol_version
-                .map(|version| tasks::tasks_enabled(version, &req.params))
-                .unwrap_or(false) =>
+            if negotiated_version == MCP_PROTOCOL_VERSION_LATEST =>
         {
-            tasks::handle_method(
-                req.method.as_str(),
-                req.id,
-                req.params,
-                &auth_user,
-                &org,
-                &state,
-            )
-            .await
+            if tasks::client_advertised_tasks(&req.params) {
+                tasks::handle_method(
+                    req.method.as_str(),
+                    req.id,
+                    req.params,
+                    &auth_user,
+                    &org,
+                    &state,
+                )
+                .await
+            } else {
+                tasks::missing_capability(req.id)
+            }
         }
         // MCP Events (draft): outbound session webhooks, org opt-in.
         "events/list" | "events/subscribe" | "events/unsubscribe" => {
@@ -628,11 +628,10 @@ async fn handle_tools_call(
     state: &AppState,
     protocol_version: &str,
 ) -> JsonRpcResponse {
-    // MCP 2026-07-28 Tasks extension: when the client advertised the extension
+    // MCP 2026-07-28 Tasks extension: when the client declared the extension
     // and the negotiated protocol is 2026-07-28, agent_run / session_send_message
-    // long-running calls answer with a CreateTaskResult (`resultType: "task"`)
-    // task handle alongside their existing fields. `params` (not `arguments`)
-    // carries the per-request `_meta` opt-in, so we evaluate it here.
+    // answer with a CreateTaskResult for the turn they started. `params` (not
+    // `arguments`) carries the per-request `_meta` opt-in.
     let tasks_enabled = tasks::tasks_enabled(protocol_version, &params);
 
     // An MCP Apps host renders the question in the session view, so it can
@@ -802,13 +801,10 @@ async fn handle_tools_call(
                 result["structuredContent"] = structured_content;
             }
 
-            // Tasks extension: for the long-running conversation tools, add the
-            // CreateTaskResult task-handle fields (taskId = session_id) so a 2026
-            // client that opted in can treat the call as a standard Task. The
-            // legacy `content`/`structuredContent` fields stay untouched, so this
-            // is strictly additive.
+            // Tasks extension: a client that declared it gets the turn the
+            // conversation tool started as a task, in place of the result.
             if tasks_enabled && matches!(tool_name, "agent_run" | "session_send_message") {
-                augment_with_task_handle(&mut result, &content);
+                return tasks::created_task(id, &content, &arguments, auth_user, org, state).await;
             }
 
             JsonRpcResponse::success(id, result)
@@ -816,34 +812,6 @@ async fn handle_tools_call(
         Err(msg) => {
             let envelope = classify_mcp_execute_error(&msg);
             JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
-        }
-    }
-}
-
-/// Merge Tasks-extension `CreateTaskResult` fields (`resultType`, `taskId`,
-/// `status`, `ttlMs`, `pollIntervalMs`) into a successful tools/call result,
-/// deriving them from the tool's JSON `content`. `agent_run` exposes the session
-/// as `session_id`/`status`; `session_send_message` as `session_id`/
-/// `session_status`. The task handle is `session_id`. If the content isn't
-/// parseable JSON with a session id (it always is for these tools), we leave the
-/// result unchanged rather than fabricate a handle.
-fn augment_with_task_handle(result: &mut Value, content: &str) {
-    let Ok(parsed) = serde_json::from_str::<Value>(content) else {
-        return;
-    };
-    let Some(session_id) = parsed.get("session_id").and_then(Value::as_str) else {
-        return;
-    };
-    let session_status = parsed
-        .get("status")
-        .or_else(|| parsed.get("session_status"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-
-    let task = tasks::create_task_result(session_id, session_status);
-    if let (Some(result_obj), Some(task_obj)) = (result.as_object_mut(), task.as_object()) {
-        for (key, value) in task_obj {
-            result_obj.insert(key.clone(), value.clone());
         }
     }
 }
