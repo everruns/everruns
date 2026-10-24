@@ -9,6 +9,7 @@ export interface ChatPageContext {
   entity_type?: string;
   entity_id?: string;
   editing?: boolean;
+  form_name?: string;
   draft?: PageDraftDescriptor;
 }
 
@@ -20,11 +21,17 @@ export interface PageAction {
 
 export interface ChatModeState {
   pageContainer: RefObject<HTMLElement | null>;
+  pageContainerElement?: HTMLElement | null;
   open: boolean;
   setOpen: (open: boolean) => void;
   page: ChatPageContext;
-  registerPage: (page: ChatPageContext, adapter?: PageDraftAdapter) => () => void;
+  registerPage: (
+    page: ChatPageContext,
+    adapter?: PageDraftAdapter,
+    priority?: number,
+  ) => () => void;
   pageAdapter?: PageDraftAdapter;
+  pageViewAdapter?: PageDraftAdapter;
   threadId?: string;
   actions: PageAction[];
   recordAction: (label: string) => void;

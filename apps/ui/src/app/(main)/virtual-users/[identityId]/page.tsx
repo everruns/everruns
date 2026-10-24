@@ -1,5 +1,9 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -67,15 +71,14 @@ export default function VirtualUserDetailPage({
   const { identityId } = use(params);
   const router = useRouter();
   const [tab, setTab] = useState("overview");
+  useChatPageFilters({ tab: tab });
   const { data: identity, isLoading } = useVirtualUser(identityId);
   usePageTitle(identity?.name ?? null, "Virtual User");
   const updateIdentity = useUpdateVirtualUser();
   const deleteIdentity = useDeleteVirtualUser();
   const destroyIdentity = useDestroyVirtualUser();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  // Virtual users expose no policy config; their manage permission is granted
-  // to exactly the roles that hold agent manage, so that answer stands in.
-  const { can } = usePolicies("agents");
+  const { can } = usePolicies("virtual-users");
 
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
@@ -99,8 +102,26 @@ export default function VirtualUserDetailPage({
     setFormChanges((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "description", "locale", "timezone"],
+    values: formData,
+    entityId: identityId,
+    entityType: "virtual_user",
+    label: identity?.name ?? "Virtual user",
+    baseline: JSON.stringify(initialFormData),
+    dirty: JSON.stringify(formData) !== JSON.stringify(initialFormData),
+    writable:
+      !!identity &&
+      !isReadOnlyStatus(identity.status) &&
+      !updateIdentity.isPending &&
+      can("virtual_user.manage"),
+    enabled: !!identity && tab === "overview",
+    apply: setFormChanges,
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     try {
       await updateIdentity.mutateAsync({
         identityId,
@@ -203,7 +224,11 @@ export default function VirtualUserDetailPage({
         }
         actions={
           <>
-            <Button type="submit" form="identity-edit-form" disabled={isSaving || isReadOnly}>
+            <Button
+              type="submit"
+              form="identity-edit-form"
+              disabled={isSaving || isReadOnly || chatDraft.blocked}
+            >
               <Check className="size-4" />
               {isReadOnly ? "Read-only" : isSaving ? "Saving..." : "Save changes"}
             </Button>
@@ -214,7 +239,7 @@ export default function VirtualUserDetailPage({
               entityRef={identity.id}
               kind="virtual_user"
               entityName={identity.name}
-              permissions={{ manage: can("agent.manage") }}
+              permissions={{ manage: can("virtual_user.manage") }}
               actions={
                 identity.status === "archived"
                   ? [
@@ -259,6 +284,7 @@ export default function VirtualUserDetailPage({
         />
       )}
 
+      {chatDraft.notice}
       <SectionTabs
         value={tab}
         onValueChange={setTab}

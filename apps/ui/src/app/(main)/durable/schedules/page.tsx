@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -356,6 +358,7 @@ export default function SchedulesPage() {
   usePageTitle("Schedules", "Durable");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  useChatPageFilters({ status: statusFilter, search: searchQuery });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const enabledFilter =

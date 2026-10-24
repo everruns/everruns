@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { use, useState } from "react";
 import Link from "next/link";
 import { Plus, Users } from "lucide-react";
@@ -40,6 +42,7 @@ function Conversation({ id }: { id: string }) {
   const { data: me } = useVirtualUser("me");
   const { hasRole } = useOrg();
   const [tab, setTab] = useState<"chat" | "workspace">("chat");
+  useChatPageFilters({ tab: tab });
   // Session detail omits the list preview; use the same first user input for untitled chats.
   const firstInput = chatEvents
     .map((event) => getEventData(event, "input.message"))

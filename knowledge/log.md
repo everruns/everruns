@@ -2,6 +2,13 @@
 
 ## 2026-10-24
 
+* **Chat across app pages.** Bind every adopted app page to explicit context, live
+  filters and bounded loaded-record summaries. Share strict form adapters, guarded
+  draft Undo, named independent forms and stable page-scoped dialogs beyond Agents.
+  Immediate actions and credentials retain their existing controls. See
+  [Page-aware Chat mode](ui/chat-mode.md).
+
+
 * **Chat navigation discovery.** Explain rail icons on hover and focus, and expose
   the same permitted destinations in a labeled Pages menu for keyboard and touch.
   See [Page-aware Chat mode](ui/chat-mode.md).

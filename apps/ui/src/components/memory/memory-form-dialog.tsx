@@ -1,7 +1,9 @@
 "use client";
 
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,10 +59,15 @@ export function MemoryFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
+      seededForm.current = null;
       return;
     }
+    const seed = `${mode}:${memory?.id ?? "new"}`;
+    if (seededForm.current === seed) return;
+    seededForm.current = seed;
     setName(mode === "edit" ? (memory?.name ?? "") : "");
     setDescription(mode === "edit" ? (memory?.description ?? "") : "");
     setSourceKind(
@@ -91,8 +98,29 @@ export function MemoryFormDialog({
     setFormError(null);
   }, [mode, open, memory]);
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "description"],
+    values: { name, description },
+    entityId: memory?.id,
+    entityType: "memory",
+    formId: "details",
+    label: mode === "create" ? "New memory" : (memory?.name ?? "Edit memory"),
+    baseline: JSON.stringify([mode, memory?.name, memory?.description]),
+    dirty:
+      name !== (mode === "edit" ? (memory?.name ?? "") : "") ||
+      description !== (mode === "edit" ? (memory?.description ?? "") : ""),
+    writable: !isPending,
+    enabled: open && (mode === "create" || !!memory),
+    priority: 30,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+    },
+  });
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setFieldError(null);
     setFormError(null);
 
@@ -156,6 +184,7 @@ export function MemoryFormDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
             <Label htmlFor="memory-name">Name</Label>
             <Input

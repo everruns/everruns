@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
 import { defaultNavigationSections } from "@/lib/navigation";
@@ -10,6 +11,14 @@ let mockOrg = "org_1";
 let mockHasRole = true;
 const mockSearch = jest.fn();
 const mockQuery = new URLSearchParams();
+function render(ui: ReactNode) {
+  const client = new QueryClient();
+  return rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_1",
   useSearchParams: () => mockQuery,

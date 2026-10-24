@@ -6,6 +6,7 @@ import type { FieldDiff } from "@/lib/api/types";
 import { normalizeCommunication } from "@/lib/agent-communication";
 import {
   agentDraftPatchSchema,
+  agentDraftPatchJsonSchema,
   assertDraftSize,
   type AgentDraftPatch,
   type PageDraftAdapter,
@@ -34,19 +35,19 @@ export function useAgentChatDraft({
   blocked: boolean;
   beginEdit: () => void;
 }) {
-  const [binding] = useState(() => crypto.randomUUID());
+  const binding = useMemo(() => crypto.randomUUID(), [agentId]);
   const [marks, setMarks] = useState<FieldDiff[]>([]);
   const [error, setError] = useState<string | null>(null);
   const current = useRef({ agentId, updatedAt, draft, writable, blocked, beginEdit });
   const version = useRef({ signature: "", revision: "" });
-  const optimistic = useRef<PageDraftSnapshot | null>(null);
+  const optimistic = useRef<PageDraftSnapshot<AgentDraftPatch> | null>(null);
   useLayoutEffect(() => {
     current.current = { agentId, updatedAt, draft, writable, blocked, beginEdit };
     optimistic.current = null;
   });
 
-  const adapter = useMemo<PageDraftAdapter>(() => {
-    function snapshot(): PageDraftSnapshot {
+  const adapter = useMemo<PageDraftAdapter<AgentDraftPatch>>(() => {
+    function snapshot(): PageDraftSnapshot<AgentDraftPatch> {
       if (optimistic.current) return optimistic.current;
       const state = current.current;
       const values = {
@@ -71,14 +72,16 @@ export function useAgentChatDraft({
         binding,
         revision: version.current.revision,
         entity_id: state.agentId,
+        entity_type: "agent",
+        patch_schema: agentDraftPatchJsonSchema,
         dirty: state.draft.isDirty,
-        writable: state.writable && !state.blocked,
+        writable: state.writable && !state.blocked && state.agentId === agentId,
         values,
         sandbox_policy: state.draft.sandboxPolicy,
       };
     }
     function bound(token: string) {
-      if (token !== binding)
+      if (token !== binding || current.current.agentId !== agentId)
         throw new Error(
           "The Agent page has changed. Ask the user to send a message from the current page.",
         );
@@ -86,7 +89,7 @@ export function useAgentChatDraft({
       assertDraftSize(value);
       return structuredClone(value);
     }
-    function apply(changes: AgentDraftPatch, previous: PageDraftSnapshot) {
+    function apply(changes: AgentDraftPatch, previous: PageDraftSnapshot<AgentDraftPatch>) {
       const state = current.current;
       const next = {
         ...previous,
@@ -120,6 +123,7 @@ export function useAgentChatDraft({
       return structuredClone(next);
     }
     return {
+      binding,
       describe: () => {
         const { binding, revision, dirty, writable } = snapshot();
         return { binding, revision, dirty, writable };
@@ -163,7 +167,7 @@ export function useAgentChatDraft({
         return next;
       },
     };
-  }, [binding]);
+  }, [binding, agentId]);
 
   const clear = () => {
     setMarks([]);

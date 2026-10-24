@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { MemoryIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
@@ -49,6 +51,7 @@ export default function MemoryPage() {
   usePageTitle("Memory");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [search, setSearch] = useState("");
+  useChatPageFilters({ status: statusTab, search: search });
   const [createOpen, setCreateOpen] = useState(false);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [archivingMemory, setArchivingMemory] = useState<Memory | null>(null);

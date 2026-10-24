@@ -22,6 +22,13 @@ Back to app keeps your conversation and draft.
 Hover or focus a navigation icon to see its name and purpose. **Pages** opens a
 grouped menu with names and explanations, including on touch screens.
 
+Page context now follows you across the app, including current filters and loaded
+record summaries. Chat can also stage supported fields in Harnesses, Virtual Users,
+Observers, Eval creation, Knowledge and other definition forms. Review the named
+changed fields, then use the page's existing Save or Create action. Providers expose
+each independent form by name. Credentials and immediate actions keep their normal
+controls.
+
 Saved Agent changes attributed to Chat also support **Undo all**, with revision
 checks and a recorded inverse. Conflicts fail without saving. Concurrent saved
 changes keep your dirty draft and block Save until you discard and review them.

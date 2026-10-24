@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useAgents, useCapabilities } from "@/hooks";
@@ -21,6 +23,7 @@ import {
 
 export default function AgentsAllPageClient() {
   const [showArchived, setShowArchived] = useState(false);
+  useChatPageFilters({ show_archived: showArchived });
   const { data: agents, isLoading, error } = useAgents({ includeArchived: showArchived });
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
 

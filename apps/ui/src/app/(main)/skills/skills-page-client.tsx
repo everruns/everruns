@@ -1,5 +1,9 @@
 "use client";
 
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -126,9 +130,22 @@ function AddSkillDialog({
   );
 
   const createSkill = useCreateSkill();
+  const chatDraft = useTextPageFormDraft({
+    fields: ["skill_md"],
+    values: { skill_md: skillMd },
+    entityType: "skill",
+    label: "New Skill",
+    baseline: "new",
+    dirty: !!skillMd,
+    writable: !createSkill.isPending,
+    enabled: open,
+    priority: 30,
+    apply: (values) => setSkillMd(values.skill_md),
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     await createSkill.mutateAsync({ skill_md: skillMd });
     onOpenChange(false);
     setSkillMd(
@@ -147,6 +164,7 @@ function AddSkillDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
             <Label htmlFor="skill-md">SKILL.md</Label>
             <Textarea
@@ -246,6 +264,7 @@ function SkillRowSkeleton() {
 export default function SkillsPageClient() {
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [search, setSearch] = useState("");
+  useChatPageFilters({ status: statusTab, search: search });
   // Active tab fetches active-only (matching the SSR seed); other tabs include archived.
   const includeArchived = statusTab !== "active";
   const { data: skills, isLoading, error } = useSkills({ includeArchived });

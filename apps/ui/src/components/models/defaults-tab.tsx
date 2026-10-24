@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+
 // Organization defaults, one row per service, grouped by what they drive:
 // Chat (the model agents and sessions run on), Decisions (the Jev decision
 // model and who answers system checks), and Other services (provider-level
@@ -159,6 +161,26 @@ export function DefaultsTab({
 
   const decisionId = decisionDefault.data?.id ?? "";
   const systemDecisions = org?.system_decisions ?? "deployment";
+  usePageReadContext({
+    fields: [
+      "default_model_id",
+      "small_model_id",
+      "decision_model_id",
+      "system_decisions",
+      "default_provider_per_service",
+    ],
+    values: {
+      default_model_id: currentModelId ?? "",
+      small_model_id: currentSmallModelId ?? "",
+      decision_model_id: decisionId,
+      system_decisions: systemDecisions,
+      default_provider_per_service: JSON.stringify(serviceDraft),
+    },
+    entityType: "model_defaults",
+    entityId: org?.id,
+    label: "Model defaults",
+    enabled: !!org,
+  });
   const busy = !canManage || !org || updateOrg.isPending;
 
   return (

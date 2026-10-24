@@ -1,5 +1,7 @@
 "use client";
 
+import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
+
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -163,6 +165,13 @@ function AgentChannelForm({
   const [formState, setFormState] = useState<ChannelFormState>(() =>
     getDefaultChannelFormState(channel.channel_type, channel),
   );
+  const chatDraft = useChannelChatDraft({
+    state: formState,
+    setState: setFormState,
+    id: channelId,
+    baseline: channel.updated_at,
+    writable: canManage && !updateEndpoint.isPending,
+  });
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
   const publishHint = channelPublishControl(channel).hint;
@@ -177,6 +186,7 @@ function AgentChannelForm({
 
   return (
     <PageContainer>
+      {chatDraft.notice}
       <PageBreadcrumb
         items={[
           { label: "Agents", href: "/agents" },
@@ -213,7 +223,12 @@ function AgentChannelForm({
             <Button
               type="submit"
               form="channel-edit-form"
-              disabled={!canManage || !isChannelFormValid(formState) || updateEndpoint.isPending}
+              disabled={
+                chatDraft.blocked ||
+                !canManage ||
+                !isChannelFormValid(formState) ||
+                updateEndpoint.isPending
+              }
             >
               <Check className="size-4" />
               {updateEndpoint.isPending ? "Saving..." : "Save"}
@@ -259,6 +274,7 @@ function AgentChannelForm({
         id="channel-edit-form"
         onSubmit={(event) => {
           event.preventDefault();
+          if (chatDraft.blocked) return;
           updateEndpoint.mutate(
             {
               channel_config: buildChannelConfig(formState),

@@ -1,5 +1,8 @@
 "use client";
 
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { harnessCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
+
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -101,8 +104,38 @@ export default function NewHarnessPage() {
     setSelectedCapabilities(capabilities);
   }, []);
 
+  const chatDraft = usePageFormDraft({
+    schema: harnessCreateDraftSchema,
+    values: {
+      ...formData,
+      capabilities: selectedCapabilities,
+      initial_files: initialFiles,
+      network_access: networkAccess,
+    },
+    entityType: "harness",
+    label: "New Harness",
+    baseline: "new",
+    dirty: !!(
+      Object.values(formData).some(Boolean) ||
+      selectedCapabilities.length ||
+      initialFiles.length ||
+      Object.keys(networkAccess).length
+    ),
+    writable: !createHarness.isPending,
+    apply: ({ capabilities, initial_files, network_access, ...fields }) => {
+      setFormData(fields);
+      if (fields.name !== formData.name || fields.display_name !== formData.display_name)
+        setNameManuallyEdited(true);
+      setSelectedCapabilities(capabilities);
+      setInitialFiles(initial_files);
+      setNetworkAccess(network_access);
+      setFieldErrors({});
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     const parsed = harnessFormSchema.safeParse(formData);
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -169,6 +202,7 @@ export default function NewHarnessPage() {
       </PageControlStrip>
 
       <form id="harness-create-form" onSubmit={handleSubmit}>
+        {chatDraft.notice}
         <PageColumns>
           <PageMain>
             <Card id="identity" className="scroll-mt-6">

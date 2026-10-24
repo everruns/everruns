@@ -1,0 +1,68 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+
+function Workspace({ drawer = false }: { drawer?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const mode: ChatModeState = {
+    open,
+    setOpen,
+    page: { route: "/skills", label: "Skills" },
+    pageContainer: { current: container },
+    pageContainerElement: container,
+    registerPage: () => () => {},
+    actions: [],
+    recordAction: () => {},
+  };
+  return (
+    <ChatModeContext.Provider value={mode}>
+      <button onClick={() => setOpen(true)}>Open Chat</button>
+      <input aria-label="Chat composer" />
+      <div ref={setContainer} data-testid="page">
+        {drawer ? (
+          <>
+            <button onClick={() => setDrawerOpen(true)}>New skill</button>
+            <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+              <DrawerContent>
+                <DrawerTitle>Skill draft</DrawerTitle>
+                <input aria-label="Skill instructions" defaultValue="" />
+              </DrawerContent>
+            </Drawer>
+          </>
+        ) : (
+          <Dialog>
+            <DialogTrigger>New skill</DialogTrigger>
+            <DialogContent>
+              <DialogTitle>Skill draft</DialogTitle>
+              <input aria-label="Skill instructions" defaultValue="" />
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+    </ChatModeContext.Provider>
+  );
+}
+
+it.each([false, true])(
+  "keeps overlay drafts mounted while Chat is opened and focused (drawer=%s)",
+  async (drawer) => {
+    render(<Workspace drawer={drawer} />);
+    fireEvent.click(screen.getByText("New skill"));
+    const input = await screen.findByLabelText("Skill instructions");
+    fireEvent.change(input, { target: { value: "Unsaved instructions" } });
+    expect(screen.getByTestId("page")).toContainElement(input);
+    fireEvent.click(screen.getByText("Open Chat"));
+    act(() => {
+      screen.getByLabelText("Chat composer").focus();
+    });
+    expect(screen.getByLabelText("Skill instructions")).toBe(input);
+    expect(input).toHaveValue("Unsaved instructions");
+    await waitFor(() => expect(screen.getByLabelText("Chat composer")).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: /^Close$/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  },
+);

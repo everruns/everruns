@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 // Every model from every provider, filtered by service, provider and status.
 //
 // Built for catalogs of hundreds: enabled models are the default view, rows
@@ -94,6 +96,7 @@ export function ModelsTab({
 }) {
   const [service, setService] = useState<ModelService | "all">("all");
   const [search, setSearch] = useState("");
+  useChatPageFilters({ search, provider_id: providerId, status, service });
   const [visible, setVisible] = useState(PAGE_SIZE);
   const selectedProvider = providers.find((provider) => provider.id === providerId);
 

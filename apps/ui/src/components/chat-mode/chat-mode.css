@@ -42,6 +42,9 @@
 }
 /* Page editors respond to their pane, not to the browser viewport. */
 @container (max-width: 850px) {
+  .chat-mode-page .page-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .agent-workspace {
     grid-template-columns: minmax(0, 1fr);
   }

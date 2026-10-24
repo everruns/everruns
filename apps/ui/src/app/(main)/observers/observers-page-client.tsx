@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { ObserverIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
@@ -50,6 +52,7 @@ export default function ObserversPageClient() {
   usePageTitle("Observers");
   const observersEnabled = useFeatureFlag("observers");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  useChatPageFilters({ status: statusTab });
   const {
     data: observers,
     isLoading,

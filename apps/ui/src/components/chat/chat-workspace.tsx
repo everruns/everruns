@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -104,6 +106,7 @@ export function ChatWorkspace() {
   const [compact, setCompact] = useState(false);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
+  useChatPageFilters({ search: search, offset: offset });
   const threadsButton = useRef<HTMLButtonElement>(null);
   const segment = pathname.replace(/^\/chats\/?/, "").split("/")[0];
   const conversationId =

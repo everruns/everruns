@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { AgentSourcePanel } from "@/components/agents/agent-source";
 import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
@@ -151,6 +153,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const tabParam = searchParams.get("tab");
   const deepLink = resolveAgentTab(tabParam);
   const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
+  useChatPageFilters({ tab: activeTab });
   const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
   // Follow the address bar when it changes without a click (refresh already
   // lands here; back/forward and a replaced query must too).

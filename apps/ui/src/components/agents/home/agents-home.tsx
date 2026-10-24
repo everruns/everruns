@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 // Agents home: the Agents page as the place where a team
 // runs its agents rather than a registry of definitions. It answers, for every
 // agent, what it is doing now, how it is reached, and how the last day went,
@@ -85,6 +87,7 @@ export function AgentsHome() {
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
 
   const [search, setSearch] = useState("");
+  useChatPageFilters({ search: search });
   const [agentTab, setAgentTab] = useState<AgentTab>("all");
   const [channelTab, setChannelTab] = useState<ChannelTab>("all");
 

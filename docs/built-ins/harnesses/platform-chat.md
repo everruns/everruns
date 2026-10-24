@@ -22,10 +22,10 @@ message; it starts without copied conversation history or workspace files.
 conversations and runs with other agents stay outside Chat. Use Playground to select
 an Agent or harness and test its behavior.
 
-## Chat beside an Agent
+## Chat beside your pages
 
 Organization owners and admins can enable **Chat mode** in **Settings > Features**.
-Open an Agent, then click **Chat** or press **Command-J** (**Ctrl-J** on Windows
+Open an app page, then click **Chat** or press **Command-J** (**Ctrl-J** on Windows
 and Linux). The permanent conversation opens beside the current page. **Back to
 app** restores the full page and keeps the conversation and composer draft.
 
@@ -39,16 +39,28 @@ change the form while Chat is thinking, its stale patch fails so it can read the
 current draft again. Chat does not edit credentials or connection grants through
 this form; sandbox policy uses its dedicated editor.
 
-Outside the live form, Platform Chat still uses platform commands to change saved
-entities. Agent saves attributed to the conversation receive persisted-change
+For separately requested saved-resource operations, Platform Chat still uses
+platform commands. Page context does not disable those operations, and a failed
+form edit is never permission to bypass review by saving directly. Agent saves attributed to the conversation receive persisted-change
 markers and **Undo all**. That Undo creates a history entry and checks the saved
 revision; unsupported inverses fail without saving. If a saved definition changes
 while your draft is dirty, the page keeps the draft and blocks Save until you
 discard it and review the latest definition.
 
-This rollout starts with Agent definition fields. Other pages share the split
-shell; Agent definition fields receive change markers. Chat mode is independent
-of the **Chat threads** opt-in.
+Chat can read page identity, current filters and bounded summaries of loaded records
+across the app. It reads explicit data, without copying page HTML or credential
+inputs. Harnesses, Virtual Users, Observers, Eval creation and other definition
+forms expose supported draft fields through the same read/edit flow. Knowledge,
+Memory, Skill, Sandbox-template, Capability and Channel forms expose their supported
+non-credential fields. Providers with several Save forms identify each form by name;
+Chat edits one form at a time.
+
+Use the page's existing **Save** or **Create** action to apply a staged change.
+Immediate-save settings, operational views, approvals, credential controls and
+financial actions remain under their normal page controls. Chat reports when a
+page or field is read-only; it does not work around that through a server write.
+Saved-change markers and inverse **Undo all** remain specific to Agent definitions.
+Chat mode is independent of the **Chat threads** opt-in.
 
 ## Platform access and memory
 

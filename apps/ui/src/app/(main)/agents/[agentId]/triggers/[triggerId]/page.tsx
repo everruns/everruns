@@ -1,6 +1,9 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+import { usePolicies } from "@/hooks/use-policies";
+
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarClock, Check, GitPullRequest, Pencil, Play, Trash2 } from "lucide-react";
 import { useAgent } from "@/hooks/use-agents";
@@ -74,8 +77,10 @@ export default function AgentTriggerPage({
     ? trigger.trigger_type === "github"
     : searchParams?.get("type") === "github";
 
+  const seededTrigger = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!trigger) return;
+    if (!trigger || seededTrigger.current === trigger.id) return;
+    seededTrigger.current = trigger.id;
     if (trigger.trigger_type === "github") {
       const config = trigger.config as unknown as {
         events?: string[];
@@ -104,7 +109,43 @@ export default function AgentTriggerPage({
     });
   }, [trigger]);
 
+  const { can } = usePolicies("agents");
+  const savedConfig = trigger?.config as unknown as Partial<TriggerConfig> | undefined;
+  const chatDraft = useTextPageFormDraft({
+    fields: isGithub ? ["message"] : ["message", "cron_expression", "timezone"],
+    values: {
+      message: isGithub ? githubForm.message : form.message,
+      cron_expression: form.cron_expression,
+      timezone: form.timezone ?? "UTC",
+    },
+    entityId: isNew ? undefined : triggerId,
+    entityType: "agent_trigger",
+    formId: isGithub ? "github" : "schedule",
+    label: isNew ? "New trigger" : "Trigger",
+    baseline: trigger?.updated_at ?? "new",
+    dirty: isNew
+      ? !!(isGithub ? githubForm.message : form.message)
+      : isGithub
+        ? githubForm.message !== (savedConfig?.message ?? "")
+        : form.message !== (savedConfig?.message ?? "") ||
+          form.cron_expression !== (savedConfig?.cron_expression ?? "") ||
+          (form.timezone ?? "UTC") !== (savedConfig?.timezone ?? "UTC"),
+    writable:
+      !!agent && can("agent.manage") && !createTrigger.isPending && !updateTrigger.isPending,
+    enabled: !!agent && !isLoading && !agentLoading && (isNew || !!trigger),
+    apply: (values) => {
+      if (isGithub) setGithubForm((previous) => ({ ...previous, message: values.message }));
+      else
+        setForm((previous) => ({
+          ...previous,
+          message: values.message,
+          cron_expression: values.cron_expression,
+          timezone: values.timezone,
+        }));
+    },
+  });
   const save = async () => {
+    if (chatDraft.blocked) return;
     if (isGithub) {
       if (!isGitHubFormValid(githubForm)) {
         setError("Select at least one event and enter a non-empty message.");
@@ -183,6 +224,7 @@ export default function AgentTriggerPage({
 
   return (
     <PageContainer>
+      {chatDraft.notice}
       <PageBreadcrumb
         items={[
           { label: "Agents", href: "/agents" },
@@ -224,7 +266,12 @@ export default function AgentTriggerPage({
             <Button
               type="submit"
               form="trigger-edit-form"
-              disabled={!formValid || createTrigger.isPending || updateTrigger.isPending}
+              disabled={
+                chatDraft.blocked ||
+                !formValid ||
+                createTrigger.isPending ||
+                updateTrigger.isPending
+              }
             >
               <Check className="size-4" />
               {createTrigger.isPending || updateTrigger.isPending ? "Saving..." : "Save"}

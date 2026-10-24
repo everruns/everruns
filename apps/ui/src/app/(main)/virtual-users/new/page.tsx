@@ -1,5 +1,8 @@
 "use client";
 
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { virtualUserCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
+
 import { VirtualUserIcon } from "@/components/icons/facet-icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -36,8 +39,26 @@ export default function NewVirtualUserPage() {
   const [timezone, setTimezone] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
+  const chatDraft = usePageFormDraft({
+    schema: virtualUserCreateDraftSchema,
+    values: { usage, name, description, locale, timezone },
+    entityType: "virtual_user",
+    label: "New virtual user",
+    baseline: "new",
+    dirty: !!(name || description || locale || timezone || usage !== "service"),
+    writable: !createIdentity.isPending,
+    apply: (values) => {
+      setUsage(values.usage);
+      setName(values.name);
+      setDescription(values.description);
+      setLocale(values.locale);
+      setTimezone(values.timezone);
+    },
+  });
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     const parsed = virtualUserFormSchema.safeParse({
       name,
       description,
@@ -85,6 +106,7 @@ export default function NewVirtualUserPage() {
       />
 
       <form id="identity-edit-form" onSubmit={handleSubmit}>
+        {chatDraft.notice}
         <PageColumns>
           <PageMain>
             <Card>

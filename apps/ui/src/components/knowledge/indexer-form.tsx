@@ -1,4 +1,8 @@
 "use client";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
+import { useOrg } from "@/providers/org-provider";
 import { useState } from "react";
 import { createKnowledgeIndexer } from "@/lib/api/knowledge";
 import { createScopedCredential, saveCredentialValue } from "@/lib/api/credential-bindings";
@@ -11,11 +15,31 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
   const [key, setKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const { currentOrg } = useOrg();
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "endpoint"],
+    values: { name, endpoint },
+    entityType: "knowledge_indexer",
+    formId: "search_account",
+    label: "New search account",
+    baseline: "new",
+    dirty: !!name || endpoint !== "https://gcp-us-central1.turbopuffer.com",
+    writable: !pending && ["owner", "admin"].includes(currentOrg?.role ?? ""),
+    enabled: isPublicDraftLocation(endpoint),
+    // The write-only API key stays exclusively in the manual credential input.
+    apply: (next) => {
+      if (!isPublicDraftLocation(next.endpoint))
+        throw new Error("Use a public endpoint without credentials.");
+      setName(next.name);
+      setEndpoint(next.endpoint);
+    },
+  });
   return (
     <form
       className="space-y-4"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (chatDraft.blocked) return;
         setPending(true);
         setError("");
         try {
@@ -39,6 +63,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
         }
       }}
     >
+      {chatDraft.notice}
       <p className="text-sm text-muted-foreground">
         Use your organization&apos;s Turbopuffer account. The key is stored as a write-only
         organization credential. Embedding costs use the collection&apos;s separate model provider.
@@ -79,7 +104,7 @@ export function IndexerForm({ onSaved }: { onSaved: () => Promise<unknown> }) {
           {error}
         </p>
       )}
-      <Button type="submit" variant="accent" disabled={pending}>
+      <Button type="submit" variant="accent" disabled={pending || chatDraft.blocked}>
         {pending ? "Saving…" : "Add search account"}
       </Button>
     </form>

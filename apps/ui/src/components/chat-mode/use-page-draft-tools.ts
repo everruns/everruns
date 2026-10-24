@@ -4,7 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { getEventData, type Event, type SessionStatus } from "@/lib/api/types";
 import { submitToolResults } from "@/lib/api/sessions";
 import { useChatMode } from "./chat-mode-context";
-import { PAGE_PATCH_TOOL, PAGE_READ_TOOL, type PageDraftDescriptor } from "./page-draft";
+import {
+  PAGE_PATCH_TOOL,
+  PAGE_READ_TOOL,
+  assertDraftSize,
+  type PageDraftDescriptor,
+} from "./page-draft";
 
 type ToolResult = { tool_call_id: string; result?: unknown; error?: string };
 const isPageTool = (name: string) => name === PAGE_READ_TOOL || name === PAGE_PATCH_TOOL;
@@ -76,7 +81,7 @@ export function usePageDraftTools(
             call.arguments.binding !== descriptor.binding
           )
             throw new Error(
-              "The original Agent page is no longer available. Ask for a new message from the current page.",
+              "The original page or form is no longer available. Ask for a new message from the current page.",
             );
           const result =
             call.name === PAGE_READ_TOOL
@@ -86,7 +91,28 @@ export function usePageDraftTools(
                   String(call.arguments.revision ?? ""),
                   call.arguments.changes,
                 );
-          return { tool_call_id: call.id, result: { ...result, saved: false } };
+          const pageView =
+            call.name === PAGE_READ_TOOL &&
+            mode.pageViewAdapter &&
+            mode.pageViewAdapter !== mode.pageAdapter
+              ? mode.pageViewAdapter.read(mode.pageViewAdapter.describe().binding).values
+              : undefined;
+          let output: Record<string, unknown> = {
+            ...result,
+            ...(pageView ? { page_view: pageView } : {}),
+            saved: false,
+          };
+          if (pageView) {
+            try {
+              assertDraftSize(output);
+            } catch {
+              // Preserve the complete draft; optional loaded-data summaries must
+              // not make an otherwise readable form exceed its existing limit.
+              output = { ...result, page_view_omitted_for_size: true, saved: false };
+            }
+          }
+          assertDraftSize(output);
+          return { tool_call_id: call.id, result: output };
         } catch (cause) {
           return {
             tool_call_id: call.id,

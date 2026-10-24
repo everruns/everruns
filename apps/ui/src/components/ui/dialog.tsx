@@ -1,11 +1,22 @@
+"use client";
+
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+  const mode = useChatMode();
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      {...props}
+      modal={mode?.open ? false : props.modal}
+      disablePointerDismissal={mode?.open || props.disablePointerDismissal}
+    />
+  );
 }
 
 function DialogTrigger({
@@ -24,7 +35,18 @@ function DialogTrigger({
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />;
+  const mode = useChatMode();
+  // Keep the portal container stable when Chat opens: moving a mounted form
+  // between body and pane would remount it and discard unsaved React state.
+  return (
+    <DialogPrimitive.Portal
+      data-slot="dialog-portal"
+      {...props}
+      container={
+        props.container ?? mode?.pageContainerElement ?? mode?.pageContainer.current ?? undefined
+      }
+    />
+  );
 }
 
 function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
