@@ -241,6 +241,8 @@ A server that supports the
 does not need a longer timeout. Everruns declares the extension on every tool
 call, so such a server can answer with a task instead of holding the request
 open. The agent then checks on the task until it finishes, for up to 30 minutes.
+While it runs, the server's status message (for example "Running tests") shows
+on the tool call in chat and in the session's events.
 Questions the task asks reach the agent's user the same way as a server's
 [form questions](#when-a-tool-needs-a-person). If the turn is cancelled or the
 wait runs out, Everruns cancels the task on the server.

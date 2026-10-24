@@ -37,6 +37,8 @@ enum Script {
     CancelledByServer,
     /// Never finishes.
     RunsForever,
+    /// Says "Building" twice, then "Testing", then completes.
+    Reports,
 }
 
 struct Request {
@@ -92,6 +94,9 @@ impl TaskServer {
                 json!({ "status": "working", "statusMessage": "Building" })
             }
             (Script::Completes, _) => completed("built"),
+            (Script::Reports, 1 | 2) => json!({ "status": "working", "statusMessage": "Building" }),
+            (Script::Reports, 3) => json!({ "status": "working", "statusMessage": "Testing" }),
+            (Script::Reports, _) => completed("built"),
             (Script::AsksForm, _) => match answer {
                 None => asking(),
                 // The server is slower to take the answer in than the client
@@ -387,4 +392,69 @@ async fn a_form_to_a_server_without_form_mode_fails_and_cancels() {
         .to_string();
     assert!(error.contains("did not declare form mode"), "{error}");
     assert_eq!(server.requests("tasks/cancel").len(), 1);
+}
+
+#[derive(Default)]
+struct ProgressEmitter {
+    messages: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl everruns_contracts::runtime::event_emitter::EventEmitter for ProgressEmitter {
+    async fn emit(
+        &self,
+        request: everruns_contracts::runtime::events::EventRequest,
+    ) -> everruns_contracts::error::Result<everruns_contracts::runtime::events::Event> {
+        if let everruns_contracts::runtime::events::EventData::ToolProgress(data) = &request.data {
+            assert_eq!(data.tool_call_id, "call-1");
+            assert_eq!(data.tool_name, "mcp_ci__build");
+            self.messages.lock().unwrap().push(data.message.clone());
+        }
+        Ok(request.into_event(everruns_contracts::typed_id::EventId::new(), 1))
+    }
+}
+
+#[tokio::test]
+async fn a_tasks_status_message_is_the_tool_calls_progress() {
+    use everruns_contracts::runtime::tools::Tool;
+    use everruns_contracts::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+
+    let server = TaskServer::new(Script::Reports);
+    let client = Arc::new(everruns_core::mcp::McpClient::new(
+        server.clone(),
+        Arc::new(everruns_core::mcp::NoAuthProvider),
+    ));
+    let executor = everruns_core::mcp::McpExecutor::new(
+        client,
+        Arc::new(everruns_core::mcp::StaticConnectionResolver::new().with(connection())),
+    );
+    let tool = everruns_core::McpProxyTool::new(
+        BuiltinTool {
+            name: "mcp_ci__build".to_string(),
+            display_name: None,
+            description: "Build".to_string(),
+            parameters: json!({ "type": "object" }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::Automatic,
+            hints: ToolHints::default(),
+            full_parameters: None,
+        },
+        Arc::new(executor),
+    );
+    let emitter = Arc::new(ProgressEmitter::default());
+    let mut context = everruns_contracts::runtime::tool_context::ToolContext::new(
+        everruns_contracts::typed_id::SessionId::from_seed(1),
+    );
+    context.tool_call_id = Some("call-1".into());
+    context.event_context = Some(everruns_contracts::runtime::events::EventContext::empty());
+    context.event_emitter = Some(emitter.clone());
+
+    let result = tool.execute_with_context(json!({}), &context).await;
+    assert!(format!("{result:?}").contains("built"), "{result:?}");
+    // One event per change, not one per poll.
+    assert_eq!(
+        *emitter.messages.lock().unwrap(),
+        vec!["Building".to_string(), "Testing".to_string()]
+    );
 }

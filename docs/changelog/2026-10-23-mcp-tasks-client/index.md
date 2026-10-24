@@ -24,7 +24,8 @@ build or a report, with a task instead of holding the request open:
 ```
 
 The agent checks on the task at the interval the server suggests, for up to
-30 minutes, and gets the tool's result when it finishes. A question the task
+30 minutes, and gets the tool's result when it finishes. The server's status
+message shows on the tool call in chat and in the session's events while it runs. A question the task
 asks goes to the agent's user like any other
 [MCP form question](/features/mcp/#long-running-tools), and the answer goes
 back with `tasks/update`. If the turn is cancelled or the wait runs out,
