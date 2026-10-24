@@ -72615,7 +72615,8 @@
           },
           "prompt": {
             "type": "string",
-            "description": "One line naming what is asked (\"Run git push\")."
+            "description": "One line naming what is asked (\"Run git push\").",
+            "example": "Deploy to staging"
           },
           "tool_call_ids": {
             "type": "array",
@@ -72651,6 +72652,7 @@
             "type": "integer",
             "format": "int64",
             "description": "Its value.",
+            "example": 3,
             "minimum": 0
           }
         }
@@ -72679,12 +72681,14 @@
               "string",
               "null"
             ],
-            "description": "The item in progress, in its \"doing\" form when the tool has one."
+            "description": "The item in progress, in its \"doing\" form when the tool has one.",
+            "example": "Run the tests"
           },
           "done": {
             "type": "integer",
             "format": "int32",
             "description": "Items done or skipped.",
+            "example": 2,
             "minimum": 0
           },
           "items": {
@@ -72698,6 +72702,7 @@
             "type": "integer",
             "format": "int32",
             "description": "Items in total.",
+            "example": 4,
             "minimum": 0
           }
         }
@@ -72713,6 +72718,7 @@
             ],
             "format": "int64",
             "description": "Items done so far, when the tool knows a count.",
+            "example": 7,
             "minimum": 0
           },
           "label": {
@@ -72720,7 +72726,8 @@
               "string",
               "null"
             ],
-            "description": "The tool's latest status line."
+            "description": "The tool's latest status line.",
+            "example": "Rendering image 7 of 12"
           },
           "total": {
             "type": [
@@ -72729,6 +72736,7 @@
             ],
             "format": "int64",
             "description": "Items in total, when the tool knows a count.",
+            "example": 12,
             "minimum": 0
           }
         }
@@ -72748,7 +72756,8 @@
               "string",
               "null"
             ],
-            "description": "Agent name snapshot at turn start."
+            "description": "Agent name snapshot at turn start.",
+            "example": "Billing fixer"
           },
           "attention": {
             "oneOf": [
@@ -72768,6 +72777,7 @@
             ],
             "format": "int64",
             "description": "Elapsed time: to the end when finished, to the read time while running.",
+            "example": 133000,
             "minimum": 0
           },
           "ended_at": {
@@ -72776,23 +72786,27 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the work ended."
+            "description": "When the work ended.",
+            "example": "2026-10-23T12:02:13Z"
           },
           "headline": {
             "type": "string",
-            "description": "One line, always present: the current step while working, the request\nwhile waiting, the result when finished."
+            "description": "One line, always present: the current step while working, the request\nwhile waiting, the result when finished.",
+            "example": "Step 3 of 4 · Running `cargo test`"
           },
           "model": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Model of the latest generation."
+            "description": "Model of the latest generation.",
+            "example": "gpt-6.1-sol"
           },
           "omitted_steps": {
             "type": "integer",
             "format": "int32",
             "description": "Steps run but no longer listed.",
+            "example": 0,
             "minimum": 0
           },
           "plan": {
@@ -72823,7 +72837,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the work started."
+            "description": "When the work started.",
+            "example": "2026-10-23T12:00:00Z"
           },
           "state": {
             "$ref": "#/components/schemas/WorkState",
@@ -72866,7 +72881,8 @@
               "string",
               "null"
             ],
-            "description": "One or two sentences on what changed."
+            "description": "One or two sentences on what changed.",
+            "example": "Fixed the proration rounding and added a test."
           },
           "summary_source": {
             "oneOf": [
@@ -72909,15 +72925,18 @@
             ],
             "format": "int64",
             "description": "How long the step took, once finished.",
+            "example": 4200,
             "minimum": 0
           },
           "id": {
             "type": "string",
-            "description": "The tool call id."
+            "description": "The tool call id.",
+            "example": "call_01"
           },
           "label": {
             "type": "string",
-            "description": "What the step is doing (\"Running tests\") or what came out of it\n(\"Read AGENTS.md\")."
+            "description": "What the step is doing (\"Running tests\") or what came out of it\n(\"Read AGENTS.md\").",
+            "example": "Ran `cargo test`, 12 tests passed"
           },
           "progress": {
             "oneOf": [
@@ -72936,7 +72955,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When the step started."
+            "description": "When the step started.",
+            "example": "2026-10-23T12:00:00Z"
           },
           "state": {
             "$ref": "#/components/schemas/WorkStepState",
@@ -72944,7 +72964,8 @@
           },
           "tool_name": {
             "type": "string",
-            "description": "Tool name."
+            "description": "Tool name.",
+            "example": "bash"
           }
         }
       },

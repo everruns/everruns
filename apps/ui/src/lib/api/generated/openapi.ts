@@ -31055,7 +31055,10 @@ export interface components {
     WorkAttention: {
       /** @description What kind of answer is needed. */
       kind: components["schemas"]["WorkAttentionKind"];
-      /** @description One line naming what is asked ("Run git push"). */
+      /**
+       * @description One line naming what is asked ("Run git push").
+       * @example Deploy to staging
+       */
       prompt: string;
       /** @description Open client-side call ids that carry the request. */
       tool_call_ids: string[];
@@ -31072,6 +31075,7 @@ export interface components {
       /**
        * Format: int64
        * @description Its value.
+       * @example 3
        */
       value: number;
     };
@@ -31082,11 +31086,15 @@ export interface components {
     WorkFactKind: "files_changed" | "issues" | "tasks_started" | "steps";
     /** @description The plan the agent shared, from its latest plan tool call. */
     WorkPlan: {
-      /** @description The item in progress, in its "doing" form when the tool has one. */
+      /**
+       * @description The item in progress, in its "doing" form when the tool has one.
+       * @example Run the tests
+       */
       current?: string | null;
       /**
        * Format: int32
        * @description Items done or skipped.
+       * @example 2
        */
       done: number;
       /** @description Plan items in order. */
@@ -31094,6 +31102,7 @@ export interface components {
       /**
        * Format: int32
        * @description Items in total.
+       * @example 4
        */
       total: number;
     };
@@ -31102,41 +31111,56 @@ export interface components {
       /**
        * Format: int64
        * @description Items done so far, when the tool knows a count.
+       * @example 7
        */
       current?: number | null;
-      /** @description The tool's latest status line. */
+      /**
+       * @description The tool's latest status line.
+       * @example Rendering image 7 of 12
+       */
       label?: string | null;
       /**
        * Format: int64
        * @description Items in total, when the tool knows a count.
+       * @example 12
        */
       total?: number | null;
     };
     /** @description One piece of work, as every surface shows it. */
     WorkReport: {
-      /** @description Agent name snapshot at turn start. */
+      /**
+       * @description Agent name snapshot at turn start.
+       * @example Billing fixer
+       */
       agent_name?: string | null;
       attention?: components["schemas"]["WorkAttention"] | null;
       /**
        * Format: int64
        * @description Elapsed time: to the end when finished, to the read time while running.
+       * @example 133000
        */
       duration_ms?: number | null;
       /**
        * Format: date-time
        * @description When the work ended.
+       * @example 2026-10-23T12:02:13Z
        */
       ended_at?: string | null;
       /**
        * @description One line, always present: the current step while working, the request
        *     while waiting, the result when finished.
+       * @example Step 3 of 4 · Running `cargo test`
        */
       headline: string;
-      /** @description Model of the latest generation. */
+      /**
+       * @description Model of the latest generation.
+       * @example gpt-6.1-sol
+       */
       model?: string | null;
       /**
        * Format: int32
        * @description Steps run but no longer listed.
+       * @example 0
        */
       omitted_steps?: number;
       plan?: components["schemas"]["WorkPlan"] | null;
@@ -31144,6 +31168,7 @@ export interface components {
       /**
        * Format: date-time
        * @description When the work started.
+       * @example 2026-10-23T12:00:00Z
        */
       started_at?: string | null;
       /** @description Where the work stands. */
@@ -31162,7 +31187,10 @@ export interface components {
       artifacts?: components["schemas"]["TaskArtifact"][];
       /** @description Measured facts, in display order. */
       facts?: components["schemas"]["WorkFact"][];
-      /** @description One or two sentences on what changed. */
+      /**
+       * @description One or two sentences on what changed.
+       * @example Fixed the proration rounding and added a test.
+       */
       summary?: string | null;
       summary_source?: components["schemas"]["WorkSummarySource"] | null;
     };
@@ -31176,24 +31204,33 @@ export interface components {
       /**
        * Format: int64
        * @description How long the step took, once finished.
+       * @example 4200
        */
       duration_ms?: number | null;
-      /** @description The tool call id. */
+      /**
+       * @description The tool call id.
+       * @example call_01
+       */
       id: string;
       /**
        * @description What the step is doing ("Running tests") or what came out of it
        *     ("Read AGENTS.md").
+       * @example Ran `cargo test`, 12 tests passed
        */
       label: string;
       progress?: components["schemas"]["WorkProgress"] | null;
       /**
        * Format: date-time
        * @description When the step started.
+       * @example 2026-10-23T12:00:00Z
        */
       started_at?: string | null;
       /** @description Where the step stands. */
       state: components["schemas"]["WorkStepState"];
-      /** @description Tool name. */
+      /**
+       * @description Tool name.
+       * @example bash
+       */
       tool_name: string;
     };
     /**

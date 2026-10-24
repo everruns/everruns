@@ -99,12 +99,15 @@ pub enum WorkStepState {
 pub struct WorkProgress {
     /// Items done so far, when the tool knows a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 7))]
     pub current: Option<u64>,
     /// Items in total, when the tool knows a count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 12))]
     pub total: Option<u64>,
     /// The tool's latest status line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Rendering image 7 of 12"))]
     pub label: Option<String>,
 }
 
@@ -113,19 +116,27 @@ pub struct WorkProgress {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct WorkStep {
     /// The tool call id.
+    #[cfg_attr(feature = "openapi", schema(example = "call_01"))]
     pub id: String,
     /// Tool name.
+    #[cfg_attr(feature = "openapi", schema(example = "bash"))]
     pub tool_name: String,
     /// What the step is doing ("Running tests") or what came out of it
     /// ("Read AGENTS.md").
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Ran `cargo test`, 12 tests passed")
+    )]
     pub label: String,
     /// Where the step stands.
     pub state: WorkStepState,
     /// When the step started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-10-23T12:00:00Z"))]
     pub started_at: Option<DateTime<Utc>>,
     /// How long the step took, once finished.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 4200))]
     pub duration_ms: Option<u64>,
     /// Live progress while running.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -139,11 +150,14 @@ pub struct WorkPlan {
     /// Plan items in order.
     pub items: Vec<ProgressStep>,
     /// Items done or skipped.
+    #[cfg_attr(feature = "openapi", schema(example = 2))]
     pub done: u32,
     /// Items in total.
+    #[cfg_attr(feature = "openapi", schema(example = 4))]
     pub total: u32,
     /// The item in progress, in its "doing" form when the tool has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Run the tests"))]
     pub current: Option<String>,
 }
 
@@ -168,6 +182,7 @@ pub struct WorkAttention {
     /// What kind of answer is needed.
     pub kind: WorkAttentionKind,
     /// One line naming what is asked ("Run git push").
+    #[cfg_attr(feature = "openapi", schema(example = "Deploy to staging"))]
     pub prompt: String,
     /// Open client-side call ids that carry the request.
     pub tool_call_ids: Vec<String>,
@@ -195,6 +210,7 @@ pub struct WorkFact {
     /// Which fact.
     pub kind: WorkFactKind,
     /// Its value.
+    #[cfg_attr(feature = "openapi", schema(example = 3))]
     pub value: u64,
 }
 
@@ -215,6 +231,10 @@ pub enum WorkSummarySource {
 pub struct WorkResult {
     /// One or two sentences on what changed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Fixed the proration rounding and added a test.")
+    )]
     pub summary: Option<String>,
     /// Where the summary came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,21 +261,30 @@ pub struct WorkReport {
     pub state: WorkState,
     /// One line, always present: the current step while working, the request
     /// while waiting, the result when finished.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Step 3 of 4 · Running `cargo test`")
+    )]
     pub headline: String,
     /// Agent name snapshot at turn start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Billing fixer"))]
     pub agent_name: Option<String>,
     /// Model of the latest generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-6.1-sol"))]
     pub model: Option<String>,
     /// When the work started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-10-23T12:00:00Z"))]
     pub started_at: Option<DateTime<Utc>>,
     /// When the work ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-10-23T12:02:13Z"))]
     pub ended_at: Option<DateTime<Utc>>,
     /// Elapsed time: to the end when finished, to the read time while running.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 133000))]
     pub duration_ms: Option<u64>,
     /// The plan the agent shared, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -264,6 +293,7 @@ pub struct WorkReport {
     pub steps: Vec<WorkStep>,
     /// Steps run but no longer listed.
     #[serde(default, skip_serializing_if = "is_zero")]
+    #[cfg_attr(feature = "openapi", schema(example = 0))]
     pub omitted_steps: u32,
     /// The open request when the work waits on a person.
     #[serde(default, skip_serializing_if = "Option::is_none")]
