@@ -1,5 +1,6 @@
 "use client";
 
+import { useOrg } from "@/providers/org-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { MemoryIcon } from "@/components/icons/facet-icons";
@@ -49,6 +50,8 @@ type StatusTab = "active" | "archived";
 
 export default function MemoryPage() {
   usePageTitle("Memory");
+  const { currentOrg } = useOrg();
+  const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [search, setSearch] = useState("");
   useChatPageFilters({ status: statusTab, search: search });
@@ -148,6 +151,7 @@ export default function MemoryPage() {
       </PageMain>
 
       <MemoryFormDialog
+        writable={canManage}
         mode="create"
         open={createOpen}
         isPending={createMemory.isPending}
@@ -157,6 +161,7 @@ export default function MemoryPage() {
         }}
       />
       <MemoryFormDialog
+        writable={canManage && !!editingMemory && !isReadOnlyStatus(editingMemory.status)}
         mode="edit"
         open={!!editingMemory}
         memory={editingMemory}

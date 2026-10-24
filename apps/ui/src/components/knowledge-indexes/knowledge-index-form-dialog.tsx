@@ -5,7 +5,7 @@ import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +48,7 @@ interface KnowledgeIndexFormDialogProps {
   open: boolean;
   index?: KnowledgeIndex | null;
   isPending?: boolean;
+  writable?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (request: CreateKnowledgeIndexRequest | UpdateKnowledgeIndexRequest) => Promise<void>;
 }
@@ -65,6 +66,7 @@ export function KnowledgeIndexFormDialog({
   open,
   index,
   isPending = false,
+  writable = false,
   onOpenChange,
   onSubmit,
 }: KnowledgeIndexFormDialogProps) {
@@ -82,15 +84,48 @@ export function KnowledgeIndexFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const config = (index?.source_config ?? {}) as Record<string, unknown>;
+  const initial = [
+    mode === "edit" ? (index?.name ?? "") : "",
+    mode === "edit" ? (index?.description ?? "") : "",
+    index?.source_type === "git" ? "git" : "github",
+    readStringField(config, "repository"),
+    readStringField(config, "url"),
+    readStringField(config, "branch"),
+    readStringField(config, "root_folder"),
+    mode === "edit" ? (index?.embedding_model_id ?? "") : "",
+  ];
+  const initialState = JSON.stringify(initial);
+  const formState = JSON.stringify([
+    name,
+    description,
+    sourceType,
+    repository,
+    gitUrl,
+    branch,
+    rootFolder,
+    embeddingModelId,
+  ]);
+  const currentFormState = useRef(formState);
+  const seededState = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    currentFormState.current = formState;
+  });
+  const dirty = seededState.current !== null && formState !== seededState.current;
   const adopted = !!usePageChatMode();
   const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
       seededForm.current = null;
+      seededState.current = null;
       return;
     }
     const seed = `${mode}:${index?.id ?? "new"}`;
-    if (adopted && seededForm.current === seed) return;
+    // Preserve every manual field, including controls excluded from Chat. A
+    // clean form can follow a refetch; a dirty form keeps its original baseline.
+    if (adopted && seededForm.current === seed && seededState.current !== currentFormState.current)
+      return;
+    seededState.current = initialState;
     seededForm.current = seed;
     const config = (index?.source_config ?? {}) as Record<string, unknown>;
     setName(mode === "edit" ? (index?.name ?? "") : "");
@@ -104,7 +139,7 @@ export function KnowledgeIndexFormDialog({
     setFieldErrors({});
     setEmbeddingModelValid(false);
     setFormError(null);
-  }, [mode, open, index, adopted]);
+  }, [mode, open, index, adopted, initialState]);
 
   function buildSourceConfig(normalizedRepository: string | null): Record<string, unknown> {
     const trimmedBranch = branch.trim();
@@ -127,11 +162,16 @@ export function KnowledgeIndexFormDialog({
     entityType: "knowledge_index",
     formId: "details",
     label: mode === "create" ? "New knowledge index" : (index?.name ?? "Edit knowledge index"),
-    baseline: JSON.stringify([mode, index?.name, index?.description]),
-    dirty:
-      name !== (mode === "edit" ? (index?.name ?? "") : "") ||
-      description !== (mode === "edit" ? (index?.description ?? "") : ""),
-    writable: !isPending,
+    baseline: JSON.stringify([
+      mode,
+      index?.name,
+      index?.description,
+      index?.source_type,
+      index?.source_config,
+      index?.embedding_model_id,
+    ]),
+    dirty,
+    writable: writable && !isPending,
     enabled: open && (mode === "create" || !!index),
     priority: 30,
     apply: (values) => {
@@ -376,7 +416,11 @@ export function KnowledgeIndexFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" variant="accent" disabled={isPending || !embeddingModelValid}>
+            <Button
+              type="submit"
+              variant="accent"
+              disabled={chatDraft.blocked || isPending || !embeddingModelValid}
+            >
               {submitLabel}
             </Button>
           </DialogFooter>

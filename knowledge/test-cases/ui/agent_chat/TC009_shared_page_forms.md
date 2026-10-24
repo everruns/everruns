@@ -43,6 +43,8 @@ tags: [ui, test-case, platform-chat, forms]
    and switching organizations. None may reuse the preceding binding.
 9. Refresh a saved record while its draft is dirty. Keep the draft visible, block its
    Save and new patches, then Discard/Cancel and reopen to review the current record.
+   Include manual source/embedding controls in metadata-only dialogs: their edits
+   must survive a refresh with Save blocked; a clean form follows the latest saved settings.
    Try a built-in, archived or unauthorized form: reads may succeed, patches must fail.
 10. Repeat dialog and form flows at 1366 px, 390 px, dark mode and reduced motion.
     The page body stacks to its available pane width. Back to app restores mobile
