@@ -368,6 +368,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "sessions trace turns steps request",
         "The messages a model call in a trace was sent.",
     ),
+    (
+        "sessions work",
+        "What a session's agent is doing now, or what it got done.",
+    ),
     ("skills", "Skill packages and their content."),
     ("system", "Server status."),
     (

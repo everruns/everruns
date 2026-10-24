@@ -333,6 +333,7 @@ sessions unarchive	--context-revision --reason --session <session_id>
 sessions unpin	--context-revision --reason --session <session_id>
 sessions update	--context-revision --goal --locale --model-id --reason --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
+sessions work get	--context-revision --reason --session-id --turn-id <session_id>
 skills content	--context-revision --id --reason <id>
 skills create	--context-revision --reason --skill-md!
 skills delete	--context-revision --id --reason <id>

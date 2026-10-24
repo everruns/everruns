@@ -17,6 +17,10 @@
   Added paginated OKF metadata validation and updated the
   [threat model](security/threat-model.md) for retrieval, BYOK and extraction.
   See [Unified Knowledge](runtime-resources/knowledge.md).
+* **Work reports.** One runtime-built record of what a turn is doing now and
+  what it got done, computed on read from the turn's events by a single
+  reducer and served at `GET /v1/sessions/{id}/work`. See
+  [Work reports](execution/work-reports.md).
 
 ## 2026-10-21
 

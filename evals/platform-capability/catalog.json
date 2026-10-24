@@ -12451,6 +12451,37 @@
     "read_only": true
   },
   {
+    "category": "events",
+    "cli": "sessions work get",
+    "description": "Show what a session's turn is doing or got done.",
+    "input_schema": {
+      "description": "Work report of one turn, or of the session's latest turn.",
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn_id": {
+          "description": "Turn to report on. Defaults to the session's latest turn.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_work",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/work",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "skills",
     "cli": "skills get",
     "description": "Get a single skill by ID.",
