@@ -335,6 +335,258 @@ async fn mounts_enforce_bindings_exclusions_and_contextual_grep() {
             .any(|f| f.path == "/knowledge")
     );
 }
+
+#[tokio::test]
+async fn data_knowledge_scaffold_coexists_with_collections_without_shadowing_authority() {
+    use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
+    use crate::domains::session_files::{
+        WorkspaceFileService,
+        service::{GrepInput, UpdateFileInput},
+    };
+    use crate::storage::{CreateSessionFileRow, CreateSessionRow};
+    use everruns_capabilities::capabilities::DataKnowledgeCapability;
+    use everruns_contracts::typed_id::PrincipalId;
+    use everruns_core::{Capability, SessionFileSystem, capability_types::VirtualFileTree};
+
+    let s = fixture();
+    let c = create(&s, IndexMode::Off).await;
+    write(&s, &c, "/guide.md", b"needle collection").await;
+    let base = format!("/knowledge/{}", c.public_id());
+    let guide = format!("{base}/guide.md");
+    for bound in [false, true] {
+        let collections = if bound { vec![c.public_id()] } else { vec![] };
+        let session = s.db.create_session(CreateSessionRow {
+            org_id: 1, owner_principal_id: PrincipalId::from_seed(1),
+            capabilities: json!([{"ref":"data_knowledge"}, {"ref":"knowledge","config":{"collections":collections}}]),
+            ..Default::default()
+        }).await.unwrap();
+        let sid = session.id.uuid();
+        let registry = Arc::new(VirtualMountRegistry::new());
+        let fs = WorkspaceFileService::new(s.db.clone()).with_virtual_registry(registry.clone());
+        assert!(
+            fs.apply_capability_mounts(sid, &DataKnowledgeCapability.mounts())
+                .await
+                .unwrap()
+                .errors
+                .is_empty()
+        );
+
+        // Old workspace rows and virtual mounts must not become fallback authority
+        // for an unbound, denied or missing collection file.
+        s.db.create_session_file(CreateSessionFileRow {
+            session_id: session.id,
+            path: guide.clone(),
+            content: Some(b"leaked workspace shadow".to_vec()),
+            is_directory: false,
+            is_readonly: true,
+        })
+        .await
+        .unwrap();
+        let mut shadow = VirtualFileTree::new();
+        shadow.insert_text(&guide, "leaked virtual shadow");
+        registry.register(sid, base.clone(), Arc::new(shadow), "shadow-fixture".into());
+
+        assert!(
+            fs.stat(sid, "/knowledge")
+                .await
+                .unwrap()
+                .unwrap()
+                .is_directory
+        );
+        let root = fs.list_directory(sid, "/knowledge").await.unwrap();
+        assert!(root.iter().any(|file| file.name == "tables"));
+        assert_eq!(root.iter().any(|file| file.name == c.public_id()), bound);
+        let index = fs
+            .read_file(sid, "/knowledge/index.md")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(index.is_readonly);
+        let index = index.content.unwrap();
+        assert!(
+            index.starts_with("---\n"),
+            "scaffold OKF frontmatter stays first"
+        );
+        assert!(index.contains("Data Knowledge"));
+        assert_eq!(index.contains(&c.public_id()), bound);
+        assert!(
+            fs.read_file(sid, "/knowledge/tables/index.md")
+                .await
+                .unwrap()
+                .unwrap()
+                .content
+                .unwrap()
+                .contains("Table Documentation")
+        );
+        let file = fs.read_file(sid, &guide).await.unwrap();
+        assert_eq!(file.is_some(), bound);
+        if let Some(file) = file {
+            assert_eq!(file.content.as_deref(), Some("needle collection"));
+        }
+        assert_eq!(fs.stat(sid, &guide).await.unwrap().is_some(), bound);
+        assert!(
+            fs.update_file(
+                sid,
+                "/knowledge/index.md",
+                UpdateFileInput {
+                    content: Some("overwrite".into()),
+                    encoding: None,
+                    is_readonly: None,
+                }
+            )
+            .await
+            .is_err()
+        );
+        for scope in [
+            None,
+            Some("/knowledge"),
+            Some("/workspace/knowledge"),
+            Some("*.md"),
+        ] {
+            let matches = fs
+                .grep(
+                    sid,
+                    GrepInput {
+                        pattern: "Table Documentation|needle".into(),
+                        path_pattern: scope.map(str::to_owned),
+                        excluded_path_prefix: None,
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                matches.iter().map(|file| file.matches.len()).sum::<usize>(),
+                1 + usize::from(bound && scope.is_some_and(|p| p.starts_with('/')))
+            );
+            assert!(
+                fs.grep(
+                    sid,
+                    GrepInput {
+                        pattern: "leaked".into(),
+                        path_pattern: scope.map(str::to_owned),
+                        excluded_path_prefix: None,
+                    }
+                )
+                .await
+                .unwrap()
+                .is_empty()
+            );
+        }
+        let result = fs
+            .grep_files_with_options(
+                session.id,
+                "Table Documentation|needle",
+                &everruns_core::GrepOptions {
+                    path_pattern: Some("/knowledge".into()),
+                    before_context: 1,
+                    after_context: 1,
+                    offset: usize::from(bound),
+                    limit: 1,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.total_matches, 1 + usize::from(bound));
+        assert_eq!(result.blocks.len(), 1);
+        assert_eq!(result.blocks[0].path, "/knowledge/tables/index.md");
+        assert_eq!(
+            fs.grep_files_with_options(
+                session.id,
+                "leaked",
+                &everruns_core::GrepOptions {
+                    path_pattern: Some("/knowledge".into()),
+                    before_context: 1,
+                    ..Default::default()
+                }
+            )
+            .await
+            .unwrap()
+            .total_matches,
+            0
+        );
+        // Static capability content follows a shared workspace; attachments do not.
+        let shared =
+            s.db.create_session(CreateSessionRow {
+                org_id: 1,
+                owner_principal_id: PrincipalId::from_seed(1),
+                workspace_id: Some(session.workspace_id),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let shared_index = fs
+            .read_file(shared.id.uuid(), "/knowledge/index.md")
+            .await
+            .unwrap()
+            .unwrap()
+            .content
+            .unwrap();
+        assert!(shared_index.contains("Data Knowledge"));
+        assert!(!shared_index.contains(&c.public_id()));
+        assert!(
+            fs.list_directory(shared.id.uuid(), "/knowledge")
+                .await
+                .unwrap()
+                .iter()
+                .any(|file| file.name == "tables")
+        );
+        assert!(
+            fs.read_file(shared.id.uuid(), &guide)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            fs.grep(
+                shared.id.uuid(),
+                GrepInput {
+                    pattern: "Table Documentation|needle".into(),
+                    path_pattern: Some("/knowledge".into()),
+                    excluded_path_prefix: None,
+                }
+            )
+            .await
+            .unwrap()
+            .iter()
+            .map(|file| file.matches.len())
+            .sum::<usize>(),
+            1
+        );
+
+        // A workspace-only view has no session attachment authority even when
+        // its UUID happens to equal the owner's session UUID.
+        let workspace = WorkspaceFileService::new(s.db.clone())
+            .with_virtual_registry(registry)
+            .without_session_knowledge();
+        assert!(workspace.read_file(sid, &guide).await.unwrap().is_none());
+        assert!(workspace.stat(sid, &guide).await.unwrap().is_none());
+        assert!(
+            !workspace
+                .read_file(sid, "/knowledge/index.md")
+                .await
+                .unwrap()
+                .unwrap()
+                .content
+                .unwrap()
+                .contains(&c.public_id())
+        );
+        assert!(
+            workspace
+                .grep(
+                    sid,
+                    GrepInput {
+                        pattern: "needle|leaked".into(),
+                        path_pattern: Some("/knowledge".into()),
+                        excluded_path_prefix: None,
+                    }
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
 #[test]
 fn html_uses_markkit_and_retains_extraction_metadata() {
     let extracted=extraction::extract(b"<html><head><title>A page</title></head><body><h1>Guide</h1><p>Useful text</p></body></html>","page.html","text/html");
@@ -675,6 +927,45 @@ async fn shared_workspace_knowledge_uses_calling_session_binding() {
         result,
         crate::domains::session_files::types::GetResponse::File(_)
     ));
+    // Global workspace scans carry the workspace key, not the caller's binding
+    // authority. They must not disclose an owner's attached collection.
+    let bound_owner =
+        s.db.create_session(crate::storage::CreateSessionRow {
+            org_id: 1,
+            owner_principal_id: PrincipalId::from_seed(1),
+            capabilities: json!([{"ref":"knowledge","config":{"collections":[c.public_id()]}}]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let fs = WorkspaceScopedFileSystem::wrap(
+        Arc::new(crate::domains::session_files::WorkspaceFileService::new(
+            s.db.clone(),
+        )),
+        WorkspaceId::from_uuid(bound_owner.workspace_id),
+    );
+    let visitor =
+        s.db.create_session(crate::storage::CreateSessionRow {
+            org_id: 1,
+            owner_principal_id: PrincipalId::from_seed(1),
+            workspace_id: Some(bound_owner.workspace_id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(
+        fs.grep_files(visitor.id, "scoped", None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        fs.grep_files_with_options(visitor.id, "scoped", &Default::default())
+            .await
+            .unwrap()
+            .total_matches,
+        0
+    );
 }
 
 #[tokio::test]

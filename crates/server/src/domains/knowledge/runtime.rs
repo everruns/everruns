@@ -491,7 +491,6 @@ impl KnowledgeService {
         let matcher = filter
             .map(everruns_core::session_path::GrepPathPattern::new)
             .transpose()?;
-        let (_, collections) = self.mounted(session).await?;
         let extracted = filter.is_some_and(|p| {
             everruns_core::session_path::to_session_path(p).starts_with("/knowledge-text")
         });
@@ -500,9 +499,33 @@ impl KnowledgeService {
         } else {
             "/knowledge"
         };
+        let scope = filter.map(everruns_core::session_path::to_session_path);
+        let fixed = scope
+            .as_deref()
+            .unwrap_or("/")
+            .split(['*', '?', '[', '{'])
+            .next()
+            .unwrap_or("/");
+        let relevant =
+            root.starts_with(fixed) || fixed == root || fixed.starts_with(&format!("{root}/"));
+        let collection_prefix = fixed
+            .strip_prefix(&format!("{root}/"))
+            .and_then(|p| p.split('/').next());
+        if filter.is_some_and(|p| p.starts_with('/'))
+            && (!relevant
+                || collection_prefix.is_some_and(|p| {
+                    !p.is_empty() && !p.starts_with("kn_") && !"kn_".starts_with(p)
+                }))
+        {
+            return Ok(everruns_core::session_file::build_grep_search_result(
+                Vec::new(),
+                &regex,
+                options,
+            ));
+        }
+        let (_, collections) = self.mounted(session).await?;
         let mut bytes = 0;
         let mut examined = 0;
-        let scope = filter.map(everruns_core::session_path::to_session_path);
         let mut text_files = Vec::new();
         for c in collections {
             if let Some(selected) = scope

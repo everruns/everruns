@@ -15,6 +15,57 @@ use serde_json::json;
 const SECRET_PATH: &str = "/memory/user/secret-plan.md";
 const SECRET_NAME: &str = "secret-plan.md";
 
+#[tokio::test]
+async fn workspace_views_never_import_session_knowledge_bindings() {
+    use crate::domains::knowledge::{KnowledgeService, types::CollectionInput};
+    let f = fixture().await;
+    let knowledge = KnowledgeService::files(f.state.db.clone());
+    let collection = knowledge
+        .create(
+            DEFAULT_ORG_ID,
+            CollectionInput {
+                name: format!("workspace-private-{}", Uuid::new_v4()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let mut input = session_row(f.owner);
+    input.capabilities = json!([{"ref":"knowledge","config":{"collections":[collection["id"]]}}]);
+    let session = f.state.db.create_session(input).await.unwrap();
+    let runtime = WorkspaceFileService::new(f.state.db.clone());
+    assert!(
+        runtime
+            .read_file(session.id.uuid(), "/knowledge/index.md")
+            .await
+            .unwrap()
+            .unwrap()
+            .content
+            .unwrap()
+            .contains(collection["id"].as_str().unwrap())
+    );
+    for state in [
+        f.state.clone(),
+        f.state.clone().with_virtual_registry(Arc::new(
+            crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
+        )),
+    ] {
+        let error = get_path(
+            org_for(f.owner, OrgRole::Owner),
+            State(state),
+            Path((
+                WorkspaceId::from_uuid(session.workspace_id).to_string(),
+                "knowledge/index.md".into(),
+            )),
+            HeaderMap::new(),
+            Query(GetQuery { recursive: false }),
+        )
+        .await
+        .expect_err("workspace context must not import the owner's attachments");
+        assert_eq!(error.0, StatusCode::NOT_FOUND);
+    }
+}
+
 struct Fixture {
     state: AppState,
     workspace_id: String,

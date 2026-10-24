@@ -138,6 +138,9 @@ impl VirtualMountRegistry {
         };
         for mount in session_mounts {
             for (file_path, file) in mount.tree.all_files() {
+                if super::service::knowledge_mounts::collection_path(file_path) {
+                    continue;
+                }
                 if excluded_path_prefix.is_some_and(|prefix| {
                     file_path == prefix || file_path.starts_with(&format!("{prefix}/"))
                 }) {
@@ -188,6 +191,7 @@ impl VirtualMountRegistry {
         session_mounts
             .iter()
             .flat_map(|mount| mount.tree.all_files())
+            .filter(|(path, _)| !super::service::knowledge_mounts::collection_path(path))
             .filter(|(_, file)| file.content.len() <= max_file_bytes)
             .filter_map(|(path, file)| {
                 std::str::from_utf8(&file.content)
