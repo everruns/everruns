@@ -1,5 +1,6 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -76,6 +77,61 @@ export function ServiceConnectionField({
         What an agent acting as itself uses here. A connection is only accepted for servers on its
         provider&apos;s own hosts, such as the GitHub MCP server for GitHub.
       </p>
+    </div>
+  );
+}
+
+/** Longest tool call timeout the API accepts, in seconds (30 minutes). */
+export const MAX_TOOL_TIMEOUT_SECONDS = 1800;
+
+/**
+ * Parse the timeout field: `undefined` when empty (use the 60 s default),
+ * milliseconds when valid, or an error message.
+ */
+export function parseToolTimeoutSeconds(
+  value: string,
+): { ms: number | undefined } | { error: string } {
+  const trimmed = value.trim();
+  if (trimmed === "") return { ms: undefined };
+  const seconds = Number(trimmed);
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > MAX_TOOL_TIMEOUT_SECONDS) {
+    return { error: `Enter whole seconds from 1 to ${MAX_TOOL_TIMEOUT_SECONDS}` };
+  }
+  return { ms: seconds * 1000 };
+}
+
+/** Tool call timeout in seconds, shared by the create and edit dialogs. */
+export function ToolTimeoutField({
+  id,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Tool call timeout (seconds)</Label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        value={value}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+        aria-invalid={!!error}
+        placeholder="60"
+      />
+      {error ? (
+        <p className="text-xs text-destructive">{error}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          How long one call to this server may run before it fails. Empty uses 60 seconds; the
+          longest is 30 minutes.
+        </p>
+      )}
     </div>
   );
 }

@@ -69,6 +69,8 @@ export interface McpServer {
   protocol_mode?: McpProtocolMode;
   /** Elicitation policy. Omitted by the API when `url` (the default). */
   elicitation_policy?: McpElicitationPolicy;
+  /** Tool call timeout in milliseconds. Omitted when the 60000 default applies. */
+  tool_timeout_ms?: number;
   oauth_provider_id?: string;
   /** Agent connection that supplies the service credential (`github`). */
   service_connection_provider?: string;
@@ -93,6 +95,8 @@ export interface CreateMcpServerRequest {
   auth_mode?: McpServerAuthMode;
   protocol_mode?: McpProtocolMode;
   elicitation_policy?: McpElicitationPolicy;
+  /** Tool call timeout in milliseconds (1000 to 1800000). */
+  tool_timeout_ms?: number;
   /** Agent connection that supplies the service credential; `""` clears it on update. */
   service_connection_provider?: string;
   api_key?: string;
@@ -109,6 +113,8 @@ export interface UpdateMcpServerRequest {
   auth_mode?: McpServerAuthMode;
   protocol_mode?: McpProtocolMode;
   elicitation_policy?: McpElicitationPolicy;
+  /** Tool call timeout in milliseconds; `0` clears it back to the default. */
+  tool_timeout_ms?: number;
   /** Agent connection that supplies the service credential; `""` clears it on update. */
   service_connection_provider?: string;
   api_key?: string;

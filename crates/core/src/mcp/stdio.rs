@@ -131,7 +131,14 @@ impl StdioTransport {
             .ok_or_else(|| anyhow!("MCP stdio server '{}' has no stdout", connection.name))?;
         let mut reader = BufReader::new(stdout).lines();
 
-        let outcome = tokio::time::timeout(STDIO_TIMEOUT, async {
+        // `tools/call` honors the server's configured timeout; the other
+        // methods are quick lookups and keep the fixed limit.
+        let timeout = if method == "tools/call" {
+            connection.tool_timeout()
+        } else {
+            STDIO_TIMEOUT
+        };
+        let outcome = tokio::time::timeout(timeout, async {
             // MCP initialize handshake.
             write_message(
                 &mut stdin,

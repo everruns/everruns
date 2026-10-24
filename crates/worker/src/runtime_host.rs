@@ -206,6 +206,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             auth_mode: info.auth_mode,
             protocol_mode: info.protocol_mode,
             elicitation_policy: info.elicitation_policy,
+            tool_timeout_ms: info.tool_timeout_ms,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
             // `never` turns a missing grant into a plain tool error with the

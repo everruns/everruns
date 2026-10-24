@@ -71,6 +71,7 @@ mod mcp_event_triggers_test;
 mod mcp_events_test;
 mod mcp_files_test;
 mod mcp_oauth_user_switch_test;
+mod mcp_tasks_interop_test;
 mod mcp_tool_labels_test;
 mod migration_baseline_test;
 mod migration_history_test;

@@ -13,7 +13,7 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients, Claude Desktop, Cursor, VS Code, or another agent, can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
 - **Transport**: JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2026-07-28`, `2025-06-18` and `2025-03-26` are supported.
-- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`; and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
+- **Methods**: `initialize`, `server/discover`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`; under `2026-07-28`, `skills/list`, `skills/get`, and `resources/directory/read`, plus `tasks/get`, `tasks/update` and `tasks/cancel` for clients that use [Tasks](#long-agent-turns-as-tasks); and, for organizations that turn on MCP Events, `events/list`, `events/subscribe` and `events/unsubscribe`.
 - **Auth**: MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Files**: `agent_run` and `session_send_message` take an optional `files` list, each file as base64 `data` or a public `https` `url`. The files are copied into the session's `/attachments` folder, as for [channels](/features/channels/#files-people-send).
 - **Entity cards**: under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
@@ -52,6 +52,30 @@ Reading a resource does not itself activate a skill. A host supporting the
 extension loads it through its skill loader, checks the manifest and frontmatter,
 and applies its approval policy. Older clients can read a known skill URI as an
 ordinary resource but receive no Skills extension capability.
+
+### Long agent turns as tasks
+
+An agent turn can take minutes. Clients on protocol `2026-07-28` that declare the
+[MCP Tasks extension](https://modelcontextprotocol.io/extensions/tasks/overview)
+(`io.modelcontextprotocol/tasks`) get a task back from `agent_run` and
+`session_send_message` instead of holding the request open, then poll
+`tasks/get` until the turn ends.
+
+- **One task per message.** Each message starts its own task, and a finished
+  task keeps its own reply, so an old task id never shows a later turn.
+- **Results.** A completed task carries the agent's reply as the tool result,
+  with the session id, the message id and any structured result in
+  `structuredContent`. A turn that failed or was stopped is `completed` with
+  `isError: true` and a status message saying why; a cancelled turn is
+  `cancelled`.
+- **Questions.** When the agent asks with Ask User and the client also declares
+  form elicitation, the task is `input_required` and carries the form. Answer it
+  with `tasks/update`; send a follow-up message with `session_send_message`.
+- **Cancel.** `tasks/cancel` stops the running turn.
+
+Task ids are checked against the caller's access on every request: an id for a
+session the caller cannot read is an unknown task. Clients that do not declare
+the extension keep getting plain tool results.
 
 ### In ChatGPT and Codex
 
@@ -193,6 +217,24 @@ the App, not a person. It reaches only the repositories the App is installed on,
 with the App's permissions, and tools about a person (`get_me`, notifications,
 starred repositories, "my" issues and pull requests) fail. For those, attach the
 server acting as `user` so the person signs in.
+
+### Long-running tools
+
+A call to an MCP tool fails if the server has not answered within 60 seconds.
+For a server whose tools take longer, such as one that runs a build or a
+deployment, set `tool_timeout_ms` on the attachment or catalog entry (**Tool call
+timeout** in the catalog form, in seconds). It accepts 1 second to 30 minutes.
+`timeout`, the key common `mcpServers` config files use, works as well. An
+attachment that uses a catalog entry may set its own timeout. If it does not,
+it uses the catalog's timeout.
+
+```json
+{
+  "mcpServers": {
+    "ci": { "type": "http", "url": "https://ci.example.com/mcp", "tool_timeout_ms": 600000 }
+  }
+}
+```
 
 ### Waking an agent on a server's events (experimental)
 

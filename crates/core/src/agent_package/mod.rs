@@ -346,6 +346,8 @@ fn mcp_servers<'de, D: serde::Deserializer<'de>>(
         "connectInChat",
         "connect_in_chat",
         "deferred",
+        "tool_timeout_ms",
+        "timeout",
     ];
     for (name, value) in &values {
         let object = value.as_object().ok_or_else(|| {

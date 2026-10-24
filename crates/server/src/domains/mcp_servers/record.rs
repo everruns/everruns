@@ -79,6 +79,11 @@ pub struct McpServer {
     /// Which elicitation modes this server may use (`url` by default).
     #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
     pub elicitation_policy: McpElicitationPolicy,
+    /// How long one tool call may take, in milliseconds. Absent means the
+    /// 60000 default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 300000)]
+    pub tool_timeout_ms: Option<u64>,
     /// Stable provider id used for user-scoped OAuth connections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,

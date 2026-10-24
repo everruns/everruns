@@ -7308,6 +7308,13 @@
         "help": "Connection provider whose connection on an agent's service virtual user supplies the service ..."
       },
       {
+        "field": "tool_timeout_ms",
+        "long": "tool-timeout-ms",
+        "kind": "integer",
+        "required": false,
+        "help": "How long one tool call may take, in milliseconds (1000 to 1800000). Defaults to 60000."
+      },
+      {
         "field": "transport_type",
         "long": "transport-type",
         "kind": "string",
@@ -7609,6 +7616,13 @@
         "long": "status",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "tool_timeout_ms",
+        "long": "tool-timeout-ms",
+        "kind": "integer",
+        "required": false,
+        "help": "How long one tool call may take, in milliseconds (1000 to 1800000). `0` clears it back to the..."
       },
       {
         "field": "transport_type",

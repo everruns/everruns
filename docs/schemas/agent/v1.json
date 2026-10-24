@@ -600,6 +600,15 @@
             "type": "string"
           }
         },
+        "tool_timeout_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+          "minimum": 0
+        },
         "type": {
           "$ref": "#/definitions/McpServerTransportType",
           "description": "MCP transport type. Only remote HTTP is supported today."

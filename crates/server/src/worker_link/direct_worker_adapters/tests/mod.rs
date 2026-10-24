@@ -34,6 +34,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
             acts_as,
             connect_in_chat: Default::default(),
             elicitation_policy: Default::default(),
+            tool_timeout_ms: None,
             api_key: None,
             headers: HashMap::new(),
         };
