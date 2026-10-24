@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-24
+
+* **Knowledge configuration history.** Collection settings and source attachments
+  use shared entity history and manager context; configuration restore preserves
+  retained files and source progress. Operational counts, jobs and serving
+  generations do not create revisions. See [Unified Knowledge](runtime-resources/knowledge.md).
+
 ## 2026-10-23
 
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
