@@ -8,6 +8,7 @@
   what it got done, computed on read from the turn's events by a single
   reducer and served at `GET /v1/sessions/{id}/work`. See
   [Work reports](execution/work-reports.md).
+- Added the Work Chat channel contract, consumer authority boundaries and standalone browser host.
 
 ## 2026-10-21
 

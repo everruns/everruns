@@ -20,6 +20,7 @@ Use a channel when an external peer sends a request and waits for a reply. Use a
 | AG-UI | `ag_ui` | Browser and app clients that speak the AG-UI protocol | `/v1/channels/{channel_id}/ag-ui` | [AG-UI](#ag-ui) |
 | A2A | `a2a` | Other agents, over the A2A protocol | `/v1/channels/{channel_id}/a2a` | [A2A](/features/a2a/) |
 | FCP | `fcp` | Any HTTP client, text in and text out | `/v1/channels/{channel_id}/fcp` | [FCP](#fcp) |
+| Work Chat | `work_chat` | Signed-in consumers using a dedicated work interface | `/v1/channels/{channel_id}` | [Work Chat](#work-chat) |
 | Public Chat | `public_chat` | Visitors to a hosted chat website for one Agent | `/v1/channels/{channel_id}/public-chat` | [Public Chat](#public-chat) |
 | Voice | `voice` | People talking from a browser or app, over WebRTC | `/v1/agents/{agent_id}/channels/{channel_id}/voice/calls` | [Voice](/features/voice/) |
 | Agent API | `api` | Your own code, with an agent key | `/v1/channels/{channel_id}` | [Agent API](/features/agent-api/) |
@@ -184,3 +185,47 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Poppy](/features/poppy/): answer people's personal agents as a company.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
 - [Change History](/features/change-history/): see and restore earlier Agent configurations.
+
+## Work Chat
+
+Publish **Work Chat** to give an Agent a dedicated browser experience with its
+own consumer sign-in. Each channel has a stable, unique hostname on the hosted
+content domain configured by your deployment. Several Work Chat channels can
+point to the same Agent.
+
+Choose **Multiple conversations** for a conversation list, or **Single chat
+with threads** for one permanent main conversation per consumer and related
+work threads. Single mode requires coordinator thread tools on the effective
+Agent, including inherited harness capabilities. Publication and later
+configuration updates reject an incompatible combination. A worker-only
+coordination capability does not qualify.
+
+```json
+{
+  "channel_type": "work_chat",
+  "channel_config": {
+    "interface_mode": "multi_chat",
+    "execution": {
+      "visibility": "full",
+      "errors": "public"
+    }
+  }
+}
+```
+
+Consumers are separate from console members. Configure channel identity methods
+and optional organization-member access through the existing
+[Agent API authentication](/features/agent-api/) settings. The browser host uses
+its deployment's OIDC provider and host-only sessions. It shows streamed replies,
+work activity, threads, questions and permitted approvals. Workspace tools enable
+file browsing and editing; read-only files remain protected. Provider reasoning,
+debug records and private runtime mounts are excluded.
+
+Existing budgets, approval policies and session ownership continue to apply.
+Changing a channel's configuration changes the same URL. The channel introduces
+no separate history or retention policy.
+
+Self-hosters deploy the optional standalone browser app separately from the
+console. Follow its [deployment instructions](https://github.com/everruns/everruns/tree/main/apps/chat-ui)
+for the content domain, TLS, OIDC broker and least-privilege credential storage.
+Publishing a channel alone does not provision hosting or DNS.

@@ -22,6 +22,10 @@ pub type AppState = super::agent_triggers::AppState;
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
+            "/v1/agents/{agent_id}/chat-features",
+            get(get_agent_chat_features),
+        )
+        .route(
             "/v1/agents/{agent_id}/channels",
             get(list_agent_channels).post(create_agent_channel),
         )
@@ -285,4 +289,32 @@ pub async fn trigger_agent_channel(
     .run(&state.ctx(&org))
     .await?;
     Ok(Json(result))
+}
+
+/// Get eligible chat interfaces.
+#[utoipa::path(get,operation_id="get_agent_chat_features",path="/v1/agents/{agent_id}/chat-features",params(("agent_id"=String,Path)),responses((status=200,description="Effective hosted interface features",body=crate::domains::agent_channels::record::work_chat::ChatFeatures)),tag="agent-channels")]
+pub async fn get_agent_chat_features(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<crate::domains::agent_channels::record::work_chat::ChatFeatures> {
+    ListAgentChannels {
+        agent_id: agent_id.clone(),
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    let agent = crate::domains::agents::queries::resolve(&state.db, org.org_id, &agent_id)
+        .await
+        .map_err(crate::domains::common::CommandError::internal)?
+        .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
+    Ok(Json(
+        crate::domains::agent_channels::work_chat::features(
+            &state.db,
+            org.org_id,
+            agent.public_id,
+            agent.harness_id,
+        )
+        .await
+        .map_err(crate::domains::common::CommandError::internal)?,
+    ))
 }

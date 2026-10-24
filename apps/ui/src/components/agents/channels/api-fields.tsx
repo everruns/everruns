@@ -154,7 +154,9 @@ export function isApiFormValid(state: ApiFormState): boolean {
 export function ApiFields({
   value,
   onChange,
+  hosted = false,
 }: {
+  hosted?: boolean;
   value: ApiFormState;
   onChange: (value: ApiFormState) => void;
 }) {
@@ -167,31 +169,35 @@ export function ApiFields({
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Your code calls this agent with an agent key. A key reaches only this agent&apos;s session
-        routes and sees only the sessions it started.
-      </p>
+      {!hosted && (
+        <p className="text-xs text-muted-foreground">
+          Your code calls this agent with an agent key. A key reaches only this agent&apos;s session
+          routes and sees only the sessions it started.
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_visibility`}>What callers see</Label>
-          <Select
-            value={value.visibility}
-            onValueChange={(next) => set("visibility", next as ApiVisibility)}
-          >
-            <SelectTrigger id={`${id}_visibility`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="messages">Messages only</SelectItem>
-              <SelectItem value="activity">Messages and tool activity</SelectItem>
-              <SelectItem value="full">Everything (raw events)</SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Tool activity shows that a tool ran, never its name or arguments. Everything is for
-            callers who own both ends.
-          </p>
-        </div>
+        {!hosted && (
+          <div className="space-y-2">
+            <Label htmlFor={`${id}_visibility`}>What callers see</Label>
+            <Select
+              value={value.visibility}
+              onValueChange={(next) => set("visibility", next as ApiVisibility)}
+            >
+              <SelectTrigger id={`${id}_visibility`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="messages">Messages only</SelectItem>
+                <SelectItem value="activity">Messages and tool activity</SelectItem>
+                <SelectItem value="full">Everything (raw events)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Tool activity shows that a tool ran, never its name or arguments. Everything is for
+              callers who own both ends.
+            </p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor={`${id}_tool_approvals`}>Who allows held-back tool calls</Label>
           <Select
@@ -210,36 +216,40 @@ export function ApiFields({
             The caller then sees the tool and its arguments, which it needs to decide.
           </p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_session_binding`}>Sessions</Label>
-          <Select
-            value={value.sessionBinding}
-            onValueChange={(next) => set("sessionBinding", next as ApiSessionBinding)}
-          >
-            <SelectTrigger id={`${id}_session_binding`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="per_user">One per caller conversation</SelectItem>
-              <SelectItem value="session_per_invocation">One per created session</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={`${id}_errors`}>Error detail</Label>
-          <Select
-            value={value.errors}
-            onValueChange={(next) => set("errors", next as ApiErrorDetail)}
-          >
-            <SelectTrigger id={`${id}_errors`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="public">Public error codes only</SelectItem>
-              <SelectItem value="detailed">Detailed problem details</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {!hosted && (
+          <div className="space-y-2">
+            <Label htmlFor={`${id}_session_binding`}>Sessions</Label>
+            <Select
+              value={value.sessionBinding}
+              onValueChange={(next) => set("sessionBinding", next as ApiSessionBinding)}
+            >
+              <SelectTrigger id={`${id}_session_binding`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="per_user">One per caller conversation</SelectItem>
+                <SelectItem value="session_per_invocation">One per created session</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {!hosted && (
+          <div className="space-y-2">
+            <Label htmlFor={`${id}_errors`}>Error detail</Label>
+            <Select
+              value={value.errors}
+              onValueChange={(next) => set("errors", next as ApiErrorDetail)}
+            >
+              <SelectTrigger id={`${id}_errors`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="public">Public error codes only</SelectItem>
+                <SelectItem value="detailed">Detailed problem details</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor={`${id}_rate_limit`}>Rate limit / minute</Label>
           <Input
@@ -295,27 +305,29 @@ export function ApiFields({
           onCheckedChange={(checked) => set("orgMembers", checked)}
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor={`${id}_cors_origins`}>Browser origins</Label>
-        <Textarea
-          id={`${id}_cors_origins`}
-          value={value.corsOrigins}
-          onChange={(event) => set("corsOrigins", event.target.value)}
-          placeholder="https://app.example.com"
-          rows={3}
-          aria-invalid={!originsValid}
-        />
-        <p className="text-xs text-muted-foreground">
-          One per line. Web pages on these origins may call this agent directly with a runtime
-          token. Never put an agent key in a browser.
-        </p>
-        {!originsValid && (
-          <p className="text-xs text-destructive">
-            Use up to {MAX_CORS_ORIGINS} origins like https://app.example.com, with no path or
-            trailing slash (http only for localhost).
+      {!hosted && (
+        <div className="space-y-2">
+          <Label htmlFor={`${id}_cors_origins`}>Browser origins</Label>
+          <Textarea
+            id={`${id}_cors_origins`}
+            value={value.corsOrigins}
+            onChange={(event) => set("corsOrigins", event.target.value)}
+            placeholder="https://app.example.com"
+            rows={3}
+            aria-invalid={!originsValid}
+          />
+          <p className="text-xs text-muted-foreground">
+            One per line. Web pages on these origins may call this agent directly with a runtime
+            token. Never put an agent key in a browser.
           </p>
-        )}
-      </div>
+          {!originsValid && (
+            <p className="text-xs text-destructive">
+              Use up to {MAX_CORS_ORIGINS} origins like https://app.example.com, with no path or
+              trailing slash (http only for localhost).
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

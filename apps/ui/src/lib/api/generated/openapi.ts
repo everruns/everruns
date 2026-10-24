@@ -522,6 +522,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/chat-features": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get eligible chat interfaces */
+    get: operations["get_agent_chat_features"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/copy": {
     parameters: {
       query?: never;
@@ -1708,6 +1725,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat config
+     * @description Public bootstrap for one live Work Chat channel.
+     */
+    get: operations["get_work_chat_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/main": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve work chat main
+     * @description Resolve the consumer’s permanent main conversation.
+     */
+    post: operations["resolve_work_chat_main"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1829,6 +1886,34 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/sessions/{session_id}/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat files
+     * @description Browse or read authorized workspace files.
+     */
+    get: operations["get_work_chat_files"];
+    put?: never;
+    /**
+     * Write work chat file
+     * @description Create or update a writable workspace file.
+     */
+    post: operations["write_work_chat_file"];
+    /**
+     * Delete work chat file
+     * @description Delete a writable workspace file.
+     */
+    delete: operations["delete_work_chat_file"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -1903,6 +1988,26 @@ export interface paths {
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
     post: operations["agent_api_submit_tool_approvals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat tasks
+     * @description Background work and threads in this consumer conversation.
+     */
+    get: operations["list_work_chat_tasks"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -2659,6 +2764,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat config legacy
+     * @deprecated
+     * @description Public bootstrap for one live Work Chat channel.
+     */
+    get: operations["get_work_chat_config_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/main": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve work chat main legacy
+     * @deprecated
+     * @description Resolve the consumer’s permanent main conversation.
+     */
+    post: operations["resolve_work_chat_main_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2743,6 +2890,37 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/sessions/{session_id}/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat files legacy
+     * @deprecated
+     * @description Browse or read authorized workspace files.
+     */
+    get: operations["get_work_chat_files_legacy"];
+    put?: never;
+    /**
+     * Write work chat file legacy
+     * @deprecated
+     * @description Create or update a writable workspace file.
+     */
+    post: operations["write_work_chat_file_legacy"];
+    /**
+     * Delete work chat file legacy
+     * @deprecated
+     * @description Delete a writable workspace file.
+     */
+    delete: operations["delete_work_chat_file_legacy"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -2821,6 +2999,27 @@ export interface paths {
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
     post: operations["agent_api_submit_tool_approvals_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat tasks legacy
+     * @deprecated
+     * @description Background work and threads in this consumer conversation.
+     */
+    get: operations["list_work_chat_tasks_legacy"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -8911,6 +9110,7 @@ export interface components {
       id: string;
       /** @description Outcome of the last finished turn: `completed`, `failed` or `cancelled`. */
       last_turn_status?: string | null;
+      parent_session_id?: string | null;
       /**
        * @description Held-back tool calls the session waits on. Same rule as
        *     `pending_questions`.
@@ -10240,7 +10440,8 @@ export interface components {
       | "public_chat"
       | "voice"
       | "api"
-      | "poppy";
+      | "poppy"
+      | "work_chat";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */
@@ -10252,6 +10453,22 @@ export interface components {
        *     conversation). When omitted, the call starts a new session.
        */
       session_id?: string | null;
+    };
+    /**
+     * @description This contract is shared by publication and runtime bootstrap. A worker-role
+     *     coordination capability has no thread tools and must never qualify.
+     */
+    ChatFeatures: {
+      /**
+       * @description Effective Agent exposes a session filesystem.
+       * @example true
+       */
+      files: boolean;
+      /**
+       * @description Effective coordinator tools support child work threads.
+       * @example true
+       */
+      threads: boolean;
     };
     /** @description An MCP server added to one chat only. */
     ChatMcpServer: {
@@ -14365,6 +14582,29 @@ export interface components {
        * @example 1048576
        */
       size_bytes: number;
+    };
+    /** @description Revision-checked creation or update of one consumer workspace file. */
+    FileWrite: {
+      /**
+       * @description UTF-8 text or base64-encoded bytes.
+       * @example Meeting notes
+       */
+      content: string;
+      /**
+       * @description Content encoding, either text or base64.
+       * @example text
+       */
+      encoding?: string | null;
+      /**
+       * @description Revision returned by the previous read; required when replacing a file.
+       * @example f6d4cf68d1e6c37f7d24a5a85db31ba4
+       */
+      expected_revision?: string | null;
+      /**
+       * @description Absolute path within the consumer workspace.
+       * @example /workspace/notes.md
+       */
+      path: string;
     };
     /** @description Data for file.written events emitted when files are written to the session filesystem. */
     FileWrittenData: {
@@ -33136,6 +33376,28 @@ export interface operations {
       };
     };
   };
+  get_agent_chat_features: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Effective hosted interface features */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatFeatures"];
+        };
+      };
+    };
+  };
   copy_agent: {
     parameters: {
       query?: never;
@@ -36025,6 +36287,78 @@ export interface operations {
       };
     };
   };
+  get_work_chat_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -36453,6 +36787,127 @@ export interface operations {
       };
     };
   };
+  get_work_chat_files: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   agent_api_send_message: {
     parameters: {
       query?: never;
@@ -36721,6 +37176,43 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_work_chat_tasks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -38717,6 +39209,78 @@ export interface operations {
       };
     };
   };
+  get_work_chat_config_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -38990,6 +39554,127 @@ export interface operations {
       };
     };
   };
+  get_work_chat_files_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   agent_api_send_message_legacy: {
     parameters: {
       query?: never;
@@ -39258,6 +39943,43 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_work_chat_tasks_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

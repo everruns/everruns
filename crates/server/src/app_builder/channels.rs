@@ -17,6 +17,7 @@ use crate::valkey::ValkeyClient;
 use std::sync::Arc;
 
 pub(super) struct ChannelDeps {
+    pub session_service: Arc<crate::domains::sessions::SessionService>,
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn everruns_core::host::TurnBackend>,
@@ -95,6 +96,7 @@ impl ChannelStates {
             deps.rate_limiter("apikey"),
         )
         .with_runtime_auth(deps.auth.clone())
+        .with_session_service(deps.session_service.clone())
         .with_egress(deps.egress.clone());
         let ag_ui = crate::channels::ag_ui::AgUiState::new(
             deps.db.clone(),

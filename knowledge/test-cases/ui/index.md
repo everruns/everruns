@@ -61,3 +61,4 @@
 * [Webmcp](webmcp/) - Manual UI cases.
 
 * [Automatic session titles](automatic_session_titles/) - Model defaults and explicit naming.
+* [Work Chat](work_chat/) - Hosted consumer identity, interfaces and workspace boundaries.

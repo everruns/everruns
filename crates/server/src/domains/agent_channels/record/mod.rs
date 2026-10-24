@@ -6,6 +6,7 @@ pub mod pact_delegation;
 pub mod poppy;
 pub mod slack_channel;
 pub mod slack_provisioning;
+pub mod work_chat;
 
 #[cfg(test)]
 mod wire_names_tests;
@@ -104,6 +105,9 @@ pub enum ChannelType {
     /// Personal Agent Protocol front door: personal agents find the company,
     /// start sessions and talk to the agent (`poppy::PoppyChannelConfig`).
     Poppy,
+    /// Authenticated hosted work experience.
+    #[serde(rename = "work_chat")]
+    WorkChat,
 }
 
 impl ChannelType {
@@ -133,7 +137,8 @@ impl ChannelType {
             | ChannelType::Fcp
             | ChannelType::PublicChat
             | ChannelType::Voice
-            | ChannelType::Poppy => &[],
+            | ChannelType::Poppy
+            | ChannelType::WorkChat => &[],
         }
     }
 
@@ -156,6 +161,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Voice => write!(f, "voice"),
             ChannelType::Api => write!(f, "api"),
             ChannelType::Poppy => write!(f, "poppy"),
+            ChannelType::WorkChat => write!(f, "work_chat"),
         }
     }
 }
@@ -173,6 +179,7 @@ impl ChannelType {
             "voice" => Some(ChannelType::Voice),
             "api" => Some(ChannelType::Api),
             "poppy" => Some(ChannelType::Poppy),
+            "work_chat" => Some(ChannelType::WorkChat),
             _ => None,
         }
     }

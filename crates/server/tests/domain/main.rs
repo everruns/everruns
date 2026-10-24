@@ -100,6 +100,7 @@ mod subagent_spawn_handles_test;
 mod thread_binding_ambiguity_migration_test;
 mod trigger_budget_subject_test;
 mod webhook_trigger_migration_test;
+mod work_chat_test;
 mod workspace_files_integration_test;
 
 mod virtual_users_migration_test;

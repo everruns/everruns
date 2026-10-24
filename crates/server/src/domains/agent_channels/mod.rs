@@ -16,3 +16,5 @@ mod validation_pact;
 pub use commands::*;
 pub use invocation::*;
 pub(crate) use redaction::redact_channel_for_response;
+
+pub mod work_chat;

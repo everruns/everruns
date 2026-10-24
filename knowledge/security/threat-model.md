@@ -12,6 +12,20 @@ tags:
 
 This document defines the security threat model for Everruns, a durable agentic harness engine. It enumerates threats by category with stable IDs, documents mitigations, and identifies accepted risks and caller responsibilities.
 
+## Hosted Work Chat boundaries
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-AUTH-039 | Login handoff replay, login CSRF or sibling-host session theft | Fixed OIDC broker callback; state, nonce and PKCE; browser-and-channel-bound one-use database handoffs; Secure HttpOnly host-only cookies; encrypted credentials authenticated against credential classes and cookie hashes; serialized refresh rotation; runtime admission checked on every proxy request. |
+| TM-AUTHZ-025 | Consumer thread tools gain management authority or cross-user sessions | Shared local/RPC adapter checks recorded consumer invocation, current live channel, effective coordinator tools, configured workers and parent/owner/channel identity. Child sessions inherit consumer ownership. Unsupported commands retain the management gate. |
+| TM-WEB-022 | Sibling-host CSRF or browser-controlled backend routing | Exact mutation Origin, strict hostname-to-channel mapping and execution-only BFF route allowlist; no browser-supplied organization or upstream. |
+| TM-FS-022 | Workspace aliases expose private runtime context | Canonicalize before private-mount exclusion, authorize session ownership, deny shared workspaces, respect existing read-only/quota service, cap uploads. |
+| TM-DOS-049 | Anonymous broker requests exhaust credential storage | Peer admission buckets, bounded expiry cleanup and request bodies, provider/upstream timeouts and existing channel execution limits. Edge must replace peer headers. |
+
+See [Work Chat](../integrations/work-chat.md) and its linked implementation.
+The browser credential role has access only to its dedicated table. Domain/TLS,
+provider registration, secrets and ingress isolation are deployment prerequisites.
+
 ## Threat ID Scheme
 
 Format: `TM-<CATEGORY>-<NNN>`
@@ -1826,7 +1840,7 @@ Retired. `api_endpoint` channels are converted to `api` channels at server start
 
 ## 29. Agent Keys / api Channel (TM-AGENTKEY)
 
-Org-owned agent keys (`evr_ak_...`) call one agent's Agent Execution API on an `api` channel, rooted at `/v1/channels/{channel_id}`. Keys are managed under the agent's channels; the execution routes have no path into management. Mitigations live in [`api/agent_api.rs`](../../crates/server/src/api/agent_api.rs), [`domains/agent_channels/api_sessions.rs`](../../crates/server/src/domains/agent_channels/api_sessions.rs) and [`domains/agent_channels/commands/keys.rs`](../../crates/server/src/domains/agent_channels/commands/keys.rs). See [Agent Execution API](../integrations/agent-execution-api.md).
+Org-owned agent keys (`evr_ak_...`) call one agent's Agent Execution API on an `api` channel, rooted at `/v1/channels/{channel_id}`. Keys are managed under the agent's channels; the execution routes have no path into management. Mitigations live in [`api/agent_api.rs`](../../crates/server/src/api/agent_api/mod.rs), [`domains/agent_channels/api_sessions.rs`](../../crates/server/src/domains/agent_channels/api_sessions.rs) and [`domains/agent_channels/commands/keys.rs`](../../crates/server/src/domains/agent_channels/commands/keys.rs). See [Agent Execution API](../integrations/agent-execution-api.md).
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -1838,7 +1852,7 @@ Org-owned agent keys (`evr_ak_...`) call one agent's Agent Execution API on an `
 | TM-AGENTKEY-006 | Key holder allows a held-back action the owner meant an operator to decide, or reads what was held back | High | The channel's `tool_approvals` defaults to `operator`: `POST …/tool-approvals` answers `403`, and a pending approval shows only its id, deadline and `answerable: false`, never the tool or its arguments. Only `caller` lets the key holder see and decide, through the same validation and single-claim resume as `/v1` (TM-TOOL-008). Question answers never carry a credential: `secret_ref` is refused, so a secret question can only be declined (TM-AGENT-016) | MITIGATED |
 | TM-AGENTKEY-007 | A caller claims to act for an end user it does not speak for, or reuses one channel's end-user token on another | High | `End-User` is honoured only from an agent key holding `end_user`; any other credential sending it gets `403`. The binding realm is the key's id, so two applications cannot collide on one customer id and a key cannot reach end users another key created. An identity-provider subject binds under that provider's verified realm, never a claim the caller picks. A runtime token is accepted only by the channel it names and is never exchanged for a new one. End users see only the public error codes, whatever the channel allows a developer key ([`agent_api_auth.rs`](../../crates/server/src/api/agent_api_auth.rs)) | MITIGATED |
 | TM-AGENTKEY-008 | A page on an origin an api channel lists reaches the management API, another channel, or the console session cookie | Medium | A channel's `cors_origins` join the one server CORS layer only for paths under that channel (`/v1/channels/{id}`), and only for an `api` channel. Channel routes read only a bearer credential, never the session cookie, so the layer's credential allowance grants a listed origin nothing. Origins must match exactly as a browser sends them; no wildcards ([`agent_api_cors.rs`](../../crates/server/src/api/agent_api_cors.rs)) | MITIGATED |
-| TM-AGENTKEY-009 | One caller of an api channel runs up the owner's bill, or a personal access token reaches an agent whose owner did not invite members | Medium | `daily_spend_limit_usd` caps each caller (key or end user) per UTC day, checked before a session starts or a message is sent. Personal access tokens are refused unless the channel sets `org_members`, and then only for current members of the owning organization; a member runs as their own runtime account and cannot send `End-User` ([`agent_api.rs`](../../crates/server/src/api/agent_api.rs), [`agent_api_auth.rs`](../../crates/server/src/api/agent_api_auth.rs)) | MITIGATED |
+| TM-AGENTKEY-009 | One caller of an api channel runs up the owner's bill, or a personal access token reaches an agent whose owner did not invite members | Medium | `daily_spend_limit_usd` caps each caller (key or end user) per UTC day, checked before a session starts or a message is sent. Personal access tokens are refused unless the channel sets `org_members`, and then only for current members of the owning organization; a member runs as their own runtime account and cannot send `End-User` ([`agent_api.rs`](../../crates/server/src/api/agent_api/mod.rs), [`agent_api_auth.rs`](../../crates/server/src/api/agent_api_auth.rs)) | MITIGATED |
 
 ## 30. Poppy Channel (TM-POPPY)
 
