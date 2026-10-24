@@ -1089,8 +1089,13 @@ async fn collection_history_restores_configuration_without_content_or_worker_noi
     })).await;
     let entries = command(&ctx, "list_entity_history", json!({"entity_ref": id})).await;
     assert_eq!(
-        entries.as_array().unwrap().len(),
-        1,
+        entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["revision"].clone())
+            .collect::<Vec<_>>(),
+        vec![serde_json::Value::Null, json!(1)],
         "content and no-op configuration do not create revisions: {entries}"
     );
     command(&ctx, "update_knowledge", json!({
@@ -1102,8 +1107,18 @@ async fn collection_history_restores_configuration_without_content_or_worker_noi
     })).await;
     let entries = command(&ctx, "list_entity_history", json!({"entity_ref": id})).await;
     assert_eq!(
-        entries.as_array().unwrap().len(),
-        2,
+        entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["revision"].clone())
+            .collect::<Vec<_>>(),
+        vec![
+            serde_json::Value::Null,
+            json!(2),
+            serde_json::Value::Null,
+            json!(1)
+        ],
         "indexing progress does not change the configuration snapshot: {entries}"
     );
     command(
