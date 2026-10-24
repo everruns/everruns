@@ -13,7 +13,9 @@
 //!   localization stay consistent without a global name registry.
 
 mod action;
+mod outcome;
 pub use action::{narrate_labeled_action, narration_detail};
+pub use outcome::{narrate_grep_files, narrate_shell_exec};
 
 use serde_json::Value;
 
@@ -305,25 +307,6 @@ fn location_phrase_from_raw(input: Option<&str>, locale: Option<&str>) -> String
 // localization stay consistent without a global name registry.
 // ============================================================================
 
-/// Shell/exec command narration ("Ran `cargo test`"). `fallback` is used when
-/// no command argument is present (typically the tool display name).
-pub fn narrate_shell_exec(
-    arguments: &Value,
-    fallback: &str,
-    phase: ToolNarrationPhase,
-    locale: Option<&str>,
-) -> String {
-    let command = arg_str(arguments, &["commands", "command"])
-        .map(|value| format!("`{}`", truncate(value, 48)))
-        .unwrap_or_else(|| fallback.to_string());
-    let verbs = pick(
-        locale,
-        ("Running", "Ran", "Failed to run"),
-        ("Запускаю", "Запустив", "Не вдалося запустити"),
-    );
-    phrase3(verbs, Some(command), phase)
-}
-
 fn path_target(arguments: &Value, keys: &[&str]) -> Option<String> {
     arg_str(arguments, keys).map(|path| basename(path).to_string())
 }
@@ -521,42 +504,6 @@ pub fn narrate_list_directory(
         ),
     );
     phrase3(verbs, Some(target), phase)
-}
-
-/// `grep_files` narration.
-pub fn narrate_grep_files(
-    arguments: &Value,
-    phase: ToolNarrationPhase,
-    locale: Option<&str>,
-) -> String {
-    let pattern = arg_str(arguments, &["pattern"]).map(|pattern| truncate(pattern, 36));
-    if is_uk(locale) {
-        match pattern {
-            Some(pattern) => phrase3(
-                ("Шукаю", "Знайшов", "Не вдалося знайти"),
-                Some(format!("`{pattern}` у файлах")),
-                phase,
-            ),
-            None => phrase3(
-                (
-                    "Шукаю у файлах",
-                    "Завершив пошук у файлах",
-                    "Не вдалося виконати пошук у файлах",
-                ),
-                None,
-                phase,
-            ),
-        }
-    } else {
-        let target = pattern
-            .map(|pattern| format!("files for {pattern}"))
-            .unwrap_or_else(|| "files".to_string());
-        phrase3(
-            ("Searching", "Searched", "Failed to search"),
-            Some(target),
-            phase,
-        )
-    }
 }
 
 /// Web-search narration ("Searched web for rust").

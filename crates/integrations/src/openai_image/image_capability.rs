@@ -922,18 +922,25 @@ async fn emit_stream_progress(
     expected_previews: u8,
     event: ImageApiStreamEvent,
 ) {
-    let message = match event {
+    let (message, count) = match event {
         ImageApiStreamEvent::PartialImage {
             partial_image_index,
             ..
-        } => format!(
-            "{action} progress update {} of {}...",
-            partial_image_index + 1,
-            expected_previews
-        ),
-        ImageApiStreamEvent::Completed { .. } => format!("{action} final image..."),
+        } => {
+            let current = u64::try_from(partial_image_index)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            let total = u64::from(expected_previews);
+            (
+                format!("{action} progress update {current} of {total}..."),
+                Some((current, total)),
+            )
+        }
+        ImageApiStreamEvent::Completed { .. } => (format!("{action} final image..."), None),
     };
-    context.emit_progress(tool_name, &message).await;
+    context
+        .emit_progress_counted(tool_name, &message, count)
+        .await;
 }
 
 async fn build_client(

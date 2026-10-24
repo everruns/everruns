@@ -4,6 +4,14 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
 import type { Event, ModelWithProvider } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
 const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);

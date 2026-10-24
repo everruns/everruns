@@ -278,6 +278,18 @@ impl ToolCallContext {
             .emit_progress(&self.inner.tool_name, &message)
             .await;
     }
+
+    /// Report progress with a count, such as "Converted 3 of 12 pages".
+    ///
+    /// The count lets a work report draw a bar for this step; `message` should
+    /// still read on its own for surfaces that show only the text.
+    pub async fn progress_of(&self, message: impl Into<String>, current: u64, total: u64) {
+        let message = message.into();
+        self.inner
+            .context
+            .emit_progress_counted(&self.inner.tool_name, &message, Some((current, total)))
+            .await;
+    }
 }
 
 impl fmt::Debug for ToolCallContext {

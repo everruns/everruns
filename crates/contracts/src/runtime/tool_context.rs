@@ -809,6 +809,17 @@ impl ToolContext {
     /// This is a best-effort helper: failures are logged but not propagated,
     /// so tools never fail just because a progress event couldn't be sent.
     pub async fn emit_progress(&self, tool_name: &str, message: &str) {
+        self.emit_progress_counted(tool_name, message, None).await;
+    }
+
+    /// Emit a `tool.progress` event that also carries a count, so a work
+    /// report can draw a bar ("3 of 12"). `count` is `(current, total)`.
+    pub async fn emit_progress_counted(
+        &self,
+        tool_name: &str,
+        message: &str,
+        count: Option<(u64, u64)>,
+    ) {
         let (Some(emitter), Some(ctx), Some(call_id)) =
             (&self.event_emitter, &self.event_context, &self.tool_call_id)
         else {
@@ -823,6 +834,8 @@ impl ToolContext {
                     tool_name: tool_name.to_string(),
                     message: message.to_string(),
                     display_name: None,
+                    current: count.map(|(current, _)| current),
+                    total: count.map(|(_, total)| total),
                 },
             ))
             .await

@@ -23,6 +23,11 @@
   [Work reports](execution/work-reports.md).
 - Added the Work Chat channel contract, consumer authority boundaries and standalone browser host.
 
+* **Narration says what came out.** Finished shell steps report the test
+  tally or a non-zero exit code, file search reports matches and files, and
+  `tool.progress` can carry a count. See
+  [Tool narration](execution/tool-narration.md#saying-what-came-out).
+
 ## 2026-10-21
 
 * **Large-catalog shipping contracts.** Custom egress adapters support bounded

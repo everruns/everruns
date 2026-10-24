@@ -230,13 +230,14 @@ impl Tool for EnvironmentBashTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(everruns_core::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
             "shell command",
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -789,12 +790,13 @@ impl Tool for EnvironmentGrepTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(everruns_core::tool_narration::narrate_grep_files(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 

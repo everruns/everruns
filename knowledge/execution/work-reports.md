@@ -77,6 +77,20 @@ the sessions list. It is deliberately not on the Agents list: that page is a
 fleet view for agent builders, where one agent can have a thousand sessions,
 and it keeps its run counts and bars (user decision, 2026-10-23).
 
+In the session view the latest turn's work log reads the report: its header
+shows the live headline (the running step with its count, the plan's current
+item, or what is waiting on the person), the plan is pinned under it while the
+turn runs, and once done a box lists files changed, tasks started, links and
+the agent's own summary. A summary taken from the reply is not repeated there,
+since the reply follows. Older turns keep "Worked for 13s": one report request
+per turn would cost a long session hundreds of reads.
+
+Rows that show a session elsewhere (the chat run card for a delegated run,
+the thread board, the sessions list) put the live headline in place of their
+static status while that session runs or waits, prefixed with the plan step
+when there is one. They poll the report only while live, so a list of a
+thousand finished sessions costs no report reads.
+
 ## Delivery plan
 
 1. Reducer, `GET /v1/sessions/{id}/work`, this concept.

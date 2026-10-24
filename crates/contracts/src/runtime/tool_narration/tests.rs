@@ -105,11 +105,23 @@ fn list_directory_delegates_to_the_correct_store_path_contract() {
 fn shell_exec_helper_en_and_uk() {
     let a = json!({ "command": "cargo test" });
     assert_eq!(
-        narrate_shell_exec(&a, "Shell", ToolNarrationPhase::Started, None),
+        narrate_shell_exec(
+            &a,
+            "Shell",
+            ToolNarrationPhase::Started,
+            None,
+            ToolNarrationContext::default()
+        ),
         "Running `cargo test`"
     );
     assert_eq!(
-        narrate_shell_exec(&a, "Shell", ToolNarrationPhase::Completed, Some("uk")),
+        narrate_shell_exec(
+            &a,
+            "Shell",
+            ToolNarrationPhase::Completed,
+            Some("uk"),
+            ToolNarrationContext::default()
+        ),
         "Запустив `cargo test`"
     );
 }
@@ -725,7 +737,13 @@ fn argument_aliases_skip_empty_or_non_string_candidates() {
             Some("cargo test")
         );
         assert_eq!(
-            narrate_shell_exec(&arguments, "Shell", ToolNarrationPhase::Completed, None),
+            narrate_shell_exec(
+                &arguments,
+                "Shell",
+                ToolNarrationPhase::Completed,
+                None,
+                ToolNarrationContext::default()
+            ),
             "Ran `cargo test`"
         );
     }

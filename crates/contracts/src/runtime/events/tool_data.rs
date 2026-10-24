@@ -529,6 +529,15 @@ pub struct ToolProgressData {
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+
+    /// Items done so far, when the tool knows a count ("3" of "12 files").
+    /// Set together with `total`; the message stays readable on its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<u64>,
+
+    /// Items in total, when the tool knows a count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
 }
 
 /// Data for tool.output.delta event.

@@ -36,6 +36,7 @@ import type {
   TurnFailedData,
   ToolCompletedData,
   ToolProgressData,
+  WorkReport,
 } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
@@ -86,6 +87,12 @@ import {
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
 import { TurnWorkLog, WorkLogEntries } from "@/components/chat/turn-work-log";
+import {
+  WorkPlanPinned,
+  WorkResultBox,
+  workReportStatus,
+} from "@/components/chat/work-report-parts";
+import { useTurnWorkReport } from "@/hooks/use-turn-work-report";
 import {
   NO_FAILURES,
   countToolCallFailures,
@@ -461,6 +468,27 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return startedAt;
   }, [events]);
+  // The latest turn reads its server-built work report: live headline, pinned
+  // plan, and the result once done. Older turns keep the plain header.
+  const latestTurnId = useMemo(() => {
+    let latest: string | undefined;
+    for (const turnId of turnStartedAtByTurnId.keys()) latest = turnId;
+    return latest;
+  }, [turnStartedAtByTurnId]);
+  const workReport = useTurnWorkReport(
+    collapseWorkLog ? sessionId : undefined,
+    latestTurnId,
+    `${latestTurnId ? (workLogEventsByTurnId.get(latestTurnId)?.length ?? 0) : 0}|${
+      latestTurnId ? turnDurationByTurnId.has(latestTurnId) : false
+    }`,
+  );
+  const reportFor = (turnId: string | null | undefined) =>
+    workReport && turnId === workReport.turn_id ? workReport : null;
+  const reportPinned = (report: WorkReport | null, live: boolean): ReactNode => {
+    if (!report) return null;
+    if (live) return report.plan ? <WorkPlanPinned plan={report.plan} /> : null;
+    return <WorkResultBox report={report} />;
+  };
   const activityGroups = useMemo(
     () => buildToolActivityGroups(chatEvents, t("working"), locale),
     [chatEvents, t, locale],
@@ -761,6 +789,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         : t("worked_for", { duration: formatWorkedDuration(durationMs) });
     const startedAt = (turnId && turnStartedAtByTurnId.get(turnId)) || event.ts;
     const startedAtMs = Date.parse(startedAt);
+    const report = reportFor(turnId);
     const attentionCards = isActive
       ? workEvents.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
       : [];
@@ -771,8 +800,15 @@ export const ChatMessageList = memo(function ChatMessageList({
         label={label}
         isActive={isActive}
         startedAtMs={Number.isNaN(startedAtMs) ? undefined : startedAtMs}
-        status={isActive ? liveWorkStatus(turnId) || getWorkLogStatus(workEvents) : undefined}
+        status={
+          isActive
+            ? (report && workReportStatus(report, t)) ||
+              liveWorkStatus(turnId) ||
+              getWorkLogStatus(workEvents)
+            : undefined
+        }
         {...sumFailureCounts(countWorkLogFailures(workEvents), extraFailures)}
+        pinned={reportPinned(report, isActive)}
         attention={attentionCards.length > 0 ? attentionCards : null}
       >
         {() => renderBody(isActive)}
@@ -870,6 +906,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     const attention = live
       ? group.map((workEvent) => renderInteractiveToolCalls(workEvent)).filter(Boolean)
       : [];
+    const report = reportFor(turnId);
     return (
       <TurnWorkLog
         key={key}
@@ -877,8 +914,15 @@ export const ChatMessageList = memo(function ChatMessageList({
         startedAtMs={row.startedAtMs}
         durationMs={row.durationMs}
         hasSteps={group.length > 0 || streamsHere}
-        status={live ? liveWorkStatus(turnId) || getWorkLogStatus(group) : undefined}
+        status={
+          live
+            ? (report && workReportStatus(report, t)) ||
+              liveWorkStatus(turnId) ||
+              getWorkLogStatus(group)
+            : undefined
+        }
         {...sumFailureCounts(countWorkLogFailures(group))}
+        pinned={reportPinned(report, live)}
         attention={attention.length > 0 ? attention : null}
       >
         {() => {

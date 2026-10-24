@@ -30,6 +30,18 @@ const messages = {
     task_update_needs_input: "{title} needs input",
     task_update_message: "{title} sent an update",
     worked_for: "Worked for {duration}",
+    work_done: "Done",
+    work_plan: "Plan",
+    work_plan_step: "Step {current} of {total}",
+    work_needs_approval: "Needs your approval",
+    work_waiting_answer: "Waiting for your answer",
+    work_waiting_you: "Waiting for you",
+    work_files_changed_one: "{count} file changed",
+    work_files_changed_few: "{count} files changed",
+    work_files_changed_many: "{count} files changed",
+    work_tasks_started_one: "{count} task started",
+    work_tasks_started_few: "{count} tasks started",
+    work_tasks_started_many: "{count} tasks started",
     working_for: "Working for {duration}",
     turn_sending: "Sending…",
     turn_still_connecting: "Still connecting…",
@@ -307,6 +319,18 @@ const messages = {
     task_update_needs_input: "{title}: потрібна відповідь",
     task_update_message: "{title}: нове оновлення",
     worked_for: "Працював {duration}",
+    work_done: "Готово",
+    work_plan: "План",
+    work_plan_step: "Крок {current} з {total}",
+    work_needs_approval: "Потрібне ваше схвалення",
+    work_waiting_answer: "Чекаю на вашу відповідь",
+    work_waiting_you: "Чекаю на вас",
+    work_files_changed_one: "Змінено {count} файл",
+    work_files_changed_few: "Змінено {count} файли",
+    work_files_changed_many: "Змінено {count} файлів",
+    work_tasks_started_one: "Запущено {count} завдання",
+    work_tasks_started_few: "Запущено {count} завдання",
+    work_tasks_started_many: "Запущено {count} завдань",
     working_for: "Працюю {duration}",
     turn_sending: "Надсилаю…",
     turn_still_connecting: "Досі з'єднуюсь…",
@@ -652,6 +676,16 @@ export function formatWorkLogIssueCount(locale: SupportedLocale, count: number):
   return formatMessage(locale, count === 1 ? "work_log_issues_one" : "work_log_issues_many", {
     count,
   });
+}
+
+/** A work report fact ("2 files changed"), pluralized for the locale. */
+export function formatWorkFact(
+  locale: SupportedLocale,
+  kind: "files_changed" | "tasks_started",
+  count: number,
+): string {
+  const form = locale === "uk" ? getUkrainianPluralForm(count) : count === 1 ? "one" : "many";
+  return formatMessage(locale, `work_${kind}_${form}`, { count });
 }
 
 export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {

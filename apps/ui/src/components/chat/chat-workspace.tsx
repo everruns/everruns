@@ -8,6 +8,7 @@ import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
 import { ChatThreadView } from "@/components/chat/chat-thread-view";
+import { WorkHeadline } from "@/components/chat/work-headline";
 import { ChatDraft } from "@/app/(main)/chats/new/new-chat-page-client";
 import { ChatThreadWorkDetail } from "@/components/chat/chat-thread-work-detail";
 import { ChatWorkspaceContext } from "@/components/chat/chat-workspace-context";
@@ -39,6 +40,8 @@ type WorkRow = {
   group: string;
   href: string;
   updated: string;
+  /** Session whose live work report replaces the preview while it runs. */
+  liveSessionId?: string;
 };
 function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
   return [
@@ -49,6 +52,10 @@ function rows(conversations: Session[], tasks: SessionTask[]): WorkRow[] {
       group: conversationGroup(session),
       href: `/chats/${session.id}`,
       updated: session.updated_at,
+      liveSessionId:
+        session.status === "active" || session.status === "waiting_for_tool_results"
+          ? session.id
+          : undefined,
     })),
     // Coordinator threads: one row per thread, opened as a conversation.
     ...coordinatorThreads(tasks).map((thread) => {
@@ -228,7 +235,11 @@ export function ChatWorkspace() {
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-medium">{row.title}</div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {row.preview || "Ready to continue"}
+                            <WorkHeadline
+                              sessionId={row.liveSessionId}
+                              live={!!row.liveSessionId}
+                              fallback={row.preview || "Ready to continue"}
+                            />
                           </div>
                         </div>
                         <span className="shrink-0 text-[11px] text-muted-foreground">

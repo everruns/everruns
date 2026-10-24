@@ -292,14 +292,14 @@ impl Tool for BashTool {
         tool_call: &crate::bashkit::tool_types::ToolCall,
         phase: crate::bashkit::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::bashkit::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
-            fallback,
+            self.display_name().unwrap_or("Bash"),
             phase,
             locale,
+            ctx,
         ))
     }
 

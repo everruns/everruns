@@ -93,6 +93,8 @@ jest.mock("@/providers/locale-provider", () => ({
 
 import { SessionTranscript } from "@/components/session/session-transcript";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 describe("SessionTranscript replay and streaming", () => {
   beforeEach(() => {
     mockContext.events = completedEvents;

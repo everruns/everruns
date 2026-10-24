@@ -1937,13 +1937,10 @@ impl Tool for GrepFilesTool {
         tool_call: &self::tool_types::ToolCall,
         phase: self::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: self::tool_narration::ToolNarrationContext<'_>,
+        ctx: self::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(self::tool_narration::narrate_grep_files(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
+        let narration = self::tool_narration::narrate_grep_files;
+        Some(narration(&tool_call.arguments, phase, locale, ctx))
     }
 
     fn name(&self) -> &str {

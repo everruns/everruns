@@ -13,6 +13,7 @@ import { cn, shortenId } from "@/lib/utils";
 import { formatDurationCompact, formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { activityLabel, sourceLabel } from "@/lib/session-filters";
 import type { Session, SessionActivity } from "@/lib/api/types";
+import { WorkHeadline } from "@/components/chat/work-headline";
 
 /** Dot colour per derived activity. Running also pulses so live runs stand out. */
 const ACTIVITY_DOT: Record<SessionActivity, string> = {
@@ -95,9 +96,17 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
             {session.output_preview?.trim() || activityLabel(activity)}
           </span>
         ) : (
-          <span className="truncate text-muted-foreground">
-            {tokens !== undefined ? `${formatTokens(tokens)} tokens` : "No work recorded"}
-          </span>
+          // A live run says what it is doing now; a finished one keeps its usage.
+          <WorkHeadline
+            sessionId={session.id}
+            live={activity === "running" || activity === "paused"}
+            className="block text-muted-foreground"
+            fallback={
+              <span className="truncate text-muted-foreground">
+                {tokens !== undefined ? `${formatTokens(tokens)} tokens` : "No work recorded"}
+              </span>
+            }
+          />
         )}
       </div>
 

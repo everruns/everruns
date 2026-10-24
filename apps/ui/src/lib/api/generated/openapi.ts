@@ -26751,6 +26751,12 @@ export interface components {
      *     to stream progress feedback between tool.started and tool.completed.
      */
     ToolProgressData: {
+      /**
+       * Format: int64
+       * @description Items done so far, when the tool knows a count ("3" of "12 files").
+       *     Set together with `total`; the message stays readable on its own.
+       */
+      current?: number | null;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       /** @description Human-readable status message (e.g., "Connecting to browser…") */
@@ -26759,6 +26765,11 @@ export interface components {
       tool_call_id: string;
       /** @description Tool name */
       tool_name: string;
+      /**
+       * Format: int64
+       * @description Items in total, when the tool knows a count.
+       */
+      total?: number | null;
     };
     /** @description Tool result content part (result of tool execution) */
     ToolResultContentPart: {

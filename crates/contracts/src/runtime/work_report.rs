@@ -430,6 +430,14 @@ impl WorkReportBuilder {
                         .progress
                         .get_or_insert_with(WorkProgress::default);
                     progress.label = Some(data.message.clone());
+                    // A count only means something as a pair, and a later
+                    // uncounted update keeps the last known one.
+                    if let (Some(current), Some(total)) = (data.current, data.total)
+                        && total > 0
+                    {
+                        progress.current = Some(current.min(total));
+                        progress.total = Some(total);
+                    }
                 }
             }
             EventData::ToolCompleted(data) => {

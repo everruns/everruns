@@ -355,7 +355,7 @@ impl Tool for SandboxExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sandbox");
         Some(everruns_core::tool_narration::narrate_shell_exec(
@@ -363,6 +363,7 @@ impl Tool for SandboxExecTool {
             fallback,
             phase,
             locale,
+            ctx,
         ))
     }
 
