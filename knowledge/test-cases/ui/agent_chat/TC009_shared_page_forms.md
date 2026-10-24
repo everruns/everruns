@@ -15,7 +15,7 @@ tags: [ui, test-case, platform-chat, forms]
 ## Steps
 
 1. Repeat the draft flow on Harness create/detail, Virtual User create/detail,
-   Observer create/edit, Eval creation, declarative Capability create/edit, Knowledge
+   Observer create/edit, Eval creation, Model ID/display-name dialogs, declarative Capability create/edit, Knowledge
    collection/source/account forms, Memory and legacy Knowledge-index metadata,
    Skill creation, Sandbox-template metadata, and non-credential Channel text.
    Read the returned patch schema first: it defines that form's supported fields.
@@ -47,6 +47,10 @@ tags: [ui, test-case, platform-chat, forms]
 10. Repeat dialog and form flows at 1366 px, 390 px, dark mode and reduced motion.
     The page body stacks to its available pane width. Back to app restores mobile
     drafts; navigation menus, focus and explicit dismissal remain usable.
+11. With an Observer containing an existing API scorer variant unsupported by its
+    current editor, read its context and patch only its name. The scorer collection
+    must remain readable, marked read-only and preserved. Changing the schema/form
+    must invalidate the preceding adapter immediately.
 
 ## Expected result
 

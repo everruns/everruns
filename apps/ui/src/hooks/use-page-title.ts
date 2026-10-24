@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { formatPageTitle } from "@/lib/page-title";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { pageLocation } from "@/lib/chat-page-view";
 
 // Sets document.title to a formatted page title. Pass null/undefined for
@@ -10,7 +10,7 @@ import { pageLocation } from "@/lib/chat-page-view";
 // with the final title. See knowledge/foundations/code-organization.md (Page Titles).
 export function usePageTitle(...parts: Array<string | null | undefined>): void {
   const title = formatPageTitle(...parts);
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   const register = mode?.registerPage;
   const route = mode?.page.route;
   const label = parts.filter(Boolean).join(" · ").slice(0, 180);

@@ -9,6 +9,7 @@ let mockChatMode: ChatModeState | null = null;
 jest.mock("@/components/chat-mode/chat-mode-context", () => ({
   ...jest.requireActual("@/components/chat-mode/chat-mode-context"),
   useChatMode: () => mockChatMode,
+  usePageChatMode: () => mockChatMode,
 }));
 jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
   AgentChatBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,

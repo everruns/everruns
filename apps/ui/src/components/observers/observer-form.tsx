@@ -1,7 +1,11 @@
 "use client";
 
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
-import { observerDraftSchema } from "@/components/chat-mode/observer-draft-schema";
+import {
+  observerDraftSchema,
+  observerReadScorersSchema,
+  canEditObserverScorers,
+} from "@/components/chat-mode/observer-draft-schema";
 import { usePolicies } from "@/hooks/use-policies";
 
 // Shared create/edit form for observers.
@@ -121,8 +125,10 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
     session_tags: (observer?.match.session_tags ?? initial?.session_tags ?? []).join(", "),
     scorers: observer?.scorers ?? initial?.scorers ?? [],
   };
-  const chatDraft = usePageFormDraft({
-    schema: observerDraftSchema,
+  const editableScorers = canEditObserverScorers(scorers);
+  const chatDraft = usePageFormDraft<Omit<typeof values, "scorers"> & { scorers: unknown[] }>({
+    schema: editableScorers ? observerDraftSchema : observerReadScorersSchema,
+    readonlyFields: editableScorers ? [] : ["scorers"],
     values,
     entityId: observer?.id,
     entityType: "observer",
@@ -132,13 +138,16 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
     writable:
       !isPending && agentPolicies.can("agent.manage") && sessionPolicies.can("session.manage"),
     apply: (next) => {
+      const nextScorers = editableScorers
+        ? observerDraftSchema.shape.scorers.parse(next.scorers)
+        : undefined;
       setName(next.name);
       setDescription(next.description);
       setSamplingRate(next.sampling_rate);
       setAgentIds(next.agent_ids);
       setHarnessIds(next.harness_ids);
       setSessionTags(next.session_tags);
-      setScorers(next.scorers);
+      if (nextScorers) setScorers(nextScorers);
     },
   });
 

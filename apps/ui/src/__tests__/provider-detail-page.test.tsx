@@ -1,4 +1,5 @@
-import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -198,9 +199,9 @@ describe("ProviderDetailPage", () => {
     };
     await act(async () => {
       render(
-        <ChatModeContext.Provider value={mode}>
+        <PageChatProvider value={mode}>
           <ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />
-        </ChatModeContext.Provider>,
+        </PageChatProvider>,
         { wrapper },
       );
     });

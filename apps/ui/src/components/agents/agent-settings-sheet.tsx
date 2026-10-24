@@ -39,7 +39,7 @@ import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { useRetainedSection } from "@/components/workspace/use-retained-section";
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { ChatChangeMark } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentSettingsSection =
@@ -143,7 +143,7 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
-  const chatMode = useChatMode();
+  const chatMode = usePageChatMode();
   const active = useRetainedSection(section);
   const meta = active ? SECTIONS[active] : null;
 

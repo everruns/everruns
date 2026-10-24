@@ -1,5 +1,8 @@
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 jest.mock("@/hooks/use-providers", () => ({ useModelProfiles: () => ({ data: [] }) }));
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { EditModelDialog } from "@/components/models/edit-model-dialog";
 import type { ModelWithProvider, Provider } from "@/lib/api/types";
@@ -126,4 +129,47 @@ describe("EditModelDialog", () => {
     expect(screen.getByLabelText("Display Name")).toHaveValue("Unsaved model name");
     expect(screen.getByRole("button", { name: "Save Changes" })).toBeEnabled();
   });
+});
+
+it("stages model names without saving and blocks a concurrent saved revision", () => {
+  global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+  let adapter: PageDraftAdapter;
+  const mode: ChatModeState = {
+    page: { route: "/models", label: "Models" },
+    pageContainer: { current: null },
+    open: true,
+    setOpen: () => {},
+    actions: [],
+    recordAction: () => {},
+    registerPage: (_page, value) => {
+      if (value) adapter = value;
+      return () => {};
+    },
+  };
+  const onSubmit = jest.fn().mockResolvedValue(true);
+  const view = (current: ModelWithProvider) => (
+    <PageChatProvider value={mode}>
+      <EditModelDialog
+        writable
+        model={current}
+        providers={providers}
+        open
+        onOpenChange={jest.fn()}
+        onSubmit={onSubmit}
+      />
+    </PageChatProvider>
+  );
+  const { rerender } = render(view(model));
+  const before = adapter!.read(adapter!.binding!);
+  expect(() =>
+    adapter!.patch(before.binding, before.revision, { provider_id: "provider-2" }),
+  ).toThrow(/read.only/);
+  act(() => {
+    adapter!.patch(before.binding, before.revision, { display_name: "Northstar Review" });
+  });
+  expect(screen.getByLabelText("Display Name")).toHaveValue("Northstar Review");
+  expect(onSubmit).not.toHaveBeenCalled();
+  rerender(view({ ...model, display_name: "Concurrent rename" }));
+  expect(screen.getByLabelText("Display Name")).toHaveValue("Northstar Review");
+  expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
 });

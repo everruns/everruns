@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import Link from "next/link";
@@ -80,6 +82,7 @@ export function KnowledgeIndexFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const adopted = !!usePageChatMode();
   const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
@@ -87,7 +90,7 @@ export function KnowledgeIndexFormDialog({
       return;
     }
     const seed = `${mode}:${index?.id ?? "new"}`;
-    if (seededForm.current === seed) return;
+    if (adopted && seededForm.current === seed) return;
     seededForm.current = seed;
     const config = (index?.source_config ?? {}) as Record<string, unknown>;
     setName(mode === "edit" ? (index?.name ?? "") : "");
@@ -101,7 +104,7 @@ export function KnowledgeIndexFormDialog({
     setFieldErrors({});
     setEmbeddingModelValid(false);
     setFormError(null);
-  }, [mode, open, index]);
+  }, [mode, open, index, adopted]);
 
   function buildSourceConfig(normalizedRepository: string | null): Record<string, unknown> {
     const trimmedBranch = branch.trim();

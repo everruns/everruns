@@ -1,7 +1,9 @@
+import { ChatModeContext } from "@/components/chat-mode/chat-mode-context";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { z } from "zod";
-import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 
@@ -20,14 +22,22 @@ const mode: ChatModeState = {
     return () => {};
   },
 };
-function Form({ baseline = "v1", id = "observer_1" }: { baseline?: string; id?: string }) {
+function Form({
+  baseline = "v1",
+  id = "observer_1",
+  formSchema = schema,
+}: {
+  baseline?: string;
+  id?: string;
+  formSchema?: typeof schema;
+}) {
   const [values, setValues] = useState({ name: "Existing", description: "Manual requirement" });
   const dirty = values.name !== "Existing" || values.description !== "Manual requirement";
   const chat = usePageFormDraft({
     entityType: "observer",
     entityId: id,
     label: "Observer",
-    schema,
+    schema: formSchema,
     baseline,
     values,
     dirty,
@@ -54,13 +64,31 @@ function Form({ baseline = "v1", id = "observer_1" }: { baseline?: string; id?: 
 beforeAll(() => {
   global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
 });
+
+it("invalidates an old adapter immediately when the field schema changes", () => {
+  const { rerender } = render(
+    <PageChatProvider value={mode}>
+      <Form />
+    </PageChatProvider>,
+  );
+  const old = adapter;
+  const before = old.read(old.describe().binding);
+  const replacement = z.strictObject({ name: z.string().max(8), description: z.string() });
+  rerender(
+    <PageChatProvider value={mode}>
+      <Form formSchema={replacement} />
+    </PageChatProvider>,
+  );
+  expect(() => old.read(before.binding)).toThrow(/no longer available/);
+  expect(adapter.describe().binding).not.toBe(before.binding);
+});
 beforeEach(() => saved.mockClear());
 
 it("edits the existing draft, supports Undo, and saves only through the normal action", () => {
   render(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   const before = adapter.read(adapter.describe().binding);
   act(() => {
@@ -80,9 +108,9 @@ it("edits the existing draft, supports Undo, and saves only through the normal a
 
 it("preserves later manual edits and clears old markers on Discard", () => {
   render(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   const before = adapter.read(adapter.describe().binding);
   act(() => {
@@ -99,15 +127,15 @@ it("preserves later manual edits and clears old markers on Discard", () => {
 
 it("keeps the draft but blocks Save and new Chat patches after a saved-version conflict", () => {
   const { rerender } = render(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Manual name" } });
   rerender(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form baseline="v2" />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   expect(screen.getByLabelText("Name")).toHaveValue("Manual name");
   expect(screen.getByText("Save")).toBeDisabled();
@@ -116,16 +144,16 @@ it("keeps the draft but blocks Save and new Chat patches after a saved-version c
 
 it("invalidates the preceding form even when two records share the same route", () => {
   const { rerender } = render(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   const old = adapter;
   const binding = old.describe().binding;
   rerender(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form id="observer_2" />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   expect(() => old.read(binding)).toThrow(/no longer available/);
   expect(adapter.describe().binding).not.toBe(binding);
@@ -141,9 +169,9 @@ it("preserves the existing feature-off Save behavior", () => {
 
 it("keeps Undo when Chat replaces an unsaved manual edit with the saved value", () => {
   render(
-    <ChatModeContext.Provider value={mode}>
+    <PageChatProvider value={mode}>
       <Form />
-    </ChatModeContext.Provider>,
+    </PageChatProvider>,
   );
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Manual draft" } });
   const before = adapter.read(adapter.describe().binding);
@@ -155,4 +183,15 @@ it("keeps Undo when Chat replaces an unsaved manual edit with the saved value", 
   fireEvent.click(screen.getByText("Undo"));
   expect(screen.getByLabelText("Name")).toHaveValue("Manual draft");
   expect(saved).not.toHaveBeenCalled();
+});
+
+it("does not bind forms outside the right-page subtree", () => {
+  const registerPage = jest.fn(() => () => {});
+  render(
+    <ChatModeContext.Provider value={{ ...mode, registerPage }}>
+      <Form />
+    </ChatModeContext.Provider>,
+  );
+  expect(registerPage).not.toHaveBeenCalled();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });

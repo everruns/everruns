@@ -113,7 +113,7 @@ import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
 import { AgentChatBoundary } from "@/components/chat-mode/agent-chat-boundary";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { chatPageRoute } from "@/lib/chat-page-context";
 import { useAgentChatDraft } from "@/components/chat-mode/use-agent-chat-draft";
 import {
@@ -208,7 +208,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const copyAgent = useCopyAgent();
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
-  const chatMode = useChatMode();
+  const chatMode = usePageChatMode();
   const chatChanges = useChatChanges();
 
   const draft = useAgentDraft(agent);

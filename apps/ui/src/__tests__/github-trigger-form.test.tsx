@@ -1,4 +1,5 @@
-import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GitHubTriggerPage from "@/app/(main)/agents/[agentId]/triggers/[triggerId]/page";
@@ -153,9 +154,7 @@ it("stages trigger text without changing conditions or saving, and enforces page
       return () => {};
     },
   };
-  const { rerender } = render(
-    <ChatModeContext.Provider value={mode}>{page()}</ChatModeContext.Provider>,
-  );
+  const { rerender } = render(<PageChatProvider value={mode}>{page()}</PageChatProvider>);
   const before = adapter!.read(adapter!.binding!);
   act(() => {
     adapter!.patch(before.binding, before.revision, {
@@ -165,7 +164,7 @@ it("stages trigger text without changing conditions or saving, and enforces page
   expect(screen.getByDisplayValue("Review only completed CI failures.")).toBeInTheDocument();
   expect(create).not.toHaveBeenCalled();
   mockCanManage = false;
-  rerender(<ChatModeContext.Provider value={mode}>{page()}</ChatModeContext.Provider>);
+  rerender(<PageChatProvider value={mode}>{page()}</PageChatProvider>);
   const locked = adapter!.read(adapter!.binding!);
   expect(locked.writable).toBe(false);
   expect(() => adapter!.patch(locked.binding, locked.revision, { message: "Forbidden" })).toThrow(

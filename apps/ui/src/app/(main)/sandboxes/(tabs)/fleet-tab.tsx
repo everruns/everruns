@@ -57,9 +57,20 @@ export function SandboxFleetTab() {
   const needsAttention = searchParams.get("attention") === "1";
   const windowKey: WindowKey = searchParams.get("window") === "7d" ? "7d" : "24h";
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
-  useChatPageFilters({ search: search });
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("sandbox"));
+
+  useChatPageFilters({
+    search,
+    status: state,
+    provider_id: provider,
+    filter: needsAttention ? "needs_attention" : null,
+    range: windowKey,
+    tab: view,
+    page,
+    limit: PAGE_SIZE,
+    selected_id: selectedId,
+  });
 
   const update = useCallback(
     (changes: Record<string, string | null>) => {

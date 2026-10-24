@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { usePolicies } from "@/hooks/use-policies";
 
@@ -77,9 +79,10 @@ export default function AgentTriggerPage({
     ? trigger.trigger_type === "github"
     : searchParams?.get("type") === "github";
 
+  const adopted = !!usePageChatMode();
   const seededTrigger = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!trigger || seededTrigger.current === trigger.id) return;
+    if (!trigger || (adopted && seededTrigger.current === trigger.id)) return;
     seededTrigger.current = trigger.id;
     if (trigger.trigger_type === "github") {
       const config = trigger.config as unknown as {
@@ -107,7 +110,7 @@ export default function AgentTriggerPage({
       message: config.message,
       enabled: trigger.enabled,
     });
-  }, [trigger]);
+  }, [trigger, adopted]);
 
   const { can } = usePolicies("agents");
   const savedConfig = trigger?.config as unknown as Partial<TriggerConfig> | undefined;

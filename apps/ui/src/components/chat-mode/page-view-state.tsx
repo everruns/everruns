@@ -22,6 +22,7 @@ type PageFilters = Partial<
     | "agent_id"
     | "harness_id"
     | "provider_id"
+    | "selected_id"
     | "category"
     | "type"
     | "from"
@@ -73,6 +74,7 @@ export function usePageViewRegistry(route: string) {
       "agent_id",
       "harness_id",
       "provider_id",
+      "selected_id",
       "category",
       "type",
       "from",

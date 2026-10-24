@@ -5,10 +5,10 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 function Drawer({ ...props }: DialogPrimitive.Root.Props) {
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   return (
     <DialogPrimitive.Root
       data-slot="drawer"
@@ -48,7 +48,7 @@ function DrawerContent({
   side?: "left" | "right";
   scopeToPage?: boolean;
 }) {
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   // Keep the same portal parent while Chat opens/closes, preserving form state.
   const container = scopeToPage
     ? (mode?.pageContainerElement ?? mode?.pageContainer.current ?? null)

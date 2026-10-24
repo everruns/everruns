@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import Link from "next/link";
@@ -59,6 +61,7 @@ export function MemoryFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const adopted = !!usePageChatMode();
   const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
@@ -66,7 +69,7 @@ export function MemoryFormDialog({
       return;
     }
     const seed = `${mode}:${memory?.id ?? "new"}`;
-    if (seededForm.current === seed) return;
+    if (adopted && seededForm.current === seed) return;
     seededForm.current = seed;
     setName(mode === "edit" ? (memory?.name ?? "") : "");
     setDescription(mode === "edit" ? (memory?.description ?? "") : "");
@@ -96,7 +99,7 @@ export function MemoryFormDialog({
     }
     setFieldError(null);
     setFormError(null);
-  }, [mode, open, memory]);
+  }, [mode, open, memory, adopted]);
 
   const chatDraft = useTextPageFormDraft({
     fields: ["name", "description"],

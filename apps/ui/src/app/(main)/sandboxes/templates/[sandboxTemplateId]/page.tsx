@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
@@ -22,11 +24,17 @@ import {
 import type { SandboxPolicy, SandboxTemplate } from "@/lib/api/types";
 
 export default function SandboxTemplatePage() {
+  const chatMode = usePageChatMode();
   const { sandboxTemplateId } = useParams<{ sandboxTemplateId: string }>();
   const { data: template, isLoading } = useSandboxTemplate(sandboxTemplateId);
   usePageTitle(template?.display_name || "Sandbox Template", "Sandbox Templates");
   if (isLoading || !template) return null;
-  return <SandboxTemplateEditor key={template.id} template={template} />;
+  return (
+    <SandboxTemplateEditor
+      key={chatMode ? template.id : `${template.id}:${template.current_revision.id}`}
+      template={template}
+    />
+  );
 }
 
 function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {

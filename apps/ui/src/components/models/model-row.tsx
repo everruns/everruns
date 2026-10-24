@@ -402,6 +402,7 @@ export function ModelRow({
         </div>
       )}
       <EditModelDialog
+        writable={canManage}
         model={model}
         providers={providers}
         open={editOpen}

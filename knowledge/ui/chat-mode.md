@@ -115,11 +115,13 @@ offers guarded draft Undo, preserving later manual edits. Saved-baseline conflic
 keep dirty work and block the integration's Save action until it is discarded.
 
 Beyond Agents, integrations cover Harness creation/editing, Virtual Users,
-Observer definitions, Eval creation, declarative Capability metadata/skills/files,
+Observer definitions, Eval creation, Model ID/display-name dialogs, declarative Capability metadata/skills/files,
 Knowledge collection/source/account forms, Memory and legacy Knowledge-index
 metadata dialogs, Skill creation, Sandbox-template metadata and non-credential
 Channel text. Each exposes its supported subset; MCP headers/environment values,
 API keys, channel auth, sandbox environment values and grants remain manual.
+Existing scorer variants unsupported by the current Observer editor remain readable
+with their scorer collection read-only; metadata edits preserve them.
 Credential-bearing URL fields disable their adapter and incoming URL patches are
 validated. No redacted credential is ever written back as a form value.
 
@@ -139,7 +141,8 @@ command flow; a failed form patch must never be reinterpreted as permission for
 a direct server save. Saved-change attribution and versioned inverse Undo remain
 Agent-specific.
 
-Shared dialogs portal into a stable page container. While Chat is open they are
+Dialogs and drawers originating in the right page portal into its stable container.
+Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
 non-modal and outside-pointer dismissal is disabled: focusing Chat keeps the form
 mounted. Explicit Close/Escape still work. The common two-column page body responds
 to the page pane's width. Feature-off pages retain their normal controls and shell.

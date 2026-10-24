@@ -1,4 +1,5 @@
-import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { Suspense } from "react";
@@ -130,9 +131,9 @@ async function renderPage(mode: ChatModeState | null = null) {
   await act(async () => {
     render(
       <Suspense fallback={<div>Loading...</div>}>
-        <ChatModeContext.Provider value={mode}>
+        <PageChatProvider value={mode}>
           <HarnessPage params={params} />
-        </ChatModeContext.Provider>
+        </PageChatProvider>
       </Suspense>,
     );
     await params;

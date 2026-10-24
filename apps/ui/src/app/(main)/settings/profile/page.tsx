@@ -2,7 +2,7 @@
 
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,10 @@ export default function ProfilePage() {
     writable: !!user && !updateProfile.isPending,
     apply: (values) => setName(values.name),
   });
+
+  useEffect(() => {
+    if (!chatDraft.adopted && user?.name) setName(undefined);
+  }, [chatDraft.adopted, user?.name]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
@@ -107,7 +111,7 @@ export default function ProfilePage() {
                   <Save className="h-4 w-4 mr-2" />
                   {updateProfile.isPending ? "Saving..." : "Save"}
                 </Button>
-                {hasChanges && (
+                {hasChanges && chatDraft.adopted && (
                   <Button variant="outline" onClick={() => setName(undefined)}>
                     Discard
                   </Button>

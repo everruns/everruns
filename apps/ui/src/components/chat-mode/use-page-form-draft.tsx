@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { useChatMode } from "./chat-mode-context";
+import { usePageChatMode } from "./chat-mode-context";
 import { createFormDraftController, type FormDraftState } from "./form-draft-controller";
 import type { FieldDiff } from "@/lib/api/types";
 
@@ -20,7 +20,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
     priority?: number;
   },
 ) {
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   const adopted = !!mode;
   const entityId = options.entityId ?? "new";
   const entityType = options.entityType;
@@ -69,6 +69,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
             adopted &&
             mounted.current &&
             current.current.scope === scope &&
+            current.current.schema === schema &&
             (current.current.enabled ?? true),
           writable: adopted && current.current.writable && !current.current.blocked,
         }),
@@ -190,6 +191,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
       </div>
     ) : null;
   return {
+    adopted,
     adapter,
     notice,
     blocked,

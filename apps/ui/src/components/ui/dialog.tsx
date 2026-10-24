@@ -5,10 +5,10 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   return (
     <DialogPrimitive.Root
       data-slot="dialog"
@@ -35,7 +35,7 @@ function DialogTrigger({
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
-  const mode = useChatMode();
+  const mode = usePageChatMode();
   // Keep the portal container stable when Chat opens: moving a mounted form
   // between body and pane would remount it and discard unsaved React state.
   return (
@@ -74,14 +74,17 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
+  const mode = usePageChatMode();
+  const scoped = !!(mode?.pageContainerElement ?? mode?.pageContainer.current);
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={scoped ? "absolute" : undefined} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
           "bg-background data-[open]:animate-in data-[open]:fade-in-0 data-[open]:zoom-in-95 data-[closed]:animate-out data-[closed]:fade-out-0 data-[closed]:zoom-out-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 shadow-lg duration-200 sm:max-w-lg",
           className,
+          scoped && "absolute",
         )}
         {...props}
       >

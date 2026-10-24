@@ -87,9 +87,9 @@ export function AgentsHome() {
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
 
   const [search, setSearch] = useState("");
-  useChatPageFilters({ search: search });
   const [agentTab, setAgentTab] = useState<AgentTab>("all");
   const [channelTab, setChannelTab] = useState<ChannelTab>("all");
+  useChatPageFilters({ search, tab: view, status: view === "channels" ? channelTab : agentTab });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
