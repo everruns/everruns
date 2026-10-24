@@ -2,6 +2,10 @@
 
 ## 2026-10-24
 
+* **Chat navigation discovery.** Explain rail icons on hover and focus, and expose
+  the same permitted destinations in a labeled Pages menu for keyboard and touch.
+  See [Page-aware Chat mode](ui/chat-mode.md).
+
 * **Knowledge adoption.** Promote unified Knowledge to organization Adoption opt-in
   across development and hosted deployments. Clarify org-owned collections/indexes
   and harness → agent → session attachment precedence. See

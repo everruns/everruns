@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Eye, Maximize2, Search, X } from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/layout/sidebar";
@@ -20,7 +19,6 @@ import { usePolicies } from "@/hooks/use-policies";
 import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
 import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { chatPageRoute } from "@/lib/chat-page-context";
 import {
   ChatModeContext,
@@ -30,6 +28,7 @@ import {
 } from "./chat-mode-context";
 import "./chat-mode.css";
 import type { PageDraftAdapter } from "./page-draft";
+import { PageNavigationHint, PageNavigationRail } from "./page-navigation-rail";
 
 const ChatPanel = dynamic(() =>
   import("@/components/chat/chat-panel").then((module) => module.ChatPanel),
@@ -191,22 +190,29 @@ function EnabledShell({
             <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
               <Eye className="size-3.5 shrink-0" />
               <span className="truncate">Showing this page to the chat</span>
-              <button
-                type="button"
-                aria-label="Search pages"
-                className="ml-auto p-1 hover:bg-muted"
-                onClick={() => setSearchOpen(true)}
+              <PageNavigationHint label="Search pages" description="Find a page or resource.">
+                <button
+                  type="button"
+                  aria-label="Search pages"
+                  className="ml-auto p-1 hover:bg-muted"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <Search className="size-3.5" />
+                </button>
+              </PageNavigationHint>
+              <PageNavigationHint
+                label="Open full page"
+                description="Hide Chat and expand the current page."
               >
-                <Search className="size-3.5" />
-              </button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Open full page"
-                onClick={() => changeOpen(false)}
-              >
-                <Maximize2 className="size-3.5" />
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Open full page"
+                  onClick={() => changeOpen(false)}
+                >
+                  <Maximize2 className="size-3.5" />
+                </Button>
+              </PageNavigationHint>
             </div>
           )}
           <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
@@ -242,59 +248,11 @@ function IconRail({
     canNavigate,
   );
   return (
-    <nav
-      aria-label="Page navigation"
-      aria-hidden={!open}
-      className="chat-mode-rail overflow-y-auto border-l bg-background"
-      inert={!open}
-    >
-      {sections.map((section, index) => (
-        <div
-          key={section.id ?? index}
-          className={cn(
-            "py-2",
-            index > 0 && "border-t",
-            section.items.some((item) => item.href === "/settings") && "mt-auto",
-          )}
-        >
-          {section.items.map((item) => {
-            if (item.href === "/chats")
-              return (
-                <button
-                  key={item.href}
-                  type="button"
-                  aria-label="Close Chat mode"
-                  title="Chat (⌘J)"
-                  onClick={() => mode?.setOpen(false)}
-                  className="flex h-10 w-12 items-center justify-center text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                >
-                  <item.icon className="icon-sharp size-4" />
-                </button>
-              );
-            const active =
-              pathname === item.href ||
-              (!item.exact && pathname.startsWith(`${item.activePrefix ?? item.href}/`));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={false}
-                title={item.name}
-                aria-label={item.name}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-10 w-12 items-center justify-center border-r-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                  active
-                    ? "border-primary bg-muted text-foreground"
-                    : "border-transparent text-muted-foreground",
-                )}
-              >
-                <item.icon className="icon-sharp size-4" />
-              </Link>
-            );
-          })}
-        </div>
-      ))}
-    </nav>
+    <PageNavigationRail
+      open={open}
+      pathname={pathname}
+      sections={sections}
+      onClose={() => mode?.setOpen(false)}
+    />
   );
 }

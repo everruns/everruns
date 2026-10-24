@@ -12,6 +12,7 @@ export interface RegistryNavigationItem {
   href: string;
   icon: IconComponent;
   keywords?: string[];
+  description?: string;
 }
 
 export const registryDomainIcons = {
@@ -28,6 +29,7 @@ export const registryDomainIcons = {
 export const registryNavigationByHref = {
   "/models": {
     name: "Models",
+    description: "Choose models, configure providers and set defaults.",
     href: "/models",
     icon: registryDomainIcons.models,
     keywords: [
@@ -42,6 +44,7 @@ export const registryNavigationByHref = {
   },
   "/web-search": {
     name: "Web search",
+    description: "Configure search providers and accounts for agents.",
     href: "/web-search",
     icon: registryDomainIcons.webSearch,
     keywords: [
@@ -56,17 +59,20 @@ export const registryNavigationByHref = {
   },
   "/skills": {
     name: "Skills",
+    description: "Register reusable instructions for agents.",
     href: "/skills",
     icon: registryDomainIcons.skills,
     keywords: ["ability", "tool"],
   },
   "/capabilities": {
     name: "Capabilities",
+    description: "Browse the tools and abilities agents can use.",
     href: "/capabilities",
     icon: registryDomainIcons.capabilities,
   },
   "/plugins": {
     name: "Plugins",
+    description: "Manage extensions that add agent integrations.",
     href: "/plugins",
     icon: registryDomainIcons.plugins,
     keywords: ["marketplace", "extension", "integration"],

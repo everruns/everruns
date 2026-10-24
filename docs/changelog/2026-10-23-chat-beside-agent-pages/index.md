@@ -19,6 +19,9 @@ use **Save changes** to apply the result or **Discard** to reset it. Version
 checks protect edits made while Chat thinks.
 Back to app keeps your conversation and draft.
 
+Hover or focus a navigation icon to see its name and purpose. **Pages** opens a
+grouped menu with names and explanations, including on touch screens.
+
 Saved Agent changes attributed to Chat also support **Undo all**, with revision
 checks and a recorded inverse. Conflicts fail without saving. Concurrent saved
 changes keep your dirty draft and block Save until you discard and review them.

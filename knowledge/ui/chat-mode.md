@@ -56,6 +56,14 @@ composed navigation sections, so stricter host visibility and loading rules
 remain effective in the rail. Shared role, feature and policy checks still apply. Agent settings drawers mount within the
 page pane with a page-only backdrop, leaving Chat accessible.
 
+Every rail destination has a short explanation in the shared navigation model.
+Hover or keyboard focus reveals its name and purpose in a tooltip to the left of
+the rail. The always-labeled Pages control opens the same permitted destinations
+as a grouped menu with names and descriptions, including on touch screens.
+Escape dismisses an overlay and the menu returns focus to its trigger. Closing
+Chat removes rail overlays without remounting the page or conversation. Discovery
+does not prefetch destination content or render hidden, disabled or restricted pages.
+
 ## Page context is data
 
 [`ChatModeContext`](../../apps/ui/src/components/chat-mode/chat-mode-context.tsx)
