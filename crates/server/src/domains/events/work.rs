@@ -8,10 +8,12 @@
 
 use super::queries as q;
 use crate::domains::common::*;
+use crate::services::EventService;
 use crate::storage::ListEventsParams;
 use chrono::Utc;
 use everruns_contracts::runtime::events::{EventData, TURN_STARTED};
 use everruns_contracts::runtime::work_report::{WORK_REPORT_EVENT_TYPES, WorkReport};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::Event;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -58,55 +60,67 @@ impl Command for GetSessionWork {
             .get(&ctx.caller, session_id.uuid(), None)
             .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        let explicit = self.turn_id.is_some();
         let events = q::event_service(ctx)?;
-
-        let turn_id = match self.turn_id {
-            Some(turn_id) => turn_id,
-            None => {
-                let latest = events
-                    .list_advanced(&ListEventsParams {
-                        session_id,
-                        filter_types: vec![TURN_STARTED.to_string()],
-                        order_desc: true,
-                        limit: Some(1),
-                        ..Default::default()
-                    })
-                    .await?;
-                match latest.first().map(|event| &event.data) {
-                    Some(EventData::TurnStarted(data)) => data.turn_id.to_string(),
-                    _ => return Ok(SessionWorkResult { report: None }),
-                }
-            }
-        };
-
-        let mut turn_events: Vec<Event> = Vec::new();
-        let mut after_sequence = None;
-        for _ in 0..MAX_PAGES {
-            let page = events
-                .list_advanced(&ListEventsParams {
-                    session_id,
-                    after_sequence,
-                    filter_types: WORK_REPORT_EVENT_TYPES
-                        .iter()
-                        .map(|t| t.to_string())
-                        .collect(),
-                    turn_id: Some(turn_id.clone()),
-                    limit: Some(PAGE),
-                    ..Default::default()
-                })
-                .await?;
-            let full = page.len() == PAGE as usize;
-            after_sequence = page.last().and_then(|event| event.sequence);
-            turn_events.extend(page);
-            if !full || after_sequence.is_none() {
-                break;
-            }
-        }
-        match WorkReport::from_events(&turn_events, Utc::now()) {
+        match turn_work_report(events, session_id, self.turn_id).await? {
             Some(report) => Ok(SessionWorkResult {
                 report: Some(report),
             }),
-            None => Err(CommandError::not_found("Turn")),
+            None if explicit => Err(CommandError::not_found("Turn")),
+            None => Ok(SessionWorkResult { report: None }),
         }
     }
+}
+
+/// Work report of `turn_id`, or of the session's latest turn. `None` when the
+/// session has not run a turn or the named turn has no events. Shared by
+/// `GET /v1/sessions/{id}/work` and the Agent Execution API's session read.
+pub async fn turn_work_report(
+    events: &EventService,
+    session_id: SessionId,
+    turn_id: Option<String>,
+) -> anyhow::Result<Option<WorkReport>> {
+    let turn_id = match turn_id {
+        Some(turn_id) => turn_id,
+        None => {
+            let latest = events
+                .list_advanced(&ListEventsParams {
+                    session_id,
+                    filter_types: vec![TURN_STARTED.to_string()],
+                    order_desc: true,
+                    limit: Some(1),
+                    ..Default::default()
+                })
+                .await?;
+            match latest.first().map(|event| &event.data) {
+                Some(EventData::TurnStarted(data)) => data.turn_id.to_string(),
+                _ => return Ok(None),
+            }
+        }
+    };
+
+    let mut turn_events: Vec<Event> = Vec::new();
+    let mut after_sequence = None;
+    for _ in 0..MAX_PAGES {
+        let page = events
+            .list_advanced(&ListEventsParams {
+                session_id,
+                after_sequence,
+                filter_types: WORK_REPORT_EVENT_TYPES
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect(),
+                turn_id: Some(turn_id.clone()),
+                limit: Some(PAGE),
+                ..Default::default()
+            })
+            .await?;
+        let full = page.len() == PAGE as usize;
+        after_sequence = page.last().and_then(|event| event.sequence);
+        turn_events.extend(page);
+        if !full || after_sequence.is_none() {
+            break;
+        }
+    }
+    Ok(WorkReport::from_events(&turn_events, Utc::now()))
 }

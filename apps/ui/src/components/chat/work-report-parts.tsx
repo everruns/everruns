@@ -6,13 +6,23 @@
  *   the fold, because "step 3 of 4" is the answer to "how far along is it".
  *   No plan, no box and no bar: a bar without a declared plan would be made up.
  * - The done box appears only when it says more than "Worked for 13s": files
- *   changed, tasks started, artifacts, or a summary the agent wrote itself. A
+ *   changed, tasks started, artifacts, what the agent checked, a failure it
+ *   reported, or a summary the agent wrote itself (`report_done`). A
  *   summary taken from the reply is not repeated, since the reply is right
  *   below it.
  */
 "use client";
 
-import { Check, CheckCircle2, Circle, FileText, Link2, LoaderCircle, Minus } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  Circle,
+  CircleAlert,
+  FileText,
+  Link2,
+  LoaderCircle,
+  Minus,
+} from "lucide-react";
 import type { WorkPlan, WorkReport } from "@/lib/api/types";
 import { formatWorkFact } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -114,8 +124,11 @@ export function WorkResultBox({ report }: { report: WorkReport }) {
   if (report.state !== "done" || !report.result) return null;
   const facts = workFactsLine(report, locale);
   const summary = report.result.summary_source === "agent" ? report.result.summary : null;
+  const checks = report.result.checks ?? null;
+  const failed = report.result.outcome === "failed";
   const artifacts = report.result.artifacts ?? [];
-  if (!facts && !summary && artifacts.length === 0) return null;
+  if (!facts && !summary && !checks && !failed && artifacts.length === 0) return null;
+  const lead = failed ? t("work_failed") : t("work_done");
 
   return (
     <section
@@ -123,10 +136,17 @@ export function WorkResultBox({ report }: { report: WorkReport }) {
       data-testid="work-result"
     >
       <div className="flex items-center gap-2 text-sm font-medium">
-        <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
-        <span>{facts ? `${t("work_done")} · ${facts}` : t("work_done")}</span>
+        {failed ? (
+          <CircleAlert className="size-4 shrink-0 text-destructive" aria-hidden />
+        ) : (
+          <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
+        )}
+        <span>{facts ? `${lead} · ${facts}` : lead}</span>
       </div>
       {summary ? <p className="mt-1.5 pl-6 text-sm">{summary}</p> : null}
+      {checks ? (
+        <p className="mt-1 pl-6 text-xs text-muted-foreground">{t("work_checked", { checks })}</p>
+      ) : null}
       {artifacts.length > 0 ? (
         <ul className="mt-2 flex flex-wrap gap-1.5 pl-6">
           {artifacts.slice(0, MAX_ARTIFACT_CHIPS).map((artifact, index) => {

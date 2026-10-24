@@ -61,6 +61,7 @@ pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
+pub mod report_done;
 pub mod self_budget;
 pub mod skills;
 pub mod skills_scoped;
@@ -185,6 +186,7 @@ pub use prompt_canary_guardrail::{
     PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
+pub use report_done::ReportDoneTool;
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, Skills, SkillsCapability};
 pub use skills_scoped::{

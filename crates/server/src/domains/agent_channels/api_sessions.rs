@@ -22,6 +22,7 @@
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::execution_phase::ExecutionPhase;
+use everruns_contracts::runtime::work_report::WorkReport;
 use everruns_contracts::tool_types::ToolApprovalRequired;
 use everruns_contracts::typed_id::{PrincipalId, SessionId, VirtualUserId};
 use everruns_core::Event;
@@ -316,6 +317,12 @@ pub struct AgentSessionView {
     /// `pending_questions`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_approvals: Option<Vec<PendingApprovalView>>,
+    /// What the latest turn is doing or got done. Only `GET …/sessions/{id}`
+    /// reads it. Under `full` visibility it is the whole report; otherwise
+    /// the public view: state, plan counts, facts, the agent's own summary
+    /// and links, never step labels or approval prompts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work: Option<WorkReport>,
 }
 
 impl AgentSessionView {
@@ -338,6 +345,7 @@ impl From<&SessionRow> for AgentSessionView {
             updated_at: row.updated_at,
             pending_questions: None,
             pending_approvals: None,
+            work: None,
         }
     }
 }

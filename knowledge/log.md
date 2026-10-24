@@ -6,6 +6,10 @@
   use shared entity history and manager context; configuration restore preserves
   retained files and source progress. Operational counts, jobs and serving
   generations do not create revisions. See [Unified Knowledge](runtime-resources/knowledge.md).
+* **Work reports reach the Agent Execution API.** A public view of the report
+  (counts, facts, the agent's summary and links; no step labels or prompts) is
+  the session read's `work` field outside `full` visibility; Slack, AG-UI and
+  A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
 ## 2026-10-23
 

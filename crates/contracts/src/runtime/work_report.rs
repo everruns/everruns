@@ -53,6 +53,17 @@ pub const WORK_REPORT_EVENT_TYPES: &[&str] = &[
 /// not listed as steps of their own.
 pub const PLAN_TOOL_NAMES: &[&str] = &["write_todos", "update_checklist", "update_status"];
 
+/// Tools the agent reports finished work with (`report_done`, and a
+/// coordinated worker's `complete_assignment`). A successful call supplies the
+/// summary, how the work was checked, and links; it is not a step.
+pub const REPORT_TOOL_NAMES: &[&str] = &["report_done", "complete_assignment"];
+
+/// Artifacts taken from an agent's own report.
+pub const MAX_REPORTED_ARTIFACTS: usize = 10;
+
+/// Upper bound on [`WorkResult::checks`], in characters.
+pub const MAX_CHECKS_CHARS: usize = 280;
+
 /// Newest steps kept in a report; older ones are counted in
 /// [`WorkReport::omitted_steps`].
 pub const MAX_REPORT_STEPS: usize = 50;
@@ -225,6 +236,17 @@ pub enum WorkSummarySource {
     Reply,
 }
 
+/// How the agent itself judged the work, when it reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum WorkOutcome {
+    /// The work is done.
+    Done,
+    /// The agent could not do it, and says why in the summary.
+    Failed,
+}
+
 /// What finished work produced.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -245,6 +267,14 @@ pub struct WorkResult {
     /// Files, links, pull requests and sessions the work produced.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts: Vec<TaskArtifact>,
+    /// How the agent checked the work ("ran the 12 billing tests"), when it
+    /// reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Ran the 12 billing tests"))]
+    pub checks: Option<String>,
+    /// The agent's own verdict, when it reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<WorkOutcome>,
 }
 
 /// One piece of work, as every surface shows it.
@@ -322,6 +352,68 @@ impl WorkReport {
         builder.build(now)
     }
 
+    /// The report with nothing a caller outside the agent's owner should
+    /// see: no step labels, plan item titles, approval prompts, file paths or
+    /// model. Step labels are tool narration, which can quote tool arguments,
+    /// so a public surface keeps counts, state, the agent's own summary and
+    /// links only. While working the headline becomes "Step N of M" when the
+    /// agent shared a plan, else "Working"; a waiting report names only the
+    /// kind of request. Finished headlines are built from facts and time and
+    /// stay as they are.
+    pub fn public_view(&self) -> Self {
+        let plan = self.plan.as_ref().map(|plan| WorkPlan {
+            items: Vec::new(),
+            done: plan.done,
+            total: plan.total,
+            current: None,
+        });
+        let headline = match self.state {
+            WorkState::Working => match &plan {
+                Some(plan) if plan.total > 0 => {
+                    format!("Step {} of {}", (plan.done + 1).min(plan.total), plan.total)
+                }
+                _ => "Working".to_string(),
+            },
+            WorkState::NeedsYou => match self.attention.as_ref().map(|a| a.kind) {
+                Some(WorkAttentionKind::Approval) => "Needs approval".to_string(),
+                Some(WorkAttentionKind::Question) => "Waiting for an answer".to_string(),
+                _ => "Waiting for input".to_string(),
+            },
+            _ => self.headline.clone(),
+        };
+        let result = self.result.as_ref().map(|result| WorkResult {
+            artifacts: result
+                .artifacts
+                .iter()
+                .filter(|artifact| artifact.url.is_some())
+                .map(|artifact| TaskArtifact {
+                    path: None,
+                    ..artifact.clone()
+                })
+                .collect(),
+            ..result.clone()
+        });
+        Self {
+            turn_id: self.turn_id.clone(),
+            state: self.state,
+            headline,
+            agent_name: self.agent_name.clone(),
+            model: None,
+            started_at: self.started_at,
+            ended_at: self.ended_at,
+            duration_ms: self.duration_ms,
+            plan,
+            steps: Vec::new(),
+            omitted_steps: self.omitted_steps + self.steps.len() as u32,
+            attention: self.attention.as_ref().map(|attention| WorkAttention {
+                kind: attention.kind,
+                prompt: String::new(),
+                tool_call_ids: Vec::new(),
+            }),
+            result,
+        }
+    }
+
     /// Value of one fact, if present.
     pub fn fact(&self, kind: WorkFactKind) -> Option<u64> {
         self.result
@@ -366,6 +458,9 @@ pub struct WorkReportBuilder {
     /// Plan tool calls seen started, so their completion is not a step and a
     /// failed plan update does not replace the plan.
     plan_calls: HashMap<String, WorkPlan>,
+    /// Report tool calls seen started; the latest successful one is kept.
+    report_calls: HashMap<String, AgentReport>,
+    report: Option<AgentReport>,
     /// Open client-side requests by call id, in arrival order.
     requests: Vec<(String, PendingRequest)>,
     /// Gated calls whose approval request is open or answered; not steps.
@@ -409,6 +504,12 @@ impl WorkReportBuilder {
                     }
                     return;
                 }
+                if REPORT_TOOL_NAMES.contains(&call.name.as_str()) {
+                    if let Some(report) = AgentReport::from_arguments(&call.arguments) {
+                        self.report_calls.insert(call.id.clone(), report);
+                    }
+                    return;
+                }
                 let label = data
                     .narration
                     .clone()
@@ -447,7 +548,15 @@ impl WorkReportBuilder {
                     }
                     return;
                 }
-                if PLAN_TOOL_NAMES.contains(&data.tool_name.as_str()) {
+                if let Some(report) = self.report_calls.remove(&data.tool_call_id) {
+                    if data.success {
+                        self.report = Some(report);
+                    }
+                    return;
+                }
+                if PLAN_TOOL_NAMES.contains(&data.tool_name.as_str())
+                    || REPORT_TOOL_NAMES.contains(&data.tool_name.as_str())
+                {
                     return;
                 }
                 if let Some(position) = self
@@ -696,18 +805,38 @@ impl WorkReportBuilder {
             value: self.steps.len() as u64,
         });
 
-        let artifacts = self
-            .files
-            .iter()
-            .take(MAX_FILE_ARTIFACTS)
-            .map(|path| TaskArtifact {
+        // The agent's own links come first; a written file it also named is
+        // listed once.
+        let mut artifacts: Vec<TaskArtifact> = self
+            .report
+            .as_ref()
+            .map(|report| report.artifacts.clone())
+            .unwrap_or_default();
+        for path in self.files.iter().take(MAX_FILE_ARTIFACTS) {
+            if artifacts
+                .iter()
+                .any(|artifact| artifact.path.as_deref() == Some(path))
+            {
+                continue;
+            }
+            artifacts.push(TaskArtifact {
                 name: basename(path).to_string(),
                 artifact_type: "file".to_string(),
                 path: Some(path.clone()),
                 url: None,
-            })
-            .collect();
+            });
+        }
 
+        if let Some(report) = &self.report {
+            return WorkResult {
+                summary: Some(report.summary.clone()),
+                summary_source: Some(WorkSummarySource::Agent),
+                facts,
+                artifacts,
+                checks: report.checks.clone(),
+                outcome: Some(report.outcome),
+            };
+        }
         let summary = match &self.terminal {
             Some(Terminal::Completed {
                 final_answer_preview: Some(preview),
@@ -720,8 +849,69 @@ impl WorkReportBuilder {
             summary,
             facts,
             artifacts,
+            checks: None,
+            outcome: None,
         }
     }
+}
+
+/// What the agent said about its finished work, from a report tool's arguments.
+#[derive(Debug, Clone)]
+struct AgentReport {
+    summary: String,
+    checks: Option<String>,
+    outcome: WorkOutcome,
+    artifacts: Vec<TaskArtifact>,
+}
+
+impl AgentReport {
+    /// `report_done` and `complete_assignment` share one shape: `summary`
+    /// (required), `validation`, `outcome` and `artifacts`. A malformed
+    /// artifact is dropped rather than losing the summary.
+    fn from_arguments(arguments: &serde_json::Value) -> Option<Self> {
+        let summary = arguments
+            .get("summary")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())?;
+        let checks = arguments
+            .get("validation")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|checks| !checks.is_empty())
+            .map(|checks| bounded(checks, MAX_CHECKS_CHARS));
+        let outcome = match arguments.get("outcome").and_then(serde_json::Value::as_str) {
+            Some("failed") => WorkOutcome::Failed,
+            _ => WorkOutcome::Done,
+        };
+        let artifacts = arguments
+            .get("artifacts")
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| serde_json::from_value::<TaskArtifact>(item.clone()).ok())
+                    .take(MAX_REPORTED_ARTIFACTS)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            summary: bounded(summary, MAX_SUMMARY_CHARS),
+            checks,
+            outcome,
+            artifacts,
+        })
+    }
+}
+
+/// `text` cut to `max` characters on a character boundary, with an ellipsis.
+fn bounded(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut cut: String = text.chars().take(max.saturating_sub(1)).collect();
+    cut.push('…');
+    cut
 }
 
 /// Whether a failed call stopped on a hard approval gate. Matches the
@@ -821,9 +1011,12 @@ fn headline(
             format!("{lead} · {}", attention.prompt)
         }
         WorkState::Done => {
-            let mut parts = vec![match elapsed {
-                Some(elapsed) => format!("Done in {elapsed}"),
-                None => "Done".to_string(),
+            let failed = result.and_then(|result| result.outcome) == Some(WorkOutcome::Failed);
+            let mut parts = vec![match (failed, elapsed) {
+                (false, Some(elapsed)) => format!("Done in {elapsed}"),
+                (false, None) => "Done".to_string(),
+                (true, Some(elapsed)) => format!("Could not finish · {elapsed}"),
+                (true, None) => "Could not finish".to_string(),
             }];
             if let Some(result) = result {
                 for fact in &result.facts {

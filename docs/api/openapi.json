@@ -33619,6 +33619,17 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "work": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkReport",
+                "description": "What the latest turn is doing or got done. Only `GET …/sessions/{id}`\nreads it. Under `full` visibility it is the whole report; otherwise\nthe public view: state, plan counts, facts, the agent's own summary\nand links, never step labels or approval prompts."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -73081,6 +73092,14 @@
           "steps"
         ]
       },
+      "WorkOutcome": {
+        "type": "string",
+        "description": "How the agent itself judged the work, when it reported.",
+        "enum": [
+          "done",
+          "failed"
+        ]
+      },
       "WorkPlan": {
         "type": "object",
         "description": "The plan the agent shared, from its latest plan tool call.",
@@ -73283,12 +73302,31 @@
             },
             "description": "Files, links, pull requests and sessions the work produced."
           },
+          "checks": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How the agent checked the work (\"ran the 12 billing tests\"), when it\nreported.",
+            "example": "Ran the 12 billing tests"
+          },
           "facts": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkFact"
             },
             "description": "Measured facts, in display order."
+          },
+          "outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkOutcome",
+                "description": "The agent's own verdict, when it reported."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "summary": {
             "type": [

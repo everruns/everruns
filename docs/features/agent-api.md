@@ -206,7 +206,7 @@ All routes take `Authorization: Bearer <credential>` and answer JSON, except the
 | GET | `/` | The agent card |
 | POST | `/sessions` | Start a session |
 | GET | `/sessions` | The caller's sessions, most recently active first |
-| GET | `/sessions/{session_id}` | One session, with what it waits on |
+| GET | `/sessions/{session_id}` | One session, with what it waits on and its latest [work report](/features/work-reports/#in-the-agent-execution-api) |
 | POST | `/sessions/{session_id}/messages` | Send a user message |
 | GET | `/sessions/{session_id}/events` | Events, oldest first |
 | GET | `/sessions/{session_id}/sse` | Follow events live over SSE |

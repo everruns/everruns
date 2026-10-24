@@ -55,7 +55,10 @@ use crate::domains::agent_channels::api_sessions::{
     visible_event_types,
 };
 use crate::domains::agent_channels::record::ChannelType;
-use crate::domains::agent_channels::record::api::{AgentApiChannelConfig, ApiToolApprovals};
+use crate::domains::agent_channels::record::api::{
+    AgentApiChannelConfig, ApiToolApprovals, ApiVisibility,
+};
+use crate::domains::events::work::turn_work_report;
 use crate::domains::messages::intake::receive_files;
 use crate::domains::messages::types::InputMessage;
 use crate::storage::SessionRow;
@@ -620,10 +623,20 @@ async fn get_session(state: &ChannelApiState, auth: Authorized, session_id: &str
         Ok(session) => session,
         Err(response) => return response,
     };
-    match session_pending_input(&state.db, &session, &auth.caller.config).await {
-        Ok(pending) => Json(AgentSessionView::from(&session).with_pending(pending)).into_response(),
-        Err(err) => internal_error(err),
-    }
+    let pending = match session_pending_input(&state.db, &session, &auth.caller.config).await {
+        Ok(pending) => pending,
+        Err(err) => return internal_error(err),
+    };
+    let work = match turn_work_report(&state.event_service, session.id, None).await {
+        Ok(work) => work,
+        Err(err) => return internal_error(err),
+    };
+    let mut view = AgentSessionView::from(&session).with_pending(pending);
+    view.work = work.map(|report| match auth.caller.config.visibility {
+        ApiVisibility::Full => report,
+        ApiVisibility::Messages | ApiVisibility::Activity => report.public_view(),
+    });
+    Json(view).into_response()
 }
 
 /// Body of `POST …/sessions/{id}/messages`: the `/v1/sessions/{id}/messages`
