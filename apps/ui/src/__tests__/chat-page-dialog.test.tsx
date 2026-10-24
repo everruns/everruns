@@ -86,11 +86,12 @@ it.each([false, true])(
     const input = await screen.findByLabelText("Skill instructions");
     fireEvent.click(screen.getByText("Open Chat"));
     expect(screen.getByTestId("page")).not.toContainElement(input);
-    act(() => {
-      screen.getByLabelText("Chat composer").focus();
-    });
+    // JSDOM allows focus() on inert nodes. The primitive's modal isolation is
+    // the observable contract here; only page-scoped dialogs may release it.
     await waitFor(() =>
-      expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement),
+      expect(
+        screen.getByLabelText("Chat composer").closest("[data-base-ui-inert]"),
+      ).toHaveAttribute("aria-hidden", "true"),
     );
   },
 );
