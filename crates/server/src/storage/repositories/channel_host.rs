@@ -54,17 +54,11 @@ impl Database {
     ) -> Result<Uuid> {
         Ok(sqlx::query_scalar::<_, Uuid>(
             r#"
-            WITH inserted AS (
-                INSERT INTO channel_bindings (channel_id, binding_key, session_id)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (channel_id, binding_key) DO NOTHING
-                RETURNING session_id
-            )
-            SELECT session_id FROM inserted
-            UNION ALL
-            SELECT session_id FROM channel_bindings
-            WHERE channel_id = $1 AND binding_key = $2
-            LIMIT 1
+            INSERT INTO channel_bindings (channel_id, binding_key, session_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (channel_id, binding_key) DO UPDATE
+              SET binding_key = EXCLUDED.binding_key
+            RETURNING session_id
             "#,
         )
         .bind(channel_id)

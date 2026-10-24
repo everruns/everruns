@@ -317,7 +317,11 @@ fn apply(spec: &mut Value) {
                 }
             }
             if group == &"agent-api" {
-                operation["security"] = json!([{"AgentCredential": []}]);
+                operation["security"] = if path == "/v1/channels/{channel_id}/chat/config" {
+                    json!([])
+                } else {
+                    json!([{"AgentCredential": []}])
+                };
             }
         }
     }

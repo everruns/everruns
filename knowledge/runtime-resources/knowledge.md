@@ -29,7 +29,8 @@ disclosure, built-in docs and organization BYOK. Management uses organization
 settings permissions and the existing [PAT scope boundary](../security/pat-scopes.md);
 attaching a collection explicitly authorizes runtime reads. Read-only tokens can
 retrieve files and evidence, while file/configuration changes and refresh require
-full access.
+full access. Consumer workspace APIs exclude Knowledge mount roots as private
+agent context, including normalized workspace aliases.
 Collection configuration and source attachments participate in entity history,
 manager context and configuration restore. Indexer creation records only public
 configuration and its credential-binding reference. File writes, deletions and

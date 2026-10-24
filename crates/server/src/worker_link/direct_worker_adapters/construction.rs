@@ -76,6 +76,24 @@ impl DirectPlatformStore {
     where
         T: serde::de::DeserializeOwned,
     {
+        if matches!(name, "create_message" | "list_messages")
+            && let Some(message) = self.input_message_id
+            && let Some(output) = crate::worker_link::consumer_delegation::dispatch(
+                &self.db,
+                &self.session_service,
+                self.encryption.as_ref(),
+                self.message_service.as_deref(),
+                self.org_id,
+                self.session_id,
+                message,
+                name,
+                &params,
+            )
+            .await
+            .map_err(|e| store_error(e.to_string()))?
+        {
+            return serde_json::from_str(&output).map_err(|e| store_error(e.to_string()));
+        }
         let ctx = self.command_ctx().await?;
         let json = crate::domains::common::dispatch(name, params, &ctx)
             .await
@@ -92,6 +110,25 @@ impl DirectPlatformStore {
     where
         T: serde::de::DeserializeOwned,
     {
+        if let Some(message) = self.input_message_id
+            && let Some(output) = crate::worker_link::consumer_delegation::dispatch(
+                &self.db,
+                &self.session_service,
+                self.encryption.as_ref(),
+                self.message_service.as_deref(),
+                self.org_id,
+                self.session_id,
+                message,
+                name,
+                &params,
+            )
+            .await
+            .map_err(|e| store_error(e.to_string()))?
+        {
+            return serde_json::from_str(&output)
+                .map(Some)
+                .map_err(|e| store_error(e.to_string()));
+        }
         let ctx = self.command_ctx().await?;
         match super::super::runtime_command_view::dispatch_runtime_view(name, params, &ctx).await {
             Ok(json) => serde_json::from_str(&json)

@@ -18,7 +18,7 @@ pub fn namespace(c: &Collection) -> String {
 }
 impl KnowledgeService {
     pub async fn backend(&self, c: &Collection) -> Result<Option<Arc<dyn VectorStore>>> {
-        // THREAT[TM-AUTHZ-025]: a selected account is explicit authority;
+        // THREAT[TM-AUTHZ-026]: a selected account is explicit authority;
         // unavailable/revoked bindings must never select deployment credentials.
         if let Some(account) = c.indexer_id {
             let row=sqlx::query("SELECT i.endpoint,c.value_encrypted,c.binding FROM knowledge_indexers i JOIN credential_bindings c ON c.id=i.credential_binding_id AND c.org_id=i.org_id JOIN resource_access r ON r.id=c.id AND r.org_id=c.org_id WHERE i.org_id=$1 AND i.id=$2 AND i.status='active' AND r.scope='organization' AND r.usage='service' AND r.revoked_at IS NULL AND (c.expires_at IS NULL OR c.expires_at>now())")

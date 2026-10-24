@@ -195,6 +195,13 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::health_issues::get_health_issue,
         api::health_issues::check_health_issue,
         api::health_issues::snooze_health_issue,
+        api::agent_channels::get_agent_chat_features,
+        api::agent_api::work_chat::get_work_chat_config,
+        api::agent_api::work_chat::resolve_work_chat_main,
+        api::agent_api::work_chat::list_work_chat_tasks,
+        api::agent_api::work_chat::get_work_chat_files,
+        api::agent_api::work_chat::write_work_chat_file,
+        api::agent_api::work_chat::delete_work_chat_file,
         api::agent_channels::list_agent_channels,
         api::agent_channels::create_agent_channel,
         api::agent_channels::get_agent_channel,
@@ -580,6 +587,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
     ),
     components(
         schemas(
+            crate::domains::agent_channels::record::work_chat::ChatFeatures,
+            api::agent_api::work_chat::FileWrite,
             api::command_dispatch::CommandCatalog,
             api::command_dispatch::CommandEntry,
             api::command_dispatch::CommandRequest,

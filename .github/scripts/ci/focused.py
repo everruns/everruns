@@ -48,6 +48,13 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith('crates/server/src/domains/knowledge/')
+           or p in ('crates/server/src/api/knowledge.rs',
+                    'crates/server/src/api/agent_api/work_chat.rs',
+                    'crates/server/tests/domain/work_chat_test.rs') for p in paths):
+        # Agent Knowledge mounts remain private to runtime views; a consumer's
+        # workspace must not expose them through normalized workspace aliases.
+        filters.add('work_chat_test::')
     if any(p.startswith(('crates/server/src/domains/agents/credentials.rs',
                          'crates/server/src/domains/credentials/',
                          'crates/server/src/domains/resource_access/',

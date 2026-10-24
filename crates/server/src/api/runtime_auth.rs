@@ -39,7 +39,10 @@ async fn exchange(
     if super::channel_ingress::channel_liveness(&context, &channel).is_err() {
         return Err(StatusCode::NOT_FOUND);
     }
-    let principal = if channel.channel_type == ChannelType::Api {
+    let principal = if matches!(
+        channel.channel_type,
+        ChannelType::Api | ChannelType::WorkChat
+    ) {
         api_channel_principal(&state, &context, &channel, &headers).await?
     } else {
         let public_chat_auth = channel.public_chat_config().and_then(|c| c.auth);
@@ -69,7 +72,10 @@ async fn exchange(
     };
     // An api channel's tokens name the channel's own id, which is what its
     // routes compare against, whichever alias the URL used.
-    let endpoint = if channel.channel_type == ChannelType::Api {
+    let endpoint = if matches!(
+        channel.channel_type,
+        ChannelType::Api | ChannelType::WorkChat
+    ) {
         channel.public_id.to_string()
     } else {
         endpoint

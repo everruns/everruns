@@ -20,6 +20,7 @@ const icons = {
   fcp: Hash,
   a2a: Network,
   api: KeyRound,
+  work_chat: Monitor,
   public_chat: MessageSquare,
   voice: Mic,
   poppy: Handshake,

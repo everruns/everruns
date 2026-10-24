@@ -353,6 +353,21 @@ Landed:
   `Mcp-Method`, `Mcp-Name`). Pure pieces in `crates/core/src/mcp/protocol.rs`,
   orchestration in `http.rs`. Contract detail in
   [mcp-servers.md](mcp-servers.md) ("Multi-era protocol support").
+- MCP Tasks client (`2026-07-28`, `io.modelcontextprotocol/tasks`): the HTTP
+  transport declares the extension on `tools/call` and `tasks/*`, waits for a
+  `CreateTaskResult` by polling `tasks/get` (task id in the param and the
+  `Mcp-Name` header, the server's `pollIntervalMs` bounded to 250 ms..30 s),
+  answers `input_required` through the same URL and form elicitation handlers
+  as MRTR (each key once) with `tasks/update`, and sends `tasks/cancel` for a
+  task it stops waiting for: wait limit, a question that stands the call down
+  for a person, or a dropped call. A rerun creates a new task. Each change of
+  the server's `statusMessage` becomes a `tool.progress` event on the call
+  (`report_mcp_call_progress`, a task-local the MCP proxy tool scopes around
+  the call; server text trimmed and cut to 200 characters). Decisions in the
+  header of `crates/core/src/mcp/tasks.rs`; tests in
+  `crates/core/tests/consolidated/mcp/tasks.rs`, and against Everruns' own
+  `/mcp` in `crates/server/tests/domain/mcp_tasks_interop_test.rs`. stdio and
+  the connection-less `http_call_tool` do not declare it.
 
 Remaining follow-up:
 

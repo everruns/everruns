@@ -143,6 +143,13 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_knowledge_mount_changes_cover_consumer_workspace_isolation(self):
+        for path in ['crates/server/src/domains/knowledge/runtime.rs',
+                     'crates/server/src/api/knowledge.rs',
+                     'crates/server/src/api/agent_api/work_chat.rs',
+                     'crates/server/tests/domain/work_chat_test.rs']:
+            self.assertIn('work_chat_test::', focused.risk_filters([path]))
+
     def test_database_backend_changes_run_real_router_fixtures(self):
         targets=['background_sweep_wiring_test','pat_scope_sweep_test']
         for path in ['crates/server/src/storage/test_database.rs',

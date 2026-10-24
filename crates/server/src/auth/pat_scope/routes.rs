@@ -26,6 +26,46 @@ use super::RouteAccess::{self, Never, PerCommand, Read, Write};
 /// `(method, path, class)` for hand-written routes in the OpenAPI document,
 /// sorted by path.
 pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
+    ("GET", "/v1/channels/{channel_id}/chat/config", Read),
+    ("POST", "/v1/channels/{channel_id}/chat/main", Write),
+    (
+        "GET",
+        "/v1/channels/{channel_id}/sessions/{session_id}/work",
+        Read,
+    ),
+    (
+        "GET",
+        "/v1/channels/{channel_id}/sessions/{session_id}/files",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/channels/{channel_id}/sessions/{session_id}/files",
+        Write,
+    ),
+    (
+        "DELETE",
+        "/v1/channels/{channel_id}/sessions/{session_id}/files",
+        Write,
+    ),
+    ("GET", "/v1/e/{channel_id}/chat/config", Read),
+    ("POST", "/v1/e/{channel_id}/chat/main", Write),
+    ("GET", "/v1/e/{channel_id}/sessions/{session_id}/work", Read),
+    (
+        "GET",
+        "/v1/e/{channel_id}/sessions/{session_id}/files",
+        Read,
+    ),
+    (
+        "POST",
+        "/v1/e/{channel_id}/sessions/{session_id}/files",
+        Write,
+    ),
+    (
+        "DELETE",
+        "/v1/e/{channel_id}/sessions/{session_id}/files",
+        Write,
+    ),
     ("GET", "/v1/agent-examples", Read),
     ("GET", "/v1/agents", Read),
     ("POST", "/v1/agents", Write),
@@ -46,6 +86,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/agents/{agent_id}/avatar/preset", Read),
     ("PUT", "/v1/agents/{agent_id}/avatar/preset", Write),
     ("GET", "/v1/agents/{agent_id}/channels", Read),
+    ("GET", "/v1/agents/{agent_id}/chat-features", Read),
     ("POST", "/v1/agents/{agent_id}/channels", Write),
     (
         "DELETE",

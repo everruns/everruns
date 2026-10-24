@@ -752,7 +752,19 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                 let body = Box::pin(async {
                     // Entity history: an invalid reason fails before anything changes.
                     let pending = super::change_history::PendingChange::of(&self, ctx).await?;
+                    let check_chat = Self::transactional()
+                        && meta.method != "GET"
+                        && matches!(
+                            meta.category,
+                            "agents" | "harnesses" | "agent_channels" | "agent_packages"
+                        );
+                    if check_chat {
+                        ctx.db.lock_chat_configuration(ctx.org_id()).await?;
+                    }
                     let output = self.execute(ctx).await?;
+                    if check_chat {
+                        super::agent_channels::work_chat::validate_live(ctx).await?;
+                    }
                     super::change_history::PendingChange::record(pending, &meta, ctx, &output)
                         .await?;
                     Ok(output)

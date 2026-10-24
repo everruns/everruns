@@ -886,6 +886,7 @@ impl ServerAppBuilder {
         .with_channel_host();
         let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
+            session_service: sessions_state.session_service.clone(),
             db: db.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),

@@ -2123,6 +2123,43 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/chat-features": {
+      "get": {
+        "tags": [
+          "agent-channels"
+        ],
+        "summary": "Get eligible chat interfaces",
+        "operationId": "get_agent_chat_features",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective hosted interface features",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFeatures"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/copy": {
       "post": {
         "tags": [
@@ -6608,6 +6645,96 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/chat/config": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat config",
+        "description": "Public bootstrap for one live Work Chat channel.",
+        "operationId": "get_work_chat_config",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/chat/main": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Resolve work chat main",
+        "description": "Resolve the consumer’s permanent main conversation.",
+        "operationId": "resolve_work_chat_main",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/fcp": {
       "post": {
         "tags": [
@@ -7237,6 +7364,201 @@
         }
       }
     },
+    "/v1/channels/{channel_id}/sessions/{session_id}/files": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat files",
+        "description": "Browse or read authorized workspace files.",
+        "operationId": "get_work_chat_files",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Write work chat file",
+        "description": "Create or update a writable workspace file.",
+        "operationId": "write_work_chat_file",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Delete work chat file",
+        "description": "Delete a writable workspace file.",
+        "operationId": "delete_work_chat_file",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/channels/{channel_id}/sessions/{session_id}/messages": {
       "post": {
         "tags": [
@@ -7658,6 +7980,61 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/sessions/{session_id}/work": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat tasks",
+        "description": "Background work and threads in this consumer conversation.",
+        "operationId": "list_work_chat_tasks",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
           }
         },
         "security": [
@@ -10577,6 +10954,110 @@
         "x-superseded-by": "agent_card_channel"
       }
     },
+    "/v1/e/{channel_id}/chat/config": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat config legacy",
+        "description": "Public bootstrap for one live Work Chat channel.",
+        "operationId": "get_work_chat_config_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "get_work_chat_config"
+      }
+    },
+    "/v1/e/{channel_id}/chat/main": {
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Resolve work chat main legacy",
+        "description": "Resolve the consumer’s permanent main conversation.",
+        "operationId": "resolve_work_chat_main_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "resolve_work_chat_main"
+      }
+    },
     "/v1/e/{channel_id}/fcp": {
       "post": {
         "tags": [
@@ -10955,6 +11436,216 @@
           "support": "preview"
         },
         "x-superseded-by": "agent_api_cancel"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/files": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat files legacy",
+        "description": "Browse or read authorized workspace files.",
+        "operationId": "get_work_chat_files_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "get_work_chat_files"
+      },
+      "post": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Write work chat file legacy",
+        "description": "Create or update a writable workspace file.",
+        "operationId": "write_work_chat_file_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "write_work_chat_file"
+      },
+      "delete": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Delete work chat file legacy",
+        "description": "Delete a writable workspace file.",
+        "operationId": "delete_work_chat_file_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "delete_work_chat_file"
       }
     },
     "/v1/e/{channel_id}/sessions/{session_id}/messages": {
@@ -11411,6 +12102,66 @@
           "support": "preview"
         },
         "x-superseded-by": "agent_api_submit_tool_approvals"
+      }
+    },
+    "/v1/e/{channel_id}/sessions/{session_id}/work": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "List work chat tasks legacy",
+        "description": "Background work and threads in this consumer conversation.",
+        "operationId": "list_work_chat_tasks_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Consumer sign-in required"
+          },
+          "404": {
+            "description": "Channel or resource unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "list_work_chat_tasks"
       }
     },
     "/v1/e/{channel_id}/webhook": {
@@ -32828,6 +33579,12 @@
             ],
             "description": "Outcome of the last finished turn: `completed`, `failed` or `cancelled`."
           },
+          "parent_session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "pending_approvals": {
             "type": [
               "array",
@@ -35314,7 +36071,8 @@
           "public_chat",
           "voice",
           "api",
-          "poppy"
+          "poppy",
+          "work_chat"
         ],
         "example": "webhook"
       },
@@ -35342,6 +36100,26 @@
               "null"
             ],
             "description": "Continue an existing session of the channel's agent (for example a text\nconversation). When omitted, the call starts a new session."
+          }
+        }
+      },
+      "ChatFeatures": {
+        "type": "object",
+        "description": "This contract is shared by publication and runtime bootstrap. A worker-role\ncoordination capability has no thread tools and must never qualify.",
+        "required": [
+          "threads",
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "boolean",
+            "description": "Effective Agent exposes a session filesystem.",
+            "example": true
+          },
+          "threads": {
+            "type": "boolean",
+            "description": "Effective coordinator tools support child work threads.",
+            "example": true
           }
         }
       },
@@ -42543,6 +43321,43 @@
             "example": 1048576
           }
         }
+      },
+      "FileWrite": {
+        "type": "object",
+        "description": "Revision-checked creation or update of one consumer workspace file.",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "UTF-8 text or base64-encoded bytes.",
+            "example": "Meeting notes"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content encoding, either text or base64.",
+            "example": "text"
+          },
+          "expected_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Revision returned by the previous read; required when replacing a file.",
+            "example": "f6d4cf68d1e6c37f7d24a5a85db31ba4"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path within the consumer workspace.",
+            "example": "/workspace/notes.md"
+          }
+        },
+        "additionalProperties": false
       },
       "FileWrittenData": {
         "type": "object",

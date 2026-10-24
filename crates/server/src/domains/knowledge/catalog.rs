@@ -22,7 +22,7 @@ impl KnowledgeService {
         {
             return Err(CommandError::bad_request("Invalid bounded catalog query"));
         }
-        // THREAT[TM-FS-022]: browsing uses the calling session's live bindings,
+        // THREAT[TM-FS-023]: browsing uses the calling session's live bindings,
         // never the attachments of another session sharing its workspace.
         let config = self.session_config(org, session).await?;
         if config.collections.iter().any(|c| c == "everruns-docs") {

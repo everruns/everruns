@@ -243,7 +243,9 @@ was configurable; the accepted range is 1 s to 30 min, checked when config is
 written and clamped again in the client so a row written before validation
 cannot hold a worker longer. The cap exists because a blocking call holds a
 worker for its whole duration: work longer than that belongs in an MCP task,
-which the client polls instead of holding open. `timeout` is accepted as an
+which the client polls instead of holding open. A task is bounded by its own
+wait limit instead (30 min, `TASK_WAIT_LIMIT` in `crates/core/src/mcp/tasks.rs`);
+`tool_timeout_ms` then only bounds each request. `timeout` is accepted as an
 alias, matching common `mcpServers` config files.
 
 Unlike `elicitation_policy` it is not a trust decision, so an attachment that
