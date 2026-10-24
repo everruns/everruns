@@ -4,4 +4,5 @@ mod http_transport;
 mod protocol_negotiation;
 #[cfg(feature = "mcp-stdio")]
 mod stdio_transport;
+mod tasks;
 mod url_elicitation;

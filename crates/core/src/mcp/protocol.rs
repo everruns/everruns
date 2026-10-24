@@ -67,6 +67,10 @@ pub struct ClientCapabilities {
     /// ([`crate::mcp::form_elicitation::FormElicitationHandler`]). Declared per
     /// server, and only when that server's policy opts in.
     pub form_elicitation: bool,
+    /// The host polls a `tools/call` that the server turns into a task (the
+    /// MCP Tasks extension, [`crate::mcp::tasks`]). Declared on `tools/call`
+    /// and `tasks/*` only, by transports that run the polling loop.
+    pub tasks: bool,
 }
 
 impl ClientCapabilities {
@@ -85,6 +89,7 @@ impl ClientCapabilities {
 /// `elicitation_policy` allows it. Form mode is opt-in per server because its
 /// answer is data a person types into a question a third party wrote.
 pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
+    let tasks = capabilities.tasks;
     let mut modes = Map::new();
     if capabilities.url_elicitation {
         modes.insert("url".to_string(), json!({}));
@@ -92,11 +97,17 @@ pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
     if capabilities.form_elicitation {
         modes.insert("form".to_string(), json!({}));
     }
-    if modes.is_empty() {
-        json!({})
-    } else {
-        json!({ "elicitation": modes })
+    let mut capabilities = Map::new();
+    if !modes.is_empty() {
+        capabilities.insert("elicitation".to_string(), Value::Object(modes));
     }
+    if tasks {
+        capabilities.insert(
+            "extensions".to_string(),
+            json!({ crate::mcp::tasks::TASKS_EXTENSION_KEY: {} }),
+        );
+    }
+    Value::Object(capabilities)
 }
 
 /// The `_meta` object carried on every request body in the stateless era.
@@ -399,7 +410,19 @@ pub fn input_required_from_result(body: &str) -> Option<InputRequired> {
     if result.get("resultType")?.as_str()? != "input_required" {
         return None;
     }
-    let requests = result
+    Some(InputRequired {
+        requests: input_requests(result),
+        request_state: result
+            .get("requestState")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+/// The `inputRequests` map of a result, as a list. Shared by MRTR results and
+/// `input_required` tasks, which carry the same map.
+pub fn input_requests(result: &Value) -> Vec<InputRequest> {
+    result
         .get("inputRequests")
         .and_then(Value::as_object)
         .map(|requests| {
@@ -416,14 +439,7 @@ pub fn input_required_from_result(body: &str) -> Option<InputRequired> {
                 })
                 .collect()
         })
-        .unwrap_or_default();
-    Some(InputRequired {
-        requests,
-        request_state: result
-            .get("requestState")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    })
+        .unwrap_or_default()
 }
 
 /// Who may reuse a cached result, per the `2026-07-28` caching spec.
@@ -708,6 +724,7 @@ mod tests {
             ClientCapabilities {
                 url_elicitation: true,
                 form_elicitation: false,
+                tasks: false,
             },
         );
         assert_eq!(
@@ -719,11 +736,24 @@ mod tests {
             ClientCapabilities {
                 url_elicitation: true,
                 form_elicitation: true,
+                tasks: false,
             },
         );
         assert_eq!(
             with_form.get(CLIENT_CAPABILITIES_META_KEY),
             Some(&json!({ "elicitation": { "url": {}, "form": {} } }))
+        );
+        // The Tasks extension is declared as an extension, beside elicitation.
+        let with_tasks = request_meta(
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                tasks: true,
+                ..ClientCapabilities::none()
+            },
+        );
+        assert_eq!(
+            with_tasks.get(CLIENT_CAPABILITIES_META_KEY),
+            Some(&json!({ "extensions": { "io.modelcontextprotocol/tasks": {} } }))
         );
     }
 
@@ -817,6 +847,7 @@ mod tests {
             ClientCapabilities {
                 url_elicitation: true,
                 form_elicitation: false,
+                tasks: false,
             },
             Some("AEAD-blob=="),
             &responses,
