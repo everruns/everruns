@@ -489,3 +489,101 @@ fn first_sentence_is_bounded_and_plain() {
     assert!(cut.ends_with('…'));
     assert!(first_sentence("   ", 20).is_none());
 }
+
+fn private_report(state: WorkState) -> WorkReport {
+    WorkReport {
+        turn_id: "turn_1".into(),
+        state,
+        headline: "Running `curl -H 'token: abc' …`".into(),
+        agent_name: Some("Coding Agent".into()),
+        model: Some("gpt-6.1-sol".into()),
+        started_at: None,
+        ended_at: None,
+        duration_ms: Some(13_000),
+        plan: Some(WorkPlan {
+            items: vec![ProgressStep {
+                title: "Rotate the staging key".into(),
+                status: ProgressStepStatus::InProgress,
+            }],
+            done: 2,
+            total: 4,
+            current: Some("Rotating the staging key".into()),
+        }),
+        steps: vec![WorkStep {
+            id: "c1".into(),
+            tool_name: "bash".into(),
+            label: "Running `curl -H 'token: abc' …`".into(),
+            state: WorkStepState::Running,
+            started_at: None,
+            duration_ms: None,
+            progress: None,
+        }],
+        omitted_steps: 3,
+        attention: Some(WorkAttention {
+            kind: WorkAttentionKind::Approval,
+            prompt: "Deploy to staging".into(),
+            tool_call_ids: vec!["c2".into()],
+        }),
+        result: Some(WorkResult {
+            summary: Some("Rotated the key.".into()),
+            summary_source: Some(WorkSummarySource::Agent),
+            facts: vec![WorkFact {
+                kind: WorkFactKind::FilesChanged,
+                value: 1,
+            }],
+            artifacts: vec![
+                TaskArtifact {
+                    name: "PR #12".into(),
+                    artifact_type: "pr".into(),
+                    path: None,
+                    url: Some("https://github.com/o/r/pull/12".into()),
+                },
+                TaskArtifact {
+                    name: "secrets.env".into(),
+                    artifact_type: "file".into(),
+                    path: Some("/workspace/secrets.env".into()),
+                    url: None,
+                },
+            ],
+            checks: Some("ran the deploy dry run".into()),
+            outcome: Some(WorkOutcome::Done),
+        }),
+    }
+}
+
+#[test]
+fn public_view_keeps_counts_and_drops_labels_prompts_and_paths() {
+    let public = private_report(WorkState::Working).public_view();
+    assert_eq!(public.headline, "Step 3 of 4");
+    assert!(public.steps.is_empty());
+    assert_eq!(public.omitted_steps, 4);
+    let plan = public.plan.as_ref().unwrap();
+    assert!(plan.items.is_empty() && plan.current.is_none());
+    assert_eq!((plan.done, plan.total), (2, 4));
+    assert_eq!(public.model, None);
+    let attention = public.attention.as_ref().unwrap();
+    assert!(attention.prompt.is_empty() && attention.tool_call_ids.is_empty());
+    let result = public.result.as_ref().unwrap();
+    assert_eq!(result.summary.as_deref(), Some("Rotated the key."));
+    assert_eq!(result.artifacts.len(), 1);
+    assert_eq!(result.artifacts[0].name, "PR #12");
+    let text = serde_json::to_string(&public).unwrap();
+    for secret in ["token", "Deploy to staging", "staging key", "secrets.env"] {
+        assert!(!text.contains(secret), "{secret} leaked into {text}");
+    }
+}
+
+#[test]
+fn public_view_headlines_name_only_the_kind_of_wait() {
+    let mut report = private_report(WorkState::NeedsYou);
+    assert_eq!(report.public_view().headline, "Needs approval");
+    report.plan = None;
+    report.state = WorkState::Working;
+    assert_eq!(report.public_view().headline, "Working");
+    report.state = WorkState::Done;
+    report.headline = "Done in 13s · 1 file changed".into();
+    assert_eq!(
+        report.public_view().headline,
+        "Done in 13s · 1 file changed"
+    );
+}

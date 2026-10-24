@@ -352,6 +352,68 @@ impl WorkReport {
         builder.build(now)
     }
 
+    /// The report with nothing a caller outside the agent's owner should
+    /// see: no step labels, plan item titles, approval prompts, file paths or
+    /// model. Step labels are tool narration, which can quote tool arguments,
+    /// so a public surface keeps counts, state, the agent's own summary and
+    /// links only. While working the headline becomes "Step N of M" when the
+    /// agent shared a plan, else "Working"; a waiting report names only the
+    /// kind of request. Finished headlines are built from facts and time and
+    /// stay as they are.
+    pub fn public_view(&self) -> Self {
+        let plan = self.plan.as_ref().map(|plan| WorkPlan {
+            items: Vec::new(),
+            done: plan.done,
+            total: plan.total,
+            current: None,
+        });
+        let headline = match self.state {
+            WorkState::Working => match &plan {
+                Some(plan) if plan.total > 0 => {
+                    format!("Step {} of {}", (plan.done + 1).min(plan.total), plan.total)
+                }
+                _ => "Working".to_string(),
+            },
+            WorkState::NeedsYou => match self.attention.as_ref().map(|a| a.kind) {
+                Some(WorkAttentionKind::Approval) => "Needs approval".to_string(),
+                Some(WorkAttentionKind::Question) => "Waiting for an answer".to_string(),
+                _ => "Waiting for input".to_string(),
+            },
+            _ => self.headline.clone(),
+        };
+        let result = self.result.as_ref().map(|result| WorkResult {
+            artifacts: result
+                .artifacts
+                .iter()
+                .filter(|artifact| artifact.url.is_some())
+                .map(|artifact| TaskArtifact {
+                    path: None,
+                    ..artifact.clone()
+                })
+                .collect(),
+            ..result.clone()
+        });
+        Self {
+            turn_id: self.turn_id.clone(),
+            state: self.state,
+            headline,
+            agent_name: self.agent_name.clone(),
+            model: None,
+            started_at: self.started_at,
+            ended_at: self.ended_at,
+            duration_ms: self.duration_ms,
+            plan,
+            steps: Vec::new(),
+            omitted_steps: self.omitted_steps + self.steps.len() as u32,
+            attention: self.attention.as_ref().map(|attention| WorkAttention {
+                kind: attention.kind,
+                prompt: String::new(),
+                tool_call_ids: Vec::new(),
+            }),
+            result,
+        }
+    }
+
     /// Value of one fact, if present.
     pub fn fact(&self, kind: WorkFactKind) -> Option<u64> {
         self.result

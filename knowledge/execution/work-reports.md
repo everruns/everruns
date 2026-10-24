@@ -96,6 +96,26 @@ static status while that session runs or waits, prefixed with the plan step
 when there is one. They poll the report only while live, so a list of a
 thousand finished sessions costs no report reads.
 
+### Public view
+
+Callers outside the agent's owner get `WorkReport::public_view`: state, plan
+counts, timing, facts, the agent's summary and checks, and links with a URL.
+It drops step labels, plan item titles, approval prompts, file paths and the
+model, because step labels are tool narration and narration can quote tool
+arguments (the same reason `public_tool_activity_text` never forwards it).
+Working and waiting headlines are rebuilt from counts ("Step 3 of 4",
+"Working", "Needs approval"); finished headlines are built from facts and time
+and pass through.
+
+The Agent Execution API's session read (`GET /v1/channels/{id}/sessions/{id}`)
+carries the latest report as `work`: the whole report under `full` visibility,
+the public view under `activity` and `messages`.
+
+Slack, AG-UI and A2A do not get a projection. Their public status already says
+"working" and "waiting", their reply carries the result, and a view without
+step labels would add only plan counts and facts to a message the person reads
+anyway. Revisit if a channel gains a status surface that can show counts.
+
 ## Delivery plan
 
 1. Reducer, `GET /v1/sessions/{id}/work`, this concept.
@@ -105,4 +125,5 @@ thousand finished sessions costs no report reads.
 4. Shared work card for chat runs, the thread board and the sessions list.
 5. `report_done`: the agent's own summary, checks and artifacts;
    `complete_assignment` folds into it.
-6. Agent Execution API result, Slack, AG-UI and A2A projections, SDKs, docs.
+6. Agent Execution API result (public view), SDKs, public docs and
+   changelog. Channel projections dropped, see [Public view](#public-view).
