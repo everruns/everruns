@@ -40,7 +40,8 @@ tags: [ui, test-case, platform-chat, forms]
    in the page pane. Close/Escape explicitly; the underlying page binding must return.
 8. While Chat is thinking, change a field or navigate to another page/form. A stale
    patch must fail. Repeat by closing a dialog, replacing a record on the same route,
-   and switching organizations. None may reuse the preceding binding.
+   and switching organizations. Reopen a closed form with identical values: its
+   preceding binding and captured adapter must stay invalid.
 9. Refresh a saved record while its draft is dirty. Keep the draft visible, block its
    Save and new patches, then Discard/Cancel and reopen to review the current record.
    Include manual source/embedding controls in metadata-only dialogs: their edits

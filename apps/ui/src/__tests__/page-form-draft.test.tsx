@@ -23,10 +23,12 @@ const mode: ChatModeState = {
   },
 };
 function Form({
+  enabled = true,
   baseline = "v1",
   id = "observer_1",
   formSchema = schema,
 }: {
+  enabled?: boolean;
   baseline?: string;
   id?: string;
   formSchema?: typeof schema;
@@ -34,6 +36,7 @@ function Form({
   const [values, setValues] = useState({ name: "Existing", description: "Manual requirement" });
   const dirty = values.name !== "Existing" || values.description !== "Manual requirement";
   const chat = usePageFormDraft({
+    enabled,
     entityType: "observer",
     entityId: id,
     label: "Observer",
@@ -194,4 +197,24 @@ it("does not bind forms outside the right-page subtree", () => {
   );
   expect(registerPage).not.toHaveBeenCalled();
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+it("invalidates a closed form even after reopening with identical values", () => {
+  const view = (enabled: boolean) => (
+    <PageChatProvider value={mode}>
+      <Form enabled={enabled} />
+    </PageChatProvider>
+  );
+  const { rerender } = render(view(true));
+  const old = adapter;
+  const before = old.read(old.describe().binding);
+  rerender(view(false));
+  expect(() => old.read(before.binding)).toThrow(/no longer available/);
+  rerender(view(true));
+  expect(adapter.describe().binding).not.toBe(before.binding);
+  expect(() => old.read(before.binding)).toThrow(/no longer available/);
+  expect(() => adapter.patch(before.binding, before.revision, { name: "Delayed edit" })).toThrow(
+    /no longer the current page/,
+  );
+  expect(screen.getByLabelText("Name")).toHaveValue("Existing");
 });

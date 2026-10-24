@@ -110,7 +110,9 @@ has no API client or Save callback. Text-only integrations project an independen
 field-name allowlist, so passing additional local state cannot expose a credential.
 The returned patch schema describes the fields actually supported on that form;
 unknown fields, invalid values, read-only fields and stale revisions fail before
-any setter. Patches preserve omitted values. A notice names changed fields and
+any setter. Closing and reopening a form rotates its binding even when values
+are identical; captured adapters from the preceding lifecycle remain unavailable.
+Patches preserve omitted values. A notice names changed fields and
 offers guarded draft Undo, preserving later manual edits. Saved-baseline conflicts
 keep dirty work and block the integration's Save action until it is discarded.
 
