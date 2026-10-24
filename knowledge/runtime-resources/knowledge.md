@@ -27,6 +27,13 @@ lazy session-authorized mounts including shared
 workspaces, exact grep, indexed shell/tool retrieval, automatic progressive
 disclosure, built-in docs and organization BYOK. Management uses organization
 settings permissions; attaching a collection explicitly authorizes runtime reads.
+Collection configuration and source attachments participate in entity history,
+manager context and configuration restore. Indexer creation records only public
+configuration and its credential-binding reference. File writes, deletions and
+metadata retain immutable file versions; deletion and read/index flags live in
+the file catalog. These operations, sync jobs and changing index counts do not
+create collection configuration revisions. Configuration restore preserves
+file contents and current source progress.
 [Product documentation](../../docs/capabilities/knowledge.md) owns operational limits.
 
 The remaining sections describe contracts and extension directions, not a claim

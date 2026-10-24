@@ -200,6 +200,9 @@ impl KnowledgeService {
     }
     pub async fn mount_read(&self, session: Uuid, p: &str) -> anyhow::Result<Option<SessionFile>> {
         let (_, collections) = self.mounted(session).await?;
+        if collections.is_empty() {
+            return Ok(None);
+        }
         let mut text = None;
         let mut version = None;
         if p == "/knowledge/index.md" || p == "/knowledge-text/index.md" {
@@ -308,6 +311,9 @@ impl KnowledgeService {
     }
     pub async fn mount_list(&self, session: Uuid, p: &str) -> anyhow::Result<Vec<FileInfo>> {
         let (_, collections) = self.mounted(session).await?;
+        if collections.is_empty() {
+            return Ok(vec![]);
+        }
         let now = chrono::Utc::now();
         let entry = |id, p: String, dir, size| FileInfo {
             id,
@@ -377,11 +383,14 @@ impl KnowledgeService {
         Ok(entries)
     }
     pub async fn mount_stat(&self, session: Uuid, p: &str) -> anyhow::Result<Option<FileStat>> {
+        let (_, collections) = self.mounted(session).await?;
+        if collections.is_empty() {
+            return Ok(None);
+        }
         if matches!(
             p,
             "/knowledge" | "/knowledge-text" | "/knowledge/index.md" | "/knowledge-text/index.md"
         ) {
-            let _ = self.mounted(session).await?;
             let now = chrono::Utc::now();
             return Ok(Some(FileStat {
                 path: p.into(),
@@ -393,7 +402,6 @@ impl KnowledgeService {
                 updated_at: now,
             }));
         }
-        let (_, collections) = self.mounted(session).await?;
         let (collection, inner, extracted) = split(p)?;
         let Some(c) = collections.iter().find(|c| c.public_id() == collection) else {
             return Ok(None);

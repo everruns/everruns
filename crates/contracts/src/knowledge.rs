@@ -174,6 +174,7 @@ impl Default for KnowledgeQuery {
 }
 
 /// Platform mount roots; normalize workspace aliases before comparing.
+#[cfg(feature = "runtime")]
 pub fn is_mount(path: &str) -> bool {
     let path = crate::runtime::session_path::to_session_path(path);
     path == "/knowledge"

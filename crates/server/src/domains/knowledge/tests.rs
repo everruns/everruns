@@ -1058,3 +1058,72 @@ async fn agents_can_page_large_unindexed_catalogs_without_disclosing_denied_file
         .unwrap();
     assert!(index.content.unwrap().contains("browse_knowledge"));
 }
+
+#[tokio::test]
+async fn collection_history_restores_configuration_without_content_or_worker_noise() {
+    use crate::domains::common::{Ctx, dispatch};
+    let s = fixture();
+    let ctx = Ctx::minimal_for_test(everruns_core::Caller::internal(1), s.db.clone(), None);
+    async fn command(ctx: &Ctx, name: &str, params: serde_json::Value) -> serde_json::Value {
+        serde_json::from_str(&dispatch(name, params, ctx).await.unwrap()).unwrap()
+    }
+    let created = command(
+        &ctx,
+        "create_knowledge",
+        json!({
+            "name": "Audited handbook", "description": "Original configuration", "indexing": "off"
+        }),
+    )
+    .await;
+    let id = created["id"].as_str().unwrap();
+    let c = s.collection(1, id).await.unwrap();
+    write(
+        &s,
+        &c,
+        "/private.bin",
+        b"binary contents must stay out of configuration history",
+    )
+    .await;
+    command(&ctx, "update_knowledge", json!({
+        "collection_id": id, "name": "Audited handbook", "description": "Original configuration", "indexing": "off"
+    })).await;
+    let entries = command(&ctx, "list_entity_history", json!({"entity_ref": id})).await;
+    assert_eq!(
+        entries.as_array().unwrap().len(),
+        1,
+        "content and no-op configuration do not create revisions: {entries}"
+    );
+    command(&ctx, "update_knowledge", json!({
+        "collection_id": id, "name": "Audited handbook", "description": "Changed configuration", "indexing": "lexical"
+    })).await;
+    drain(&s).await;
+    command(&ctx, "update_knowledge", json!({
+        "collection_id": id, "name": "Audited handbook", "description": "Changed configuration", "indexing": "lexical"
+    })).await;
+    let entries = command(&ctx, "list_entity_history", json!({"entity_ref": id})).await;
+    assert_eq!(
+        entries.as_array().unwrap().len(),
+        2,
+        "indexing progress does not change the configuration snapshot: {entries}"
+    );
+    command(
+        &ctx,
+        "restore_entity_revision",
+        json!({"entity_ref": id, "revision": 1}),
+    )
+    .await;
+    let restored = s.collection(1, id).await.unwrap();
+    assert_eq!(restored.description, "Original configuration");
+    assert_eq!(restored.indexing, "off");
+    let (_, bytes) = s
+        .read_bytes(&restored, "/private.bin", &PageQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        bytes,
+        b"binary contents must stay out of configuration history"
+    );
+    let entries = command(&ctx, "list_entity_history", json!({"entity_ref": id})).await;
+    assert_eq!(entries[0]["action"], "restored");
+    assert_eq!(entries[0]["restored_from_revision"], 1);
+}

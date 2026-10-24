@@ -300,8 +300,11 @@ impl Command for CreateKnowledgeIndexer {
             ));
         }
         let id = Uuid::now_v7();
+        // Search accounts are immutable references to credentials; history
+        // records this public configuration and never the credential value.
+        let output = json!({"id":id,"name":self.input.name,"endpoint":self.input.endpoint.trim_end_matches('/'),"credential_binding_id":self.input.credential_binding_id,"status":"active"});
         sqlx::query("INSERT INTO knowledge_indexers(id,org_id,name,endpoint,credential_binding_id) VALUES($1,$2,$3,$4,$5)").bind(id).bind(ctx.org_id()).bind(self.input.name).bind(self.input.endpoint.trim_end_matches('/')).bind(self.input.credential_binding_id).execute(ctx.db.tx_pool()).await.map_err(db_error)?;
-        Ok(json!({"id":id}))
+        Ok(output)
     }
 }
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

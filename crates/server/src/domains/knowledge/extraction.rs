@@ -1,6 +1,6 @@
 //! Preserve source bytes; Markkit produces an independently versioned text view.
 use serde_json::{Value, json};
-pub const PROFILE: &str = "markkit-0.1.0/knowledge-v1";
+pub const PROFILE: &str = "markkit-0.1.1/knowledge-v1";
 pub struct Extracted {
     pub text: Option<String>,
     pub metadata: Value,

@@ -87,6 +87,27 @@ pub(super) async fn capture(
         None => output_entity(output, entity_ref)?,
     };
     let mut snapshot = normalize(state);
+    if kind == EntityKind::Knowledge {
+        // Content has its own immutable versions. Configuration snapshots must
+        // not change when workers advance jobs, file counts or source cursors.
+        if let Some(object) = snapshot.as_object_mut() {
+            for field in ["revision", "file_count", "indexed_count", "jobs"] {
+                object.remove(field);
+            }
+            if let Some(sources) = object.get_mut("sources").and_then(Value::as_array_mut) {
+                for source in sources {
+                    if let Some(fields) = source.as_object_mut() {
+                        fields.retain(|key, _| {
+                            matches!(
+                                key.as_str(),
+                                "id" | "kind" | "root_path" | "config" | "connection_owner"
+                            )
+                        });
+                    }
+                }
+            }
+        }
+    }
     let secrets = secret_markers(ctx, kind, entity_ref, &snapshot).await;
     if !secrets.is_empty()
         && let Some(object) = snapshot.as_object_mut()
@@ -289,6 +310,8 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::KnowledgeBase => ("update_knowledge_base", "kb_id"),
         EntityKind::KnowledgeEntry => ("update_knowledge_entry", "entry_id"),
         EntityKind::KnowledgeIndex => ("update_knowledge_index", "index_id"),
+        EntityKind::Knowledge => ("update_knowledge", "collection_id"),
+        EntityKind::KnowledgeIndexer => return None,
         EntityKind::Memory => ("update_memory", "memory_id"),
         EntityKind::Provider => ("update_provider", "id"),
         EntityKind::Model => ("update_model", "id"),

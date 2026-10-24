@@ -284,7 +284,7 @@ describe("useGlobalSearch", () => {
     ["new side chat", "/chats/new"],
     ["all chats", "/chats/history"],
     ["reports", "/reports"],
-    ["knowledge indexes", "/knowledge-indexes"],
+    ["knowledge", "/knowledge"],
     ["plugins", "/plugins"],
     ["observers", "/observers"],
     ["payments", "/settings/payments"],

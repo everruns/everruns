@@ -37,6 +37,8 @@ pub enum EntityKind {
     KnowledgeBase,
     KnowledgeEntry,
     KnowledgeIndex,
+    Knowledge,
+    KnowledgeIndexer,
     Memory,
     Provider,
     Model,
@@ -69,6 +71,8 @@ impl EntityKind {
         Self::KnowledgeBase,
         Self::KnowledgeEntry,
         Self::KnowledgeIndex,
+        Self::Knowledge,
+        Self::KnowledgeIndexer,
         Self::Memory,
         Self::Provider,
         Self::Model,
@@ -101,6 +105,8 @@ impl EntityKind {
             Self::KnowledgeBase => "knowledge_base",
             Self::KnowledgeEntry => "knowledge_entry",
             Self::KnowledgeIndex => "knowledge_index",
+            Self::Knowledge => "knowledge",
+            Self::KnowledgeIndexer => "knowledge_indexer",
             Self::Memory => "memory",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -142,6 +148,8 @@ impl EntityKind {
             Self::KnowledgeBase => "kb",
             Self::KnowledgeEntry => "kbe",
             Self::KnowledgeIndex => "kidx",
+            Self::Knowledge => "kn",
+            Self::KnowledgeIndexer => return None,
             Self::Memory => "mem",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -186,6 +194,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_VIEW,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_VIEW,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_VIEW,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::VIEW,
             Self::Memory => &memory::MEMORY_VIEW,
             Self::Provider => &providers::LLM_PROVIDER_VIEW,
             Self::Model => &models::LLM_MODEL_VIEW,
@@ -220,6 +229,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_MANAGE,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_MANAGE,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_MANAGE,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::MANAGE,
             Self::Memory => &memory::MEMORY_MANAGE,
             Self::Provider => &providers::LLM_PROVIDER_MANAGE,
             Self::Model => &models::LLM_MODEL_MANAGE,
@@ -241,7 +251,10 @@ impl EntityKind {
     /// them belong on the parent. Sessions have their own lifecycle and are not
     /// managed in this sense.
     pub fn has_manager_context(self) -> bool {
-        !matches!(self, Self::KnowledgeEntry | Self::EvalCase | Self::Session)
+        !matches!(
+            self,
+            Self::KnowledgeEntry | Self::KnowledgeIndexer | Self::EvalCase | Self::Session
+        )
     }
 
     /// The read command that fetches one entity of this kind by its ref alone,
@@ -257,6 +270,7 @@ impl EntityKind {
             Self::Schedule => ("get_schedule", "schedule_id"),
             Self::KnowledgeBase => ("get_knowledge_base", "kb_id"),
             Self::KnowledgeIndex => ("get_knowledge_index", "index_id"),
+            Self::Knowledge => ("get_knowledge", "collection_id"),
             Self::Memory => ("get_memory", "memory_id"),
             Self::Provider => ("get_provider", "id"),
             Self::Model => ("get_model", "id"),
@@ -277,6 +291,7 @@ impl EntityKind {
             | Self::AgentTrigger
             | Self::AgentScript
             | Self::KnowledgeEntry
+            | Self::KnowledgeIndexer
             | Self::EvalCase => return None,
         })
     }
@@ -495,6 +510,21 @@ pub fn declared(name: &str) -> Change {
         "update_knowledge_index" => on(K::KnowledgeIndex, Updated, ID),
         "delete_knowledge_index" => on(K::KnowledgeIndex, Deleted, Param("index_id")),
         "sync_knowledge_index" => Change::Exempt("a sync run refreshes content, not configuration"),
+
+        "create_knowledge" => on(K::Knowledge, Created, ID),
+        "update_knowledge" | "add_knowledge_source" => {
+            on(K::Knowledge, Updated, Param("collection_id"))
+        }
+        "archive_knowledge" => on(K::Knowledge, Deleted, Param("collection_id")),
+        "create_knowledge_indexer" => on(K::KnowledgeIndexer, Created, ID),
+        "sync_knowledge" => {
+            Change::Exempt("queues source refresh and derived indexing, not configuration")
+        }
+        "write_knowledge_file" | "delete_knowledge_file" | "update_knowledge_file_metadata" => {
+            Change::Exempt(
+                "file content and metadata use immutable versions; file lifecycle uses catalog state",
+            )
+        }
 
         "create_memory" => on(K::Memory, Created, ID),
         "update_memory" => on(K::Memory, Updated, ID),
