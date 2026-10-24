@@ -222,7 +222,7 @@ of the same generation; its metrics use the `llm.` prefix.
 
 ### Recorded Muse comparison (2026-10-23)
 
-**48/48 trials passed**: eight matched tasks, three repetitions per surface,
+**48/48 trials passed the fixture's current assertions**: eight matched tasks, three repetitions per surface,
 using `meta/muse-spark-1.3-contributor` through OpenRouter. The study ran serially
 in three rounds, alternating arm order. Separate paired smoke runs preceded it;
 caches were neither isolated nor forced cold. Another MCP study overlapped part
@@ -230,6 +230,12 @@ of execution, so durations are observations rather than a controlled latency
 claim. The [summary](results/surfaces-2026-10-23-summary.json) retains per-case
 results, source/binary hashes, exact batch order, and line ranges into the
 [verbatim traces](results/surfaces-2026-10-23-live.jsonl.gz).
+
+**Provisional comparison:** the subsequent review below found an invocation
+metadata gap and insufficient state-preservation assertions. These passes do
+not establish equivalent production mutation behavior. Token counts describe
+the recorded requests; rerun the matched study after fixing the contract before
+using the precise cost/latency ratios to choose a production surface.
 
 | Measure | CLI | Eager native |
 |---|---:|---:|
@@ -263,6 +269,39 @@ executor log showed only reads. The [diagnostic archive](results/surfaces-2026-1
 and its prior provenance are retained separately. After adding audit-based
 scoring and regression tests, the unchanged dataset was rerun in full. Those
 eight attempts are excluded from the 48-trial comparison.
+
+### Follow-up findings (2026-10-24)
+
+Review of the retained traces found two correctness gaps in the eval adapter
+and scorer, plus remaining discovery overhead:
+
+- **Invocation contract parity.** All 12 eager-native mutations omit a change
+  reason; all nine existing-agent updates also omit the context revision. CLI
+  supplies reasons for all 12 mutations and revisions for all nine updates.
+  The captured operation schemas describe payloads; production carries these
+  fields separately as invocation metadata. Native projection currently omits
+  that envelope, and the simulator accepts writes without enforcing the
+  default production agent-reason rule. Both arms need an equivalent invocation
+  contract and shared reason/stale-context validation before rerunning.
+- **Metadata and state preservation.** The simulator's generic create/update
+  merges put CLI reasons into all 12 resulting agent rows and context revisions
+  into nine updated rows. Those are invocation metadata, not entity fields.
+  Separate them before payload validation/mutation. The state scorer checks
+  specified partial fields and minimum operation counts, so it misses this
+  extra state. Add full before/after invariants, exact target checks, and
+  read-before-write/stale-revision cases.
+- **CLI discovery friction.** The 24 CLI trials contain 136 shell calls: the
+  existing friction classifier labels 75 as help reads and five as rejected
+  guesses. Targeted command discovery/signatures/examples should be evaluated
+  against the root/group/leaf help sequence, including cold and resumed sessions.
+
+The production invocation contract is documented in
+[Change Reasons and Manager Context](../../knowledge/execution/change-reasons-and-manager-context.md).
+The next comparable matrix should include CLI, eager native and Framework
+bounded native over the same platform catalog, tasks and invocation policy.
+The separate MCP matrix uses different schemas/tasks and cannot supply that
+missing third arm. Keep the existing raw traces and their original scores as
+historical evidence; the review does not retroactively claim a new pass rate.
 
 ### Historical CLI versus three-tool baseline
 

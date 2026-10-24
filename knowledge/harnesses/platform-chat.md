@@ -142,3 +142,9 @@ evidence, state and request/usage costs; production Platform Chat remains the
 canonical shell composition. Offline fixture results do not qualify domain
 authorization or hosted persistence, and eager native is distinct from bounded
 native search over large MCP catalogs.
+
+The experimental eager-native comparison is provisional: its captured payload
+schemas omit the production invocation metadata envelope, and its simulated
+mutations/state assertions do not yet enforce the same contract. See the
+[recorded follow-up findings](../../evals/platform-capability/README.md#follow-up-findings-2026-10-24)
+before interpreting its fixture pass rate as production behavior or surface parity.

@@ -75,6 +75,14 @@
   the session read's `work` field outside `full` visibility; Slack, AG-UI and
   A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
+* **Platform surface comparison review.** Marked the experimental eager-native
+  comparison provisional after trace review found omitted invocation metadata,
+  simulator metadata stored as entity fields, and incomplete state-preservation
+  assertions. Raw traces and original fixture scores remain historical evidence;
+  production-equivalent mutation behavior needs a corrected matched matrix.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [eval findings](../evals/platform-capability/README.md#follow-up-findings-2026-10-24).
+
 ## 2026-10-23
 
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
