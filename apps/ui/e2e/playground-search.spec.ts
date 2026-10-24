@@ -96,7 +96,14 @@ test("searches Talk as and counterparts with keyboard, paging, and stable select
     await route.fulfill({ json });
   });
   await page.goto("/playground/new?agent=agent_support&dry_run=1");
-  await expect(page.getByRole("checkbox", { name: /Dry run/ })).toBeChecked();
+  const dryRun = page.getByRole("checkbox", { name: /Dry run/ });
+  await expect(dryRun).toBeChecked();
+  await dryRun.uncheck();
+  await expect(
+    page.getByRole("button", { name: "Start Playground chat", exact: true }),
+  ).toBeVisible();
+  await dryRun.check();
+  await expect(page.getByRole("button", { name: "Start test run", exact: true })).toBeVisible();
   const talk = page.getByRole("combobox", { name: "Talk as virtual user", exact: true });
   await expect(talk).toHaveText("Alice Rivers");
   await talk.focus();

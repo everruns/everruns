@@ -426,19 +426,11 @@ describe("AgentPage layout", () => {
   it("opens Playground setup with the Agent preselected without creating a session", async () => {
     await renderPage();
 
+    expect(screen.queryByRole("button", { name: /^Dry run$/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Test in Playground/ }));
 
     expect(mockCreateSession).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
-  });
-
-  it("opens a dry-run Playground setup from Dry run", async () => {
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: /Dry run/ }));
-
-    expect(mockCreateSession).not.toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1&dry_run=1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {

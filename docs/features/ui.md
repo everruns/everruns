@@ -120,10 +120,9 @@ Header actions:
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
 - **More actions**: Sync from GitHub, Copy, Export, History, Manager notes, and Archive (or Delete, for an archived agent)
-- **Dry run**: open Playground setup with this Agent selected and dry run enabled. Tools that only
-  read run for real; every other action is simulated.
 - **Test in Playground**: open Playground setup with this Agent selected and normal execution
-  selected. Neither action starts a session until you confirm setup.
+  selected. It does not start a session until you confirm setup. Use the existing **Dry run**
+  checkbox there to simulate actions; tools that only read still run for real.
 
 In Playground setup, search **Talk as** for an end user by name, including users beyond the first
 page of results. Owners and admins can choose another active end user; other members use their

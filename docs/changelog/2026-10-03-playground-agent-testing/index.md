@@ -31,4 +31,4 @@ See [Chat and Threads](/features/ui/#chat-and-threads) and
 
 ## Update 2026-10-24
 
-Setup now supports search. **Dry run** opens simulated-action setup; **Test in Playground** opens normal setup. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).
+Setup now supports search. **Test in Playground** opens normal setup; its existing **Dry run** checkbox selects simulated actions. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).
