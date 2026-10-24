@@ -6955,6 +6955,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show what a session's turn is doing or got done */
+    get: operations["get_session_work"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/skills": {
     parameters: {
       query?: never;
@@ -25866,6 +25883,10 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    /** @description Response of `GET /v1/sessions/{session_id}/work`. */
+    SessionWorkResult: {
+      report?: components["schemas"]["WorkReport"] | null;
+    };
     /** @description The avatar source: exactly one of `preset_id` or `image_base64`. */
     SetAgentAvatarRequest: {
       /**
@@ -31286,6 +31307,201 @@ export interface components {
       /** @description Full UI URL for viewing this resource. */
       view_url: string;
     };
+    /**
+     * @description The open request a person has to answer. Answering still goes through the
+     *     endpoint that owns the request; the report only points at it.
+     */
+    WorkAttention: {
+      /** @description What kind of answer is needed. */
+      kind: components["schemas"]["WorkAttentionKind"];
+      /**
+       * @description One line naming what is asked ("Run git push").
+       * @example Deploy to staging
+       */
+      prompt: string;
+      /** @description Open client-side call ids that carry the request. */
+      tool_call_ids: string[];
+    };
+    /**
+     * @description What the work waits on a person for.
+     * @enum {string}
+     */
+    WorkAttentionKind: "approval" | "question" | "action";
+    /** @description One measured fact. */
+    WorkFact: {
+      /** @description Which fact. */
+      kind: components["schemas"]["WorkFactKind"];
+      /**
+       * Format: int64
+       * @description Its value.
+       * @example 3
+       */
+      value: number;
+    };
+    /**
+     * @description A measured fact about finished work.
+     * @enum {string}
+     */
+    WorkFactKind: "files_changed" | "issues" | "tasks_started" | "steps";
+    /** @description The plan the agent shared, from its latest plan tool call. */
+    WorkPlan: {
+      /**
+       * @description The item in progress, in its "doing" form when the tool has one.
+       * @example Run the tests
+       */
+      current?: string | null;
+      /**
+       * Format: int32
+       * @description Items done or skipped.
+       * @example 2
+       */
+      done: number;
+      /** @description Plan items in order. */
+      items: components["schemas"]["ProgressStep"][];
+      /**
+       * Format: int32
+       * @description Items in total.
+       * @example 4
+       */
+      total: number;
+    };
+    /** @description Live progress inside one step, reported by the tool while it runs. */
+    WorkProgress: {
+      /**
+       * Format: int64
+       * @description Items done so far, when the tool knows a count.
+       * @example 7
+       */
+      current?: number | null;
+      /**
+       * @description The tool's latest status line.
+       * @example Rendering image 7 of 12
+       */
+      label?: string | null;
+      /**
+       * Format: int64
+       * @description Items in total, when the tool knows a count.
+       * @example 12
+       */
+      total?: number | null;
+    };
+    /** @description One piece of work, as every surface shows it. */
+    WorkReport: {
+      /**
+       * @description Agent name snapshot at turn start.
+       * @example Billing fixer
+       */
+      agent_name?: string | null;
+      attention?: components["schemas"]["WorkAttention"] | null;
+      /**
+       * Format: int64
+       * @description Elapsed time: to the end when finished, to the read time while running.
+       * @example 133000
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: date-time
+       * @description When the work ended.
+       * @example 2026-10-23T12:02:13Z
+       */
+      ended_at?: string | null;
+      /**
+       * @description One line, always present: the current step while working, the request
+       *     while waiting, the result when finished.
+       * @example Step 3 of 4 · Running `cargo test`
+       */
+      headline: string;
+      /**
+       * @description Model of the latest generation.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Steps run but no longer listed.
+       * @example 0
+       */
+      omitted_steps?: number;
+      plan?: components["schemas"]["WorkPlan"] | null;
+      result?: components["schemas"]["WorkResult"] | null;
+      /**
+       * Format: date-time
+       * @description When the work started.
+       * @example 2026-10-23T12:00:00Z
+       */
+      started_at?: string | null;
+      /** @description Where the work stands. */
+      state: components["schemas"]["WorkState"];
+      /** @description Steps in order, newest last, bounded by [`MAX_REPORT_STEPS`]. */
+      steps: components["schemas"]["WorkStep"][];
+      /**
+       * @description The turn the report describes.
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+    };
+    /** @description What finished work produced. */
+    WorkResult: {
+      /** @description Files, links, pull requests and sessions the work produced. */
+      artifacts?: components["schemas"]["TaskArtifact"][];
+      /** @description Measured facts, in display order. */
+      facts?: components["schemas"]["WorkFact"][];
+      /**
+       * @description One or two sentences on what changed.
+       * @example Fixed the proration rounding and added a test.
+       */
+      summary?: string | null;
+      summary_source?: components["schemas"]["WorkSummarySource"] | null;
+    };
+    /**
+     * @description Where a piece of work stands.
+     * @enum {string}
+     */
+    WorkState: "working" | "needs_you" | "done" | "failed" | "stopped";
+    /** @description One step of the work: a tool call, labelled by its narration. */
+    WorkStep: {
+      /**
+       * Format: int64
+       * @description How long the step took, once finished.
+       * @example 4200
+       */
+      duration_ms?: number | null;
+      /**
+       * @description The tool call id.
+       * @example call_01
+       */
+      id: string;
+      /**
+       * @description What the step is doing ("Running tests") or what came out of it
+       *     ("Read AGENTS.md").
+       * @example Ran `cargo test`, 12 tests passed
+       */
+      label: string;
+      progress?: components["schemas"]["WorkProgress"] | null;
+      /**
+       * Format: date-time
+       * @description When the step started.
+       * @example 2026-10-23T12:00:00Z
+       */
+      started_at?: string | null;
+      /** @description Where the step stands. */
+      state: components["schemas"]["WorkStepState"];
+      /**
+       * @description Tool name.
+       * @example bash
+       */
+      tool_name: string;
+    };
+    /**
+     * @description Where one step stands.
+     * @enum {string}
+     */
+    WorkStepState: "running" | "done" | "issue";
+    /**
+     * @description Where [`WorkResult::summary`] came from.
+     * @enum {string}
+     */
+    WorkSummarySource: "agent" | "reply";
     /** @description Worker response */
     WorkerResponse: {
       /**
@@ -49700,6 +49916,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["VoiceEndResponse"];
         };
+      };
+    };
+  };
+  get_session_work: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionWorkResult"];
+        };
+      };
+      /** @description Session or turn not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

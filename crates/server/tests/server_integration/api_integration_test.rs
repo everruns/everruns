@@ -22,6 +22,7 @@ mod files_misc;
 mod harnesses;
 mod providers_models;
 mod sandbox_templates;
+mod session_work;
 mod sessions;
 mod support;
 mod voice;

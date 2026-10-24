@@ -13701,6 +13701,40 @@
     ]
   },
   {
+    "wire_name": "get_session_work",
+    "path": [
+      "sessions",
+      "work"
+    ],
+    "verb": "get",
+    "description": "Show what a session's turn is doing or got done.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/work",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "turn_id",
+        "long": "turn-id",
+        "kind": "string",
+        "required": false,
+        "help": "Turn to report on."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what a session's agent is doing or what it got done",
+        "command": "everruns sessions work get session_01h9"
+      }
+    ]
+  },
+  {
     "wire_name": "get_skill_content",
     "path": [
       "skills"

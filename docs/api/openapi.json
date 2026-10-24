@@ -27276,6 +27276,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/work": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Show what a session's turn is doing or got done",
+        "operationId": "get_session_work",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWorkResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or turn not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/skills": {
       "get": {
         "tags": [
@@ -63354,6 +63395,23 @@
           }
         }
       },
+      "SessionWorkResult": {
+        "type": "object",
+        "description": "Response of `GET /v1/sessions/{session_id}/work`.",
+        "properties": {
+          "report": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkReport",
+                "description": "The report, or `null` when the session has not run a turn."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "SetAgentAvatarRequest": {
         "type": "object",
         "description": "The avatar source: exactly one of `preset_id` or `image_base64`.",
@@ -73053,6 +73111,392 @@
           }
         ],
         "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WorkAttention": {
+        "type": "object",
+        "description": "The open request a person has to answer. Answering still goes through the\nendpoint that owns the request; the report only points at it.",
+        "required": [
+          "kind",
+          "prompt",
+          "tool_call_ids"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/WorkAttentionKind",
+            "description": "What kind of answer is needed."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "One line naming what is asked (\"Run git push\").",
+            "example": "Deploy to staging"
+          },
+          "tool_call_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Open client-side call ids that carry the request."
+          }
+        }
+      },
+      "WorkAttentionKind": {
+        "type": "string",
+        "description": "What the work waits on a person for.",
+        "enum": [
+          "approval",
+          "question",
+          "action"
+        ]
+      },
+      "WorkFact": {
+        "type": "object",
+        "description": "One measured fact.",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/WorkFactKind",
+            "description": "Which fact."
+          },
+          "value": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its value.",
+            "example": 3,
+            "minimum": 0
+          }
+        }
+      },
+      "WorkFactKind": {
+        "type": "string",
+        "description": "A measured fact about finished work.",
+        "enum": [
+          "files_changed",
+          "issues",
+          "tasks_started",
+          "steps"
+        ]
+      },
+      "WorkPlan": {
+        "type": "object",
+        "description": "The plan the agent shared, from its latest plan tool call.",
+        "required": [
+          "items",
+          "done",
+          "total"
+        ],
+        "properties": {
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The item in progress, in its \"doing\" form when the tool has one.",
+            "example": "Run the tests"
+          },
+          "done": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items done or skipped.",
+            "example": 2,
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressStep"
+            },
+            "description": "Plan items in order."
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Items in total.",
+            "example": 4,
+            "minimum": 0
+          }
+        }
+      },
+      "WorkProgress": {
+        "type": "object",
+        "description": "Live progress inside one step, reported by the tool while it runs.",
+        "properties": {
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Items done so far, when the tool knows a count.",
+            "example": 7,
+            "minimum": 0
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tool's latest status line.",
+            "example": "Rendering image 7 of 12"
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Items in total, when the tool knows a count.",
+            "example": 12,
+            "minimum": 0
+          }
+        }
+      },
+      "WorkReport": {
+        "type": "object",
+        "description": "One piece of work, as every surface shows it.",
+        "required": [
+          "turn_id",
+          "state",
+          "headline",
+          "steps"
+        ],
+        "properties": {
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent name snapshot at turn start.",
+            "example": "Billing fixer"
+          },
+          "attention": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkAttention",
+                "description": "The open request when the work waits on a person."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Elapsed time: to the end when finished, to the read time while running.",
+            "example": 133000,
+            "minimum": 0
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the work ended.",
+            "example": "2026-10-23T12:02:13Z"
+          },
+          "headline": {
+            "type": "string",
+            "description": "One line, always present: the current step while working, the request\nwhile waiting, the result when finished.",
+            "example": "Step 3 of 4 · Running `cargo test`"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model of the latest generation.",
+            "example": "gpt-6.1-sol"
+          },
+          "omitted_steps": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Steps run but no longer listed.",
+            "example": 0,
+            "minimum": 0
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkPlan",
+                "description": "The plan the agent shared, if any."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkResult",
+                "description": "What finished work produced. Absent while working."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the work started.",
+            "example": "2026-10-23T12:00:00Z"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkState",
+            "description": "Where the work stands."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkStep"
+            },
+            "description": "Steps in order, newest last, bounded by [`MAX_REPORT_STEPS`]."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "The turn the report describes.",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "WorkResult": {
+        "type": "object",
+        "description": "What finished work produced.",
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskArtifact"
+            },
+            "description": "Files, links, pull requests and sessions the work produced."
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkFact"
+            },
+            "description": "Measured facts, in display order."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One or two sentences on what changed.",
+            "example": "Fixed the proration rounding and added a test."
+          },
+          "summary_source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkSummarySource",
+                "description": "Where the summary came from."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "WorkState": {
+        "type": "string",
+        "description": "Where a piece of work stands.",
+        "enum": [
+          "working",
+          "needs_you",
+          "done",
+          "failed",
+          "stopped"
+        ]
+      },
+      "WorkStep": {
+        "type": "object",
+        "description": "One step of the work: a tool call, labelled by its narration.",
+        "required": [
+          "id",
+          "tool_name",
+          "label",
+          "state"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long the step took, once finished.",
+            "example": 4200,
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "The tool call id.",
+            "example": "call_01"
+          },
+          "label": {
+            "type": "string",
+            "description": "What the step is doing (\"Running tests\") or what came out of it\n(\"Read AGENTS.md\").",
+            "example": "Ran `cargo test`, 12 tests passed"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkProgress",
+                "description": "Live progress while running."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the step started.",
+            "example": "2026-10-23T12:00:00Z"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkStepState",
+            "description": "Where the step stands."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "Tool name.",
+            "example": "bash"
+          }
+        }
+      },
+      "WorkStepState": {
+        "type": "string",
+        "description": "Where one step stands.",
+        "enum": [
+          "running",
+          "done",
+          "issue"
+        ]
+      },
+      "WorkSummarySource": {
+        "type": "string",
+        "description": "Where [`WorkResult::summary`] came from.",
+        "enum": [
+          "agent",
+          "reply"
+        ]
       },
       "WorkerResponse": {
         "type": "object",

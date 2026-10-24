@@ -26,6 +26,7 @@ use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::{Caller, Event, EventListener};
 use serde::Deserialize;
 
+use super::command_http::CommandRouterExt;
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::sse::{DisconnectReason, SseConnectionTracker, SseStreamConfig};
 use crate::live_updates::event_notifications::EventNotificationBroadcaster;
@@ -181,6 +182,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+crate::api::dispatch::impl_dispatchable!(AppState);
 
 /// Create event routes (nested under sessions)
 pub fn routes(state: AppState) -> Router {
@@ -191,6 +193,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/events/summary",
             get(events_summary),
         )
+        .command::<crate::domains::events::GetSessionWork>()
         .with_state(state)
 }
 

@@ -80,6 +80,7 @@ Running and archived sessions, their state and participants.
 | [`sessions trace turns steps get`](#sessions-trace-turns-steps-get) | Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. |
 | [`sessions trace turns steps list`](#sessions-trace-turns-steps-list) | Page through the steps of one turn of a session's trace, optionally only the failed ones. |
 | [`sessions trace turns steps request list`](#sessions-trace-turns-steps-request-list) | Page through the messages a model call in a session's trace was sent, with each message's full content. |
+| [`sessions work get`](#sessions-work-get) | Show what a session's turn is doing or got done. |
 
 ## sessions create
 
@@ -1514,4 +1515,24 @@ Example:
 ```bash
 # See exactly what a model call was sent
 everruns sessions trace turns steps request list --session-id session_01h9 --turn 12 --step 3
+```
+
+## sessions work get
+
+Show what a session's turn is doing or got done.
+
+```bash
+everruns sessions work get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+| `--turn-id <TURN_ID>` | Turn to report on. |
+
+Example:
+
+```bash
+# See what a session's agent is doing or what it got done
+everruns sessions work get session_01h9
 ```
