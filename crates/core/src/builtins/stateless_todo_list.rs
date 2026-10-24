@@ -109,12 +109,11 @@ impl Capability for StatelessTodoListCapability {
 /// from the schema.
 const SYSTEM_PROMPT: &str = r#"## Task Management (`write_todos`)
 
-Use sparingly, only for substantial multi-step work needing tracking. Default to skipping it. Never use for greetings, single-step edits, read-only checks, or simple short tasks.
+Use sparingly, only for substantial multi-step work needing tracking. Skip it for greetings, single-step edits, read-only checks and short tasks.
 
-Each `write_todos` call replaces the full list. Keep exactly one task
-`in_progress`. Mark `completed` only when fully done (tests pass, no unresolved errors).
+Each call replaces the full list. Keep exactly one task `in_progress`. Mark `completed` only when fully done (tests pass, no open errors).
 
-When tracked work is finished, call `report_done` once before your final reply."#;
+When tracked work is done, call `report_done` once before your final reply."#;
 
 // ============================================================================
 // Tool: write_todos
