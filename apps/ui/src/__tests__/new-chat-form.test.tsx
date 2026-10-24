@@ -5,6 +5,8 @@ import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import type { SandboxPolicy } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),

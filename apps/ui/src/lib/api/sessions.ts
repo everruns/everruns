@@ -13,6 +13,7 @@ import type {
   SessionContextReport,
   SessionResolvedModelResponse,
   SessionFacetsResponse,
+  SessionWorkResult,
   PaginatedResponse,
   PaginationParams,
   AgentCapabilityConfig,
@@ -141,6 +142,16 @@ export async function getSessionResolvedModel(
 
 export async function getSessionContextReport(sessionId: string): Promise<SessionContextReport> {
   const response = await api.get<SessionContextReport>(`/v1/sessions/${sessionId}/context-report`);
+  return response.data;
+}
+
+/** Work report of one turn, or of the session's latest turn when `turnId` is omitted. */
+export async function getSessionWork(
+  sessionId: string,
+  turnId?: string,
+): Promise<SessionWorkResult> {
+  const query = turnId ? `?turn_id=${encodeURIComponent(turnId)}` : "";
+  const response = await api.get<SessionWorkResult>(`/v1/sessions/${sessionId}/work${query}`);
   return response.data;
 }
 

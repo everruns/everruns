@@ -4,6 +4,8 @@ import type { Event, InputMessageData } from "@/lib/api/types";
 import { getTextFromContent } from "@/lib/api/types";
 import { CLIENT_MESSAGE_ID_METADATA_KEY, type PendingSend } from "@/lib/chat-turn-state";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 jest.mock("streamdown", () => ({
   Streamdown: ({ children }: { children: string }) => <div>{children}</div>,
 }));

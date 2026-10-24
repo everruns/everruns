@@ -1,5 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import NewChatPageClient from "@/app/(main)/chats/new/new-chat-page-client";
+
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
 const mockCreate = jest.fn();
 const mockSend = jest.fn();
 const mockReplace = jest.fn();

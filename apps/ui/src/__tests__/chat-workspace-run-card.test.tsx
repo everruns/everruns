@@ -3,6 +3,14 @@ import { RunCard } from "@/components/chat/run-card";
 import { ChatWorkspaceContext } from "@/components/chat/chat-workspace-context";
 import type { SessionTask } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({
+  useTurnWorkReport: () => null,
+  useLiveWorkReport: () => null,
+}));
+jest.mock("@/components/chat/work-headline", () => ({
+  WorkHeadline: ({ fallback }: { fallback: unknown }) => fallback,
+}));
+
 const task = {
   id: "task_one",
   session_id: "session_main",
