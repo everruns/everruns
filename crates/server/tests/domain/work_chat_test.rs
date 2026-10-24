@@ -411,8 +411,6 @@ async fn work_chat_files_and_events_keep_private_context_out() {
         ("/report.md", false),
         ("/locked.md", true),
         ("/memory/private.md", false),
-        ("/knowledge/private.md", false),
-        ("/knowledge-text/private.md", false),
     ] {
         files
             .create_file(
@@ -435,6 +433,18 @@ async fn work_chat_files_and_events_keep_private_context_out() {
         std::sync::Arc::new(tree),
         "test".into(),
     );
+    // Knowledge roots reject ordinary file writes. Seed mounted trees so the
+    // consumer boundary also has actual private entries to filter from listings.
+    for root in ["knowledge", "knowledge-text"] {
+        let mut tree = everruns_core::capability_types::VirtualFileTree::new();
+        tree.insert_text(format!("/{root}/private.md"), "private Knowledge");
+        server.virtual_registry.register(
+            id.uuid(),
+            format!("/{root}"),
+            std::sync::Arc::new(tree),
+            "test".into(),
+        );
+    }
     let url = format!("{base}/sessions/{id}/files");
     call(
         &server,
