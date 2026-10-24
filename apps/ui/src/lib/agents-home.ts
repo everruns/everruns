@@ -75,6 +75,8 @@ export function channelShortName(kind: ChannelType): string {
       return "Agent API";
     case "public_chat":
       return "Public Chat";
+    case "work_chat":
+      return "Work Chat";
     case "slack":
       return "Slack";
     case "webhook":

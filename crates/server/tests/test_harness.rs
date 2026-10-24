@@ -997,7 +997,7 @@ impl TestServer {
             everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
         );
         let poppy_documents = poppy_state.verifier.clone();
-        let channel_api_state = api::channel_api::ChannelApiState::new(
+        let mut channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1006,6 +1006,13 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
         )
         .with_runtime_auth(auth_state.clone());
+        channel_api_state.session_service = Arc::new(
+            everruns_server::domains::sessions::SessionService::with_registry(
+                db.clone(),
+                (*host_composition.capability_registry()).clone(),
+            )
+            .with_virtual_registry(virtual_registry.clone()),
+        );
         let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),

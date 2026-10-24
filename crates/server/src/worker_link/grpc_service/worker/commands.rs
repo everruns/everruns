@@ -41,6 +41,41 @@ impl WorkerServiceImpl {
             ));
         };
 
+        let consumer_messages = self.runner.as_ref().map(|runner| {
+            crate::domains::messages::MessageService::new(
+                self.db.clone(),
+                runner.clone(),
+                self.event_service.event_delivery().clone(),
+            )
+        });
+        if (req.runtime_view || matches!(req.name.as_str(), "create_message" | "list_messages"))
+            && let (Some(session), Some(message)) = (
+                req.platform_session_id.as_ref(),
+                req.input_message_id.as_ref(),
+            )
+        {
+            let output = crate::worker_link::consumer_delegation::dispatch(
+                &self.db,
+                &self.session_service,
+                self.encryption.as_ref(),
+                consumer_messages.as_ref(),
+                req.org_id,
+                everruns_contracts::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?),
+                parse_uuid(Some(message))?,
+                &req.name,
+                &params,
+            )
+            .await
+            .map_err(|_| Status::permission_denied("Consumer delegation refused"))?;
+            if let Some(output) = output {
+                return Ok(Response::new(ExecuteCommandResponse {
+                    result: Some(proto::execute_command_response::Result::OkJson(
+                        output.into_bytes(),
+                    )),
+                }));
+            }
+        }
+
         // gRPC ExecuteCommand is the auth boundary for worker-driven platform
         // tools. Respect the provided user_id; do not silently upgrade to
         // Caller::internal for user-owned sessions.

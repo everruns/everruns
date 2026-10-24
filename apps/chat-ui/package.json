@@ -1,0 +1,29 @@
+{
+  "name": "everruns-chat-ui",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 9110",
+    "build": "next build",
+    "start": "next start",
+    "test": "tsx --test src/server/*.test.ts",
+    "e2e": "playwright test",
+    "test:broker": "tsx e2e/broker.integration.ts"
+  },
+  "dependencies": {
+    "next": "^16.3.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "streamdown": "^2.6.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.6",
+    "@playwright/test": "^1.63.0"
+  }
+}

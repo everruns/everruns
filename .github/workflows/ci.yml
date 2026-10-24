@@ -364,6 +364,7 @@ jobs:
               - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
+              - 'apps/chat-ui/**'
               # api-types:check regenerates apps/ui/src/lib/api/generated from
               # this spec, so a spec-only change can leave the committed types
               # stale. Without it here the UI job is skipped and the drift only
@@ -2736,7 +2737,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: chat_test
+          POSTGRES_PASSWORD: chat_test
+          POSTGRES_DB: chat_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chat_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
 
     defaults:
       run:
@@ -2770,6 +2782,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
+
+      - name: Verify standalone Work Chat
+        timeout-minutes: 15
+        working-directory: apps/chat-ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm exec tsc --noEmit
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+          TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test pnpm test:broker
+
+      - name: Upload Work Chat browser evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: work-chat-browser-evidence
+          path: work/work-chat-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Format check
         run: pnpm run format:check

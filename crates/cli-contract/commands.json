@@ -164,7 +164,8 @@
           "public_chat",
           "voice",
           "api",
-          "poppy"
+          "poppy",
+          "work_chat"
         ]
       },
       {

@@ -14,6 +14,8 @@
 // Domain rules (caller confinement, visibility) live in
 // `domains::agent_channels::api_sessions`.
 
+pub(crate) mod work_chat;
+
 use axum::{
     Extension, Json, Router,
     body::Bytes,
@@ -69,6 +71,7 @@ type ApiResponse<T> = Result<T, Response>;
 pub fn routes(state: ChannelApiState) -> Router {
     Router::new()
         .route("/v1/channels/{channel_id}", get(agent_api_get_card))
+        .merge(work_chat::routes())
         .route(
             "/v1/channels/{channel_id}/sessions",
             get(agent_api_list_sessions).post(agent_api_create_session),
@@ -117,6 +120,7 @@ pub fn routes(state: ChannelApiState) -> Router {
             "/v1/channels/{channel_id}/sessions/{session_id}/tool-approvals",
             post(agent_api_submit_tool_approvals),
         )
+        .layer(axum::extract::DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -133,7 +137,12 @@ async fn resolve_api_channel(
     channel_id: &str,
 ) -> ApiResponse<(IngressContext, IngressChannel)> {
     match resolve_channel(&state.db, state.encryption.as_ref(), channel_id).await {
-        Ok(Some((context, channel))) if channel.channel_type == ChannelType::Api => {
+        Ok(Some((context, channel)))
+            if matches!(
+                channel.channel_type,
+                ChannelType::Api | ChannelType::WorkChat
+            ) =>
+        {
             Ok((context, channel))
         }
         Ok(_) => Err(not_found()),
@@ -188,6 +197,12 @@ async fn authorize(
         if state.rate_limiter.check(&scope, ip, limit).await.is_err() {
             return Err(error(StatusCode::TOO_MANY_REQUESTS, "Rate limit exceeded"));
         }
+    }
+    if channel.channel_type == ChannelType::WorkChat {
+        if caller.end_user_id().is_none() {
+            return Err(error(StatusCode::UNAUTHORIZED, "Consumer sign-in required"));
+        }
+        work_chat::validate_agent(state, &context, &channel).await?;
     }
     Ok(Authorized {
         context,
@@ -461,6 +476,14 @@ async fn create_session(
 }
 
 async fn create_session_now(state: &ChannelApiState, auth: &Authorized, body: &Bytes) -> Response {
+    if auth.channel.channel_type == ChannelType::WorkChat
+        && auth.channel.channel_config["interface_mode"] == "single_with_threads"
+    {
+        return error(
+            StatusCode::CONFLICT,
+            "Use chat/main for this channel's main conversation",
+        );
+    }
     if let Some(response) = retired_shape(body, true) {
         return response;
     }
@@ -666,9 +689,22 @@ async fn send_message_now(
         body.files,
     )
     .await;
+    let mut context = auth.context.clone();
+    if auth.channel.channel_type == ChannelType::WorkChat {
+        if let Some(agent) = session.agent_id {
+            context.agent_internal_id = agent.uuid();
+            context.agent_id = match state.db.get_agent(context.org_id, agent).await {
+                Ok(Some(row)) => row.public_id.parse().ok(),
+                _ => return not_found(),
+            };
+        }
+        if let Some(harness) = session.harness_id {
+            context.harness_id = harness;
+        }
+    }
     match send_api_message(
         &state.message_service,
-        &auth.context,
+        &context,
         &auth.channel,
         &auth.caller,
         session.id,
@@ -754,7 +790,11 @@ pub async fn agent_api_list_events(
     let params = crate::storage::ListEventsParams {
         session_id: session.id,
         after_sequence: query.after_sequence,
-        filter_types: visible_event_types(auth.caller.config.visibility).unwrap_or_default(),
+        filter_types: if auth.channel.channel_type == ChannelType::WorkChat {
+            Vec::new()
+        } else {
+            visible_event_types(auth.caller.config.visibility).unwrap_or_default()
+        },
         limit: Some(limit),
         ..Default::default()
     };
@@ -764,7 +804,14 @@ pub async fn agent_api_list_events(
     };
     let data: Vec<Value> = events
         .iter()
-        .filter_map(|event| project_event(public_event_json(event)?, &auth.caller.config))
+        .filter_map(|event| {
+            let event = public_event_json(event)?;
+            if auth.channel.channel_type == ChannelType::WorkChat {
+                work_chat::project(event, &auth.caller.config)
+            } else {
+                project_event(event, &auth.caller.config)
+            }
+        })
         .collect();
     Json(json!({ "data": data })).into_response()
 }
@@ -825,10 +872,16 @@ pub async fn agent_api_stream_events(
             return error(StatusCode::TOO_MANY_REQUESTS, &message);
         }
     };
+    let is_work_chat = auth.channel.channel_type == ChannelType::WorkChat;
     let config = auth.caller.config.clone();
     // Visibility applies to every frame, replayed or live, before it is written.
     let render: SseRender = Arc::new(move |event, retry| {
-        let projected = project_event(public_event_json(event)?, &config)?;
+        let event_json = public_event_json(event)?;
+        let projected = if is_work_chat {
+            work_chat::project(event_json, &config)?
+        } else {
+            project_event(event_json, &config)?
+        };
         Some(sse_frame(event, projected.to_string(), retry))
     });
     session_event_sse(SessionEventStream {
@@ -837,7 +890,11 @@ pub async fn agent_api_stream_events(
         session_id: session.id.uuid(),
         since_id: query.since_id.map(|id| id.uuid()),
         after_sequence: query.after_sequence,
-        filter_types: visible_event_types(auth.caller.config.visibility).unwrap_or_default(),
+        filter_types: if auth.channel.channel_type == ChannelType::WorkChat {
+            Vec::new()
+        } else {
+            visible_event_types(auth.caller.config.visibility).unwrap_or_default()
+        },
         exclude_types: Vec::new(),
         guard,
         render,

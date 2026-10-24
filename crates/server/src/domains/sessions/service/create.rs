@@ -40,6 +40,12 @@ impl SessionService {
         self
     }
 
+    /// Share virtual mounts with consumer workspace views, so read-only
+    /// capability files cannot be shadowed by a separate HTTP registry.
+    pub fn workspace_file_service(&self) -> &WorkspaceFileService {
+        &self.session_file_service
+    }
+
     /// Attach a virtual mount registry to the internal session file service.
     pub fn with_virtual_registry(
         mut self,

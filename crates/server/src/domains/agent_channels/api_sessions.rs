@@ -161,6 +161,22 @@ pub enum ApiAuthError {
 
 /// The channel's config, or `Misconfigured`.
 pub fn api_channel_config(channel: &IngressChannel) -> Result<AgentApiChannelConfig, ApiAuthError> {
+    if channel.channel_type == super::record::ChannelType::WorkChat {
+        let mut config: super::record::work_chat::WorkChatConfig =
+            serde_json::from_value(channel.channel_config.clone())
+                .map_err(|_| ApiAuthError::Misconfigured)?;
+        if config.execution.auth_methods.is_empty()
+            && let (Ok(issuer), Ok(client_id)) = (
+                std::env::var("CHAT_OIDC_ISSUER"),
+                std::env::var("CHAT_OIDC_CLIENT_ID"),
+            )
+        {
+            config.execution.auth_methods.push(serde_json::from_value(serde_json::json!({
+                    "mode":"oidc","provider":{"type":"oidc","issuer":issuer},"requirements":{"audiences":[client_id]}
+                })).map_err(|_| ApiAuthError::Misconfigured)?);
+        }
+        return Ok(config.execution);
+    }
     serde_json::from_value::<AgentApiChannelConfig>(channel.channel_config.clone())
         .map_err(|_| ApiAuthError::Misconfigured)
 }
@@ -282,6 +298,8 @@ pub struct AgentSessionView {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_session_id: Option<String>,
     /// `started`, `active`, `idle`, `waitingforinput` or `failed`.
     #[schema(example = "idle")]
     pub status: String,
@@ -313,6 +331,7 @@ impl From<&SessionRow> for AgentSessionView {
         Self {
             id: row.id.to_string(),
             title: row.title.clone(),
+            parent_session_id: row.parent_session_id.map(|id| id.to_string()),
             status: row.status.clone(),
             last_turn_status: row.last_turn_status.clone(),
             created_at: row.created_at,

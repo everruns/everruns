@@ -2783,7 +2783,8 @@
             "public_chat",
             "voice",
             "api",
-            "poppy"
+            "poppy",
+            "work_chat"
           ],
           "example": "webhook",
           "type": "string"
