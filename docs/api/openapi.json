@@ -33619,6 +33619,17 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "work": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WorkReport",
+                "description": "What the latest turn is doing or got done. Only `GET …/sessions/{id}`\nreads it. Under `full` visibility it is the whole report; otherwise\nthe public view: state, plan counts, facts, the agent's own summary\nand links, never step labels or approval prompts."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

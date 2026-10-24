@@ -9070,6 +9070,7 @@ export interface components {
       title?: string | null;
       /** Format: date-time */
       updated_at: string;
+      work?: components["schemas"]["WorkReport"] | null;
     };
     /** @description Continuous GitHub source binding, applied revision and reconciliation status. */
     AgentSourceStatus: {
