@@ -26,7 +26,10 @@ metadata and OKF navigation, agent catalog pagination without indexing,
 lazy session-authorized mounts including shared
 workspaces, exact grep, indexed shell/tool retrieval, automatic progressive
 disclosure, built-in docs and organization BYOK. Management uses organization
-settings permissions; attaching a collection explicitly authorizes runtime reads.
+settings permissions and the existing [PAT scope boundary](../security/pat-scopes.md);
+attaching a collection explicitly authorizes runtime reads. Read-only tokens can
+retrieve files and evidence, while file/configuration changes and refresh require
+full access.
 Collection configuration and source attachments participate in entity history,
 manager context and configuration restore. Indexer creation records only public
 configuration and its credential-binding reference. File writes, deletions and
