@@ -193,15 +193,14 @@ describe("NewPlaygroundChatForm", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/sess_new"));
   });
 
-  it("adds the dry_run capability for a test run and can run for real", async () => {
-    render(
-      <NewPlaygroundChatForm
-        endUserId="identity_customer"
-        initialAgentId="agent_1"
-        initialDryRun
-      />,
-    );
+  it("uses the existing checkbox to enable dry run from normal setup and switch back", async () => {
+    render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
 
+    expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Dry run/ }));
     expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
       "aria-checked",
       "true",

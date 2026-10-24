@@ -8,8 +8,8 @@
  * identity, and Sandbox selection.
  *
  * Dry run (proactive agents D5) adds the `dry_run` session capability: tools
- * that only read run for real, every other call is simulated. The agent page's
- * Dry run button opens this form with it ticked; unticking runs for real.
+ * that only read run for real, every other call is simulated. The existing
+ * checkbox selects this mode before starting a chat.
  *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
