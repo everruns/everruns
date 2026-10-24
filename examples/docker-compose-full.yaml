@@ -4,10 +4,10 @@
 # - PostgreSQL database
 # - Valkey (distributed rate limiting)
 # - Server (control plane): HTTP API + gRPC server
-# - 3 Worker instances for parallel processing
+# - 1 Worker by default; 3 with the `scale` profile
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
-# - VictoriaMetrics (scrapes Prometheus /metrics from server)
+# - VictoriaMetrics (scrapes Prometheus /metrics from server), `metrics` profile
 # - OpenTelemetry tracing (configure OTEL_EXPORTER_OTLP_ENDPOINT for external collector)
 #
 # Quick Start:
@@ -27,8 +27,14 @@
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
 #
+#      The default set is the lean stack (one worker, no metrics). Add profiles
+#      for the full shape, on the command line or as COMPOSE_PROFILES in .env:
+#        scale    two more workers (worker-2, worker-3)
+#        metrics  VictoriaMetrics
+#      COMPOSE_PROFILES=scale,metrics docker compose -f docker-compose-full.yaml up -d
+#
 #   4. Open UI at: http://localhost:9300
-#   5. VictoriaMetrics UI (default): http://localhost:8428/vmui
+#   5. VictoriaMetrics UI (`metrics` profile): http://localhost:8428/vmui
 #      If you override the port via VICTORIAMETRICS_PORT, use that port instead.
 #      Try query: everruns_http_request_duration_seconds_count
 #
@@ -123,7 +129,7 @@ services:
       start_period: 10s
 
   # ==========================================================================
-  # Workers (3 instances for parallel execution)
+  # Workers: worker-1 always, worker-2 and worker-3 with the `scale` profile
   # ==========================================================================
   worker-1:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
@@ -137,6 +143,7 @@ services:
     restart: unless-stopped
 
   worker-2:
+    profiles: [scale]
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     environment:
       SERVER_GRPC_ADDRESS: server:9001
@@ -148,6 +155,7 @@ services:
     restart: unless-stopped
 
   worker-3:
+    profiles: [scale]
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     environment:
       SERVER_GRPC_ADDRESS: server:9001
@@ -201,6 +209,7 @@ services:
   #   - histogram_quantile(0.95, rate(everruns_http_request_duration_seconds_bucket[5m]))
   # ==========================================================================
   victoriametrics:
+    profiles: [metrics]
     image: victoriametrics/victoria-metrics:v1.108.1
     ports:
       - "${VICTORIAMETRICS_PORT:-8428}:8428"
