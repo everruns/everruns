@@ -360,7 +360,10 @@ Landed:
   answers `input_required` through the same URL and form elicitation handlers
   as MRTR (each key once) with `tasks/update`, and sends `tasks/cancel` for a
   task it stops waiting for: wait limit, a question that stands the call down
-  for a person, or a dropped call. A rerun creates a new task. Decisions in the
+  for a person, or a dropped call. A rerun creates a new task. Each change of
+  the server's `statusMessage` becomes a `tool.progress` event on the call
+  (`report_mcp_call_progress`, a task-local the MCP proxy tool scopes around
+  the call; server text trimmed and cut to 200 characters). Decisions in the
   header of `crates/core/src/mcp/tasks.rs`; tests in
   `crates/core/tests/consolidated/mcp/tasks.rs`, and against Everruns' own
   `/mcp` in `crates/server/tests/domain/mcp_tasks_interop_test.rs`. stdio and

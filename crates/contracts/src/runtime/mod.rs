@@ -208,7 +208,7 @@ pub use self::mcp_deferred::{
 };
 pub use self::mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
-    build_mcp_proxy_tools,
+    build_mcp_proxy_tools, report_mcp_call_progress,
 };
 pub use self::mcp_resources::{
     LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,

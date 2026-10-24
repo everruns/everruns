@@ -526,7 +526,7 @@ pub use mcp_deferred::{
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
-    build_mcp_proxy_tools,
+    build_mcp_proxy_tools, report_mcp_call_progress,
 };
 pub use mcp_resources::{
     LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,

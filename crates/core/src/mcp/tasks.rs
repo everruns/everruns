@@ -23,6 +23,10 @@
 //! finds the recorded answer there, so nothing is left running on the server
 //! that nobody will collect.
 //!
+//! Decision: the server's `statusMessage` becomes the tool call's
+//! `tool.progress` ([`crate::report_mcp_call_progress`]) each time it changes,
+//! so the chat tool card and the session's events show where a long task is.
+//!
 //! Decision: a task id is sent back exactly as received, as the `taskId` param
 //! and the `Mcp-Name` header the HTTP binding requires on `tasks/*`.
 
@@ -247,6 +251,9 @@ pub(super) async fn await_task(
     // A key is answered once: the server may still show it on the next poll
     // before it has taken the answer in.
     let mut answered: HashSet<String> = HashSet::new();
+    // Progress is reported when the server's status message changes, not on
+    // every poll, so a task that says "Building" for ten minutes is one event.
+    let mut last_status_message: Option<String> = None;
     let mut id: i64 = 2;
 
     loop {
@@ -268,14 +275,13 @@ pub(super) async fn await_task(
         interval = poll_interval(&result, interval);
         match task_state(&result)? {
             TaskState::Working { status_message } => {
-                tracing::debug!(
-                    server = %server_name,
-                    tool = %tool_name,
-                    status_message = status_message.as_deref().unwrap_or(""),
-                    "MCP task working"
-                );
+                report_change(&mut last_status_message, status_message).await;
             }
-            TaskState::InputRequired { input, .. } => {
+            TaskState::InputRequired {
+                input,
+                status_message,
+            } => {
+                report_change(&mut last_status_message, status_message).await;
                 let pending = InputRequired {
                     requests: input
                         .requests
@@ -334,6 +340,19 @@ pub(super) async fn await_task(
             }
         }
     }
+}
+
+/// Forward a task's status message as the tool call's progress when it
+/// differs from the last one forwarded.
+async fn report_change(last: &mut Option<String>, status_message: Option<String>) {
+    let Some(message) = status_message.filter(|message| !message.trim().is_empty()) else {
+        return;
+    };
+    if last.as_deref() == Some(message.as_str()) {
+        return;
+    }
+    crate::report_mcp_call_progress(&message).await;
+    *last = Some(message);
 }
 
 #[cfg(test)]
