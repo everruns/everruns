@@ -26,6 +26,9 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
   const entityType = options.entityType;
   const route = mode?.page.route ?? "";
   const scope = `${route}:${options.entityType}:${options.entityId ?? "new"}:${options.formId ?? "main"}`;
+  const schema = options.schema;
+  const enabled = options.enabled ?? true;
+  const identity = useMemo(() => crypto.randomUUID(), [scope, schema, adopted, enabled]);
   const [changes, setChanges] = useState<{ scope: string; baseline: string; fields: FieldDiff[] }>({
     scope,
     baseline: options.baseline,
@@ -44,7 +47,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
       setError(null);
     }
   }
-  const current = useRef({ ...options, scope, blocked });
+  const current = useRef({ ...options, scope, blocked, identity });
   const mounted = useRef(false);
   useLayoutEffect(() => {
     mounted.current = true;
@@ -53,13 +56,12 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
     };
   }, []);
   useLayoutEffect(() => {
-    current.current = { ...options, scope, blocked };
+    current.current = { ...options, scope, blocked, identity };
   });
-  const schema = options.schema;
   const adapter = useMemo(
     () =>
       createFormDraftController({
-        binding: crypto.randomUUID(),
+        binding: identity,
         entityId,
         entityType,
         schema,
@@ -68,6 +70,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
           available:
             adopted &&
             mounted.current &&
+            current.current.identity === identity &&
             current.current.scope === scope &&
             current.current.schema === schema &&
             (current.current.enabled ?? true),
@@ -96,14 +99,13 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
           setError(null);
         },
       }),
-    [scope, schema, adopted, entityId, entityType],
+    [scope, schema, adopted, entityId, entityType, identity],
   );
   useLayoutEffect(() => {
     adapter.settled();
     appliedValues.current = null;
   });
   const register = mode?.registerPage;
-  const enabled = options.enabled ?? true;
   useEffect(() => {
     if (register && enabled)
       return register(
