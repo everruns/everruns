@@ -91,7 +91,14 @@ pub(super) async fn capture(
         // Content has its own immutable versions. Configuration snapshots must
         // not change when workers advance jobs, file counts or source cursors.
         if let Some(object) = snapshot.as_object_mut() {
-            for field in ["revision", "file_count", "indexed_count", "jobs"] {
+            for field in [
+                "revision",
+                "published_revision",
+                "serving_config",
+                "file_count",
+                "indexed_count",
+                "jobs",
+            ] {
                 object.remove(field);
             }
             if let Some(sources) = object.get_mut("sources").and_then(Value::as_array_mut) {
