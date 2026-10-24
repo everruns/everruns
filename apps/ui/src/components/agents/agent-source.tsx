@@ -37,9 +37,13 @@ function date(value: string | null) {
 export function AgentSourcePanel({
   agentId,
   disabled = false,
+  open,
+  onOpenChange,
 }: {
   agentId: string;
   disabled?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { data: source, isLoading, error: loadError } = useAgentSource(agentId);
   const { data: github } = useAgentGitHub(agentId);
@@ -50,7 +54,15 @@ export function AgentSourcePanel({
   const queryClient = useQueryClient();
   const { can } = usePolicies("agents");
   const canManage = can("agent.manage") && !disabled;
-  const [open, setOpen] = useState(false);
+  function setOpen(value: boolean) {
+    if (!value) {
+      setLocation({ repository: "", branch: "", path: "" });
+      setPreview(null);
+      setOptions(null);
+      setError(null);
+    }
+    onOpenChange(value);
+  }
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [location, setLocation] = useState<SourceLocation>({
     repository: "",
@@ -108,98 +120,98 @@ export function AgentSourcePanel({
     ? `https://github.com/${source.repository}/tree/${source.applied_commit || encodeURIComponent(source.branch)}${source.path ? `/${source.path.split("/").map(encodeURIComponent).join("/")}` : ""}`
     : null;
   return (
-    <section className="space-y-3 border bg-card p-4" aria-label="Agent source" id="source">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h2 className="font-semibold">Source</h2>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading source…</p>
-          ) : loadError ? (
-            <p role="alert" className="break-words text-sm text-destructive">
-              Could not load Agent source.
-            </p>
-          ) : source ? (
-            <>
-              <p className="break-all text-sm">
-                {source.repository} · {source.branch} · {source.path || "/"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Managed by GitHub. Edit the repository to update this Agent.
-              </p>
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline">
-                  {source.status === "synced"
-                    ? "Synced"
-                    : source.status === "error"
-                      ? "Sync failed"
-                      : source.status === "syncing"
-                        ? "Syncing"
-                        : "Queued"}
-                </Badge>
-                {source.applied_commit && (
-                  <span className="font-mono">{source.applied_commit.slice(0, 7)}</span>
-                )}
-                <span>Last checked: {date(source.last_checked_at)}</span>
-                <span>Last synced: {date(source.last_synced_at)}</span>
+    <>
+      {(source || isLoading || loadError) && (
+        <section className="space-y-3 border bg-card p-4" aria-label="Agent source" id="source">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <h2 className="font-semibold">Source</h2>
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading source…</p>
+              ) : loadError ? (
+                <p role="alert" className="break-words text-sm text-destructive">
+                  Could not load Agent source.
+                </p>
+              ) : source ? (
+                <>
+                  <p className="break-all text-sm">
+                    {source.repository} · {source.branch} · {source.path || "/"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Managed by GitHub. Edit the repository to update this Agent.
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline">
+                      {source.status === "synced"
+                        ? "Synced"
+                        : source.status === "error"
+                          ? "Sync failed"
+                          : source.status === "syncing"
+                            ? "Syncing"
+                            : "Queued"}
+                    </Badge>
+                    {source.applied_commit && (
+                      <span className="font-mono">{source.applied_commit.slice(0, 7)}</span>
+                    )}
+                    <span>Last checked: {date(source.last_checked_at)}</span>
+                    <span>Last synced: {date(source.last_synced_at)}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            {canManage && source && !isLoading && !loadError && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || source.status === "pending" || source.status === "syncing"}
+                  onClick={() =>
+                    perform(async () => {
+                      await syncAgentSource(agentId);
+                      await refresh();
+                    })
+                  }
+                >
+                  <RefreshCw className="size-4" /> Sync now
+                </Button>
+                <Button size="sm" variant="outline" onClick={start} disabled={busy}>
+                  Change source
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => setDisconnectOpen(true)}
+                >
+                  Disconnect
+                </Button>
               </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Keep this Agent&apos;s instructions, configuration, files, and skills in a GitHub
-              repository. Changes sync continuously.
-            </p>
-          )}
-        </div>
-        {canManage && !isLoading && !loadError && (
-          <div className="flex flex-wrap gap-2">
-            {source && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || source.status === "pending" || source.status === "syncing"}
-                onClick={() =>
-                  perform(async () => {
-                    await syncAgentSource(agentId);
-                    await refresh();
-                  })
-                }
-              >
-                <RefreshCw className="size-4" /> Sync now
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={start}>
-              {source ? "Change source" : "Sync from GitHub"}
-            </Button>
-            {source && (
-              <Button size="sm" variant="ghost" onClick={() => setDisconnectOpen(true)}>
-                Disconnect
-              </Button>
             )}
           </div>
-        )}
-      </div>
-      {sourceUrl && (
-        <a
-          href={sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={buttonVariants({ variant: "link", size: "sm" })}
-        >
-          View on GitHub <ExternalLink className="size-4" />
-        </a>
-      )}
-      {source?.error && (
-        <p role="alert" className="break-words text-sm text-destructive">
-          {source.error} The last successfully synced definition is retained.
-        </p>
-      )}
-      {error && !open && (
-        <p role="alert" className="break-words text-sm text-destructive">
-          {error}
-        </p>
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonVariants({ variant: "link", size: "sm" })}
+            >
+              View on GitHub <ExternalLink className="size-4" />
+            </a>
+          )}
+          {source?.error && (
+            <p role="alert" className="break-words text-sm text-destructive">
+              {source.error} The last successfully synced definition is retained.
+            </p>
+          )}
+          {error && !open && (
+            <p role="alert" className="break-words text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </section>
       )}
       <Dialog
-        open={open}
+        open={open && canManage && !isLoading && !loadError}
         onOpenChange={(value) => {
           if (!busy) setOpen(value);
         }}
@@ -390,7 +402,12 @@ export function AgentSourcePanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
+      <Dialog
+        open={disconnectOpen && canManage}
+        onOpenChange={(value) => {
+          if (!busy) setDisconnectOpen(value);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Disconnect source sync?</DialogTitle>
@@ -418,6 +435,6 @@ export function AgentSourcePanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </>
   );
 }

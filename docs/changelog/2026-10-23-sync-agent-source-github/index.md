@@ -28,3 +28,7 @@ shows the applied commit and sync errors. Invalid updates retain the last workin
 definition. Synced fields are read-only across Everruns; edit the repository or
 disconnect to restore local editing. See
 [Define agents as files](/how-to/define-agents-as-files/#sync-an-agent-continuously-from-github).
+
+## Update 2026-10-24
+
+Connect an unlinked Agent from **More actions → Sync from GitHub**. The Source panel is shown only for a connected source or while its status is loading or unavailable. Connected source status and controls remain visible. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).

@@ -3,6 +3,7 @@ import { test, expect } from "@playwright/test";
 const agentId = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const orgId = "org_00000000000000000000000000000001";
 const commit = "a".repeat(40);
+test.use({ deviceScaleFactor: 2 });
 
 test("reviews a GitHub package, locks editing, and disconnects without losing the Agent", async ({
   page,
@@ -14,6 +15,8 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
   ]);
   let source: Record<string, unknown> | null = null;
   let enabled = false;
+  let syncCalls = 0;
+  let failSync = true;
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const p = new URL(request.url()).pathname.replace("/api/v1", "");
@@ -74,6 +77,16 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
         };
       } else if (request.method() === "DELETE") source = null;
       json = source;
+    } else if (p === `/agents/${agentId}/source/sync`) {
+      syncCalls++;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (failSync) {
+        failSync = false;
+        await route.fulfill({ status: 500, json: { message: "Temporary sync failure" } });
+        return;
+      }
+      source = { ...source, status: "pending" };
+      json = source;
     } else if (p === `/agents/${agentId}/source/options`)
       json = {
         default_branch: "main",
@@ -132,7 +145,25 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
   });
   await page.goto(`/agents/${agentId}`);
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Sync from GitHub", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Agent source" })).toHaveCount(0);
+  const menu = page.getByRole("button", { name: "More actions for Support Agent" });
+  if (process.env.UI_EVIDENCE_DIR)
+    await page
+      .locator('[data-slot="page-masthead"]')
+      .screenshot({ path: `${process.env.UI_EVIDENCE_DIR}/agent-actions.png` });
+  await menu.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Sync from GitHub", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(menu).toBeFocused();
+  await menu.click();
+  if (process.env.UI_EVIDENCE_DIR)
+    await page.screenshot({
+      path: `${process.env.UI_EVIDENCE_DIR}/agent-menu.png`,
+      clip: { x: 260, y: 100, width: 1000, height: 285 },
+    });
+  await page.getByRole("menuitem", { name: "Sync from GitHub", exact: true }).click();
   await expect(page.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
   await page.getByLabel("Repository", { exact: true }).selectOption("acme/agents");
   await expect(page.getByLabel("Branch", { exact: true })).toHaveValue("main");
@@ -146,8 +177,24 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   await expect(page.getByText("aaaaaaa", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sync now", exact: true })).toBeDisabled();
+  await expect(page.getByRole("alert").filter({ hasText: "Temporary sync failure" })).toContainText(
+    "Temporary sync failure",
+  );
+  await expect(page.getByText("aaaaaaa", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Sync now", exact: true }).click();
+  await expect(page.getByText("Queued", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sync now", exact: true })).toBeDisabled();
+  expect(syncCalls).toBe(2);
   await page.getByRole("button", { name: "Disconnect", exact: true }).click();
   await page.getByRole("button", { name: "Disconnect source sync", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
   await expect(page.getByText("Help with support requests.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Agent source" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Dry run", exact: true }).click();
+  await expect(page).toHaveURL(`/playground/new?agent=${agentId}&dry_run=1`);
+  await page.goBack();
+  await page.getByRole("button", { name: "Test in Playground", exact: true }).click();
+  await expect(page).toHaveURL(`/playground/new?agent=${agentId}`);
 });

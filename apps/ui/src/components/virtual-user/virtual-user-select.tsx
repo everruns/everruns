@@ -1,13 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useMemo, useState } from "react";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { useVirtualUser, useVirtualUsers } from "@/hooks/use-virtual-users";
 import { Button } from "@/components/ui/button";
 import type { VirtualUser } from "@/lib/api/types";
@@ -34,12 +28,15 @@ export function VirtualUserSelect({
   className,
   usage,
 }: VirtualUserSelectProps) {
+  const [search, setSearch] = useState("");
   const {
+    isLoading,
+    error,
     data: identities = [],
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useVirtualUsers({ includeArchived: !!value, usage });
+  } = useVirtualUsers({ includeArchived: !!value, usage, search: search.trim() || undefined });
   const { data: selectedUser } = useVirtualUser(value || undefined);
   const identityMap = useMemo(
     () => new Map<string, VirtualUser>(identities.map((identity) => [identity.id, identity])),
@@ -55,52 +52,52 @@ export function VirtualUserSelect({
       : includeNone
         ? noneLabel
         : undefined;
-  const selectValue = includeNone && !value ? "none" : value;
+  const options: ComboboxOption[] = identities
+    .filter((identity) => !usage || identity.usage === usage)
+    .map((identity) => ({
+      value: identity.id,
+      label: identity.name + (identity.status !== "active" ? " (archived)" : ""),
+      disabled: identity.status !== "active",
+    }));
+  if (!search.trim()) {
+    if (includeNone) options.unshift({ value: "none", label: noneLabel });
+    if (selectedIdentity && !identityMap.has(value)) {
+      options.push({
+        value,
+        label: selectedIdentity.name,
+        disabled:
+          selectedIdentity.status !== "active" || (!!usage && selectedIdentity.usage !== usage),
+      });
+    } else if (valueMissing) {
+      options.push({ value, label: displayLabel!, disabled: true });
+    }
+  }
   return (
-    <Select
-      value={selectValue}
+    <Combobox
+      value={includeNone && !value ? "none" : value}
+      valueLabel={displayLabel}
       onValueChange={(next) => onValueChange(next === "none" ? "" : next)}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder="Search virtual users"
       disabled={disabled}
-    >
-      <SelectTrigger className={className} aria-label={placeholder}>
-        <SelectValue placeholder={placeholder}>{displayLabel}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {includeNone && <SelectItem value="none">{noneLabel}</SelectItem>}
-        {selectedIdentity && !identityMap.has(value) && (
-          <SelectItem value={value} disabled={selectedIdentity.status !== "active"}>
-            {selectedIdentity.name}
-          </SelectItem>
-        )}
-        {/* Show a disabled entry for the current value if it's not in the list */}
-        {valueMissing && (
-          <SelectItem value={value} disabled>
-            Unknown identity ({value.slice(0, 12)}...)
-          </SelectItem>
-        )}
-        {identities
-          .filter((identity) => !usage || identity.usage === usage)
-          .map((identity) => (
-            <SelectItem
-              key={identity.id}
-              value={identity.id}
-              disabled={identity.status !== "active"}
-            >
-              {identity.name}
-              {identity.status !== "active" ? " (archived)" : ""}
-            </SelectItem>
-          ))}
-        {hasNextPage && (
+      clearable={false}
+      className={className}
+      onSearchChange={setSearch}
+      loading={isLoading}
+      error={error ? "Could not load virtual users. Try searching again." : undefined}
+      footer={
+        hasNextPage ? (
           <Button
             variant="ghost"
             className="w-full"
             disabled={isFetchingNextPage}
             onClick={() => fetchNextPage()}
           >
-            Load more virtual users
+            {isFetchingNextPage ? "Loading…" : "Load more virtual users"}
           </Button>
-        )}
-      </SelectContent>
-    </Select>
+        ) : undefined
+      }
+    />
   );
 }

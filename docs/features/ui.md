@@ -119,8 +119,16 @@ Header actions:
 - **Edit**: switch the page into edit mode. The prompt becomes an editor and the settings take
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
-- **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
-- **Test in Playground**: open Playground setup with this Agent selected
+- **More actions**: Sync from GitHub, Copy, Export, History, Manager notes, and Archive (or Delete, for an archived agent)
+- **Dry run**: open Playground setup with this Agent selected and dry run enabled. Tools that only
+  read run for real; every other action is simulated.
+- **Test in Playground**: open Playground setup with this Agent selected and normal execution
+  selected. Neither action starts a session until you confirm setup.
+
+In Playground setup, search **Talk as** for an end user by name, including users beyond the first
+page of results. Owners and admins can choose another active end user; other members use their
+own identity. Search the Agent/harness picker by name or identifier. These choices remain fixed
+for the chat after it starts.
 
 Use **More > Sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
 Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the

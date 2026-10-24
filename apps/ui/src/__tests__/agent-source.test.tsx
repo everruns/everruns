@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AgentSourcePanel } from "@/components/agents/agent-source";
@@ -6,7 +7,8 @@ import * as github from "@/lib/api/agent-github";
 
 jest.mock("@/lib/api/agent-source");
 jest.mock("@/lib/api/agent-github");
-jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => true }) }));
+let mockCanManage = true;
+jest.mock("@/hooks/use-policies", () => ({ usePolicies: () => ({ can: () => mockCanManage }) }));
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org_1" }, isLoading: false }),
 }));
@@ -27,18 +29,28 @@ const source: api.AgentSource = {
   last_checked_at: "2026-10-19T12:00:00Z",
   last_synced_at: "2026-10-19T12:00:00Z",
 };
-function show() {
+function Source({ disabled = false }: { disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Sync from GitHub</button>
+      <AgentSourcePanel agentId="agent_1" disabled={disabled} open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+function show(disabled = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <AgentSourcePanel agentId="agent_1" />
+      <Source disabled={disabled} />
     </QueryClientProvider>,
   );
 }
 beforeEach(() => {
   jest.resetAllMocks();
+  mockCanManage = true;
   mocked.getAgentSource.mockResolvedValue(null);
   gh.getAgentGitHub.mockResolvedValue({
     connected: true,
@@ -123,4 +135,60 @@ it("disconnects only after explaining that the current definition stays", async 
   expect(mocked.disconnectAgentSource).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Disconnect source sync" }));
   await waitFor(() => expect(mocked.disconnectAgentSource).toHaveBeenCalledWith("agent_1"));
+});
+
+it("omits the disconnected Source card and resets a cancelled connection form", async () => {
+  show();
+  await waitFor(() => expect(screen.queryByText("Loading source…")).not.toBeInTheDocument());
+  expect(screen.queryByRole("region", { name: "Agent source" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));
+  await screen.findByRole("option", { name: "acme/agents" });
+  fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "acme/agents" } });
+  await waitFor(() => expect(screen.getByLabelText("Branch")).toHaveValue("main"));
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));
+  expect(screen.getByLabelText("Repository")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
+});
+it.each(["pending", "syncing"])(
+  "does not submit another sync while the source is %s",
+  async (status) => {
+    mocked.getAgentSource.mockResolvedValue({ ...source, status } as api.AgentSource);
+    show();
+    expect(await screen.findByRole("button", { name: "Sync now" })).toBeDisabled();
+    expect(mocked.syncAgentSource).not.toHaveBeenCalled();
+  },
+);
+it("keeps source status visible to a reader without management controls", async () => {
+  mockCanManage = false;
+  mocked.getAgentSource.mockResolvedValue(source);
+  show();
+  await screen.findByText("aaaaaaa");
+  expect(screen.getByRole("link", { name: /View on GitHub/ })).toHaveAttribute(
+    "href",
+    expect.stringContaining(source.applied_commit!),
+  );
+  expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+it("shows source lookup failures instead of an empty state", async () => {
+  mocked.getAgentSource.mockRejectedValue(new Error("Unavailable"));
+  show();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load Agent source");
+  fireEvent.click(screen.getByRole("button", { name: "Sync from GitHub" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+it("retains sync request failures and lets the user retry", async () => {
+  mocked.getAgentSource.mockResolvedValue(source);
+  mocked.syncAgentSource
+    .mockRejectedValueOnce(new Error("Temporary sync failure"))
+    .mockResolvedValueOnce({ ...source, status: "pending" });
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "Sync now" }));
+  await screen.findByText("Temporary sync failure");
+  expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+  await waitFor(() => expect(mocked.syncAgentSource).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText("Temporary sync failure")).not.toBeInTheDocument();
 });
