@@ -192,9 +192,14 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
   await expect(page.getByText("Help with support requests.", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Agent source" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Dry run", exact: true }).click();
-  await expect(page).toHaveURL(`/playground/new?agent=${agentId}&dry_run=1`);
+  // The development server may compile Playground during its first navigation.
+  await Promise.all([
+    page.waitForURL(`/playground/new?agent=${agentId}&dry_run=1`),
+    page.getByRole("button", { name: "Dry run", exact: true }).click(),
+  ]);
   await page.goBack();
-  await page.getByRole("button", { name: "Test in Playground", exact: true }).click();
-  await expect(page).toHaveURL(`/playground/new?agent=${agentId}`);
+  await Promise.all([
+    page.waitForURL(`/playground/new?agent=${agentId}`),
+    page.getByRole("button", { name: "Test in Playground", exact: true }).click(),
+  ]);
 });
