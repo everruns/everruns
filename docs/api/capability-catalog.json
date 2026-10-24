@@ -1559,6 +1559,7 @@
       "name": "Task Management",
       "status": "available",
       "tools": [
+        "report_done",
         "write_todos"
       ]
     },
