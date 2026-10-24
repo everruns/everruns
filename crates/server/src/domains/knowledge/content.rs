@@ -12,6 +12,7 @@ pub struct Content {
     db: Arc<crate::storage::StorageBackend>,
     root: PathBuf,
 }
+
 pub struct Stored {
     pub key: String,
     pub parts: i32,
@@ -33,7 +34,7 @@ impl Content {
             key.starts_with("knowledge/") && !key.contains(".."),
             "invalid content key"
         );
-        if let Some(store) = self.db.blob_store() {
+        if let Some(store) = self.db.knowledge_blob_store() {
             store
                 .put(
                     key,
@@ -63,7 +64,7 @@ impl Content {
             key.starts_with("knowledge/") && !key.contains(".."),
             "invalid content key"
         );
-        if let Some(store) = self.db.blob_store() {
+        if let Some(store) = self.db.knowledge_blob_store() {
             store
                 .get(key)
                 .await?
@@ -75,7 +76,7 @@ impl Content {
     pub async fn remove(&self, key: &str, parts: i32) -> Result<()> {
         for i in 0..parts {
             let key = format!("{key}/{i}");
-            if let Some(store) = self.db.blob_store() {
+            if let Some(store) = self.db.knowledge_blob_store() {
                 store.delete(&key).await?;
             } else {
                 match tokio::fs::remove_file(self.root.join(&key)).await {
@@ -172,5 +173,89 @@ impl Content {
             self.put(&format!("{base}/{index}"), part.to_vec()).await?;
         }
         Ok(base)
+    }
+}
+
+#[cfg(test)]
+mod storage_boundary_tests {
+    use super::*;
+    use crate::storage::blob_store::ObjectStoreBlobStore;
+
+    #[tokio::test]
+    async fn knowledge_store_survives_another_replica_without_offloading_other_files() {
+        let objects = Arc::new(ObjectStoreBlobStore::in_memory());
+        let db = Arc::new(
+            crate::storage::StorageBackend::test_database()
+                .with_knowledge_blob_store(Some(objects)),
+        );
+        assert!(db.blob_store().is_none());
+        let first_root = tempfile::tempdir().unwrap();
+        let next_root = tempfile::tempdir().unwrap();
+        let mut writer = Content::new(db.clone());
+        writer.root = first_root.path().into();
+        let bytes = vec![0xa5; SEGMENT + 17];
+        let input = bytes.clone();
+        let stored = writer
+            .store(
+                1,
+                Uuid::now_v7(),
+                futures::stream::once(async {
+                    Ok::<_, std::io::Error>(axum::body::Bytes::from(input))
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stored.parts, 2);
+        let mut reader = Content::new(Arc::new(db.for_background()));
+        reader.root = next_root.path().into();
+        assert_eq!(
+            reader
+                .range(&stored.key, stored.bytes as u64, 0, bytes.len())
+                .await
+                .unwrap(),
+            bytes
+        );
+        assert!(
+            std::fs::read_dir(first_root.path())
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        reader.remove(&stored.key, stored.parts).await.unwrap();
+        assert!(writer.get(&format!("{}/0", stored.key)).await.is_err());
+    }
+    #[tokio::test]
+    async fn knowledge_override_preserves_shared_file_store_and_background_scope() {
+        use crate::storage::blob_store::{BlobMetadata, BlobStore};
+        let shared = Arc::new(ObjectStoreBlobStore::in_memory());
+        let knowledge = Arc::new(ObjectStoreBlobStore::in_memory());
+        let key = "knowledge/org-1/versions/example/raw/0";
+        shared
+            .put(
+                key,
+                b"shared".to_vec(),
+                &BlobMetadata::new("test", serde_json::json!({})),
+            )
+            .await
+            .unwrap();
+        let inherited =
+            crate::storage::StorageBackend::test_database().with_blob_store(Some(shared.clone()));
+        assert_eq!(
+            Content::new(Arc::new(inherited.clone()))
+                .get(key)
+                .await
+                .unwrap(),
+            b"shared"
+        );
+        let selected = inherited
+            .with_knowledge_blob_store(Some(knowledge.clone()))
+            .with_blob_store(Some(shared.clone()));
+        let content = Content::new(Arc::new(selected.for_background()));
+        content.put(key, b"knowledge".to_vec()).await.unwrap();
+        assert_eq!(content.get(key).await.unwrap(), b"knowledge");
+        assert_eq!(shared.get(key).await.unwrap().unwrap(), b"shared");
+        assert_eq!(knowledge.get(key).await.unwrap().unwrap(), b"knowledge");
+        assert!(content.put("knowledge/../private", vec![]).await.is_err());
+        assert!(content.get("other/private").await.is_err());
     }
 }

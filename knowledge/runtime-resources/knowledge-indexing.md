@@ -15,7 +15,15 @@ tags:
 
 **Implementation, 2026-10-23.** Companion to [Unified Knowledge](knowledge.md).
 Originals, derived text and embedding-cache artifacts use segmented blob storage
-with a local development fallback. PostgreSQL owns metadata, leases, publication
+with a local development fallback. An explicit Knowledge-only S3 selection reuses the
+existing object-storage configuration independently of the workspace file/image
+backend. This lets a deployment retain inline PostgreSQL files during its separate
+object-storage backfill without putting new Knowledge bytes on ephemeral disk.
+See [content storage selection](../../crates/server/src/storage/blob_store.rs) and
+[storage initialization](../../crates/server/src/setup/storage_init.rs). The selected
+store survives background-pool handles; invalid explicit configuration fails startup
+and object errors never fall back to local files. No organization feature flag or
+credential grant is changed by backend selection. PostgreSQL owns metadata, leases, publication
 pointers and optional rebuildable lexical postings. It stores neither canonical
 chunk text nor binary originals. Turbopuffer supports lexical and hybrid modes,
 including organization-owned encrypted credential references with no fallback

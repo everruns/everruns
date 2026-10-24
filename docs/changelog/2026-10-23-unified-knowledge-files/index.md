@@ -21,3 +21,6 @@ knowledge search --limit 5 'refund policy'
 ```
 
 Collections preserve frontmatter and annotations, update indexes incrementally, and return immutable citations. Organization search accounts use encrypted service credentials. Knowledge is available as an Adoption feature: disabled by default, with organization owner/admin or platform operator opt-in on development and hosted deployments. Shared workspaces keep Knowledge attachments session-scoped; unsupported binary formats retain their originals.
+
+Hosted deployments can persist Knowledge in S3 without moving existing inline
+workspace files or image bytes.

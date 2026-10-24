@@ -90,6 +90,7 @@ macro_rules! dispatch {
 pub struct StorageBackend {
     db: Database,
     identity: identity_cache::IdentityCache,
+    knowledge_blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
 }
 
 // Decision: callers reach the repositories through `Deref`. The backend used
@@ -114,6 +115,7 @@ impl StorageBackend {
         Self {
             db,
             identity: identity_cache::IdentityCache::new(),
+            knowledge_blob_store: None,
         }
     }
 
