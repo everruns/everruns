@@ -30,6 +30,8 @@ The agent sees read-only mounts:
 - `/knowledge/<collection-id>/`: original files, with their hierarchy preserved.
 - `/knowledge-text/<collection-id>/`: extracted text where available.
 
+The existing **Data Knowledge** capability keeps its read-only `/knowledge/{tables,business,queries}` scaffold. Its index and the collection catalog share `/knowledge/index.md`; collection ID subtrees always use live collection permissions, including when a collection is detached. Directory listings and grep scoped to a Knowledge path include both sources.
+
 Read indexes first, then individual files as needed. An authored `index.md` is preserved; collections without one receive a bounded generated index. Use `browse_knowledge` or `knowledge files` to page through larger directories without enabling indexing. Request metadata only when needed; metadata pages are separately bounded. Knowledge bindings belong to the calling session, including when several sessions share a workspace. Sharing workspace files does not share Knowledge attachments.
 
 ## Search and grep

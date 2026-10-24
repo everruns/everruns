@@ -3,25 +3,18 @@ use super::*;
 impl WorkspaceFileService {
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
         self.restore_virtual_mounts(session_id).await?;
-        if req
+        let legacy_key = if req
             .path_pattern
             .as_deref()
-            .is_some_and(|p| crate::domains::knowledge::runtime::is_mount(p.trim_end_matches('/')))
+            .is_some_and(everruns_contracts::knowledge::is_mount)
         {
-            let matches = crate::domains::knowledge::KnowledgeService::files(self.db.clone())
-                .mount_grep(session_id, &req.pattern, req.path_pattern.as_deref())
-                .await?;
-            return Ok(matches
-                .into_iter()
-                .map(|m| GrepResult {
-                    path: m.path.clone(),
-                    matches: vec![m],
-                })
-                .collect());
-        }
+            self.legacy_workspace_key(session_id).await?
+        } else {
+            session_id
+        };
         let mut results = grep_session_files_excluding(
             &self.db,
-            session_id,
+            legacy_key,
             &req.pattern,
             req.path_pattern.as_deref(),
             req.excluded_path_prefix.as_deref(),
@@ -38,7 +31,7 @@ impl WorkspaceFileService {
                 .transpose()?;
             // Apply the shared path matcher after reading virtual entries.
             let virtual_matches = registry.grep(
-                &session_id,
+                &legacy_key,
                 &regex,
                 None,
                 req.excluded_path_prefix.as_deref(),
@@ -93,6 +86,9 @@ impl WorkspaceFileService {
                         continue;
                     }
                     let display = Self::memory_session_path(mount, &row.path);
+                    if knowledge_mounts::collection_path(&display) {
+                        continue;
+                    }
                     if path_matcher
                         .as_ref()
                         .is_some_and(|matcher| !matcher.is_match(&display))
@@ -132,6 +128,37 @@ impl WorkspaceFileService {
             }
         }
 
+        if self.session_knowledge
+            && req.path_pattern.as_deref().is_some_and(|path| {
+                crate::domains::knowledge::runtime::is_mount(
+                    &everruns_core::session_path::to_session_path(path),
+                )
+            })
+        {
+            for item in crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_grep_with_options(
+                    session_id,
+                    &req.pattern,
+                    &GrepOptions {
+                        path_pattern: req.path_pattern.clone(),
+                        ..Default::default()
+                    },
+                    req.excluded_path_prefix.as_deref(),
+                )
+                .await?
+                .matches
+            {
+                if let Some(file) = results.iter_mut().find(|file| file.path == item.path) {
+                    file.matches.push(item);
+                } else {
+                    results.push(GrepResult {
+                        path: item.path.clone(),
+                        matches: vec![item],
+                    });
+                }
+            }
+        }
+        results.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(results)
     }
 }

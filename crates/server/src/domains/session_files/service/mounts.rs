@@ -86,6 +86,7 @@ impl WorkspaceFileService {
             virtual_registry: Some(Arc::new(virtual_mount_registry::VirtualMountRegistry::new())),
             restored_virtual_mounts: Default::default(),
             quota: QuotaLimits::from_env(),
+            session_knowledge: true,
         }
     }
 
@@ -181,5 +182,100 @@ impl WorkspaceFileService {
     ) -> Option<&Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>
     {
         self.virtual_registry.as_ref()
+    }
+}
+
+// Trusted capability materialization bypasses agent write guards, not collection ownership.
+impl WorkspaceFileService {
+    fn validate_materialized_mount(&self, session: Uuid, path: &str) -> Result<()> {
+        anyhow::ensure!(
+            !knowledge_mounts::collection_path(path),
+            "Knowledge collection subtrees are host-owned"
+        );
+        anyhow::ensure!(
+            self.virtual_registry
+                .as_ref()
+                .is_none_or(|registry| !registry.is_virtual_path(&session, path)),
+            "Mount conflict: path belongs to a readonly virtual mount: {}",
+            path
+        );
+        Ok(())
+    }
+    /// Create a file from a mount source.
+    pub(super) async fn create_mounted_file(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        content: &str,
+        encoding: &str,
+        is_readonly: bool,
+    ) -> Result<()> {
+        self.validate_materialized_mount(session_id, path)?;
+        // Check if file already exists
+        if self.db.session_file_exists(session_id, path).await? {
+            return Err(anyhow!("Mount conflict: file already exists at {}", path));
+        }
+
+        // Ensure parent directory exists
+        if let Some(parent) = FileInfo::parent_path(path) {
+            Box::pin(self.create_mounted_directory(session_id, &parent, false)).await?;
+        }
+
+        // Decode content
+        let content_bytes = SessionFile::decode_content(content, encoding)?;
+
+        let input = CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_id),
+            path: path.to_string(),
+            content: Some(content_bytes),
+            is_directory: false,
+            is_readonly,
+        };
+
+        self.db.create_session_file(input).await?;
+        Ok(())
+    }
+
+    /// Create a directory for a mount (if it doesn't exist).
+    ///
+    /// When is_readonly is true, the directory is marked readonly, preventing
+    /// creation of new files within it (only mount-time creation is allowed).
+    pub(super) async fn create_mounted_directory(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        is_readonly: bool,
+    ) -> Result<()> {
+        if path == "/" {
+            return Ok(());
+        }
+        self.validate_materialized_mount(session_id, path)?;
+        // Check if path exists
+        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
+            if existing.is_directory {
+                return Ok(()); // Directory already exists, that's fine
+            } else {
+                return Err(anyhow!(
+                    "Mount conflict: file exists at directory path {}",
+                    path
+                ));
+            }
+        }
+
+        // Ensure parent directory exists
+        if let Some(parent) = FileInfo::parent_path(path) {
+            Box::pin(self.create_mounted_directory(session_id, &parent, false)).await?;
+        }
+
+        let input = CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session_id),
+            path: path.to_string(),
+            content: None,
+            is_directory: true,
+            is_readonly,
+        };
+
+        self.db.create_session_file(input).await?;
+        Ok(())
     }
 }

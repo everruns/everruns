@@ -31,6 +31,13 @@ attaching a collection explicitly authorizes runtime reads. Read-only tokens can
 retrieve files and evidence, while file/configuration changes and refresh require
 full access. Consumer workspace APIs exclude Knowledge mount roots as private
 agent context, including normalized workspace aliases.
+Existing `data_knowledge` scaffolds coexist at the same read-only root and retain workspace sharing. Workspace-only browsing never imports a session's attachments, including when workspace and session UUIDs coincide. Preserve their
+OKF index before appending collection navigation, and merge listings and grep with
+the static scaffold. Collection ID subtrees remain authoritative even when unbound:
+workspace rows, Memory aliases or virtual trees cannot supply fallback bytes there.
+Collection grep uses an explicit Knowledge path to preserve the caller's session
+through workspace adapters. Whole-workspace scans cannot inherit the workspace
+owner's collection bindings.
 Collection configuration and source attachments participate in entity history,
 manager context and configuration restore. Indexer creation records only public
 configuration and its credential-binding reference. File writes, deletions and

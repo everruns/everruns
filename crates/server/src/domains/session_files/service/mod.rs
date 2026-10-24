@@ -25,6 +25,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 mod filesystem;
+pub(super) mod knowledge_mounts;
+use knowledge_mounts::KnowledgeRoute;
 mod mounts;
 mod search;
 
@@ -113,6 +115,7 @@ pub struct WorkspaceFileService {
     memory_mounts: Arc<MemoryMountRouter>,
     restored_virtual_mounts: parking_lot::RwLock<std::collections::HashSet<Uuid>>,
     quota: QuotaLimits,
+    pub(super) session_knowledge: bool,
 }
 
 impl WorkspaceFileService {
@@ -383,10 +386,8 @@ impl WorkspaceFileService {
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
-        if crate::domains::knowledge::runtime::is_mount(&path) {
-            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
-                .mount_read(session_id, &path)
-                .await;
+        if let KnowledgeRoute::Resolved(file) = self.knowledge_read(session_id, &path).await? {
+            return Ok(file);
         }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
@@ -455,10 +456,8 @@ impl WorkspaceFileService {
     pub async fn stat(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
-        if crate::domains::knowledge::runtime::is_mount(&path) {
-            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
-                .mount_stat(session_id, &path)
-                .await;
+        if let KnowledgeRoute::Resolved(stat) = self.knowledge_stat(session_id, &path).await? {
+            return Ok(stat);
         }
 
         // Handle root directory specially
@@ -538,10 +537,8 @@ impl WorkspaceFileService {
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
-        if crate::domains::knowledge::runtime::is_mount(&path) {
-            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
-                .mount_list(session_id, &path)
-                .await;
+        if let KnowledgeRoute::Resolved(entries) = self.knowledge_list(session_id, &path).await? {
+            return Ok(entries);
         }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
@@ -618,6 +615,7 @@ impl WorkspaceFileService {
         }
 
         if path == "/"
+            && self.session_knowledge
             && !crate::domains::knowledge::KnowledgeService::files(self.db.clone())
                 .mounted(session_id)
                 .await?
@@ -629,6 +627,7 @@ impl WorkspaceFileService {
                 entries.push(Self::synthetic_directory(session_id, mount));
             }
         }
+        entries.retain(|entry| !knowledge_mounts::collection_path(&entry.path));
         // Sort to match DB ordering: directories first, then by path
         entries.sort_by(|a, b| {
             b.is_directory
@@ -661,6 +660,7 @@ impl WorkspaceFileService {
             }
         }
 
+        entries.retain(|entry| !knowledge_mounts::collection_path(&entry.path));
         Ok(entries)
     }
 
@@ -1051,7 +1051,7 @@ impl WorkspaceFileService {
     fn ensure_path_not_virtual(&self, session_id: Uuid, path: &str) -> Result<()> {
         anyhow::ensure!(
             !crate::domains::knowledge::runtime::is_mount(path),
-            "Knowledge mounts are read-only"
+            "Cannot modify readonly Knowledge mounts"
         );
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
@@ -1223,79 +1223,6 @@ impl WorkspaceFileService {
             self.apply_mount_source(session_id, path, &entry.source, is_readonly, stats)
                 .await
         })
-    }
-
-    /// Create a file from a mount source.
-    async fn create_mounted_file(
-        &self,
-        session_id: Uuid,
-        path: &str,
-        content: &str,
-        encoding: &str,
-        is_readonly: bool,
-    ) -> Result<()> {
-        // Check if file already exists
-        if self.db.session_file_exists(session_id, path).await? {
-            return Err(anyhow!("Mount conflict: file already exists at {}", path));
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = FileInfo::parent_path(path) {
-            self.ensure_directory_exists(session_id, &parent).await?;
-        }
-
-        // Decode content
-        let content_bytes = SessionFile::decode_content(content, encoding)?;
-
-        let input = CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session_id),
-            path: path.to_string(),
-            content: Some(content_bytes),
-            is_directory: false,
-            is_readonly,
-        };
-
-        self.db.create_session_file(input).await?;
-        Ok(())
-    }
-
-    /// Create a directory for a mount (if it doesn't exist).
-    ///
-    /// When is_readonly is true, the directory is marked readonly, preventing
-    /// creation of new files within it (only mount-time creation is allowed).
-    async fn create_mounted_directory(
-        &self,
-        session_id: Uuid,
-        path: &str,
-        is_readonly: bool,
-    ) -> Result<()> {
-        // Check if path exists
-        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
-            if existing.is_directory {
-                return Ok(()); // Directory already exists, that's fine
-            } else {
-                return Err(anyhow!(
-                    "Mount conflict: file exists at directory path {}",
-                    path
-                ));
-            }
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = FileInfo::parent_path(path) {
-            self.ensure_directory_exists(session_id, &parent).await?;
-        }
-
-        let input = CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session_id),
-            path: path.to_string(),
-            content: None,
-            is_directory: true,
-            is_readonly,
-        };
-
-        self.db.create_session_file(input).await?;
-        Ok(())
     }
 }
 
