@@ -19,7 +19,7 @@ export interface FeatureFlags {
   skills: boolean;
   /** Workspace memory management UI. Experimental. */
   memory: boolean;
-  /** Knowledge index management UI. Experimental. */
+  /** Unified Knowledge files and optional search. Organization adoption opt-in. */
   knowledge: boolean;
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;

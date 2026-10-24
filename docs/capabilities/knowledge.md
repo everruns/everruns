@@ -5,7 +5,7 @@ description: Attach versioned file collections to agents, browse originals and e
 
 Knowledge brings notes, uploaded files, repository trees and Everruns documentation into one collection model. Indexing is optional. Files remain available to browse, read and grep when indexing is off.
 
-Knowledge retains its development rollout grade. On a development deployment, enable the organization's **Knowledge** feature, open **Knowledge**, and create a collection. Upload files or a folder with its relative paths, write Markdown with optional OKF frontmatter, or connect a source. GitHub sources reuse existing organization or virtual-user GitHub connections. Public HTTPS Git repositories work without a GitHub connection. Source roots must not overlap, and a connected source cannot overwrite a managed file.
+Knowledge is an Adoption feature, available on development and hosted deployments and disabled by default. An organization owner/admin or platform operator can enable the organization's **Knowledge** feature. Then open **Knowledge** and create a collection. Upload files or a folder with its relative paths, write Markdown with optional OKF frontmatter, or connect a source. GitHub sources reuse existing organization or virtual-user GitHub connections. Public HTTPS Git repositories work without a GitHub connection. Source roots must not overlap, and a connected source cannot overwrite a managed file.
 
 ## Attach to an agent
 
@@ -33,6 +33,14 @@ The agent sees read-only mounts:
 The existing **Data Knowledge** capability keeps its read-only `/knowledge/{tables,business,queries}` scaffold. Its index and the collection catalog share `/knowledge/index.md`; collection ID subtrees always use live collection permissions, including when a collection is detached. Directory listings and grep scoped to a Knowledge path include both sources.
 
 Read indexes first, then individual files as needed. An authored `index.md` is preserved; collections without one receive a bounded generated index. Use `browse_knowledge` or `knowledge files` to page through larger directories without enabling indexing. Request metadata only when needed; metadata pages are separately bounded. Knowledge bindings belong to the calling session, including when several sessions share a workspace. Sharing workspace files does not share Knowledge attachments.
+
+## Ownership and attachment scope
+
+Collections, their indexes and search-provider accounts belong to an organization. Users manage them through organization permissions; a personal GitHub connection supplies source credentials, not a private user index.
+
+Attach collections through the **Knowledge** capability on a harness, agent or session. Configuration follows the existing capability precedence: harness, then agent, then session. A higher layer replaces the lower layer's configuration for that capability, so list every collection the session should retain. Collections are shared rather than copied or reindexed for each agent or session.
+
+Runtime tools, Bashkit search, automatic retrieval and mounts use the calling session's effective collection bindings and live file visibility. There are no separate user-, agent- or session-owned Knowledge indexes, and an agent does not automatically search every collection in its organization. Sharing a workspace does not share its sessions' Knowledge bindings.
 
 ## Search and grep
 
