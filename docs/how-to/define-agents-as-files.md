@@ -182,7 +182,7 @@ or resolved credentials. Diff requires
 
 ## Sync an Agent continuously from GitHub
 
-Open an existing Agent and select **Source → Sync from GitHub**. Connect the
+Open an existing Agent and select **More actions → Sync from GitHub**. Connect the
 Agent's GitHub App in **Integrations** first, or choose an organization-linked
 Everruns App installation there. Select an accessible repository, its branch,
 and a package folder or standalone manifest. Leave the path empty for a package

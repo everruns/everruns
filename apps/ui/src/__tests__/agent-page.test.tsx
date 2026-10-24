@@ -15,15 +15,20 @@ jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
 }));
 
 let mockSourceManaged = false;
+let mockSourceLoading = false;
+let mockSourceError: Error | null = null;
 jest.mock("@/hooks/use-agent-source", () => ({
   useAgentSource: () => ({
     data: mockSourceManaged ? { repository: "acme/agents", branch: "main" } : null,
-    isLoading: false,
-    isError: false,
+    isLoading: mockSourceLoading,
+    error: mockSourceError,
+    isError: !!mockSourceError,
   }),
 }));
 jest.mock("@/components/agents/agent-source", () => ({
-  AgentSourcePanel: () => <div>Agent source</div>,
+  AgentSourcePanel: ({ open }: { open: boolean }) => (
+    <div>Agent source{open && <div role="dialog">Source setup</div>}</div>
+  ),
 }));
 
 let mockSearchParams = new URLSearchParams();
@@ -272,6 +277,8 @@ async function save() {
 
 beforeEach(() => {
   mockSourceManaged = false;
+  mockSourceLoading = false;
+  mockSourceError = null;
   mockChatMode = null;
   jest.clearAllMocks();
   mockCan.mockReturnValue(true);
@@ -425,10 +432,10 @@ describe("AgentPage layout", () => {
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
   });
 
-  it("opens a dry-run Playground setup from Test run", async () => {
+  it("opens a dry-run Playground setup from Dry run", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /Test run/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Dry run/ }));
 
     expect(mockCreateSession).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1&dry_run=1");
@@ -812,6 +819,7 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(items).toEqual([
+      "Sync from GitHub",
       "Copy",
       "Export package (ZIP)",
       "Export Markdown",
@@ -1058,4 +1066,45 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
     expect(screen.getByText("This agent has manager notes")).toBeInTheDocument();
   });
+});
+
+describe("Agent source menu", () => {
+  it("opens source setup from the overflow menu", async () => {
+    await renderPage();
+    expect(screen.queryByRole("button", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sync from GitHub" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Source setup");
+  });
+  it.each(["loading", "error"])("disables connection while source lookup is %s", async (state) => {
+    mockSourceLoading = state === "loading";
+    mockSourceError = state === "error" ? new Error("Unavailable") : null;
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    expect(await screen.findByRole("menuitem", { name: "Sync from GitHub" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  it.each(["reader", "built-in", "archived", "connected"])(
+    "hides the connection action for %s Agents",
+    async (state) => {
+      if (state === "reader") mockCan.mockReturnValue(false);
+      if (state === "built-in")
+        mockUseAgent.mockReturnValue({
+          data: { ...mockAgent, is_built_in: true },
+          isLoading: false,
+        });
+      if (state === "archived")
+        mockUseAgent.mockReturnValue({
+          data: { ...mockAgent, status: "archived" },
+          isLoading: false,
+        });
+      if (state === "connected") mockSourceManaged = true;
+      await renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+      await screen.findByRole("menuitem", { name: "Copy" });
+      expect(screen.queryByRole("menuitem", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+    },
+  );
 });

@@ -33,6 +33,38 @@ jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: jest.fn(),
 }));
 
+// Request binding tests use native controls; the real searchable control has
+// keyboard, async-result, and focus coverage in combobox and browser tests.
+jest.mock("@/components/ui/combobox", () => ({
+  Combobox: ({
+    options,
+    value,
+    onValueChange,
+    ariaLabel,
+    disabled,
+  }: {
+    options: Array<{ value: string; label: string }>;
+    value: string;
+    onValueChange: (value: string) => void;
+    ariaLabel: string;
+    disabled?: boolean;
+  }) => (
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      <option value="">Pick an agent or harness</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+
 // Render the design-system Select as a native select so the test can pick an
 // option without driving the popup — same shape the other suites use.
 jest.mock("@/components/ui/select", () => {

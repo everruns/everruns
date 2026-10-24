@@ -28,6 +28,7 @@ import {
   FlaskConical,
   MessageCircle,
   Pencil,
+  RefreshCw,
   Telescope,
 } from "lucide-react";
 import {
@@ -168,6 +169,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     setActiveTab(deepLink.tab);
   }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
   // Optional "Reason for this change", sent with Save and with Archive/Delete.
   const [saveReason, setSaveReason] = useState("");
@@ -342,7 +344,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
 
   const playgroundPath = `/playground/new?agent=${encodeURIComponent(agentId)}`;
   const handleTestAgent = () => router.push(playgroundPath);
-  // Test run: a Playground chat in dry run, so actions are simulated (proactive agents D5).
+  // Dry run: a Playground chat in dry run, so actions are simulated (proactive agents D5).
   const handleTestRun = () => router.push(`${playgroundPath}&dry_run=1`);
 
   const openPlaygroundTool = useMemo<WebMcpToolDefinition>(
@@ -548,6 +550,20 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       entityName={displayName}
       permissions={recordPermissions}
       actions={[
+        ...(!builtIn && canManage && !statusReadOnly && !sourceManaged
+          ? [
+              {
+                id: "source",
+                label: "Sync from GitHub",
+                icon: <RefreshCw className="size-4" />,
+                onSelect: () => setSourceOpen(true),
+                disabled: sourceQuery.isLoading || !!sourceQuery.error,
+                disabledReason: sourceQuery.error
+                  ? "Could not load Agent source"
+                  : "Loading source",
+              },
+            ]
+          : []),
         {
           id: "copy",
           label: copyAgent.isPending ? "Copying..." : "Copy",
@@ -608,7 +624,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       {overflowMenu}
       <Button variant="outline" onClick={handleTestRun} disabled={!isActive}>
         <FlaskConical className="size-4" />
-        Test run
+        Dry run
       </Button>
       <Button variant="accent" onClick={handleTestAgent} disabled={!isActive}>
         <MessageCircle className="size-4" />
@@ -670,7 +686,12 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             />
 
             {!editing && !builtIn && (
-              <AgentSourcePanel agentId={agentId} disabled={statusReadOnly} />
+              <AgentSourcePanel
+                agentId={agentId}
+                disabled={statusReadOnly}
+                open={sourceOpen}
+                onOpenChange={setSourceOpen}
+              />
             )}
 
             {editing && (
