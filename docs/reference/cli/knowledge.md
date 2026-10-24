@@ -57,12 +57,12 @@ everruns knowledge create [OPTIONS] --name <name>
 
 | Flag | Description |
 |---|---|
-| `--description <DESCRIPTION>` |  |
-| `--embedding-model-id <EMBEDDING_MODEL_ID>` |  |
-| `--indexer-id <INDEXER_ID>` |  |
-| `--indexing <INDEXING>` | One of `off`, `lexical`, `hybrid`. |
-| `--name <NAME>` | Required. |
-| `--rules <RULES>` |  |
+| `--description <DESCRIPTION>` | Human-readable purpose of the collection, available during progressive disclosure. |
+| `--embedding-model-id <EMBEDDING_MODEL_ID>` | Organization embedding model; required when hybrid indexing is enabled. |
+| `--indexer-id <INDEXER_ID>` | Optional organization search account. |
+| `--indexing <INDEXING>` | Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings. One of `off`, `lexical`, `hybrid`. |
+| `--name <NAME>` | Required. Collection name; `everruns-docs` is reserved for the predefined documentation snapshot. |
+| `--rules <RULES>` | Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`. |
 
 Example:
 
@@ -120,12 +120,12 @@ everruns knowledge search [OPTIONS] --query <query>
 
 | Flag | Description |
 |---|---|
-| `--collections <COLLECTIONS>` | Comma-separated or a JSON array of strings. Repeatable. |
-| `--lexical-only` |  |
-| `--limit <LIMIT>` |  |
-| `--metadata <METADATA>` |  |
-| `--path <PATH>` |  |
-| `--query <QUERY>` | Required. |
+| `--collections <COLLECTIONS>` | Optional collection identifiers. Comma-separated or a JSON array of strings. Repeatable. |
+| `--lexical-only` | Use keyword retrieval without creating a query embedding. |
+| `--limit <LIMIT>` | Requested maximum passages; hosts enforce the configured retrieval budget. |
+| `--metadata <METADATA>` | Exact user-annotation predicates applied without granting additional file access. |
+| `--path <PATH>` | Optional source-relative path prefix that narrows retrieval. |
+| `--query <QUERY>` | Required. Search text used for keyword retrieval and, when enabled, query embeddings. |
 
 Example:
 
@@ -164,12 +164,12 @@ everruns knowledge update [OPTIONS] --collection-id <collection_id> --name <name
 | Flag | Description |
 |---|---|
 | `--collection-id <COLLECTION_ID>` | Required. |
-| `--description <DESCRIPTION>` |  |
-| `--embedding-model-id <EMBEDDING_MODEL_ID>` |  |
-| `--indexer-id <INDEXER_ID>` |  |
-| `--indexing <INDEXING>` | One of `off`, `lexical`, `hybrid`. |
-| `--name <NAME>` | Required. |
-| `--rules <RULES>` |  |
+| `--description <DESCRIPTION>` | Human-readable purpose of the collection, available during progressive disclosure. |
+| `--embedding-model-id <EMBEDDING_MODEL_ID>` | Organization embedding model; required when hybrid indexing is enabled. |
+| `--indexer-id <INDEXER_ID>` | Optional organization search account. |
+| `--indexing <INDEXING>` | Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings. One of `off`, `lexical`, `hybrid`. |
+| `--name <NAME>` | Required. Collection name; `everruns-docs` is reserved for the predefined documentation snapshot. |
+| `--rules <RULES>` | Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`. |
 
 Example:
 
@@ -234,10 +234,10 @@ everruns knowledge files update [OPTIONS] --collection-id <collection_id> --path
 | Flag | Description |
 |---|---|
 | `--collection-id <COLLECTION_ID>` | Required. |
-| `--indexable` |  |
-| `--metadata <METADATA>` |  |
-| `--path <PATH>` | Required. |
-| `--readable` |  |
+| `--indexable` | Optional indexing override. |
+| `--metadata <METADATA>` | Replace user annotations while preserving metadata parsed from the original file. |
+| `--path <PATH>` | Required. Existing collection-relative file path. |
+| `--readable` | Optional agent-read override. |
 
 Example:
 
@@ -257,13 +257,13 @@ everruns knowledge files write [OPTIONS] --collection-id <collection_id> --path 
 | Flag | Description |
 |---|---|
 | `--collection-id <COLLECTION_ID>` | Required. |
-| `--content <CONTENT>` |  |
-| `--content-base64 <CONTENT_BASE64>` |  |
-| `--indexable` |  |
-| `--metadata <METADATA>` |  |
-| `--mime-type <MIME_TYPE>` |  |
-| `--path <PATH>` | Required. |
-| `--readable` |  |
+| `--content <CONTENT>` | UTF-8 original content. |
+| `--content-base64 <CONTENT_BASE64>` | Base64 original bytes for binary files; mutually exclusive with `content`. |
+| `--indexable` | Optional per-file indexing policy; false retains the original without indexing it. |
+| `--metadata <METADATA>` | User annotations retained separately from parsed source/frontmatter metadata. |
+| `--mime-type <MIME_TYPE>` | Optional media type used for representation extraction; inferred when omitted. |
+| `--path <PATH>` | Required. Normalized absolute path within the collection, preserving its directory hierarchy. |
+| `--readable` | Optional agent-read policy. |
 
 Example:
 
@@ -283,10 +283,10 @@ everruns knowledge sources add [OPTIONS] --collection-id <collection_id> --kind 
 | Flag | Description |
 |---|---|
 | `--collection-id <COLLECTION_ID>` | Required. |
-| `--config <CONFIG>` |  |
-| `--connection-owner <CONNECTION_OWNER>` |  |
-| `--kind <KIND>` | Required. |
-| `--root-path <ROOT_PATH>` |  |
+| `--config <CONFIG>` | Adapter-specific repository, revision and root-folder configuration, without credentials. |
+| `--connection-owner <CONNECTION_OWNER>` | Optional GitHub connection owner; existing connection authorization still applies. |
+| `--kind <KIND>` | Required. Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository. |
+| `--root-path <ROOT_PATH>` | Collection-relative root under which the source hierarchy is preserved. |
 
 Example:
 
@@ -305,9 +305,9 @@ everruns knowledge indexers create [OPTIONS] --credential-binding-id <credential
 
 | Flag | Description |
 |---|---|
-| `--credential-binding-id <CREDENTIAL_BINDING_ID>` | Required. |
-| `--endpoint <ENDPOINT>` | Required. |
-| `--name <NAME>` | Required. |
+| `--credential-binding-id <CREDENTIAL_BINDING_ID>` | Required. Active organization-service credential binding; never a plaintext API key. |
+| `--endpoint <ENDPOINT>` | Required. HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden. |
+| `--name <NAME>` | Required. Display name for the organization search account. |
 
 Example:
 

@@ -6567,25 +6567,29 @@
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Human-readable purpose of the collection, available during progressive disclosure."
       },
       {
         "field": "embedding_model_id",
         "long": "embedding-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Organization embedding model; required when hybrid indexing is enabled."
       },
       {
         "field": "indexer_id",
         "long": "indexer-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional organization search account."
       },
       {
         "field": "indexing",
         "long": "indexing",
         "kind": "string",
         "required": false,
+        "help": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
         "choices": [
           "off",
           "lexical",
@@ -6596,13 +6600,15 @@
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot."
       },
       {
         "field": "rules",
         "long": "rules",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
       }
     ],
     "examples": [
@@ -6755,25 +6761,29 @@
         "field": "indexable",
         "long": "indexable",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Optional indexing override."
       },
       {
         "field": "metadata",
         "long": "metadata",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Replace user annotations while preserving metadata parsed from the original file."
       },
       {
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Existing collection-relative file path."
       },
       {
         "field": "readable",
         "long": "readable",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Optional agent-read override."
       }
     ],
     "examples": [
@@ -6804,43 +6814,50 @@
         "field": "content",
         "long": "content",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "UTF-8 original content."
       },
       {
         "field": "content_base64",
         "long": "content-base64",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Base64 original bytes for binary files; mutually exclusive with `content`."
       },
       {
         "field": "indexable",
         "long": "indexable",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Optional per-file indexing policy; false retains the original without indexing it."
       },
       {
         "field": "metadata",
         "long": "metadata",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "User annotations retained separately from parsed source/frontmatter metadata."
       },
       {
         "field": "mime_type",
         "long": "mime-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional media type used for representation extraction; inferred when omitted."
       },
       {
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Normalized absolute path within the collection, preserving its directory hierarchy."
       },
       {
         "field": "readable",
         "long": "readable",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Optional agent-read policy."
       }
     ],
     "examples": [
@@ -6889,19 +6906,22 @@
         "field": "credential_binding_id",
         "long": "credential-binding-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Active organization-service credential binding; never a plaintext API key."
       },
       {
         "field": "endpoint",
         "long": "endpoint",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden."
       },
       {
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Display name for the organization search account."
       }
     ],
     "examples": [
@@ -7040,37 +7060,43 @@
         "field": "collections",
         "long": "collections",
         "kind": "string_list",
-        "required": false
+        "required": false,
+        "help": "Optional collection identifiers."
       },
       {
         "field": "lexical_only",
         "long": "lexical-only",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Use keyword retrieval without creating a query embedding."
       },
       {
         "field": "limit",
         "long": "limit",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Requested maximum passages; hosts enforce the configured retrieval budget."
       },
       {
         "field": "metadata",
         "long": "metadata",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Exact user-annotation predicates applied without granting additional file access."
       },
       {
         "field": "path",
         "long": "path",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional source-relative path prefix that narrows retrieval."
       },
       {
         "field": "query",
         "long": "query",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Search text used for keyword retrieval and, when enabled, query embeddings."
       }
     ],
     "examples": [
@@ -7101,25 +7127,29 @@
         "field": "config",
         "long": "config",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Adapter-specific repository, revision and root-folder configuration, without credentials."
       },
       {
         "field": "connection_owner",
         "long": "connection-owner",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional GitHub connection owner; existing connection authorization still applies."
       },
       {
         "field": "kind",
         "long": "kind",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository."
       },
       {
         "field": "root_path",
         "long": "root-path",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Collection-relative root under which the source hierarchy is preserved."
       }
     ],
     "examples": [
@@ -7173,25 +7203,29 @@
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Human-readable purpose of the collection, available during progressive disclosure."
       },
       {
         "field": "embedding_model_id",
         "long": "embedding-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Organization embedding model; required when hybrid indexing is enabled."
       },
       {
         "field": "indexer_id",
         "long": "indexer-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Optional organization search account."
       },
       {
         "field": "indexing",
         "long": "indexing",
         "kind": "string",
         "required": false,
+        "help": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
         "choices": [
           "off",
           "lexical",
@@ -7202,13 +7236,15 @@
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot."
       },
       {
         "field": "rules",
         "long": "rules",
         "kind": "json",
-        "required": false
+        "required": false,
+        "help": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
       }
     ],
     "examples": [

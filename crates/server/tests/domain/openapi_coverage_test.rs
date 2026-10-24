@@ -271,7 +271,7 @@ fn every_command_route_is_documented_in_openapi() {
     let mut fixed = Vec::new();
     for desc in inventory::iter::<CommandDescriptor> {
         let meta = (desc.meta)();
-        if !meta.path.starts_with("/v1/") {
+        if meta.is_retired() || !meta.path.starts_with("/v1/") {
             continue;
         }
         let documented = spec.contains(&route_key(meta.method, meta.path));
@@ -296,4 +296,20 @@ fn every_command_route_is_documented_in_openapi() {
         "These commands are documented now; remove them from \
          UNDOCUMENTED_COMMAND_ROUTES: {fixed:?}"
     );
+}
+
+/// Retiring a command removes its public REST contract as well as its catalog entry.
+#[test]
+fn retired_command_routes_are_absent_from_openapi() {
+    let spec = spec_routes();
+    for descriptor in inventory::iter::<everruns_server::domains::common::CommandDescriptor> {
+        let meta = (descriptor.meta)();
+        if meta.is_retired() {
+            assert!(
+                !spec.contains(&route_key(meta.method, meta.path)),
+                "retired command {} still has a public OpenAPI route",
+                meta.name
+            );
+        }
+    }
 }

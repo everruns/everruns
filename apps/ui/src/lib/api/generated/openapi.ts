@@ -10337,13 +10337,22 @@ export interface components {
        */
       tool_call_id: string;
     };
+    /** @description A file collection with optional indexing, provider selection and path exclusions. */
     CollectionInput: {
+      /** @description Human-readable purpose of the collection, available during progressive disclosure. */
       description?: string;
+      /** @description Organization embedding model; required when hybrid indexing is enabled. */
       embedding_model_id?: string | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Optional organization search account. Omit to use the local index backend.
+       */
       indexer_id?: string | null;
+      /** @description Whether files remain unindexed, use keyword search, or also use embedding retrieval. */
       indexing?: components["schemas"]["IndexMode"];
+      /** @description Collection name; `everruns-docs` is reserved for the predefined documentation snapshot. */
       name: string;
+      /** @description Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`. */
       rules?: unknown;
     };
     /** @description The command contract available to the caller. */
@@ -14182,19 +14191,32 @@ export interface components {
        */
       size_bytes: number;
     };
+    /** @description An inline managed file; use the streaming upload endpoint for files over 8 MiB. */
     FileInput: {
+      /** @description UTF-8 original content. Supply exactly one of `content` or `content_base64`. */
       content?: string | null;
+      /** @description Base64 original bytes for binary files; mutually exclusive with `content`. */
       content_base64?: string | null;
+      /** @description Optional per-file indexing policy; false retains the original without indexing it. */
       indexable?: boolean | null;
+      /** @description User annotations retained separately from parsed source/frontmatter metadata. */
       metadata?: unknown;
+      /** @description Optional media type used for representation extraction; inferred when omitted. */
       mime_type?: string | null;
+      /** @description Normalized absolute path within the collection, preserving its directory hierarchy. */
       path: string;
+      /** @description Optional agent-read policy. Managers can still download retained originals. */
       readable?: boolean | null;
     };
+    /** @description Update managed-file annotations and agent visibility without extracting bytes again. */
     FileMetadataInput: {
+      /** @description Optional indexing override. Omit to preserve the current policy. */
       indexable?: boolean | null;
+      /** @description Replace user annotations while preserving metadata parsed from the original file. */
       metadata?: unknown;
+      /** @description Existing collection-relative file path. */
       path: string;
+      /** @description Optional agent-read override. Omit to preserve the current policy. */
       readable?: boolean | null;
     };
     /** @description A package-relative file or glob and its working-directory destination. */
@@ -15510,12 +15532,21 @@ export interface components {
        */
       nonce: string;
     };
-    /** @enum {string} */
+    /**
+     * @description Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.
+     * @enum {string}
+     */
     IndexMode: "off" | "lexical" | "hybrid";
+    /** @description An organization Turbopuffer account referencing an existing service credential. */
     IndexerInput: {
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Active organization-service credential binding; never a plaintext API key.
+       */
       credential_binding_id: string;
+      /** @description HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden. */
       endpoint: string;
+      /** @description Display name for the organization search account. */
       name: string;
     };
     /** @description Starter file copied into a new session from an agent or harness. */
@@ -15602,14 +15633,21 @@ export interface components {
       /** @description The stored value */
       value: string;
     };
+    /** @description A bounded retrieval query; runtime hosts intersect collections with live session bindings. */
     KnowledgeQuery: {
+      /** @description Optional collection identifiers. Runtime access remains limited to attached collections. */
       collections?: string[];
+      /** @description Use keyword retrieval without creating a query embedding. */
       lexical_only?: boolean;
+      /** @description Requested maximum passages; hosts enforce the configured retrieval budget. */
       limit?: number;
+      /** @description Exact user-annotation predicates applied without granting additional file access. */
       metadata?: {
         [key: string]: unknown;
       };
+      /** @description Optional source-relative path prefix that narrows retrieval. */
       path?: string | null;
+      /** @description Search text used for keyword retrieval and, when enabled, query embeddings. */
       query: string;
     };
     /**
@@ -25536,11 +25574,18 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    /** @description A connected repository mounted beneath a non-overlapping collection path. */
     SourceInput: {
+      /** @description Adapter-specific repository, revision and root-folder configuration, without credentials. */
       config?: unknown;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Optional GitHub connection owner; existing connection authorization still applies.
+       */
       connection_owner?: string | null;
+      /** @description Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository. */
       kind: string;
+      /** @description Collection-relative root under which the source hierarchy is preserved. */
       root_path?: string;
     };
     /** @description Repository, branch and package path that define an Agent's GitHub source. */

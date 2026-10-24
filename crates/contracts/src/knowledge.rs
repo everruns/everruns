@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -52,19 +53,26 @@ impl KnowledgeConfig {
     }
 }
 
+/// A bounded retrieval query; runtime hosts intersect collections with live session bindings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct KnowledgeQuery {
+    /// Search text used for keyword retrieval and, when enabled, query embeddings.
     pub query: String,
+    /// Optional collection identifiers. Runtime access remains limited to attached collections.
     #[serde(default)]
     pub collections: Vec<String>,
+    /// Optional source-relative path prefix that narrows retrieval.
     #[serde(default)]
     pub path: Option<String>,
+    /// Exact user-annotation predicates applied without granting additional file access.
     #[serde(default)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
+    /// Requested maximum passages; hosts enforce the configured retrieval budget.
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Use keyword retrieval without creating a query embedding.
     #[serde(default)]
     pub lexical_only: bool,
 }

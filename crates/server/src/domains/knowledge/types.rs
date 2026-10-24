@@ -96,40 +96,60 @@ pub struct Job {
     pub available_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
+/// A file collection with optional indexing, provider selection and path exclusions.
 #[derive(Debug, Default, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CollectionInput {
+    /// Collection name; `everruns-docs` is reserved for the predefined documentation snapshot.
     pub name: String,
+    /// Human-readable purpose of the collection, available during progressive disclosure.
     #[serde(default)]
     pub description: String,
+    /// Whether files remain unindexed, use keyword search, or also use embedding retrieval.
     #[serde(default)]
     pub indexing: everruns_contracts::knowledge::IndexMode,
+    /// Organization embedding model; required when hybrid indexing is enabled.
     pub embedding_model_id: Option<String>,
+    /// Optional organization search account. Omit to use the local index backend.
     pub indexer_id: Option<Uuid>,
+    /// Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`.
     #[serde(default)]
     pub rules: Value,
 }
+/// A connected repository mounted beneath a non-overlapping collection path.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceInput {
+    /// Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository.
     pub kind: String,
+    /// Collection-relative root under which the source hierarchy is preserved.
     #[serde(default)]
     pub root_path: String,
+    /// Adapter-specific repository, revision and root-folder configuration, without credentials.
     #[serde(default)]
     pub config: Value,
+    /// Optional GitHub connection owner; existing connection authorization still applies.
     pub connection_owner: Option<Uuid>,
 }
+/// An inline managed file; use the streaming upload endpoint for files over 8 MiB.
 #[derive(Debug, Default, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FileInput {
+    /// Normalized absolute path within the collection, preserving its directory hierarchy.
     pub path: String,
+    /// UTF-8 original content. Supply exactly one of `content` or `content_base64`.
     pub content: Option<String>,
+    /// Base64 original bytes for binary files; mutually exclusive with `content`.
     pub content_base64: Option<String>,
+    /// Optional media type used for representation extraction; inferred when omitted.
     pub mime_type: Option<String>,
+    /// User annotations retained separately from parsed source/frontmatter metadata.
     #[serde(default)]
     pub metadata: Value,
+    /// Optional per-file indexing policy; false retains the original without indexing it.
     #[serde(default)]
     pub indexable: Option<bool>,
+    /// Optional agent-read policy. Managers can still download retained originals.
     #[serde(default)]
     pub readable: Option<bool>,
 }
@@ -143,19 +163,28 @@ pub struct PageQuery {
     pub offset: Option<u64>,
     pub length: Option<u32>,
 }
+/// An organization Turbopuffer account referencing an existing service credential.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IndexerInput {
+    /// Display name for the organization search account.
     pub name: String,
+    /// HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden.
     pub endpoint: String,
+    /// Active organization-service credential binding; never a plaintext API key.
     pub credential_binding_id: Uuid,
 }
 
+/// Update managed-file annotations and agent visibility without extracting bytes again.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FileMetadataInput {
+    /// Existing collection-relative file path.
     pub path: String,
+    /// Replace user annotations while preserving metadata parsed from the original file.
     pub metadata: Option<Value>,
+    /// Optional indexing override. Omit to preserve the current policy.
     pub indexable: Option<bool>,
+    /// Optional agent-read override. Omit to preserve the current policy.
     pub readable: Option<bool>,
 }

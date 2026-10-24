@@ -486,9 +486,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::memory_files::download_action,
         // Knowledge
         // Knowledge Indexes
-        api::knowledge::list,api::knowledge::create,api::knowledge::detail,api::knowledge::update,api::knowledge::archive,
-        api::knowledge::update_file_metadata,api::knowledge::files,api::knowledge::write,api::knowledge::delete_file,api::knowledge::add_source,api::knowledge::sync,api::knowledge::validate_okf,
-        api::knowledge::search,api::knowledge::indexers,api::knowledge::create_indexer,api::knowledge::content,api::knowledge::upload,
+        api::knowledge::list_knowledge,api::knowledge::create_knowledge,api::knowledge::get_knowledge,api::knowledge::update_knowledge,api::knowledge::archive_knowledge,
+        api::knowledge::update_knowledge_file_metadata,api::knowledge::list_knowledge_files,api::knowledge::write_knowledge_file,api::knowledge::delete_knowledge_file,api::knowledge::add_knowledge_source,api::knowledge::sync_knowledge,api::knowledge::validate_knowledge_okf,
+        api::knowledge::search_knowledge_collections,api::knowledge::list_knowledge_indexers,api::knowledge::create_knowledge_indexer,api::knowledge::get_knowledge_file_content,api::knowledge::upload_knowledge_file,
         // Images
         api::images::upload_image,
         api::images::list_images,

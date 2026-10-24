@@ -1,5 +1,6 @@
 use super::{repository::collection_view, types::*, *};
 use crate::domains::common::*;
+use crate::domains::sessions::SESSION_VIEW;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -321,6 +322,7 @@ pub struct WorkerKnowledge {
     description = "Internal: authorize attached knowledge retrieval.",
     method = "POST",
     path = "/internal/knowledge/runtime",
+    policy = SESSION_VIEW,
     read_only = true
 )]
 impl Command for WorkerKnowledge {

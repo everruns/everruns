@@ -35609,33 +35609,41 @@
       },
       "CollectionInput": {
         "type": "object",
+        "description": "A file collection with optional indexing, provider selection and path exclusions.",
         "required": [
           "name"
         ],
         "properties": {
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable purpose of the collection, available during progressive disclosure."
           },
           "embedding_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Organization embedding model; required when hybrid indexing is enabled."
           },
           "indexer_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Optional organization search account. Omit to use the local index backend."
           },
           "indexing": {
-            "$ref": "#/components/schemas/IndexMode"
+            "$ref": "#/components/schemas/IndexMode",
+            "description": "Whether files remain unindexed, use keyword search, or also use embedding retrieval."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot."
           },
-          "rules": {}
+          "rules": {
+            "description": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
+          }
         },
         "additionalProperties": false
       },
@@ -42343,6 +42351,7 @@
       },
       "FileInput": {
         "type": "object",
+        "description": "An inline managed file; use the streaming upload endpoint for files over 8 MiB.",
         "required": [
           "path"
         ],
@@ -42351,41 +42360,50 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "UTF-8 original content. Supply exactly one of `content` or `content_base64`."
           },
           "content_base64": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Base64 original bytes for binary files; mutually exclusive with `content`."
           },
           "indexable": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Optional per-file indexing policy; false retains the original without indexing it."
           },
-          "metadata": {},
+          "metadata": {
+            "description": "User annotations retained separately from parsed source/frontmatter metadata."
+          },
           "mime_type": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional media type used for representation extraction; inferred when omitted."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Normalized absolute path within the collection, preserving its directory hierarchy."
           },
           "readable": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Optional agent-read policy. Managers can still download retained originals."
           }
         },
         "additionalProperties": false
       },
       "FileMetadataInput": {
         "type": "object",
+        "description": "Update managed-file annotations and agent visibility without extracting bytes again.",
         "required": [
           "path"
         ],
@@ -42394,17 +42412,22 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Optional indexing override. Omit to preserve the current policy."
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Replace user annotations while preserving metadata parsed from the original file."
+          },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Existing collection-relative file path."
           },
           "readable": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Optional agent-read override. Omit to preserve the current policy."
           }
         },
         "additionalProperties": false
@@ -44785,6 +44808,7 @@
       },
       "IndexMode": {
         "type": "string",
+        "description": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
         "enum": [
           "off",
           "lexical",
@@ -44793,6 +44817,7 @@
       },
       "IndexerInput": {
         "type": "object",
+        "description": "An organization Turbopuffer account referencing an existing service credential.",
         "required": [
           "name",
           "endpoint",
@@ -44801,13 +44826,16 @@
         "properties": {
           "credential_binding_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Active organization-service credential binding; never a plaintext API key."
           },
           "endpoint": {
-            "type": "string"
+            "type": "string",
+            "description": "HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name for the organization search account."
           }
         },
         "additionalProperties": false
@@ -45027,6 +45055,7 @@
       },
       "KnowledgeQuery": {
         "type": "object",
+        "description": "A bounded retrieval query; runtime hosts intersect collections with live session bindings.",
         "required": [
           "query"
         ],
@@ -45035,17 +45064,21 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Optional collection identifiers. Runtime access remains limited to attached collections."
           },
           "lexical_only": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Use keyword retrieval without creating a query embedding."
           },
           "limit": {
             "type": "integer",
+            "description": "Requested maximum passages; hosts enforce the configured retrieval budget.",
             "minimum": 0
           },
           "metadata": {
             "type": "object",
+            "description": "Exact user-annotation predicates applied without granting additional file access.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
@@ -45055,10 +45088,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional source-relative path prefix that narrows retrieval."
           },
           "query": {
-            "type": "string"
+            "type": "string",
+            "description": "Search text used for keyword retrieval and, when enabled, query embeddings."
           }
         },
         "additionalProperties": false
@@ -62898,23 +62933,29 @@
       },
       "SourceInput": {
         "type": "object",
+        "description": "A connected repository mounted beneath a non-overlapping collection path.",
         "required": [
           "kind"
         ],
         "properties": {
-          "config": {},
+          "config": {
+            "description": "Adapter-specific repository, revision and root-folder configuration, without credentials."
+          },
           "connection_owner": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Optional GitHub connection owner; existing connection authorization still applies."
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository."
           },
           "root_path": {
-            "type": "string"
+            "type": "string",
+            "description": "Collection-relative root under which the source hierarchy is preserved."
           }
         },
         "additionalProperties": false
@@ -73275,7 +73316,7 @@
         "memory",
         "knowledge"
       ],
-      "x-description": "Give agents persistent memory and curated knowledge. Manage indexes and the documents they contain.",
+      "x-description": "Give agents persistent memory and versioned file collections. Manage sources, files and optional search indexes.",
       "x-slug": "knowledge-memory"
     },
     {
