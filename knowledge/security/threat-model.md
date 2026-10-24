@@ -234,6 +234,11 @@ secrets. The public `PaymentAccount` model intentionally omits this field. Nativ
 happens only in `ServerPaymentAuthority`; external workers call the control-plane
 `ExecuteMachinePayment` RPC and never receive private keys.
 
+Native EIP-712 signing also depends on upstream constant-time arithmetic. The RustSec
+gate covers its locked transitive dependencies; signing dependency upgrades retain
+the known EIP-3009 signature and recovery vectors in
+[`domains/payments`](../../crates/server/src/domains/payments/eip712.rs).
+
 ## 3. Tenant Isolation (TM-TENANT)
 
 | ID | Threat | Severity | Mitigation | Status |
