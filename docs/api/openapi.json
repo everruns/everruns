@@ -66255,6 +66255,15 @@
           "message"
         ],
         "properties": {
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Items done so far, when the tool knows a count (\"3\" of \"12 files\").\nSet together with `total`; the message stays readable on its own.",
+            "minimum": 0
+          },
           "display_name": {
             "type": [
               "string",
@@ -66273,6 +66282,15 @@
           "tool_name": {
             "type": "string",
             "description": "Tool name"
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Items in total, when the tool knows a count.",
+            "minimum": 0
           }
         }
       },

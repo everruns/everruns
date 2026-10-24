@@ -144,6 +144,46 @@ fn working_without_a_plan_names_the_running_step_and_counts_no_progress() {
 }
 
 #[test]
+fn a_counted_progress_update_draws_a_bar_and_keeps_it_through_plain_updates() {
+    let mut log = Log::new();
+    log.started(100, "c1", "generate_image", "Generating image")
+        .push(
+            300,
+            "tool.progress",
+            json!({ "tool_call_id": "c1", "tool_name": "generate_image",
+                    "message": "Preview 2 of 3", "current": 2, "total": 3 }),
+        );
+    let report = log.report_at(500);
+    assert_eq!(report.headline, "Generating image 2 of 3");
+    let progress = report.steps[0].progress.clone().unwrap_or_default();
+    assert_eq!((progress.current, progress.total), (Some(2), Some(3)));
+
+    log.push(
+        400,
+        "tool.progress",
+        json!({ "tool_call_id": "c1", "tool_name": "generate_image", "message": "Finishing" }),
+    );
+    let progress = log.report_at(500).steps[0]
+        .progress
+        .clone()
+        .unwrap_or_default();
+    assert_eq!(progress.label.as_deref(), Some("Finishing"));
+    assert_eq!((progress.current, progress.total), (Some(2), Some(3)));
+
+    log.push(
+        450,
+        "tool.progress",
+        json!({ "tool_call_id": "c1", "tool_name": "generate_image",
+                "message": "Odd", "current": 9, "total": 3 }),
+    );
+    let progress = log.report_at(500).steps[0]
+        .progress
+        .clone()
+        .unwrap_or_default();
+    assert_eq!(progress.current, Some(3), "current never passes total");
+}
+
+#[test]
 fn a_plan_tool_call_becomes_the_plan_and_not_a_step() {
     let mut log = Log::new();
     let todos = json!({ "todos": [
