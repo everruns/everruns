@@ -24,6 +24,7 @@ pub mod git_sources;
 pub mod harnesses;
 pub mod health_issues;
 pub mod images;
+pub mod knowledge;
 pub mod knowledge_bases;
 pub mod knowledge_indexes;
 pub mod mcp_servers;

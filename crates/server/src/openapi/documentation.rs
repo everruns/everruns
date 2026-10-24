@@ -57,8 +57,8 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "knowledge-memory",
         "Knowledge & memory",
-        "Give agents persistent memory and curated knowledge. Manage indexes and the documents they contain.",
-        &["memory", "knowledge_bases", "knowledge_indexes"],
+        "Give agents persistent memory and versioned file collections. Manage sources, files and optional search indexes.",
+        &["memory", "knowledge"],
     ),
     (
         "models-integrations",

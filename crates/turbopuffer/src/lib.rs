@@ -122,6 +122,16 @@ impl VectorStore for TurbopufferVectorStore {
                 "document_id": { "type": "string" },
             },
         });
+        let mut body = body;
+        if dim == 0 {
+            body.as_object_mut().map(|v| v.remove("distance_metric"));
+            body["schema"].as_object_mut().map(|v| v.remove("vector"));
+            if let Some(rows) = body["upsert_rows"].as_array_mut() {
+                for row in rows {
+                    row.as_object_mut().map(|v| v.remove("vector"));
+                }
+            }
+        }
         self.post_write(namespace, body, "upsert").await
     }
 
@@ -326,6 +336,22 @@ mod tests {
             .upsert(
                 "org_1__kidx_a",
                 vec![record("kchk_a", "kidoc_1", vec![1.0, 0.0], "alpha")],
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn lexical_upsert_has_no_vector_schema_or_distance_metric() {
+        let server = MockServer::start().await;
+        let store = TurbopufferVectorStore::new(server.uri(), "secret-key");
+        Mock::given(method("POST")).and(path("/v2/namespaces/knowledge_test"))
+            .and(body_json(json!({"upsert_rows":[{"id":"p1","text":"refund policy","document_id":"v1"}],"schema":{"text":{"type":"string","full_text_search":true},"document_id":{"type":"string"}}})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({}))).expect(1).mount(&server).await;
+        store
+            .upsert(
+                "knowledge_test",
+                vec![record("p1", "v1", vec![], "refund policy")],
             )
             .await
             .unwrap();

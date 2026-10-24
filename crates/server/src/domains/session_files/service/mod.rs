@@ -7,7 +7,6 @@
 
 use crate::domains::session_files::grep::{
     MAX_GREP_FILE_BYTES, build_grep_regex, grep_session_files_excluding,
-    grep_session_files_with_options,
 };
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
 use crate::domains::session_files::memory_mounts::{MemoryMount, MemoryMountRouter};
@@ -27,6 +26,7 @@ use uuid::Uuid;
 
 mod filesystem;
 mod mounts;
+mod search;
 
 /// Input for creating a file
 pub struct CreateFileInput {
@@ -383,6 +383,11 @@ impl WorkspaceFileService {
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if crate::domains::knowledge::runtime::is_mount(&path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_read(session_id, &path)
+                .await;
+        }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             let Some(info) = self.memory_mounts.stat(&mount, &inner).await? else {
@@ -450,6 +455,11 @@ impl WorkspaceFileService {
     pub async fn stat(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if crate::domains::knowledge::runtime::is_mount(&path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_stat(session_id, &path)
+                .await;
+        }
 
         // Handle root directory specially
         if path == "/" {
@@ -528,6 +538,11 @@ impl WorkspaceFileService {
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if crate::domains::knowledge::runtime::is_mount(&path) {
+            return crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mount_list(session_id, &path)
+                .await;
+        }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             let entries = self.memory_mounts.list_directory(&mount, &inner).await?;
@@ -602,6 +617,18 @@ impl WorkspaceFileService {
             }
         }
 
+        if path == "/"
+            && !crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mounted(session_id)
+                .await?
+                .1
+                .is_empty()
+        {
+            for mount in ["/knowledge", "/knowledge-text"] {
+                entries.retain(|e| e.path != mount);
+                entries.push(Self::synthetic_directory(session_id, mount));
+            }
+        }
         // Sort to match DB ordering: directories first, then by path
         entries.sort_by(|a, b| {
             b.is_directory
@@ -646,6 +673,7 @@ impl WorkspaceFileService {
     ) -> Result<Option<SessionFile>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         // Virtual files cannot be modified
         if let Some(registry) = &self.virtual_registry
@@ -778,6 +806,7 @@ impl WorkspaceFileService {
     pub async fn delete(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             // Deleting a mount root would empty the shared Memory for every
@@ -953,125 +982,6 @@ impl WorkspaceFileService {
         Ok(row.map(Self::row_to_session_file))
     }
 
-    /// Search files using grep-like pattern matching (delegates to shared helper).
-    pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        self.restore_virtual_mounts(session_id).await?;
-        let mut results = grep_session_files_excluding(
-            &self.db,
-            session_id,
-            &req.pattern,
-            req.path_pattern.as_deref(),
-            req.excluded_path_prefix.as_deref(),
-        )
-        .await?;
-
-        // Also search virtual mounts (same per-file and NFA caps, TM-DOS-008)
-        if let Some(registry) = &self.virtual_registry {
-            let regex = build_grep_regex(&req.pattern)?;
-            let path_matcher = req
-                .path_pattern
-                .as_deref()
-                .map(everruns_core::session_path::GrepPathPattern::new)
-                .transpose()?;
-            // Apply the shared path matcher after reading virtual entries.
-            let virtual_matches = registry.grep(
-                &session_id,
-                &regex,
-                None,
-                req.excluded_path_prefix.as_deref(),
-                MAX_GREP_FILE_BYTES as usize,
-            );
-            for vm in virtual_matches.into_iter().filter(|vm| {
-                path_matcher
-                    .as_ref()
-                    .is_none_or(|matcher| matcher.is_match(&vm.path))
-            }) {
-                // Group by file path into GrepResult entries
-                if let Some(existing) = results.iter_mut().find(|r| r.path == vm.path) {
-                    existing.matches.push(GrepMatch {
-                        path: vm.path,
-                        line_number: vm.line_number,
-                        line: vm.line,
-                    });
-                } else {
-                    results.push(GrepResult {
-                        path: vm.path.clone(),
-                        matches: vec![GrepMatch {
-                            path: vm.path,
-                            line_number: vm.line_number,
-                            line: vm.line,
-                        }],
-                    });
-                }
-            }
-        }
-
-        // Mounted Memory content is part of the namespace the agent greps, and
-        // `/memory/user` privacy is enforced by the caller's path-prefix
-        // exclusion, which is applied to these paths too.
-        {
-            let router = &self.memory_mounts;
-            let regex = build_grep_regex(&req.pattern)?;
-            let path_matcher = req
-                .path_pattern
-                .as_deref()
-                .map(everruns_core::session_path::GrepPathPattern::new)
-                .transpose()?;
-            for mount in router.all_mounts(session_id).await.iter() {
-                if req
-                    .excluded_path_prefix
-                    .as_deref()
-                    .is_some_and(|prefix| mount.mount_path.starts_with(prefix))
-                {
-                    continue;
-                }
-                for row in router.list_all(mount).await? {
-                    if row.is_directory || row.size_bytes > MAX_GREP_FILE_BYTES {
-                        continue;
-                    }
-                    let display = Self::memory_session_path(mount, &row.path);
-                    if path_matcher
-                        .as_ref()
-                        .is_some_and(|matcher| !matcher.is_match(&display))
-                    {
-                        continue;
-                    }
-                    if req
-                        .excluded_path_prefix
-                        .as_deref()
-                        .is_some_and(|prefix| display.starts_with(prefix))
-                    {
-                        continue;
-                    }
-                    let Some(bytes) = router.read_file(mount, &row.path).await? else {
-                        continue;
-                    };
-                    let Ok(text) = String::from_utf8(bytes) else {
-                        continue;
-                    };
-                    let matches: Vec<GrepMatch> = text
-                        .lines()
-                        .enumerate()
-                        .filter(|(_, line)| regex.is_match(line))
-                        .map(|(index, line)| GrepMatch {
-                            path: display.clone(),
-                            line_number: index + 1,
-                            line: line.to_string(),
-                        })
-                        .collect();
-                    if !matches.is_empty() {
-                        results.push(GrepResult {
-                            path: display,
-                            matches,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
     /// True when either end of a move or copy sits inside a Memory mount.
     async fn crosses_memory_mount(&self, session_id: Uuid, src: &str, dst: &str) -> bool {
         self.route_memory(session_id, src).await.is_some()
@@ -1139,6 +1049,10 @@ impl WorkspaceFileService {
 
     /// Reject writes under virtual mounts.
     fn ensure_path_not_virtual(&self, session_id: Uuid, path: &str) -> Result<()> {
+        anyhow::ensure!(
+            !crate::domains::knowledge::runtime::is_mount(path),
+            "Knowledge mounts are read-only"
+        );
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
         {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
-const INDEX_ID = "kidx_019fda06ccf67d618776620713254657";
+const COLLECTION_ID = "kn_019fda06ccf67d618776620713254657";
 
 async function mockAppApi(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
@@ -66,35 +66,19 @@ async function mockAppApi(page: Page) {
       json = { data: [], has_more: false, total: 0 };
     }
 
-    if (pathname === "/api/v1/knowledge-indexes") {
+    if (pathname === "/api/v1/knowledge") {
       json = {
         data: [
           {
-            id: INDEX_ID,
+            id: COLLECTION_ID,
             name: "Bashkit Knowledge",
             description:
-              "A deliberately long knowledge index description that must remain readable on narrow screens.",
-            source_type: "github",
-            source_config: {
-              provider: "github",
-              repository: "everruns/bashkit",
-              branch: "main",
-            },
-            embedding_model_id: "model-embedding",
-            vector_dim: 1536,
-            document_count: 0,
+              "A deliberately long knowledge collection description that must remain readable on narrow screens.",
+            indexing: "off",
             status: "active",
-            sync_status: "pending",
-            last_synced_at: null,
-            last_sync_error: null,
-            created_at: "2026-08-01T00:00:00Z",
-            updated_at: "2026-08-01T00:00:00Z",
-            archived_at: null,
-            deleted_at: null,
           },
         ],
-        has_more: false,
-        total: 1,
+        next_cursor: null,
       };
     }
 
@@ -102,7 +86,7 @@ async function mockAppApi(page: Page) {
   });
 }
 
-test.describe("Knowledge indexes responsive records", () => {
+test.describe("Knowledge responsive collections", () => {
   test.beforeEach(async ({ context, page, baseURL }) => {
     const origin = new URL(baseURL ?? "http://localhost:9100");
     await context.addCookies([
@@ -117,53 +101,34 @@ test.describe("Knowledge indexes responsive records", () => {
     { name: "390 mobile", width: 390, height: 900 },
     { name: "tablet", width: 768, height: 1000 },
     { name: "compact desktop", width: 1024, height: 1000 },
+    { name: "desktop", width: 1440, height: 1000 },
   ]) {
-    test(`stacks fields and contains every action at ${viewport.name}`, async ({ page }) => {
+    test(`contains collections and actions at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto("/knowledge-indexes");
-
-      const table = page.getByRole("table", { name: "Knowledge indexes" });
-      const row = table.locator('[data-slot="responsive-table-row"]');
-      await expect(row).toBeVisible();
-      await expect(table.getByRole("columnheader", { name: "Name" })).toBeHidden();
-      await expect(row.getByText("Source", { exact: true })).toBeVisible();
-      await expect(row.getByText("Index state", { exact: true })).toBeVisible();
-      await expect(row.getByText(INDEX_ID, { exact: true })).toHaveCount(0);
-      await expect(row.getByRole("button", { name: `Copy ID: ${INDEX_ID}` })).toBeVisible();
-
-      for (const action of ["Open", "Edit", "Archive"]) {
-        const control = row.getByRole(action === "Open" ? "link" : "button", {
-          name: action,
-          exact: true,
-        });
-        await expect(control).toBeVisible();
-        await control.click({ trial: true });
-        const controlBox = await control.boundingBox();
-        const rowBox = await row.boundingBox();
-        expect(controlBox).not.toBeNull();
-        expect(rowBox).not.toBeNull();
-        expect(controlBox!.x).toBeGreaterThanOrEqual(rowBox!.x);
-        expect(controlBox!.x + controlBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
-      }
-
+      await page.goto("/knowledge");
+      await expect(page.getByRole("heading", { name: "Knowledge", exact: true })).toBeVisible();
+      const card = page.getByRole("link", { name: /Bashkit Knowledge/ });
+      await expect(card).toHaveAttribute("href", `/knowledge/${COLLECTION_ID}`);
+      await expect(card.getByText("Files", { exact: true })).toBeVisible();
+      await expect(card.getByText(/A deliberately long knowledge collection/)).toBeVisible();
+      await card.click({ trial: true });
+      const box = await card.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+      const create = page.getByRole("button", { name: "New collection", exact: true });
+      await expect(create).toBeVisible();
+      await create.click({ trial: true });
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
       );
     });
   }
 
-  test("retains the dense table at normal desktop width", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
+  test("redirects the retired indexes page to Knowledge", async ({ page }) => {
     await page.goto("/knowledge-indexes");
-
-    const table = page.getByRole("table", { name: "Knowledge indexes" });
-    const row = table.locator('[data-slot="responsive-table-row"]');
-    await expect(table.getByRole("columnheader", { name: "Name" })).toBeVisible();
-    await expect(row.getByText("Source", { exact: true })).toBeHidden();
-    await expect(row.getByRole("link", { name: "Open" })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-      await page.evaluate(() => document.documentElement.clientWidth),
-    );
+    await expect(page).toHaveURL(/\/knowledge$/);
+    await expect(page.getByRole("link", { name: /Bashkit Knowledge/ })).toBeVisible();
   });
 });
 

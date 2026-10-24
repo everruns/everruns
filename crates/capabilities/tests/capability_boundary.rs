@@ -21,8 +21,7 @@ const HOSTED_IDS: &[&str] = &[
     "session_tasks",
     "user_hooks",
     "data_knowledge",
-    "knowledge_base",
-    "knowledge_index",
+    "knowledge",
     "citation_retrieval",
     "citation_web",
     "citation_verification",
@@ -54,6 +53,8 @@ fn product_registration_adds_the_hosted_catalog() {
     for id in HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
     }
+    assert!(!registry.has("knowledge_base"));
+    assert!(!registry.has("knowledge_index"));
     #[cfg(feature = "environment-capabilities")]
     for id in ENVIRONMENT_GATED_HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");

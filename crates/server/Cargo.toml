@@ -98,6 +98,7 @@ urlencoding = "2"
 git2.workspace = true
 tempfile.workspace = true
 mime_guess = "2"
+markkit = { version = "0.1.1", default-features = false, features = ["html", "docx", "spreadsheet"] }
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 http-body-util = "0.1"

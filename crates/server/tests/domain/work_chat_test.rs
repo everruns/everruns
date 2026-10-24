@@ -433,6 +433,18 @@ async fn work_chat_files_and_events_keep_private_context_out() {
         std::sync::Arc::new(tree),
         "test".into(),
     );
+    // Knowledge roots reject ordinary file writes. Seed mounted trees so the
+    // consumer boundary also has actual private entries to filter from listings.
+    for root in ["knowledge", "knowledge-text"] {
+        let mut tree = everruns_core::capability_types::VirtualFileTree::new();
+        tree.insert_text(format!("/{root}/private.md"), "private Knowledge");
+        server.virtual_registry.register(
+            id.uuid(),
+            format!("/{root}"),
+            std::sync::Arc::new(tree),
+            "test".into(),
+        );
+    }
     let url = format!("{base}/sessions/{id}/files");
     call(
         &server,
@@ -523,20 +535,35 @@ async fn work_chat_files_and_events_keep_private_context_out() {
             .as_deref(),
         Some("original")
     );
-    call(
-        &server,
-        Method::GET,
-        &format!("{url}?path=/workspace/memory/private.md"),
-        Some(&token),
-        None,
-    )
-    .await
-    .assert_status(StatusCode::FORBIDDEN);
+    for root in ["memory", "knowledge", "knowledge-text"] {
+        let path = format!("/workspace/{root}/private.md");
+        for method in [Method::GET, Method::DELETE] {
+            call(
+                &server,
+                method,
+                &format!("{url}?path={path}"),
+                Some(&token),
+                None,
+            )
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        }
+        call(
+            &server,
+            Method::POST,
+            &url,
+            Some(&token),
+            Some(json!({"path":path,"content":"consumer shadow"})),
+        )
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    }
     let listing: Value = call(&server, Method::GET, &url, Some(&token), None)
         .await
         .assert_success()
         .json();
     assert!(!listing.to_string().contains("memory"));
+    assert!(!listing.to_string().contains("knowledge"));
     call(&server,Method::POST,&url,Some(&token),Some(json!({"path":"/workspace/report.md","content":"stale","expected_revision":opened["revision"]}))).await.assert_status(StatusCode::CONFLICT);
     assert_eq!(
         files

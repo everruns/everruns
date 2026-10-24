@@ -229,7 +229,15 @@ fn workspace_path(path: Option<&str>) -> ApiResponse<String> {
         .unwrap_or("");
     if matches!(
         root,
-        "memory" | "skills" | "docs" | ".background" | ".tasks" | ".agent-runs" | ".everruns"
+        "memory"
+            | "knowledge"
+            | "knowledge-text"
+            | "skills"
+            | "docs"
+            | ".background"
+            | ".tasks"
+            | ".agent-runs"
+            | ".everruns"
     ) {
         return Err(error(
             StatusCode::FORBIDDEN,
@@ -509,6 +517,10 @@ mod tests {
             "/workspace/memory/user",
             "/workspace/.tasks/private",
             "/workspace//memory/user",
+            "/workspace/knowledge",
+            "/workspace/knowledge/kn_fixture/private.md",
+            "/workspace/knowledge-text/kn_fixture/private.md",
+            "/workspace//knowledge/kn_fixture/private.md",
         ] {
             assert!(workspace_path(Some(path)).is_err(), "{path}");
         }

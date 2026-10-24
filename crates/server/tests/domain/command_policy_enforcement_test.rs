@@ -997,8 +997,9 @@ fn every_mutating_agent_command_is_classified_for_built_in_protection() {
     }
 }
 
-/// POST-style helpers intentionally available through MCP `query`.
-/// They do not persist state and each still declares a view policy.
+/// Reviewed non-GET reads, each with a view policy. Public helpers are available
+/// through MCP `query`; internal ones also require the internal-caller guard.
+/// Usage accounting and derived evidence do not change user configuration.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     // Browse and validate GitHub packages without persisting Agent or binding changes.
     "get_agent_source_options",
@@ -1012,6 +1013,31 @@ const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     "preview_harness",
     "run_report_query",
     "run_saved_report",
+    // Cited retrieval: no collection/file mutations; ordinary usage accounting applies.
+    "search_knowledge_collections",
     "search_workspace_files",
     "stat_workspace_file",
+    // Internal-only session reads and replay evidence; never exposed through MCP query.
+    "worker_knowledge",
 ];
+
+#[tokio::test]
+async fn org_owners_cannot_dispatch_internal_knowledge_transport() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let error = dispatch(
+        "worker_knowledge",
+        serde_json::json!({
+            "session_id": everruns_contracts::typed_id::SessionId::new().to_string(),
+            "operation": "search",
+            "query": {"query": "private context"}
+        }),
+        &ctx,
+    )
+    .await
+    .expect_err("internal transport must reject ordinary organization owners");
+    assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
+    assert!(error.message().contains("Internal command"), "{error:?}");
+}

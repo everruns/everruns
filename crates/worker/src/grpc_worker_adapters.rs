@@ -768,6 +768,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn knowledge_runtime(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        Some(Arc::new(
+            crate::internal_commands::knowledge::CommandKnowledgeRuntime::new(
+                GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
+    }
     fn poppy_invoker(
         &self,
         org_id: i64,

@@ -23,3 +23,7 @@ everruns sessions create --agent support --budget-limit usd:10
 ```
 
 See [Knowledge Index](/capabilities/knowledge-index/), [Budgets](/advanced/budgets/), [#3149](https://github.com/everruns/everruns/pull/3149) and [#3163](https://github.com/everruns/everruns/pull/3163).
+
+## Update 2026-10-23
+
+The undeployed split knowledge features have been consolidated into [Knowledge](/capabilities/knowledge/). Its query embeddings retain session usage events; background indexing remains organization-attributed.

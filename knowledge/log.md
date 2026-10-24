@@ -1,9 +1,22 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-24
+
+* **Knowledge configuration history.** Collection settings and source attachments
+  use shared entity history and manager context; configuration restore preserves
+  retained files and source progress. Operational counts, jobs and serving
+  generations do not create revisions. See [Unified Knowledge](runtime-resources/knowledge.md).
+
 ## 2026-10-23
 
 * **Chat mode trust boundaries:** Record browser-owned draft bindings, guarded
   inverses, and bounded untrusted page context in the [threat model](security/threat-model.md).
+* **Knowledge shipping qualification.** Session-scoped mounts preserve attachment
+  authority in shared workspaces; Git pack downloads stream, jobs renew leases,
+  exact grep reports incomplete scans, and folder uploads preserve OKF trees.
+  Added paginated OKF metadata validation and updated the
+  [threat model](security/threat-model.md) for retrieval, BYOK and extraction.
+  See [Unified Knowledge](runtime-resources/knowledge.md).
 * **Work reports.** One runtime-built record of what a turn is doing now and
   what it got done, computed on read from the turn's events by a single
   reducer and served at `GET /v1/sessions/{id}/work`. See
@@ -23,6 +36,14 @@
   active workspaces, and archived probe manifests remain snapshots. See
   [large MCP catalogs](execution/large-mcp-catalogs.md) and
   [dependency surface](project/dependency-surface.md#bashkit-security-source-pin).
+* **Unified Knowledge implementation.** One file collection API, UI and capability
+  now own optional indexing, immutable object-backed originals, GitHub/public Git
+  intake, Markkit extraction, frontmatter/annotations, lazy mounts, exact grep and
+  Bashkit retrieval. Jobs fence publication and retain old citations; automatic
+  retrieval caches bounded evidence by input. Organization indexer credentials use
+  existing write-only service bindings. Target design and delivery gaps remain
+  explicit in [Unified Knowledge](runtime-resources/knowledge.md) and
+  [indexing/storage](runtime-resources/knowledge-indexing.md).
 
 * **Agent source acceptance.** Record the browser acceptance contract for continuous
   GitHub package sync, denied mutations, failed-revision retention and disconnect.
@@ -75,6 +96,13 @@
   shared by native and CLI discovery. Extended the catalog prototype and tests
   for identical tools on different servers, metadata refresh and scoped
   visibility. See [Large MCP Catalogs](execution/large-mcp-catalogs.md).
+* **Unified Knowledge proposal.** Revisit the two undeployed knowledge features
+  as one versioned file collection with optional indexing, Markkit extraction,
+  lazy mounts, exact grep, Bashkit retrieval, OKF metadata, progressive disclosure
+  and predefined Everruns docs. Specify incremental publication, object-backed
+  content, org indexer BYOK and large-source qualification. See
+  [Unified Knowledge](runtime-resources/knowledge.md) and
+  [Knowledge Indexing and Storage](runtime-resources/knowledge-indexing.md).
 
 * **Continuous GitHub Agent sources.** Reviewed repository packages become read-only Agent sources, reconciled through durable jobs and signed pushes with generation fencing and last-good retention. See [Agent sources](runtime-resources/agent-sources.md).
 

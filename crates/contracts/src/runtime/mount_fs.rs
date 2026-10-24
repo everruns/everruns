@@ -521,6 +521,12 @@ impl SessionFileSystem for MountFs {
         }
     }
 
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.resolve(path)
+            .map(|resolved| resolved.backend.session_scoped_path(&resolved.backend_path))
+            .unwrap_or(false)
+    }
+
     fn is_mount_resolver(&self) -> bool {
         true
     }

@@ -214,6 +214,7 @@ pub mod reasoning_updates;
 pub mod tool_changes;
 
 pub mod connector;
+pub mod knowledge;
 pub mod knowledge_store;
 pub mod session_sqldb;
 pub mod vector_store;

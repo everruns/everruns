@@ -62,7 +62,7 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/sandboxes")).toBe("Building");
     expect(navigationGroupForPath("/sandboxes/templates/template-1")).toBe("Building");
     expect(navigationGroupForPath("/sandboxes/accounts")).toBe("Building");
-    expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
+    expect(navigationGroupForPath("/knowledge")).toBe("Registers");
     expect(navigationGroupForPath("/memory")).toBe("Registers");
     expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");
     expect(

@@ -70,6 +70,12 @@ pub trait SessionFileSystem: Send + Sync {
     /// Used to avoid re-wrapping nested mount tables when building tool context.
     fn is_mount_resolver(&self) -> bool;
 
+    /// Whether a host-owned mount is authorized by the calling session rather
+    /// than the workspace. Workspace scoping must preserve that identity.
+    fn session_scoped_path(&self, _path: &str) -> bool {
+        false
+    }
+
     /// The directory on this machine's disk that `path` names, when the store
     /// is backed by one.
     ///
@@ -243,7 +249,7 @@ impl crate::runtime::ToolContext {
 }
 
 /// A [`SessionFileSystem`] decorator that pins every operation to a fixed
-/// workspace key, ignoring the per-call `session_id`.
+/// workspace key, preserving the per-call session for host-authorized mounts.
 ///
 /// Used to re-key file I/O for a session attached to a shared workspace (where
 /// `workspace.id != session.id`): wrap the session's file store once with the
@@ -267,6 +273,14 @@ impl WorkspaceScopedFileSystem {
             key: SessionId::from_uuid(workspace_id.uuid()),
         })
     }
+    // THREAT[TM-FS-022]: workspace sharing does not share session-owned mounts.
+    fn scope(&self, session: SessionId, path: &str) -> SessionId {
+        if self.inner.session_scoped_path(path) {
+            session
+        } else {
+            self.key
+        }
+    }
 }
 
 #[async_trait]
@@ -278,29 +292,36 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     ) -> Result<Option<crate::runtime::dreaming::DreamMemoryScope>> {
         self.inner.dreaming_scope(self.key, mount).await
     }
-    async fn create_file_if_absent(&self, _: SessionId, path: &str, content: &str) -> Result<bool> {
+    async fn create_file_if_absent(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
         self.inner
-            .create_file_if_absent(self.key, path, content)
+            .create_file_if_absent(self.scope(session_id, path), path, content)
             .await
     }
 
-    async fn read_file(&self, _session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
-        self.inner.read_file(self.key, path).await
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
+        self.inner
+            .read_file(self.scope(session_id, path), path)
+            .await
     }
     async fn write_file(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         path: &str,
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
         self.inner
-            .write_file(self.key, path, content, encoding)
+            .write_file(self.scope(session_id, path), path, content, encoding)
             .await
     }
     async fn write_file_if_content_matches(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         path: &str,
         expected_content: &str,
         expected_encoding: &str,
@@ -309,7 +330,7 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     ) -> Result<Option<SessionFile>> {
         self.inner
             .write_file_if_content_matches(
-                self.key,
+                self.scope(session_id, path),
                 path,
                 expected_content,
                 expected_encoding,
@@ -320,38 +341,56 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     }
     async fn delete_file(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
-        self.inner.delete_file(self.key, path, recursive).await
+        self.inner
+            .delete_file(self.scope(session_id, path), path, recursive)
+            .await
     }
-    async fn list_directory(&self, _session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
-        self.inner.list_directory(self.key, path).await
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        self.inner
+            .list_directory(self.scope(session_id, path), path)
+            .await
     }
-    async fn stat_file(&self, _session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
-        self.inner.stat_file(self.key, path).await
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        self.inner
+            .stat_file(self.scope(session_id, path), path)
+            .await
     }
     async fn grep_files(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        self.inner.grep_files(self.key, pattern, path_pattern).await
+        self.inner
+            .grep_files(
+                self.scope(session_id, path_pattern.unwrap_or("")),
+                pattern,
+                path_pattern,
+            )
+            .await
     }
     async fn grep_files_with_options(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
         self.inner
-            .grep_files_with_options(self.key, pattern, options)
+            .grep_files_with_options(
+                self.scope(session_id, options.path_pattern.as_deref().unwrap_or("")),
+                pattern,
+                options,
+            )
             .await
     }
-    async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
-        self.inner.create_directory(self.key, path).await
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        self.inner
+            .create_directory(self.scope(session_id, path), path)
+            .await
     }
     async fn seed_initial_file(&self, _session_id: SessionId, file: &InitialFile) -> Result<()> {
         self.inner.seed_initial_file(self.key, file).await
@@ -371,6 +410,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
 
     fn is_mount_resolver(&self) -> bool {
         self.inner.is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.inner.session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {
@@ -410,6 +453,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn is_mount_resolver(&self) -> bool {
         (**self).is_mount_resolver()
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        (**self).session_scoped_path(path)
     }
 
     fn host_path(&self, path: &str) -> Option<std::path::PathBuf> {

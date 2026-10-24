@@ -6,7 +6,18 @@ tags:
   - everruns
   - runtime-resources
 ---
+
+> The undeployed split product is retired. [Unified Knowledge](knowledge.md) owns
+> the current implementation and explicitly distinguishes delivered behavior
+> from remaining target-design work. The older design below is historical.
+
 # Open Knowledge Format (OKF) Adoption
+
+> Status: describes OKF support in the existing undeployed knowledge features.
+> [Unified Knowledge](knowledge.md#okf-and-general-metadata) proposes preserving
+> original files, hierarchy and complete OKF v0.2 metadata instead of mapping
+> them into the split entry model. Existing v0.1 export/scaffold assumptions below
+> remain implementation gaps; this proposal does not change runtime behavior.
 
 ## Abstract
 

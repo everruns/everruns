@@ -826,8 +826,10 @@
     },
     {
       "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-base",
+      "dependencies": [
+        "session_file_system"
+      ],
+      "docs_slug": "knowledge",
       "feature_flag": "knowledge",
       "features": [
         "knowledge"
@@ -836,29 +838,13 @@
         "prod",
         "dev"
       ],
-      "id": "knowledge_base",
-      "name": "Knowledge Base",
+      "id": "knowledge",
+      "name": "Knowledge",
       "status": "available",
       "tools": [
+        "browse_knowledge",
         "search_knowledge"
       ]
-    },
-    {
-      "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-index",
-      "feature_flag": "knowledge",
-      "features": [
-        "knowledge"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "knowledge_index",
-      "name": "Knowledge Index",
-      "status": "available",
-      "tools": []
     },
     {
       "category": null,

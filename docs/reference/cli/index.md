@@ -47,8 +47,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`health-issues`](/reference/cli/health-issues/) | Operational problems detected in this installation. |
 | [`history`](/reference/cli/history/) | Recorded changes to entities: list, compare, restore. |
 | [`images`](/reference/cli/images/) | Uploaded images. |
-| [`knowledge-bases`](/reference/cli/knowledge-bases/) | Curated collections of knowledge entries. |
-| [`knowledge-indexes`](/reference/cli/knowledge-indexes/) | Searchable indexes synced from external sources. |
+| [`knowledge`](/reference/cli/knowledge/) | File collections with optional indexed retrieval. |
 | [`mcp-servers`](/reference/cli/mcp-servers/) | Registered MCP servers available to agents and sessions. |
 | [`memories`](/reference/cli/memories/) | Workspace memories in the organization. |
 | [`models`](/reference/cli/models/) | LLM models available to agents, and organization defaults. |

@@ -84,6 +84,10 @@ impl GrpcAdapter {
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    fn session_scoped_path(&self, path: &str) -> bool {
+        everruns_contracts::knowledge::is_mount(path)
+    }
+
     fn is_mount_resolver(&self) -> bool {
         false
     }

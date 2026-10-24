@@ -34,7 +34,7 @@ async fn test_seeded_argon_is_selectable_in_favourites_with_profile() {
 }
 
 #[tokio::test]
-async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
+async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
     let server = TestServer::in_memory().await;
     let models: Value = server
         .get("/v1/models")
@@ -50,22 +50,36 @@ async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
 
     let created: Value = server
         .post(
-            "/v1/knowledge-indexes",
+            "/v1/knowledge",
             json!({
-                "name": "Bashkit knowledge test",
-                "source_type": "github",
-                "source_config": {
-                    "repository": "everruns/bashkit",
-                    "branch": "main",
-                    "root_folder": "knowledge"
-                },
-                "embedding_model_id": embedding_model["id"]
+                "name":"Bashkit knowledge test", "indexing":"hybrid",
+                "embedding_model_id":embedding_model["id"]
             }),
         )
         .await
-        .assert_status(StatusCode::CREATED)
+        .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(created["sync_status"], "pending");
+    let id = created["id"].as_str().expect("collection ID");
+    let source: Value = server
+        .post(
+            &format!("/v1/knowledge/{id}/sources"),
+            json!({
+                "kind":"github","root_path":"repository",
+                "config":{"repository":"everruns/bashkit","branch":"main","root_folder":"knowledge"}
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(source["sync_status"], "pending");
+    server
+        .get("/v1/knowledge-indexes")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get("/v1/knowledge-bases")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 
     let chat_model = models
         .iter()
@@ -78,21 +92,17 @@ async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
         .expect("seeded Claude chat model");
     let rejected: Value = server
         .post(
-            "/v1/knowledge-indexes",
+            "/v1/knowledge",
             json!({
                 "name": "Invalid embedding model",
-                "source_type": "github",
-                "source_config": {"repository": "everruns/bashkit"},
+                "indexing":"hybrid",
                 "embedding_model_id": chat_model["id"]
             }),
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST)
         .json();
-    assert_eq!(
-        rejected["detail"],
-        "Embedding model is unavailable or does not support embeddings"
-    );
+    assert_eq!(rejected["detail"], "Model does not support embeddings");
 }
 
 // ============================================

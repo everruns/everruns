@@ -31,7 +31,7 @@ fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
     // Durable control-plane APIs are infrastructure internals. App schedule
     // channels expose their own user-facing commands instead. Internal worker
     // commands are nobody's tool (`INTERNAL_COMMAND_PATH_PREFIX`).
-    !meta.path.starts_with("/v1/durable/") && !meta.is_internal()
+    !meta.path.starts_with("/v1/durable/") && !meta.is_internal() && !meta.is_retired()
 }
 
 static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {

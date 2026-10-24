@@ -19,6 +19,7 @@ pub mod data_knowledge;
 pub mod delegation_result;
 mod environment_file_tools;
 mod environment_tools;
+pub mod knowledge;
 pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;
@@ -250,8 +251,7 @@ pub fn register_hosted_capabilities(
     // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
     registry.register(PoppyClientCapability);
     registry.register(DataKnowledgeCapability);
-    registry.register(KnowledgeBaseCapability);
-    registry.register(KnowledgeIndexCapability);
+    registry.register(knowledge::KnowledgeCapability);
     registry.register(CitationRetrievalCapability);
     registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);

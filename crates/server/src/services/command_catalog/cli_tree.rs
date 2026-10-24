@@ -30,7 +30,7 @@ pub fn contracts() -> &'static [ContractCommand] {
             .filter_map(|desc| {
                 let meta = (desc.meta)();
                 // Internal worker plumbing is nobody's command line.
-                if meta.is_internal() {
+                if meta.is_internal() || meta.is_retired() {
                     return None;
                 }
                 // Every command is part of the command line. A declared route
@@ -124,7 +124,10 @@ mod tests {
             let mut entries: Vec<serde_json::Value> = inventory::iter::<CommandDescriptor>
                 .into_iter()
                 // `discover` never shows internal worker commands.
-                .filter(|desc| !(desc.meta)().is_internal())
+                .filter(|desc| {
+                    let meta = (desc.meta)();
+                    !meta.is_internal() && !meta.is_retired()
+                })
                 .map(|desc| {
                     let meta = (desc.meta)();
                     serde_json::json!({
@@ -320,6 +323,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn retired_knowledge_commands_are_absent_from_cli_and_scripted_catalogs() {
+        for desc in inventory::iter::<CommandDescriptor> {
+            let meta = (desc.meta)();
+            if meta.is_retired() {
+                assert!(contract(meta.name).is_none(), "{}", meta.name);
+                assert!(!super::super::catalog::is_exposed(&meta), "{}", meta.name);
+            }
+        }
+        assert!(contract("list_knowledge").is_some());
+        assert!(contract("search_knowledge_collections").is_some());
+    }
+
     /// No command's spelling is also a group of other commands.
     ///
     /// clap cannot have `harnesses delete` be both a command and the parent of
@@ -430,7 +446,7 @@ mod tests {
             // its absence is the design rather than an omission.
             .filter(|meta| !meta.path.starts_with("/test/"))
             // Internal worker plumbing is kept off the command line on purpose.
-            .filter(|meta| !meta.is_internal())
+            .filter(|meta| !meta.is_internal() && !meta.is_retired())
             .map(|meta| meta.name)
             .filter(|name| !contracts().iter().any(|c| c.wire_name == *name))
             .collect();
@@ -673,7 +689,10 @@ mod tests {
     #[test]
     fn every_declared_route_is_unique_and_reachable() {
         let mut seen = std::collections::BTreeSet::new();
-        for desc in inventory::iter::<CommandDescriptor> {
+        for desc in inventory::iter::<CommandDescriptor>
+            .into_iter()
+            .filter(|desc| !(desc.meta)().is_retired())
+        {
             let Some(route) = (desc.cli)() else { continue };
             let spelling = route.spelling();
             assert!(
@@ -787,6 +806,9 @@ mod read_only_tests {
             .filter_map(|desc| {
                 let route = (desc.cli)()?;
                 let meta = (desc.meta)();
+                if meta.is_retired() {
+                    return None;
+                }
                 // The resolved name must be the command's own wire name...
                 let leaf = tree().leaf(&route.spelling()).expect("declared leaf");
                 assert_eq!(leaf.wire_name, meta.name);

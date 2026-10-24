@@ -333,7 +333,10 @@ fn every_restorable_kind_names_an_update_command_that_takes_its_id() {
     let mut wrong = Vec::new();
     for kind in EntityKind::ALL {
         let Some((command, id_param)) = snapshot::restore_command(*kind) else {
-            assert_eq!(*kind, EntityKind::Session);
+            assert!(
+                matches!(kind, EntityKind::Session | EntityKind::KnowledgeIndexer),
+                "only conversation state and immutable search-account definitions have no update command"
+            );
             continue;
         };
         match snapshot::update_params(command) {

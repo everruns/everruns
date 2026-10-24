@@ -532,8 +532,7 @@ export default defineConfig({
                         { label: "Citation Verification", slug: "capabilities/citation-verification" },
                         { label: "Web Citations", slug: "capabilities/citation-web" },
                         { label: "Memory", slug: "capabilities/memory" },
-                        { label: "Knowledge Base", slug: "capabilities/knowledge-base" },
-                        { label: "Knowledge Index", slug: "capabilities/knowledge-index" },
+                        { label: "Knowledge", slug: "capabilities/knowledge" },
                         { label: "Data Knowledge", slug: "capabilities/data-knowledge" },
                       ],
                     },
@@ -698,10 +697,14 @@ export default defineConfig({
           ],
           {
             exclude: ["/", "/api/**"],
-            // Retired capability page kept for inbound links, unlisted in the
+            // Retired capability pages kept for inbound links, unlisted in the
             // sidebar but still shown under the Reference tab.
             topics: {
-              reference: ["/capabilities/platform-management"],
+              reference: [
+                "/capabilities/platform-management",
+                "/capabilities/knowledge-base",
+                "/capabilities/knowledge-index",
+              ],
               changelog: ["/changelog/**"],
             },
           },

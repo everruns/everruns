@@ -36,18 +36,35 @@ pub async fn build_embeddings_driver(
     driver_registry: &Arc<DriverRegistry>,
     index: &KnowledgeIndexRow,
 ) -> Result<ResolvedEmbedder> {
+    build_embeddings_driver_for_model(
+        db,
+        provider_resolver,
+        driver_registry,
+        index.org_id,
+        index.embedding_model_id.uuid(),
+    )
+    .await
+}
+
+pub async fn build_embeddings_driver_for_model(
+    db: &StorageBackend,
+    provider_resolver: &ProviderResolverService,
+    driver_registry: &Arc<DriverRegistry>,
+    org_id: i64,
+    model_id: uuid::Uuid,
+) -> Result<ResolvedEmbedder> {
     let model = db
-        .get_model(index.org_id, index.embedding_model_id.uuid())
+        .get_model(org_id, model_id)
         .await?
         .ok_or_else(|| anyhow!("embedding model not found"))?;
     let provider = db
-        .get_provider(index.org_id, model.provider_id.uuid())
+        .get_provider(org_id, model.provider_id.uuid())
         .await?
         .ok_or_else(|| anyhow!("embedding provider not found"))?;
 
     let resolved = provider_resolver
         .resolve_service(
-            index.org_id,
+            org_id,
             ServiceKind::Embeddings,
             Some(&provider.id.to_string()),
         )

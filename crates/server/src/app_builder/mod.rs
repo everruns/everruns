@@ -993,11 +993,6 @@ impl ServerAppBuilder {
         let workspace_files_state =
             api::workspace_files::AppState::new(db.clone(), auth_state.clone())
                 .with_virtual_registry(virtual_registry.clone());
-        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
-            db.clone(),
-            auth_state.clone(),
-            driver_registry.clone(),
-        );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
@@ -1178,8 +1173,7 @@ impl ServerAppBuilder {
             .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(api_state.clone()))
-            .merge(api::knowledge_bases::routes(api_state.clone()))
-            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
+            .merge(api::knowledge::routes(api_state.clone()))
             .merge(api::payments::routes(
                 api_state.clone(),
                 feature_flags.machine_payments,
@@ -1456,6 +1450,7 @@ impl ServerAppBuilder {
             &mut supervisor,
             background::MaintenanceDeps {
                 agent_source_ctx,
+                encryption: encryption.clone(),
                 background_db: background_db.clone(),
                 background_pool: db.background_pool().clone(),
                 background_runner,
@@ -1469,9 +1464,7 @@ impl ServerAppBuilder {
                     &auth_config,
                     host_composition.egress_service(),
                 ),
-                provider_resolver: provider_resolver.clone(),
                 driver_registry: driver_registry.clone(),
-                host_composition: host_composition.clone(),
                 session_sandbox_service: session_sandbox_service.clone(),
             },
             cluster_jobs_store,

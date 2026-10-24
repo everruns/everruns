@@ -111,7 +111,7 @@ async fn test_gated_capability_metadata_stays_readable() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    for id in ["skills", "memory", "knowledge_base", "knowledge_index"] {
+    for id in ["skills", "memory", "knowledge"] {
         assert!(
             capability_by_id(&hidden, id).is_none(),
             "{id} should stay out of discovery while its flag is off"
@@ -134,11 +134,7 @@ async fn test_gated_capability_metadata_stays_readable() {
     assert_eq!(skills["icon"], "wand");
     assert_eq!(skills["feature_flag"], "skills");
 
-    for (id, flag) in [
-        ("memory", "memory"),
-        ("knowledge_base", "knowledge"),
-        ("knowledge_index", "knowledge"),
-    ] {
+    for (id, flag) in [("memory", "memory"), ("knowledge", "knowledge")] {
         let capability = capability_by_id(&named, id).unwrap_or_else(|| panic!("{id} metadata"));
         assert!(
             !capability["name"].as_str().unwrap_or("").is_empty(),
