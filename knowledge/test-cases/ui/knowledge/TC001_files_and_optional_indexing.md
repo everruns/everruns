@@ -15,7 +15,7 @@ Verify that one Knowledge collection supports notes, binary originals, extracted
 ## Preconditions
 
 - Local API, worker and UI are running with `AUTH_MODE=none`, or a signed-in organization admin.
-- Development deployment with the organization's Knowledge feature enabled.
+- Development or hosted deployment; Knowledge is Adoption-grade and disabled until an organization owner/admin or platform operator opts in.
 - Use an isolated test collection. No external indexer or model key is needed for keyword mode.
 
 ## Test Data
@@ -30,7 +30,7 @@ Verify that one Knowledge collection supports notes, binary originals, extracted
 
 ## Steps
 
-1. Open `/knowledge`. Verify predefined `everruns-docs` appears without connecting credentials.
+1. Before opt-in, verify Knowledge is unavailable. Enable Knowledge in organization feature settings, then open `/knowledge`. Verify predefined `everruns-docs` appears without connecting credentials.
 2. Create the collection with indexing off. Open it and save the note.
 3. Upload the DOCX. Select both files and inspect their text views and metadata.
 4. Download the DOCX original and compare its bytes with the input.
@@ -41,6 +41,7 @@ Verify that one Knowledge collection supports notes, binary originals, extracted
 9. Reload the page and verify file policy persists. Open `/knowledge-indexes` and verify it redirects to `/knowledge`.
 10. Use **Upload folder** with an OKF directory containing root `index.md`, `log.md`, a concept with custom frontmatter and a binary asset. Verify the directory-relative paths and bytes survive. Validate its metadata through the paginated OKF endpoint with that folder as the path prefix.
 11. Attach two sessions to one workspace with different Knowledge bindings. Verify only the attached session can read/grep this collection and both see the same ordinary workspace files.
+12. Disable Knowledge in organization feature settings. Verify management routes and runtime collection access are unavailable; re-enable it and verify retained files remain intact.
 
 ## Expected Result
 

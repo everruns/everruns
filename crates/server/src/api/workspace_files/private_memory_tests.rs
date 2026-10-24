@@ -19,6 +19,14 @@ const SECRET_NAME: &str = "secret-plan.md";
 async fn workspace_views_never_import_session_knowledge_bindings() {
     use crate::domains::knowledge::{KnowledgeService, types::CollectionInput};
     let f = fixture().await;
+    f.state
+        .db
+        .replace_org_feature_flags(
+            DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([("knowledge".into(), true)]),
+        )
+        .await
+        .unwrap();
     let knowledge = KnowledgeService::files(f.state.db.clone());
     let collection = knowledge
         .create(

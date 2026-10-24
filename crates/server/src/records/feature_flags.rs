@@ -37,7 +37,7 @@ pub struct FeatureFlags {
     pub skills: bool,
     /// Workspace memory management UI. Experimental.
     pub memory: bool,
-    /// Knowledge index management UI. Experimental.
+    /// Unified Knowledge files and optional search. Organization adoption opt-in.
     pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
@@ -184,7 +184,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "knowledge",
         label: "Knowledge",
         description: "Mount versioned files and source trees with optional keyword or hybrid search.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "plugins",
@@ -733,7 +733,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["chat_threads", "evals", "observers", "voice"];
+        let adoption_flags = ["chat_threads", "evals", "observers", "voice", "knowledge"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -769,7 +769,6 @@ mod tests {
         for name in [
             "skills",
             "memory",
-            "knowledge",
             "plugins",
             "public_chat",
             "mcp_events",

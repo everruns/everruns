@@ -14,7 +14,7 @@ tags:
 ## Status and scope
 
 **Implementation, 2026-10-23.** Replaces the two undeployed product surfaces with
-one capability, management API and UI. Implementation lives in the
+one capability, management API and UI. Knowledge is Adoption-grade: available on hosted deployments, disabled until an organization owner/admin or platform operator opts in. Existing explicit organization overrides remain effective. Implementation lives in the
 [Knowledge domain](../../crates/server/src/domains/knowledge/mod.rs),
 [capability](../../crates/capabilities/src/capabilities/knowledge.rs),
 [neutral runtime port](../../crates/contracts/src/knowledge.rs) and
@@ -38,6 +38,7 @@ workspace rows, Memory aliases or virtual trees cannot supply fallback bytes the
 Collection grep uses an explicit Knowledge path to preserve the caller's session
 through workspace adapters. Whole-workspace scans cannot inherit the workspace
 owner's collection bindings.
+Collections, indexes and indexer accounts are organization-owned. Harness, agent and session capability layers select collections without copying their indexes; the higher layer replaces the lower layer's Knowledge configuration. No user-private or agent/session-owned collection lifecycle is implemented. Source connection ownership supplies credentials independently of collection ownership. Runtime access uses the calling session's effective binding, never all organization collections or another session's workspace identity.
 Collection configuration and source attachments participate in entity history,
 manager context and configuration restore. Indexer creation records only public
 configuration and its credential-binding reference. File writes, deletions and

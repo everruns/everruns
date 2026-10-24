@@ -5,6 +5,14 @@ async fn knowledge_mount_bridge_is_read_only_and_supports_contextual_grep() {
     use crate::storage::CreateSessionRow;
     use everruns_contracts::typed_id::PrincipalId;
     let adapters = test_adapters();
+    adapters
+        .db
+        .replace_org_feature_flags(
+            1,
+            &std::collections::HashMap::from([("knowledge".into(), true)]),
+        )
+        .await
+        .unwrap();
     let s = KnowledgeService::files(adapters.db.clone());
     let value = s
         .create(

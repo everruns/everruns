@@ -2,6 +2,11 @@
 
 ## 2026-10-24
 
+* **Knowledge adoption.** Promote unified Knowledge to organization Adoption opt-in
+  across development and hosted deployments. Clarify org-owned collections/indexes
+  and harness → agent → session attachment precedence. See
+  [Unified Knowledge](runtime-resources/knowledge.md) and [Feature Flags](security/feature-flags.md).
+
 * **Knowledge configuration history.** Collection settings and source attachments
   use shared entity history and manager context; configuration restore preserves
   retained files and source progress. Operational counts, jobs and serving

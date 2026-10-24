@@ -7,6 +7,14 @@ fn fixture() -> KnowledgeService {
     KnowledgeService::files(Arc::new(crate::storage::StorageBackend::test_database()))
 }
 async fn create(service: &KnowledgeService, indexing: IndexMode) -> Collection {
+    service
+        .db
+        .replace_org_feature_flags(
+            1,
+            &std::collections::HashMap::from([("knowledge".into(), true)]),
+        )
+        .await
+        .unwrap();
     let result = service
         .create(
             1,
@@ -334,6 +342,22 @@ async fn mounts_enforce_bindings_exclusions_and_contextual_grep() {
             .iter()
             .any(|f| f.path == "/knowledge")
     );
+    for enabled in [false, true] {
+        s.db.replace_org_feature_flags(
+            1,
+            &std::collections::HashMap::from([("knowledge".into(), enabled)]),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            s.mount_read(session.id.uuid(), &format!("{base}/guide.md"))
+                .await
+                .unwrap()
+                .is_some(),
+            enabled,
+            "existing sessions must observe durable organization enrollment changes"
+        );
+    }
 }
 
 #[tokio::test]

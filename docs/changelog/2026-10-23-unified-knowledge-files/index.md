@@ -20,4 +20,4 @@ Original binaries and file hierarchy are retained. Markkit extracts HTML, DOCX a
 knowledge search --limit 5 'refund policy'
 ```
 
-Collections preserve frontmatter and annotations, update indexes incrementally, and return immutable citations. Organization search accounts use encrypted service credentials. The feature retains its development rollout grade. Shared workspaces keep Knowledge attachments session-scoped; unsupported binary formats retain their originals.
+Collections preserve frontmatter and annotations, update indexes incrementally, and return immutable citations. Organization search accounts use encrypted service credentials. Knowledge is available as an Adoption feature: disabled by default, with organization owner/admin or platform operator opt-in on development and hosted deployments. Shared workspaces keep Knowledge attachments session-scoped; unsupported binary formats retain their originals.
