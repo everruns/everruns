@@ -98,7 +98,11 @@ pub(crate) async fn init_storage(
     // (knowledge/runtime-resources/object-storage.md). Defaults to inline PostgreSQL storage.
     let blob_store = crate::storage::blob_store::blob_store_from_env()
         .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
-    let backend = backend.with_blob_store(blob_store);
+    let knowledge_blob_store = crate::storage::blob_store::knowledge_blob_store_from_env()
+        .context("Invalid Knowledge content-storage configuration")?;
+    let backend = backend
+        .with_blob_store(blob_store)
+        .with_knowledge_blob_store(knowledge_blob_store);
 
     if !config.no_migrations {
         run_migrations(&backend, migrations).await?;

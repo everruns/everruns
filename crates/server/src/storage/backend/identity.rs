@@ -81,6 +81,7 @@ impl StorageBackend {
     /// cannot eat the connections requests are waiting for.
     pub fn for_background(&self) -> Self {
         Self::from_database(self.db.for_background())
+            .with_knowledge_blob_store(self.knowledge_blob_store.clone())
     }
 
     /// Attach an object-storage blob backend for content offload.
@@ -89,6 +90,7 @@ impl StorageBackend {
         blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     ) -> Self {
         Self::from_database(self.db.with_blob_store(blob_store))
+            .with_knowledge_blob_store(self.knowledge_blob_store)
     }
 
     /// The configured object-storage blob backend, if any. `None` for
@@ -96,6 +98,22 @@ impl StorageBackend {
     /// no external objects to garbage-collect.
     pub fn blob_store(&self) -> Option<crate::storage::blob_store::SharedBlobStore> {
         self.db.blob_store().cloned()
+    }
+
+    /// Select Knowledge content storage without moving existing file/image bytes.
+    pub fn with_knowledge_blob_store(
+        mut self,
+        store: Option<crate::storage::blob_store::SharedBlobStore>,
+    ) -> Self {
+        self.knowledge_blob_store = store;
+        self
+    }
+
+    /// An explicit Knowledge store takes precedence over the shared blob backend.
+    pub fn knowledge_blob_store(&self) -> Option<crate::storage::blob_store::SharedBlobStore> {
+        self.knowledge_blob_store
+            .clone()
+            .or_else(|| self.blob_store())
     }
 
     // ============================================

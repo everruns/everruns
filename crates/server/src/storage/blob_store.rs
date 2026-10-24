@@ -427,9 +427,51 @@ pub fn blob_store_from_env() -> Result<Option<SharedBlobStore>> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum KnowledgeBlobBackend {
+    Inherit,
+    S3,
+}
+
+impl KnowledgeBlobBackend {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "inherit" => Ok(Self::Inherit),
+            "s3" => Ok(Self::S3),
+            _ => anyhow::bail!("unknown KNOWLEDGE_STORAGE_BACKEND (expected inherit or s3)"),
+        }
+    }
+}
+
+/// Knowledge can use shared object storage before existing files/images are backfilled.
+/// An explicitly selected S3 backend fails configuration rather than falling back to disk.
+pub fn knowledge_blob_store_from_env() -> Result<Option<SharedBlobStore>> {
+    match KnowledgeBlobBackend::parse(&env_string("KNOWLEDGE_STORAGE_BACKEND", "inherit"))? {
+        KnowledgeBlobBackend::Inherit => Ok(None),
+        KnowledgeBlobBackend::S3 => Ok(Some(Arc::new(ObjectStoreBlobStore::s3_from_config(
+            &BlobStoreConfig::from_env()?,
+        )?))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn knowledge_backend_selection_is_explicit_and_rejects_unknown_values() {
+        assert_eq!(
+            KnowledgeBlobBackend::parse("inherit").unwrap(),
+            KnowledgeBlobBackend::Inherit
+        );
+        assert_eq!(
+            KnowledgeBlobBackend::parse("s3").unwrap(),
+            KnowledgeBlobBackend::S3
+        );
+        assert!(KnowledgeBlobBackend::parse("db").is_err());
+        let error = KnowledgeBlobBackend::parse("invalid-sensitive-input").unwrap_err();
+        assert!(!error.to_string().contains("invalid-sensitive-input"));
+    }
 
     fn meta() -> BlobMetadata {
         BlobMetadata::new("test", serde_json::json!({ "v": 1 }))

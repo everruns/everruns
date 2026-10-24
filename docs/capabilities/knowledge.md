@@ -83,3 +83,15 @@ Organization search accounts reference encrypted, write-only organization servic
 File catalogs paginate at up to 500 rows. Agent directory listings cap at 500 children, file reads at 1 MiB, extraction at 8 MiB, and exact grep at 5 MiB of scanned content, 5,000 candidate files and a 512 KiB per-file ceiling. Streamed originals have a 1 TiB per-file transfer ceiling; this is a safety limit, not a tested capacity claim. Git fetching streams shallow snapshot packs directly into the object store, with the existing 512 MiB pack limit. A synthetic million-file catalog and bounded streamed-original fixture qualify catalog/transfer behavior; these do not establish end-to-end terabyte indexing throughput. Source refresh is explicit. Retained versions currently have no automatic expiry; monitor content storage and keep it with database backups. Additional source adapters and document extractors can use the same collection boundary.
 
 Management APIs are under `/v1/knowledge` and `/v1/knowledge-indexers`; the generated command catalog exposes the corresponding `everruns knowledge` commands. Organization settings permissions govern management, and explicit agent/session bindings govern runtime reads. A read-only personal access token can browse, download, validate metadata and search; file changes, source refresh and configuration require a full-access token.
+
+## Deployment storage
+
+Knowledge originals and extracted text need shared, persistent content storage on
+hosted replicas. `KNOWLEDGE_STORAGE_BACKEND=s3` uses the existing `STORAGE_S3_*`
+configuration for Knowledge alone, even while `STORAGE_BLOB_BACKEND=db` keeps
+workspace files and image bytes inline in PostgreSQL. It does not backfill or
+move existing files. The default `inherit` uses the existing shared blob backend
+or the local development fallback. Do not use the local fallback on ephemeral
+hosted containers. An invalid explicit S3 configuration fails startup; storage
+errors never silently switch to local disk. Organization adoption and collection
+permissions remain separate.
