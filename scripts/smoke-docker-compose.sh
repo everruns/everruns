@@ -16,6 +16,8 @@
 # Usage: scripts/smoke-docker-compose.sh [compose-file]
 #   EVERRUNS_TAG=v0.34.0 scripts/smoke-docker-compose.sh
 #   KEEP_STACK=1 leaves the stack running for inspection.
+#   SMOKE_PROFILES= (empty) runs the lean default set instead of the guide's
+#   `scale,metrics` profiles.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -55,6 +57,7 @@ step "Generate secrets and write .env (guide steps 2-3)"
   echo "WORKER_GRPC_AUTH_TOKEN=$(openssl rand -hex 32)"
   echo "AUTH_ADMIN_EMAIL=admin@example.com"
   echo "AUTH_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+  echo "COMPOSE_PROFILES=${SMOKE_PROFILES-scale,metrics}"
 } > .env
 # shellcheck disable=SC1091
 . ./.env
@@ -95,6 +98,18 @@ else
   [ "$status" = "healthy" ] || fail "server container health is '$status'"
 fi
 echo "ok"
+
+step "Check the selected profiles"
+running="$(docker compose ps --services --status running)"
+case ",$COMPOSE_PROFILES," in
+  *,scale,*) grep -qx worker-3 <<<"$running" || fail "scale profile set but worker-3 is not running" ;;
+  *) ! grep -qx worker-3 <<<"$running" || fail "worker-3 is running without the scale profile" ;;
+esac
+case ",$COMPOSE_PROFILES," in
+  *,metrics,*) grep -qx victoriametrics <<<"$running" || fail "metrics profile set but victoriametrics is not running" ;;
+  *) ! grep -qx victoriametrics <<<"$running" || fail "victoriametrics is running without the metrics profile" ;;
+esac
+echo "ok (${COMPOSE_PROFILES:-default set})"
 
 step "Sign in and create a personal access token"
 access_token="$(curl -fsS -X POST "$BASE/api/v1/auth/login" \
