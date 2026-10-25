@@ -55,7 +55,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
           <div className="space-y-6">
             {settingsSections.map((section) => (
               <div key={section.label}>
-                <div className="px-3 pb-2 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">
                   {section.label}
                 </div>
                 <div className="grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">
@@ -69,7 +69,8 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                         className={cn(
                           "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
                           isActive
-                            ? "bg-accent/10 text-accent-foreground border-accent"
+                            ? // Same selected style as the main sidebar.
+                              "border-primary bg-primary/5 font-semibold text-foreground"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
                         )}
                       >

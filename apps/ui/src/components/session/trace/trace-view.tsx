@@ -341,7 +341,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
       <DreamingTrace sessionId={sessionId} />
       {linkedFailure > 0 && !data.loading && (
         <div
-          className="border-b border-l-2 border-destructive/30 border-l-destructive bg-destructive/5 px-6 py-3 text-sm"
+          className="border-b border-destructive/30 bg-destructive/5 px-6 py-3 text-sm"
           role="status"
         >
           {failedTurn?.status === "failed" ? (

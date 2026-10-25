@@ -14,9 +14,7 @@ import { DRAFT_CHANNEL_LABELS, draftBlocker } from "@/lib/new-agent";
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="border-t border-border/60 px-4 py-3">
-      <div className="mb-1 font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
-        {label}
-      </div>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
       <div className="text-sm">{children}</div>
     </div>
   );

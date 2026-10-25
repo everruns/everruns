@@ -973,7 +973,7 @@ export function ChannelForm({
               <p className="text-sm font-medium">Anonymous access</p>
               <p className="text-xs text-muted-foreground">
                 When on, anyone with the link can chat (optionally gated by the shared token below).
-                Turn off to require sign-in — you must enable Google sign-in below, otherwise the
+                Turn off to require sign-in. You must enable Google sign-in below, otherwise the
                 chat rejects every request.
               </p>
             </div>
@@ -1384,12 +1384,12 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
     <Card className="h-fit">
       <CardContent className="space-y-4 py-4">
         <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">Channel</p>
+          <p className="text-xs font-medium text-muted-foreground">Channel</p>
           <p className="mt-1 font-medium">{getChannelTypeDisplayName(state.kind)}</p>
         </div>
         {state.kind === "schedule" && (
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Schedule preview</p>
+            <p className="text-xs font-medium text-muted-foreground">Schedule preview</p>
             <p className="mt-1 text-sm">
               <CronLabel expr={state.scheduleCronExpression} tz={state.scheduleTimezone} />
             </p>
@@ -1397,7 +1397,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
         )}
         {(state.kind === "webhook" || state.kind === "ag_ui" || state.kind === "fcp") && (
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
+            <p className="text-xs font-medium text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Publish this channel before external clients can invoke it.
             </p>
@@ -1405,7 +1405,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
         )}
         {state.kind === "api" && (
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Agent keys</p>
+            <p className="text-xs font-medium text-muted-foreground">Agent keys</p>
             <p className="mt-1 text-sm text-muted-foreground">
               After you create the channel, publish it and create an agent key on its page.
             </p>
@@ -1413,7 +1413,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
         )}
         {state.kind === "voice" && (
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Voice</p>
+            <p className="text-xs font-medium text-muted-foreground">Voice</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Needs an OpenAI provider. Call it from the channel, the chat microphone, or the API.
             </p>
@@ -1421,7 +1421,7 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
         )}
         {state.kind === "slack" && (
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Slack</p>
+            <p className="text-xs font-medium text-muted-foreground">Slack</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Gets its own Slack app, with its own name in Slack&apos;s Agents menu, in the
               workspace you choose.

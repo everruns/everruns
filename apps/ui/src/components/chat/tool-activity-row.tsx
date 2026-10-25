@@ -111,7 +111,7 @@ export function ToolActivityRow({
               </span>
             )}
             {isRunning && (
-              <span className="animate-tool-pulse text-[10px] uppercase tracking-[0.18em] text-accent-foreground/70">
+              <span className="animate-tool-pulse text-xs font-medium text-accent-foreground/70">
                 {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
               </span>
             )}
@@ -121,7 +121,7 @@ export function ToolActivityRow({
                 onClick={() => setIsExpanded((current) => !current)}
                 aria-expanded={isExpanded}
                 aria-controls={detailsId}
-                className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/50 transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground/50 transition-colors hover:text-foreground"
               >
                 {isExpanded ? t("hide_details") : t("details")}
               </button>

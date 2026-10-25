@@ -83,11 +83,6 @@ const rawPaletteExceptions: Record<string, Record<string, number>> = {
     "hover:text-yellow-400": 1,
     "text-yellow-400": 4,
   },
-  "components/models/model-row.tsx": {
-    "bg-blue-50": 1,
-    "border-blue-200": 1,
-    "text-blue-700": 1,
-  },
   "components/observers/quality-summary.tsx": {
     "text-green-600": 1,
     "text-red-600": 1,

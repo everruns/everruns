@@ -108,7 +108,7 @@ export default function HarnessesPageClient() {
       <PageMasthead
         icon={<HarnessDomainIcon />}
         title="Harnesses"
-        description="Shared runtime configuration — base prompt, capabilities, and policies sessions inherit."
+        description="Shared runtime configuration: base prompt, capabilities, and policies sessions inherit."
         actions={
           <LinkButton variant="accent" href="/harnesses/new">
             <Plus className="size-4" />

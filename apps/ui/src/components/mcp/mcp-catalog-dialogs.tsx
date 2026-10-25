@@ -253,9 +253,9 @@ export function AddMcpServerDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="2026-07-28">2026-07-28 — stateless</SelectItem>
-                <SelectItem value="2025-06-18">2025-06-18 — stateful</SelectItem>
-                <SelectItem value="2025-03-26">2025-03-26 — stateful</SelectItem>
+                <SelectItem value="2026-07-28">2026-07-28 (stateless)</SelectItem>
+                <SelectItem value="2025-06-18">2025-06-18 (stateful)</SelectItem>
+                <SelectItem value="2025-03-26">2025-03-26 (stateful)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
@@ -585,9 +585,9 @@ export function EditMcpServerDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="2026-07-28">2026-07-28 — stateless</SelectItem>
-                <SelectItem value="2025-06-18">2025-06-18 — stateful</SelectItem>
-                <SelectItem value="2025-03-26">2025-03-26 — stateful</SelectItem>
+                <SelectItem value="2026-07-28">2026-07-28 (stateless)</SelectItem>
+                <SelectItem value="2025-06-18">2025-06-18 (stateful)</SelectItem>
+                <SelectItem value="2025-03-26">2025-03-26 (stateful)</SelectItem>
               </SelectContent>
             </Select>
           </div>

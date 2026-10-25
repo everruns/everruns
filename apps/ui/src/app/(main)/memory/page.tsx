@@ -86,7 +86,7 @@ export default function MemoryPage() {
       <PageMasthead
         icon={<MemoryIcon />}
         title="Memory"
-        description="Knowledge stores that agents can read — manual notes or synced from Git."
+        description="Knowledge stores that agents can read: manual notes or synced from Git."
         actions={
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />

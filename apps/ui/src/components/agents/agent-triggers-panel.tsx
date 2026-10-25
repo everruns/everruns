@@ -253,9 +253,7 @@ export function AgentTriggersPanel({
                 {isSchedule && <TriggerRuns agentId={agentId} triggerId={trigger.id} />}
                 {!isGithub && !isMcpEvent && (
                   <div className="border-t pt-4">
-                    <p className="mb-3 text-xs font-medium uppercase text-muted-foreground">
-                      Set up
-                    </p>
+                    <p className="mb-3 text-xs font-medium text-muted-foreground">Set up</p>
                     <TriggerSetupGuidance trigger={trigger} />
                   </div>
                 )}

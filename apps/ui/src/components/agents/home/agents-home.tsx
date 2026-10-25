@@ -235,21 +235,28 @@ export function AgentsHome() {
         title="Agents"
         description={`Agents that work for ${orgName}: what each one is doing, how it is reached, and what is misconfigured.`}
         meta={
-          <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
-            {/* Agents with work in flight; the org-wide session count is the next fact. */}
-            <Fact label="Agents running" value={totals ? String(agentCounts.running) : "–"} />
-            <Fact
-              label="Active turns"
-              value={
-                totals
-                  ? `${totals.running_sessions} / ${formatCompactNumber(totals.max_active_turns)}`
-                  : "–"
-              }
-            />
-            <Fact label="Need attention" value={String(agentCounts.attention)} />
-            <Fact label="Runs, 24h" value={totals ? formatCompactNumber(totals.runs) : "–"} />
-            <Fact label="Failed, 24h" value={totals ? String(totals.failed) : "–"} />
-          </dl>
+          // A quiet org shows no counters: a strip of zeros says nothing the empty list
+          // below does not already say.
+          totals &&
+          totals.runs === 0 &&
+          totals.running_sessions === 0 &&
+          agentCounts.attention === 0 ? undefined : (
+            <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
+              {/* Agents with work in flight; the org-wide session count is the next fact. */}
+              <Fact label="Agents running" value={totals ? String(agentCounts.running) : "–"} />
+              <Fact
+                label="Active turns"
+                value={
+                  totals
+                    ? `${totals.running_sessions} / ${formatCompactNumber(totals.max_active_turns)}`
+                    : "–"
+                }
+              />
+              <Fact label="Need attention" value={String(agentCounts.attention)} />
+              <Fact label="Runs, 24h" value={totals ? formatCompactNumber(totals.runs) : "–"} />
+              <Fact label="Failed, 24h" value={totals ? String(totals.failed) : "–"} />
+            </dl>
+          )
         }
         actions={
           <>

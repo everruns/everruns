@@ -49,7 +49,10 @@ export function HarnessCard({
     allCapabilities?.find((c) => c.id === capabilityId);
 
   const harnessCapabilities = harness.capabilities ?? [];
-  const tags = normalizeTags(harness.tags);
+  // The "built-in" tag repeats the Built-in badge in the header.
+  const tags = normalizeTags(harness.tags).filter(
+    (tag) => !(harness.is_built_in && tag.toLowerCase() === "built-in"),
+  );
   const sessionCount = harness.session_count ?? 0;
   const directParent = inheritance?.directParent;
   const directParentName = directParent ? getDisplayName(directParent) : null;

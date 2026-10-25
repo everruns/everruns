@@ -52,7 +52,7 @@ const OAUTH_ERROR_COPY: Record<string, string> = {
   // Permanent, not transient: the verified email already has an account bound to
   // another sign-in method. Name the way through instead of "try again".
   oauth_account_exists:
-    "This email already has an account. Sign in with the method you first used — your password below, or your original provider.",
+    "This email already has an account. Sign in with the method you first used: your password below, or your original provider.",
 };
 
 export default function LoginPage() {
@@ -303,7 +303,7 @@ export default function LoginPage() {
 
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
-            Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
+            Prefer Google or GitHub? Go back; it&apos;s one click and skips email verification.
           </p>
         )}
       </AuthShell>

@@ -42,9 +42,10 @@ impl Capability for UserHooksCapability {
     }
 
     fn description(&self) -> &str {
+        // User-facing (capability catalog): no repository paths. The contract lives in
+        // knowledge/runtime-resources/user-hooks.md.
         "Run user-authored shell commands at well-defined points in the agent \
-         execution lifecycle. Hooks can mutate inputs or block execution. See \
-         knowledge/runtime-resources/user-hooks.md for the contract."
+         execution lifecycle. Hooks can mutate inputs or block execution."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -74,7 +75,7 @@ impl Capability for UserHooksCapability {
                 "hooks": {
                     "type": "array",
                     "title": "Hooks",
-                    "description": "User-authored hook entries (see knowledge/runtime-resources/user-hooks.md#userhookspec).",
+                    "description": "User-authored hook entries.",
                     "items": { "$ref": "#/$defs/UserHookSpec" }
                 },
                 "disabled_contributions": {
@@ -254,7 +255,7 @@ impl Capability for UserHooksCapability {
                     "properties": {
                         "hooks": {
                             "title": "Хуки",
-                            "description": "Хуки, створені користувачем (див. knowledge/runtime-resources/user-hooks.md#userhookspec).",
+                            "description": "Хуки, створені користувачем.",
                             "items": {
                                 "properties": {
                                     "id": {

@@ -34,7 +34,7 @@ export function CredentialCheckStatus({
         role="status"
       >
         <Check className="icon-sharp size-3.5" />
-        {state.models > 0 ? `Key valid — ${state.models} models` : "Key valid"}
+        {state.models > 0 ? `Key valid, ${state.models} models` : "Key valid"}
       </span>
     );
   }

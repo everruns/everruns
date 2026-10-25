@@ -91,7 +91,7 @@ export function EarlyAccessBanner() {
       <span className="text-[13px] tracking-[-0.01em]">
         <strong className="font-semibold">Early access</strong>
         <span className="hidden md:inline">
-          . Everruns is still stabilizing — expect breaking changes and rough edges.
+          . Everruns is still stabilizing, so expect breaking changes and rough edges.
         </span>
       </span>
       <span className="flex-1" />

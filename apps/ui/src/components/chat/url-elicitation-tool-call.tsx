@@ -163,7 +163,7 @@ export function UrlElicitationToolCall({
             disabled={status === "submitting"}
           >
             <Check className="mr-1 h-3.5 w-3.5" />
-            I&apos;ve finished — continue
+            I&apos;ve finished, continue
           </Button>
         ) : (
           <Button size="sm" onClick={handleOpen} disabled={status === "submitting" || !url}>

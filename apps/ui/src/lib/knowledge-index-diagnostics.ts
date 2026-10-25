@@ -195,7 +195,7 @@ export function getKnowledgeIndexDiagnostic(
   if (index.sync_status === "synced" && index.document_count === 0) {
     return {
       code: "empty",
-      label: "Synced — no documents",
+      label: "Synced, no documents",
       description: "The last sync succeeded but found no indexable documents.",
       variant: "accent",
       noticeVariant: "warning",

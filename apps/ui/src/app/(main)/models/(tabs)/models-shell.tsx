@@ -1,6 +1,6 @@
 "use client";
 
-// Registries → Models: models, the providers that serve them, and org defaults.
+// Library → Models: models, the providers that serve them, and org defaults.
 //
 // Providers moved here from Settings: they are something people build and
 // maintain, like agents or MCP servers, and connecting one, syncing it and

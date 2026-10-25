@@ -43,10 +43,10 @@ it("names channels and their states accessibly and links to integrations", () =>
     "/agents/agent_test?tab=integrations",
   );
   expect(
-    screen.getByRole("link", { name: "Webhook: Draft — not accepting traffic" }),
+    screen.getByRole("link", { name: "Webhook: Draft, not accepting traffic" }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("link", { name: "Public chat: Draft — not accepting traffic" }),
+    screen.getByRole("link", { name: "Public chat: Draft, not accepting traffic" }),
   ).toBeInTheDocument();
 });
 

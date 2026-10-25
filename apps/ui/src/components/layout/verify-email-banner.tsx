@@ -63,7 +63,7 @@ function VerifyEmailBannerInner({ email }: { email: string }) {
       <span className="text-[13px] tracking-[-0.01em]">
         <strong className="font-semibold">Verify your email.</strong>{" "}
         {sent ? (
-          <>We sent a new link to {email} — check your inbox.</>
+          <>We sent a new link to {email}. Check your inbox.</>
         ) : (
           <>We sent a link to {email}. Confirm it to keep full access.</>
         )}

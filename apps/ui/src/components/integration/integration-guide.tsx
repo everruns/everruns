@@ -57,7 +57,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Everruns is headless — you compose the {kind} here and invoke it from your own code.
+              Everruns is headless: you compose the {kind} here and invoke it from your own code.
               The official SDKs give you typed models and SSE streaming with automatic reconnection.
               Same three steps everywhere: start a session bound to this {kind}, send a message,
               stream the response.
@@ -75,7 +75,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              No SDK required — any HTTP client works. Create a session, send a message, then stream
+              No SDK required; any HTTP client works. Create a session, send a message, then stream
               events.
             </p>
             <CodeBlock samples={flowSamples} />

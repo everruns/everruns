@@ -130,7 +130,7 @@ export function Combobox({
                 {filtered.map((option, index) => (
                   <React.Fragment key={option.value}>
                     {option.group && option.group !== filtered[index - 1]?.group && (
-                      <div className="px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
                         {option.group}
                       </div>
                     )}

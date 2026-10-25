@@ -92,10 +92,12 @@ impl Capability for KnowledgeIndexCapability {
     }
 
     fn description(&self) -> &str {
-        "Bind an agent to org Knowledge Indexes — source-backed collections \
+        // User-facing (capability catalog): no repository paths. Design notes live in
+        // knowledge/runtime-resources/knowledge-indexes.md.
+        "Bind an agent to org Knowledge Indexes: source-backed collections \
          (e.g. a GitHub repository) that are synced, chunked, and embedded for \
          semantic search with citations. Exposes a `search_index` tool over the \
-         bound indexes; see `knowledge/runtime-resources/knowledge-indexes.md`."
+         bound indexes."
     }
 
     fn status(&self) -> CapabilityStatus {

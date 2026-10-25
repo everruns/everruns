@@ -90,7 +90,7 @@ describe("SetupConnectionToolCall", () => {
     expect(open).toHaveBeenCalledWith("/agents/agent_123?tab=mcp", "_blank", "noopener,noreferrer");
     expect(submitToolResults).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "I've connected — continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "I've connected, continue" }));
     await waitFor(() =>
       expect(submitToolResults).toHaveBeenCalledWith("session_1", [
         {

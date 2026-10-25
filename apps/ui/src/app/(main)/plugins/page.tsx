@@ -495,7 +495,7 @@ function MarketplaceCatalogDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{marketplace?.name} — Catalog</DialogTitle>
+          <DialogTitle>{marketplace?.name} catalog</DialogTitle>
           <DialogDescription>
             Browse available plugins from this marketplace and install them.
           </DialogDescription>

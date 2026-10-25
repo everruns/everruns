@@ -197,7 +197,7 @@ export function ChatThreadHeader({
             <ThreadTitle session={session} title={title} />
           )}
           {session.archived_at && (
-            <span className="flex-none border border-border/70 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <span className="flex-none border border-border/70 px-1.5 text-xs font-medium text-muted-foreground">
               {threadMode ? "Resolved" : "Archived"}
             </span>
           )}

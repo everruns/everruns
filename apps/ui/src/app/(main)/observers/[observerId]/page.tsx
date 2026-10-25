@@ -87,7 +87,7 @@ function ConfigurationTab({
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {!hasMatch && (
-            <p className="text-muted-foreground">No filters — considers all production sessions.</p>
+            <p className="text-muted-foreground">No filters: considers all production sessions.</p>
           )}
           {agent_ids && agent_ids.length > 0 && (
             <div>

@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Models and Providers"
-description: "Why providers live under Registries → Models with Models, Providers and Defaults tabs, share the models permission, and how new and stale models are surfaced."
+description: "Why providers live under Library → Models with Models, Providers and Defaults tabs, share the models permission, and how new and stale models are surfaced."
 tags:
   - everruns
   - ui
@@ -14,7 +14,7 @@ tags:
 ## Purpose
 
 One page for everything that decides which models agents can use: the
-models page (`apps/ui/src/app/(main)/models/(tabs)/`) under Registries,
+models page (`apps/ui/src/app/(main)/models/(tabs)/`) under Library,
 with three tabs at their own paths: `/models`, `/models/providers` and
 `/models/defaults`. **Models** lists every model from every provider, **Providers**
 lists the connected vendor accounts, **Defaults** holds the org-wide picks per

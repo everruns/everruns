@@ -430,9 +430,7 @@ export function StatCard({
 }) {
   return (
     <div className={cn("flex flex-col gap-1.5 border bg-card p-4", className)}>
-      <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {value !== undefined && (
         <span className="text-2xl font-semibold tracking-tight text-foreground">{value}</span>
       )}
@@ -534,9 +532,7 @@ export function RailSection({
 }) {
   return (
     <div className={cn("border bg-card p-4", className)}>
-      <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </div>
+      <div className="mb-2.5 text-xs font-medium text-muted-foreground">{label}</div>
       {children}
     </div>
   );

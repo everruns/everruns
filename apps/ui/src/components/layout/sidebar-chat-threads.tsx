@@ -68,7 +68,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     >
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
-          <p className="text-[10px] font-medium uppercase tracking-[0.08em]">Side chats</p>
+          <p className="text-xs font-medium">Side chats</p>
           {!chatMode && (
             <Link
               href={newSideChat.href}

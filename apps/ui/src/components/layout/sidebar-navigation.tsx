@@ -105,7 +105,7 @@ function NavSection({
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
-            className="flex w-full items-center justify-between px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-between px-3 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             {section.label}
             {collapsed ? (
@@ -115,9 +115,7 @@ function NavSection({
             )}
           </button>
         ) : (
-          <p className="px-3 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {section.label}
-          </p>
+          <p className="px-3 py-0.5 text-xs font-medium text-muted-foreground">{section.label}</p>
         ))}
       {!collapsed &&
         section.items.map((item) => <NavLink key={item.name} item={item} pathname={pathname} />)}

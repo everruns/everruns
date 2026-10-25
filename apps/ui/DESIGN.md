@@ -17,7 +17,7 @@ colors:
   secondary: "hsl(0 0% 96%)"
   secondary-foreground: "hsl(0 0% 10%)"
   muted: "hsl(0 0% 96%)"
-  muted-foreground: "hsl(0 0% 45%)"
+  muted-foreground: "hsl(0 0% 42%)"
   accent: "hsl(43 60% 53%)"
   accent-foreground: "hsl(43 60% 30%)"
   success: "hsl(163 94% 24%)"
@@ -30,7 +30,7 @@ colors:
   destructive-foreground: "hsl(0 0% 98%)"
   border: "hsl(0 0% 88%)"
   input: "hsl(0 0% 85%)"
-  ring: "hsl(43 60% 53%)"
+  ring: "hsl(43 60% 38%)"
 typography:
   # Font families come from CSS variables: --font-sans (Geist Sans) and
   # --font-mono (Geist Mono). Body copy carries -0.01em global tracking.
@@ -163,15 +163,18 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
 - **Navy (`primary`, light `hsl(220 62% 13%)` ≈ `#0A1636`):** The brand color,
   used for primary buttons, key actions, and the loading-wave ramp. In dark mode
   `primary` inverts to near-white (`hsl(0 0% 95%)`) so actions stay prominent.
-- **Gold (`accent` / `ring`, `hsl(43 60% 53%)` ≈ `#D4A43A`):** The sole accent,
+- **Gold (`accent`, `hsl(43 60% 53%)` ≈ `#D4A43A`):** The sole accent,
   reserved for active states, focus rings, highlights, and the dark-mode dot
-  grid. Use it sparingly, never as a large text surface.
+  grid. Use it sparingly, never as a large text surface. The light-mode focus
+  `ring` is a deeper gold (`hsl(43 60% 38%)`) so it keeps 3:1 against the page;
+  dark mode uses the accent gold.
 - **Ink (`foreground`, `hsl(0 0% 10%)`):** Core text on light surfaces.
 - **Surfaces (`background` `hsl(0 0% 98%)`, `card` white):** A near-white page
   with pure-white cards. Dark mode shifts to a navy-tinted charcoal
   (`background hsl(220 15% 8%)`, `card hsl(220 15% 10%)`).
 - **Muted (`muted` / `muted-foreground`):** Quiet grays for secondary text,
-  metadata, and disabled states.
+  metadata, and disabled states. Light `muted-foreground` (`hsl(0 0% 42%)`)
+  stays at 4.5:1 on the `muted` surface too.
 - **Success (`success` / `success-foreground`):** Positive outcomes and healthy
   states. Use `success` for indicators and translucent surfaces, and
   `success-foreground` on a solid success fill.

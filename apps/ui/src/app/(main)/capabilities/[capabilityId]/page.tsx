@@ -48,11 +48,11 @@ function getStatusLabel(status: CapabilityStatus): string {
     case "available":
       return "Available";
     case "coming_soon":
-      return "Coming Soon";
+      return "Coming soon";
     case "deprecated":
       return "Deprecated";
     case "needs_identity":
-      return "Needs Identity";
+      return "Needs identity";
     case "retired":
       return "Removed";
   }

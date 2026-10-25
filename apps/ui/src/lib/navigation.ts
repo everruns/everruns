@@ -286,7 +286,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { id: "chats", items: defaultChatsNavigation },
   { label: "Building", items: defaultBuildingNavigation },
   { label: "Operational", items: defaultOperationalNavigation },
-  { label: "Registers", items: defaultRegistriesNavigation },
+  { label: "Library", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
   { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
@@ -314,17 +314,35 @@ export function navigationGroupForPath(
   pathname: string,
   sections: NavigationSection[] = defaultNavigationSections,
 ): string | undefined {
-  let best: { length: number; label?: string } | undefined;
+  return bestNavigationMatch(pathname, sections)?.section.label;
+}
+
+/**
+ * The destination that owns `pathname` (same longest-href rule as the group), so
+ * other surfaces, such as in-app links in chat replies, can show its sidebar icon.
+ */
+export function navigationItemForPath(
+  pathname: string,
+  sections: NavigationSection[] = defaultNavigationSections,
+): NavigationItem | undefined {
+  return bestNavigationMatch(pathname, sections)?.item;
+}
+
+function bestNavigationMatch(
+  pathname: string,
+  sections: NavigationSection[],
+): { section: NavigationSection; item: NavigationItem } | undefined {
+  let best: { length: number; section: NavigationSection; item: NavigationItem } | undefined;
   for (const section of sections) {
     for (const item of section.items) {
       const href = item.activePrefix ?? item.href;
       if (!isUnder(pathname, href)) continue;
       if (!best || href.length > best.length) {
-        best = { length: href.length, label: section.label };
+        best = { length: href.length, section, item };
       }
     }
   }
-  return best?.label;
+  return best;
 }
 
 /** Visibility is shared by the sidebar and command search, including collapsed sections. */

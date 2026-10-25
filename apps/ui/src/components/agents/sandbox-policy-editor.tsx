@@ -517,7 +517,7 @@ function TemplateSpecEditor({
                 disabled={!target.available}
               >
                 {target.display_name || targetLabel(target)}
-                {target.available ? "" : " — unavailable"}
+                {target.available ? "" : " (unavailable)"}
               </SelectItem>
             ))}
           </SelectContent>
@@ -954,12 +954,10 @@ export function SandboxPolicyEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="fixed" disabled={entries.length > 1}>
-                Fixed — sessions cannot override
+                Fixed: sessions cannot override
               </SelectItem>
-              <SelectItem value="selectable">Selectable — declared sandboxes only</SelectItem>
-              <SelectItem value="configurable">
-                Configurable — allow constrained one-offs
-              </SelectItem>
+              <SelectItem value="selectable">Selectable: declared sandboxes only</SelectItem>
+              <SelectItem value="configurable">Configurable: allow constrained one-offs</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">

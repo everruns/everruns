@@ -1,6 +1,6 @@
 "use client";
 
-// Registries → Web search: where agents' searches go. Providers lists every
+// Library → Web search: where agents' searches go. Providers lists every
 // way the organization can search (model provider search, search accounts,
 // free search); Defaults edits the organization's `web_search_defaults`.
 // Mirrors the Models page: each tab is its own path (`/web-search`,

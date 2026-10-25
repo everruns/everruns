@@ -70,7 +70,7 @@ export function TaskChip({ task, href, onClick, selected }: TaskChipProps) {
     chipClasses(task.state),
     selected && "ring-2 ring-ring",
   );
-  const ariaLabel = `Task: ${label} — ${task.state}`;
+  const ariaLabel = `Task: ${label}, ${task.state}`;
   const inner = (
     <>
       {task.state === "running" && (

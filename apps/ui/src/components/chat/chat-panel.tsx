@@ -848,17 +848,13 @@ export function ChatPanel({
           <div className="space-y-4">
             {commandOverlay?.argumentsText && (
               <div className="rounded-sm border border-border bg-muted/30 p-3">
-                <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                  Arguments
-                </div>
+                <div className="mb-1 text-xs font-medium text-muted-foreground">Arguments</div>
                 <div className="text-sm text-foreground">{commandOverlay.argumentsText}</div>
               </div>
             )}
 
             <div className="rounded-sm border border-border p-4">
-              <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Result
-              </div>
+              <div className="mb-3 text-xs font-medium text-muted-foreground">Result</div>
               {commandOverlay?.pending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />

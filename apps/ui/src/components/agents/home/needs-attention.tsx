@@ -47,8 +47,8 @@ export function NeedsAttention({
     <section
       aria-label="Needs attention"
       className={cn(
-        "border border-l-4 bg-card",
-        hasError ? "border-l-destructive" : "border-l-warning",
+        "border",
+        hasError ? "border-destructive/40 bg-destructive/5" : "border-warning/40 bg-warning/5",
       )}
     >
       <button
@@ -57,7 +57,10 @@ export function NeedsAttention({
         aria-expanded={open}
         className="flex w-full min-w-0 items-center gap-3 px-4 py-3 text-left"
       >
-        <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+        <TriangleAlert
+          className={cn("size-4 shrink-0", hasError ? "text-destructive" : "text-warning")}
+          aria-hidden="true"
+        />
         <span className="shrink-0 text-sm font-semibold">
           {items.length === 1 ? "1 agent setting needs" : `${items.length} agent settings need`}{" "}
           attention
