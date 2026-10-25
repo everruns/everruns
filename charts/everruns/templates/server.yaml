@@ -1,0 +1,107 @@
+{{- $name := include "everruns.name" (list . "server") }}
+{{- $secret := include "everruns.secretName" . }}
+{{- $db := include "everruns.databaseSecret" . | fromYaml }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  # One replica by design: the server keeps per-process session state, and it
+  # applies database migrations on start under an advisory lock. Recreate
+  # stops the old pod before the new one migrates.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "server") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "server") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        {{- with .Values.server.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: server
+          image: {{ include "everruns.image" (list . "server") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 9000 }
+            - { name: grpc, containerPort: 9001 }
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $db.name }}, key: {{ $db.key }} } }
+            {{- with include "everruns.natsUrl" . }}
+            - { name: NATS_URL, value: {{ . | quote }} }
+            {{- end }}
+            {{- with include "everruns.valkeyUrl" . }}
+            - { name: VALKEY_URL, value: {{ . | quote }} }
+            {{- end }}
+            - { name: AUTH_MODE, value: {{ .Values.auth.mode | quote }} }
+            - { name: DEPLOYMENT_GRADE, value: {{ .Values.deploymentGrade | quote }} }
+            - { name: AUTH_ADMIN_EMAIL, value: {{ .Values.auth.adminEmail | quote }} }
+            {{- range list "SECRETS_ENCRYPTION_KEY" "AUTH_JWT_SECRET" "WORKER_GRPC_AUTH_TOKEN" "AUTH_ADMIN_PASSWORD" }}
+            - name: {{ . }}
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: {{ . }} } }
+            {{- end }}
+            {{- $keys := .Values.providerKeys.existingSecret | default (include "everruns.configSecretName" .) }}
+            {{- range list "DEFAULT_OPENAI_API_KEY" "DEFAULT_ANTHROPIC_API_KEY" "DEFAULT_GEMINI_API_KEY" }}
+            - name: {{ . }}
+              valueFrom: { secretKeyRef: { name: {{ $keys }}, key: {{ . }}, optional: true } }
+            {{- end }}
+            - { name: SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV, value: {{ .Values.seedDefaultProviderKeys | quote }} }
+            {{- with .Values.publicUrl }}
+            - { name: PUBLIC_APP_URL, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.otel.endpoint }}
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.server.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
+          {{- with .Values.server.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            # Migrations run before the server answers.
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 15
+            failureThreshold: 4
+          resources: {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  selector: {{- include "everruns.selector" (list . "server") | nindent 4 }}
+  ports:
+    - { name: http, port: 9000, targetPort: http }
+    - { name: grpc, port: 9001, targetPort: grpc }

@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Local Setup and Kubernetes"
-description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets a Helm chart, not an operator."
+description: "One command, everruns docker up, runs the self-hosted Platform on a person's machine through Docker Compose; Kubernetes gets an official Helm chart, not an operator."
 tags:
   - everruns
   - operations
@@ -11,7 +11,7 @@ tags:
 # Local Setup and Kubernetes
 
 Status: accepted (2026-10-24). `everruns docker` shipped, including `upgrade`
-and `reset`; the Helm chart is next.
+and `reset`, and the Helm chart (`charts/everruns`).
 
 ## Goal
 
@@ -76,11 +76,23 @@ Deployment cannot express. Everruns needs none today:
 - Agents and sessions live in the database behind the API with change history;
   mirroring them as custom resources would make a second source of truth.
 
-So the plan is an official Helm chart published as an OCI chart: server
-(one replica, `Recreate`), workers with optional KEDA scaling, UI, Caddy with
-the same routes as Compose, external PostgreSQL by default, optional NATS and
-Valkey, and secrets that are generated once and kept across `helm upgrade`
-(regenerating the encryption key would make stored secrets unreadable).
+So there is an official Helm chart, published per release as an OCI chart
+(`oci://ghcr.io/everruns/charts/everruns`) whose version and appVersion are the
+release, so it runs that release's images; from a checkout it runs `latest`.
+
+| Decision | Why |
+|---|---|
+| Server fixed at one replica, `Recreate` | Per-process session state; the old pod stops before the new one migrates. |
+| Workers scale with KEDA's PostgreSQL trigger on `durable_task_queue` | Queue depth straight from the database, no metrics stack to install. |
+| Caddy in front, its Caddyfile a copy of the Compose one (CI checks they match) | Ingress controllers cannot express the `Accept: text/markdown` rewrite; one route table for both setups. |
+| External PostgreSQL by default; `postgresql.enabled` is a single pod for trying it | Backups, failover and upgrades belong to a managed database or a PostgreSQL operator. |
+| Bundled NATS on, Valkey off | NATS carries live events as in Compose; one server keeps rate limits in memory. |
+| Secrets generated once, read back with `lookup`, kept on uninstall | Regenerating the encryption key on `helm upgrade` would make stored secrets unreadable. |
+| Bad combinations fail at render time | `none` outside dev, no database, no admin email, shared keys with open signup: the server would refuse them at start anyway. |
+
+CI (`helm-chart.yml`) lints and renders the chart and installs it on kind,
+then signs in through the proxy and checks the secrets survive an upgrade and
+a reinstall.
 
 Revisit an operator if many teams run many instances per cluster and want to
 declare them as objects. Agent sandboxes as pods would be a sandbox provider,
@@ -91,4 +103,6 @@ not an operator.
 - [`crates/cli/src/commands/docker/`](../../crates/cli/src/commands/docker/)
 - [`examples/docker-compose-full.yaml`](../../examples/docker-compose-full.yaml)
 - [Run Everruns on your machine](../../docs/getting-started/run-locally.md)
+- [`charts/everruns/`](../../charts/everruns/)
+- [Kubernetes guide](../../docs/getting-started/kubernetes.md)
 - [Production Deployment Specification](production-deployment.md)

@@ -1,0 +1,100 @@
+{{- $name := include "everruns.name" (list . "worker") }}
+{{- $secret := include "everruns.secretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  {{- if not .Values.worker.autoscaling.enabled }}
+  replicas: {{ .Values.worker.replicas }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "worker") | nindent 8 }}
+      {{- with .Values.worker.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: worker
+          image: {{ include "everruns.image" (list . "worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - { name: SERVER_GRPC_ADDRESS, value: {{ printf "%s:9001" (include "everruns.name" (list . "server")) | quote }} }
+            - name: WORKER_GRPC_AUTH_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: WORKER_GRPC_AUTH_TOKEN } }
+            {{- with .Values.otel.endpoint }}
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
+            {{- end }}
+            {{- with .Values.worker.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
+          {{- with .Values.worker.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.worker.autoscaling.enabled }}
+{{- $db := include "everruns.databaseSecret" . | fromYaml }}
+---
+# Queue depth read straight from PostgreSQL, so scaling needs no metrics stack.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $name }}-queue
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: {{ $db.name }}
+      key: {{ $db.key }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $name }}
+  minReplicaCount: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.worker.autoscaling.maxReplicas }}
+  pollingInterval: 15
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - { type: Pods, value: 1, periodSeconds: 60 }
+  triggers:
+    - type: postgresql
+      authenticationRef:
+        name: {{ $name }}-queue
+      metadata:
+        targetQueryValue: {{ .Values.worker.autoscaling.tasksPerWorker | quote }}
+        query: >-
+          SELECT COUNT(*) FROM durable_task_queue
+          WHERE status = 'claimed'
+          OR (status = 'pending' AND visible_at <= NOW() AND attempt < max_attempts)
+{{- end }}

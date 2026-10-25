@@ -1,0 +1,152 @@
+{{- if .Values.postgresql.enabled }}
+{{- $name := include "everruns.name" (list . "postgresql") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "postgresql") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image }}
+          ports:
+            - { name: postgresql, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: everruns }
+            - { name: POSTGRES_DB, value: everruns }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "everruns.secretName" . }}, key: POSTGRES_PASSWORD } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          readinessProbe:
+            exec: { command: [pg_isready, -U, everruns] }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgresql.storage.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests: { storage: {{ .Values.postgresql.storage.size }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  selector: {{- include "everruns.selector" (list . "postgresql") | nindent 4 }}
+  ports:
+    - { name: postgresql, port: 5432, targetPort: postgresql }
+{{- end }}
+{{- if and .Values.nats.enabled (not .Values.nats.url) }}
+{{- $name := include "everruns.name" (list . "nats") }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "nats") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "nats") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: nats
+          image: {{ .Values.nats.image }}
+          args: [--jetstream, --store_dir, /data, -m, "8222"]
+          ports:
+            - { name: client, containerPort: 4222 }
+            - { name: monitor, containerPort: 8222 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: monitor }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.nats.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.nats.storage.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests: { storage: {{ .Values.nats.storage.size }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  selector: {{- include "everruns.selector" (list . "nats") | nindent 4 }}
+  ports:
+    - { name: client, port: 4222, targetPort: client }
+{{- end }}
+{{- if and .Values.valkey.enabled (not .Values.valkey.url) }}
+{{- $name := include "everruns.name" (list . "valkey") }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "valkey") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "valkey") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: valkey
+          image: {{ .Values.valkey.image }}
+          # Rate-limit counters only; nothing worth persisting.
+          args: [--save, "", --appendonly, "no"]
+          ports:
+            - { name: valkey, containerPort: 6379 }
+          readinessProbe:
+            exec: { command: [valkey-cli, ping] }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.valkey.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  selector: {{- include "everruns.selector" (list . "valkey") | nindent 4 }}
+  ports:
+    - { name: valkey, port: 6379, targetPort: valkey }
+{{- end }}
