@@ -321,7 +321,6 @@ mod tests {
         for activity in [
             crate::background::blob_gc::BLOB_GC_ACTIVITY,
             crate::background::event_retention::EVENT_RETENTION_ACTIVITY,
-            crate::background::sandbox_history_retention::SANDBOX_HISTORY_RETENTION_ACTIVITY,
             crate::background::sandbox_idle_sweep::SANDBOX_IDLE_SWEEP_ACTIVITY,
             crate::background::sandbox_orphan_scan::SANDBOX_ORPHAN_SCAN_ACTIVITY,
             crate::background::session_trace_backfill::SESSION_TRACE_BACKFILL_ACTIVITY,

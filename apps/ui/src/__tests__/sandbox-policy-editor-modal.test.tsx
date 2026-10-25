@@ -257,7 +257,7 @@ describe("SandboxPolicyEditor retention", () => {
 
   it("shows the server default when the template does not set one", () => {
     render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={jest.fn()} />);
-    expect(screen.getByLabelText("Delete after paused")).toHaveTextContent("Default (3 days)");
+    expect(screen.getByLabelText("Delete after paused")).toHaveTextContent("Default (1 day)");
   });
 
   it("names never and unlisted values", () => {

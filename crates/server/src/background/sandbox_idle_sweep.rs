@@ -15,9 +15,10 @@
 // live turn's sandbox is harmless: its next sandbox call resumes it.
 //
 // Decision: the same job deletes paused sandboxes past their template's
-// `lifecycle.delete_after_seconds` (default three days). Nothing else deletes
-// a paused sandbox until its session is deleted, and trigger sessions never
-// are, so every webhook run left one behind.
+// `lifecycle.delete_after_seconds` (default one day), and right away when the
+// idle action is `delete`. Nothing else deletes a paused sandbox until its
+// session is deleted, and trigger sessions never are, so every webhook run
+// left one behind. Only the provider sandbox goes: the record stays forever.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -147,8 +148,9 @@ pub async fn overdue_idle_sandbox_sessions(
 }
 
 /// Sessions whose managed sandbox is paused and has had no activity for
-/// longer than its lifecycle's `delete_after_seconds`. A snapshot without the
-/// field gets the default; an explicit `null` keeps the sandbox.
+/// longer than its lifecycle's `delete_after_seconds`, or at once when its
+/// idle action is `delete`. A snapshot without the field gets the default; an
+/// explicit `null` keeps the sandbox.
 pub async fn expired_paused_sandbox_sessions(
     pool: &PgPool,
     limit: i64,
@@ -160,14 +162,19 @@ pub async fn expired_paused_sandbox_sessions(
         JOIN sessions sess ON sess.id = s.session_id
         WHERE s.deleted_at IS NULL
           AND s.observed_state = 'paused'
-          AND COALESCE(s.profile_snapshot->'target'->>'kind', '') NOT IN ('vfs', 'host')
-          AND COALESCE(jsonb_typeof(s.profile_snapshot->'lifecycle'->'delete_after_seconds'), '')
-              <> 'null'
+          -- Only profiled Sandboxes: deleting their state keeps the row as
+          -- `deleted` with its instances retired, so fleet history and stats
+          -- survive. An unprofiled row would be removed outright.
+          AND s.profile_snapshot IS NOT NULL
+          AND s.profile_snapshot->'target'->>'kind' NOT IN ('vfs', 'host')
           AND sess.status <> 'active'
-          AND COALESCE(s.last_activity_at, s.updated_at)
-              < now() - make_interval(secs => COALESCE(
-                    (s.profile_snapshot->'lifecycle'->>'delete_after_seconds')::double precision,
-                    $1))
+          AND (s.profile_snapshot->'lifecycle'->>'idle_action' = 'delete'
+               OR (COALESCE(jsonb_typeof(s.profile_snapshot->'lifecycle'->'delete_after_seconds'), '')
+                       <> 'null'
+                   AND COALESCE(s.last_activity_at, s.updated_at)
+                       < now() - make_interval(secs => COALESCE(
+                             (s.profile_snapshot->'lifecycle'->>'delete_after_seconds')::double precision,
+                             $1))))
         ORDER BY s.last_activity_at NULLS FIRST
         LIMIT $2
         "#,

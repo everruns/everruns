@@ -882,8 +882,10 @@ starts, and moving work elsewhere is a fork with a different environment.
 
 A cluster job (`crates/server/src/background/sandbox_idle_sweep.rs`) pauses
 running Sandboxes once `lifecycle.idle_after_seconds` passes without activity,
-and deletes paused ones after `lifecycle.delete_after_seconds` (three days when
-the field is absent, never when it is `null`). Two cases drove the rules:
+and deletes paused ones after `lifecycle.delete_after_seconds` (one day when
+the field is absent, never when it is `null`), or on the next sweep when
+`idle_action` is `delete`. The provider Sandbox is disposable; its record is
+permanent (rows are marked deleted, never purged). Two cases drove the rules:
 
 - A session stuck in `active` (a turn that never finished) used to keep its
   Sandbox running indefinitely. The sweep now pauses it too once the Sandbox

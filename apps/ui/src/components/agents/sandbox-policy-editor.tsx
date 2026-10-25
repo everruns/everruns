@@ -111,14 +111,14 @@ function recoveryDescription(durability: string | null | undefined): string {
 }
 
 // Paused Sandboxes still cost provider storage, so the server deletes them after
-// a retention period (three days unless the template says otherwise). "Never"
+// a retention period (one day unless the template says otherwise). "Never"
 // is an explicit null; "Default" leaves the field out so the server default applies.
 const RETENTION_CHOICES: {
   value: string;
   label: string;
   seconds?: number | null;
 }[] = [
-  { value: "default", label: "Default (3 days)" },
+  { value: "default", label: "Default (1 day)" },
   { value: "1d", label: "1 day", seconds: 86_400 },
   { value: "3d", label: "3 days", seconds: 3 * 86_400 },
   { value: "7d", label: "7 days", seconds: 7 * 86_400 },
@@ -876,6 +876,7 @@ function TemplateSpecEditor({
               <SelectItem value="checkpoint_and_stop">Checkpoint and stop</SelectItem>
               <SelectItem value="stop">Stop</SelectItem>
               <SelectItem value="keep_running">Keep running</SelectItem>
+              <SelectItem value="delete">Delete</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -59744,7 +59744,8 @@
         "enum": [
           "checkpoint_and_stop",
           "stop",
-          "keep_running"
+          "keep_running",
+          "delete"
         ]
       },
       "SandboxIncarnation": {

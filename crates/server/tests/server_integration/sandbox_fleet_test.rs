@@ -12,7 +12,6 @@ use everruns_contracts::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_server::background::sandbox_history_retention::purge_deleted_sandboxes;
 use everruns_server::background::sandbox_idle_sweep::{
     expired_paused_sandbox_sessions, overdue_idle_sandbox_sessions,
 };
@@ -207,20 +206,18 @@ async fn sandbox_history_outlives_its_session() {
         .expect("live");
     assert!(rows.is_empty(), "deleted Sandboxes are not live");
 
-    // Retention keeps recent history and purges what is past the window.
-    assert_eq!(purge_deleted_sandboxes(&pool, 30).await.expect("purge"), 0);
-    sqlx::query("UPDATE sandboxes SET deleted_at = now() - interval '40 days' WHERE id = $1")
+    // Sandbox records are never purged: a long-deleted Sandbox keeps its row.
+    sqlx::query("UPDATE sandboxes SET deleted_at = now() - interval '400 days' WHERE id = $1")
         .bind(pinned.id)
         .execute(&pool)
         .await
         .expect("age");
-    assert!(purge_deleted_sandboxes(&pool, 30).await.expect("purge") >= 1);
     assert!(
         backend
             .get_sandbox_fleet_row(DEFAULT_ORG_ID, pinned.id)
             .await
             .expect("get")
-            .is_none()
+            .is_some()
     );
 }
 
@@ -418,8 +415,12 @@ async fn retention_sweep_selects_paused_sandboxes_past_their_limit() {
         .await;
     set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
 
-    set("UPDATE sandboxes SET last_activity_at = now() - interval '2 days' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
-    assert!(!expired().await, "two days is within the default three");
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '12 hours' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(!expired().await, "twelve hours is within the default day");
+
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,idle_action}', '\"delete\"') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(expired().await, "the delete idle action does not wait");
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,idle_action}', '\"stop\"') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
 
     set("UPDATE sandboxes SET last_activity_at = now() - interval '4 days' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
     assert!(expired().await, "past the default retention");
@@ -445,4 +446,10 @@ async fn retention_sweep_selects_paused_sandboxes_past_their_limit() {
     set("UPDATE sandboxes SET observed_state = 'ready' WHERE id = $1 AND $2::uuid IS NOT NULL")
         .await;
     assert!(!expired().await, "a running Sandbox is the idle sweep's");
+
+    set("UPDATE sandboxes SET observed_state = 'paused', profile_snapshot = NULL WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(
+        !expired().await,
+        "an unprofiled Sandbox would be hard-deleted, losing its history"
+    );
 }

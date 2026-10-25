@@ -301,11 +301,12 @@ impl Default for SandboxLifecycle {
     }
 }
 
-/// Paused Sandboxes are deleted after three days without activity unless the
-/// template says otherwise. Decision: without a limit nothing ever deletes a
-/// paused Sandbox, and Sessions started by triggers are never deleted either,
-/// so every webhook run left a provider sandbox behind.
-pub const DEFAULT_DELETE_AFTER_SECONDS: u64 = 3 * 86_400;
+/// Paused Sandboxes are deleted after one day without activity unless the
+/// template says otherwise. Decision: the provider Sandbox is disposable (a
+/// Session recovers on a fresh one) while its record is kept forever. Without
+/// a limit nothing ever deleted a paused Sandbox, and Sessions started by
+/// triggers are never deleted either, so every webhook run left one behind.
+pub const DEFAULT_DELETE_AFTER_SECONDS: u64 = 86_400;
 
 fn default_delete_after_seconds() -> Option<u64> {
     Some(DEFAULT_DELETE_AFTER_SECONDS)
@@ -318,6 +319,9 @@ pub enum SandboxIdleAction {
     CheckpointAndStop,
     Stop,
     KeepRunning,
+    /// Pause on idle, then delete the provider Sandbox on the next sweep.
+    /// For disposable work: the next turn gets a fresh Sandbox.
+    Delete,
 }
 
 /// Reproducible initialization pinned with the specification snapshot.

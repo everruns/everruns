@@ -23736,7 +23736,7 @@ export interface components {
       window_days: number;
     };
     /** @enum {string} */
-    SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
+    SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running" | "delete";
     /** @description One physical provider resource behind a logical Sandbox. */
     SandboxIncarnation: {
       /** Format: date-time */

@@ -384,9 +384,11 @@ pub(super) async fn start_maintenance(
             Some(deps.background_pool.clone()),
             crate::background::event_retention::retention_days_from_env(),
         ),
-        crate::background::sandbox_history_retention::retention_job(
-            Some(deps.background_pool.clone()),
-            crate::background::sandbox_history_retention::retention_days_from_env(),
+        // Retired: Sandbox records are never purged. Kept disabled so the
+        // schedule an earlier version created stops firing.
+        crate::background::cluster_jobs::ClusterJob::disabled(
+            "sandbox-history-retention",
+            "sandbox_history_retention",
         ),
         crate::background::sandbox_idle_sweep::idle_sweep_job(
             deps.background_pool.clone(),
