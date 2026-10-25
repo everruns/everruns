@@ -91,11 +91,37 @@ on Linux, `~/Library/Application Support/everruns/docker/default/` on macOS.
 - `compose.yaml` is the [Docker Compose](/getting-started/docker-compose/)
   stack without its optional profiles.
 
+- `backups/` holds the database backups `upgrade` takes.
+
 The database lives in a Docker volume. `up` never regenerates a secret.
 
-The images match the CLI's version. After you upgrade the CLI, `up` tells you
-when the instance runs an older version, and `everruns docker up --image-tag v0.49.0`
-moves it, which runs the database migrations.
+## Upgrade
+
+The images match the CLI's version when the instance is set up, and `up` never
+moves them. After you upgrade the CLI, `up` tells you when the instance runs an
+older version, and `upgrade` moves it:
+
+```bash
+everruns docker upgrade                      # to this CLI's version
+everruns docker upgrade --image-tag v0.49.0  # or a tag you name
+```
+
+The new server runs the database migrations when it starts, and they only go
+forward, so `upgrade` first saves a database backup in the instance's
+`backups/` folder (`--no-backup` skips it). Moving to an older tag asks first:
+it needs the backup taken before the newer version to work. To restore one,
+copy it into the `postgres` container and run `pg_restore --clean` against the
+`everruns` database there.
+
+## Start over
+
+```bash
+everruns docker reset
+```
+
+`reset` deletes the instance: its containers, the database, the settings folder
+with the encryption key and backups, and the CLI profile. It asks you to type
+the instance name first; `--yes` skips that for scripts.
 
 ## Day to day
 

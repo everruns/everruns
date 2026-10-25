@@ -5,7 +5,8 @@
 //! running it again is safe and fast, and it repairs what is missing instead of
 //! starting over. Secrets are never regenerated and upgrades never happen as a
 //! side effect: moving to a new image tag runs migrations, so it is asked for
-//! explicitly with `--image-tag`.
+//! explicitly with `upgrade`. `reset` is the one command that deletes data,
+//! and it asks for the instance name first.
 
 mod checks;
 mod settings;
@@ -54,6 +55,40 @@ pub enum DockerCommand {
 
     /// Check that Docker is installed, running and new enough
     Doctor(InstanceArgs),
+
+    /// Move the instance to this CLI's version (or --image-tag), backing up the database first
+    Upgrade(UpgradeArgs),
+
+    /// Delete the instance: containers, database and settings. Asks first
+    Reset(ResetArgs),
+}
+
+#[derive(Args)]
+pub struct UpgradeArgs {
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+
+    /// Image tag to move to, such as v0.49.0 or latest (default: this CLI's version)
+    #[arg(long)]
+    pub image_tag: Option<String>,
+
+    /// Skip the database backup taken before the upgrade
+    #[arg(long)]
+    pub no_backup: bool,
+
+    /// Do not ask, also when the move is to an older version
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+}
+
+#[derive(Args)]
+pub struct ResetArgs {
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+
+    /// Do not ask for the instance name (for scripts)
+    #[arg(long, short = 'y')]
+    pub yes: bool,
 }
 
 #[derive(Args)]
@@ -226,6 +261,8 @@ pub async fn run(command: DockerCommand) -> Result<()> {
         } => logs(&instance, service.as_deref(), no_follow),
         DockerCommand::Open(args) => open(&args),
         DockerCommand::Doctor(args) => doctor(&args),
+        DockerCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
+        DockerCommand::Reset(args) => reset(&args),
     }
 }
 
@@ -410,7 +447,8 @@ async fn up(args: UpArgs) -> Result<()> {
     if tag != cli_tag && tag != "latest" {
         eprintln!(
             "  This instance runs {tag}; this CLI is {cli_tag}. Move to it with \
-             `everruns docker up --image-tag {cli_tag}` (runs database migrations)."
+             `everruns docker upgrade{}` (backs up the database, then runs migrations).",
+            name_flag(&inst.name)
         );
     }
 
@@ -669,13 +707,20 @@ fn existing(args: &InstanceArgs) -> Result<Option<(Instance, Settings)>> {
     Ok(Some((inst, s)))
 }
 
-fn not_set_up(args: &InstanceArgs) {
-    let flag = if args.name == "default" {
+/// ` --name <n>` for messages that suggest a command, empty for the default.
+fn name_flag(name: &str) -> String {
+    if name == "default" {
         String::new()
     } else {
-        format!(" --name {}", args.name)
-    };
-    eprintln!("No local instance yet. Run `everruns docker up{flag}`.");
+        format!(" --name {name}")
+    }
+}
+
+fn not_set_up(args: &InstanceArgs) {
+    eprintln!(
+        "No local instance yet. Run `everruns docker up{}`.",
+        name_flag(&args.name)
+    );
 }
 
 fn port_of(s: &Settings) -> u16 {
@@ -815,6 +860,298 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
     Ok(())
 }
 
+/// Decision: an upgrade is the one moment a database migration runs, and
+/// migrations only go forward, so the database is dumped first. A dump is
+/// small next to the cost of a migration that goes wrong on someone's only
+/// copy. An older tag is allowed (after a question) for undoing a bad move,
+/// but only together with restoring the backup taken before it.
+async fn upgrade(args: UpgradeArgs) -> Result<()> {
+    let Some((inst, mut s)) = existing(&args.instance)? else {
+        not_set_up(&args.instance);
+        return Ok(());
+    };
+    let docker = checks::program();
+    require_docker(&docker, false)?;
+    let _lock = inst.lock()?;
+
+    let cli_tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let target = match &args.image_tag {
+        Some(tag) => tag.clone(),
+        None => resolve_tag(&docker, &cli_tag),
+    };
+    let current = s.value(settings::IMAGE_TAG).unwrap_or("latest").to_string();
+    // `latest` moves under the same name, so it always pulls.
+    if target == current && target != "latest" {
+        eprintln!("Already on {current}.");
+        return Ok(());
+    }
+    if is_downgrade(&current, &target) {
+        let asker = Asker {
+            interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
+            yes: args.yes,
+        };
+        let reason = format!(
+            "{target} is older than {current}. The database was migrated for {current}, \
+             so {target} may fail unless you restore a backup taken before."
+        );
+        if !confirm(asker, &reason, "--yes")? {
+            bail!("not moved; still on {current}");
+        }
+    }
+
+    if !args.no_backup {
+        let file = backup(&docker, &inst, &current)?;
+        eprintln!("Backed up the database to {}", file.display());
+    }
+
+    s.set(settings::IMAGE_TAG, &target);
+    s.save(&inst.env_path())?;
+    // A newer CLI may carry a newer compose file too.
+    inst.write_compose()?;
+
+    let pulled = compose(&docker, &inst)
+        .arg("pull")
+        .status()
+        .context("Failed to run docker compose")?;
+    if !pulled.success() {
+        // Leave the instance on the tag it can run.
+        s.set(settings::IMAGE_TAG, &current);
+        s.save(&inst.env_path())?;
+        bail!("pulling the {target} images failed; still on {current}");
+    }
+    let status = compose(&docker, &inst)
+        .args(["up", "--detach", "--remove-orphans"])
+        .status()
+        .context("Failed to run docker compose")?;
+    if !status.success() {
+        bail!("`docker compose up` failed; see the output above");
+    }
+    let health = wait_healthy(&docker, &inst, port_of(&s)).await?;
+    eprintln!("Everruns is now on {}.", display_version(&health, &target));
+    Ok(())
+}
+
+fn display_version(health: &Health, tag: &str) -> String {
+    if health.version.is_empty() {
+        tag.to_string()
+    } else {
+        format!("{} ({tag})", health.version)
+    }
+}
+
+/// `vX.Y.Z` as numbers; anything else (such as `latest`) is not comparable.
+fn release(tag: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = tag.strip_prefix('v').unwrap_or(tag).splitn(3, '.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+fn is_downgrade(current: &str, target: &str) -> bool {
+    matches!((release(current), release(target)), (Some(c), Some(t)) if t < c)
+}
+
+/// Dump the database into the instance's `backups/` folder. Starts PostgreSQL
+/// alone if the instance is stopped, so a backup never depends on the server.
+fn backup(docker: &str, inst: &Instance, tag: &str) -> Result<std::path::PathBuf> {
+    let started = compose(docker, inst)
+        .args(["up", "--detach", "--wait", "postgres"])
+        .stdout(Stdio::null())
+        .status()
+        .context("Failed to run docker compose")?;
+    if !started.success() {
+        bail!("could not start PostgreSQL for the backup; pass --no-backup to skip it");
+    }
+    let dir = inst.dir.join("backups");
+    std::fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let path = dir.join(format!("everruns-{tag}-{stamp}.dump"));
+    let file = std::fs::File::create(&path)
+        .with_context(|| format!("Failed to create {}", path.display()))?;
+    // Private before anything is written: the dump holds every record.
+    settings::set_private(&path)?;
+    let dumped = compose(docker, inst)
+        .args([
+            "exec",
+            "-T",
+            "postgres",
+            "pg_dump",
+            "--username",
+            "everruns",
+            "--format",
+            "custom",
+            "everruns",
+        ])
+        .stdout(file)
+        .status()
+        .context("Failed to run pg_dump")?;
+    if !dumped.success() {
+        let _ = std::fs::remove_file(&path);
+        bail!("the database backup failed; pass --no-backup to upgrade without one");
+    }
+    Ok(path)
+}
+
+/// Delete everything the instance has: containers, the database volume, the
+/// settings folder (with the encryption key and backups) and its CLI profile.
+fn reset(args: &ResetArgs) -> Result<()> {
+    let inst = Instance::new(&args.instance.name)?;
+    let docker = checks::program();
+    // Without a settings folder there can still be containers and a volume
+    // from a folder deleted by hand, so check Docker for the project too.
+    let has_project = project_exists(&docker, &inst);
+    if !inst.dir.exists() && !has_project {
+        eprintln!("Nothing to reset: no local instance '{}'.", inst.name);
+        return Ok(());
+    }
+    require_docker(&docker, false)?;
+
+    let asker = Asker {
+        interactive: std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
+        yes: args.yes,
+    };
+    if !asker.yes {
+        if !asker.interactive {
+            bail!(
+                "no terminal to ask on; pass --yes to delete instance '{}'",
+                inst.name
+            );
+        }
+        eprintln!(
+            "This deletes the local instance '{}': its containers, database and settings \
+             in {}, including the backups.",
+            inst.name,
+            inst.dir.display()
+        );
+        let typed: String = dialoguer::Input::new()
+            .with_prompt(format!("Type '{}' to delete it", inst.name))
+            .allow_empty(true)
+            .interact_text()
+            .context("Failed to read the answer")?;
+        if typed.trim() != inst.name {
+            bail!("not deleted");
+        }
+    }
+
+    {
+        let _lock = if inst.dir.exists() {
+            Some(inst.lock()?)
+        } else {
+            None
+        };
+        if inst.dir.exists() {
+            // `down` needs the compose file; an old or missing one is replaced.
+            inst.write_compose()?;
+            if !inst.env_path().exists() {
+                std::fs::write(inst.env_path(), "")?;
+            }
+            let down = compose(&docker, &inst)
+                .args(["down", "--volumes", "--remove-orphans"])
+                .status()
+                .context("Failed to run docker compose")?;
+            if !down.success() {
+                bail!("`docker compose down` failed; nothing else was deleted");
+            }
+        } else {
+            remove_project(&docker, &inst)?;
+        }
+    }
+    if inst.dir.exists() {
+        std::fs::remove_dir_all(&inst.dir)
+            .with_context(|| format!("Failed to delete {}", inst.dir.display()))?;
+    }
+    let removed_profile = forget_profile(&inst.profile())?;
+
+    eprintln!("Deleted the local instance '{}'.", inst.name);
+    if removed_profile {
+        eprintln!("Removed the CLI profile '{}'.", inst.profile());
+    }
+    Ok(())
+}
+
+/// Whether Docker has containers or volumes of the instance's project.
+fn project_exists(docker: &str, inst: &Instance) -> bool {
+    let label = format!("label=com.docker.compose.project={}", inst.project());
+    [
+        vec!["ps", "--all", "--quiet", "--filter", &label],
+        vec!["volume", "ls", "--quiet", "--filter", &label],
+    ]
+    .iter()
+    .any(|args| {
+        Command::new(docker)
+            .args(args)
+            .stderr(Stdio::null())
+            .output()
+            .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty())
+    })
+}
+
+/// Remove a project's containers and volumes when its compose file is gone.
+fn remove_project(docker: &str, inst: &Instance) -> Result<()> {
+    let label = format!("label=com.docker.compose.project={}", inst.project());
+    for (list, remove) in [
+        (vec!["ps", "--all", "--quiet"], vec!["rm", "--force"]),
+        (
+            vec!["volume", "ls", "--quiet"],
+            vec!["volume", "rm", "--force"],
+        ),
+        (vec!["network", "ls", "--quiet"], vec!["network", "rm"]),
+    ] {
+        let out = Command::new(docker)
+            .args(&list)
+            .args(["--filter", &label])
+            .output()
+            .context("Failed to run docker")?;
+        let ids: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        if ids.is_empty() {
+            continue;
+        }
+        let status = Command::new(docker)
+            .args(&remove)
+            .args(&ids)
+            .stdout(Stdio::null())
+            .status()
+            .context("Failed to run docker")?;
+        if !status.success() {
+            bail!("`docker {}` failed", remove.join(" "));
+        }
+    }
+    Ok(())
+}
+
+/// Drop the instance's CLI profile, so nothing points at a server that is gone.
+fn forget_profile(profile: &str) -> Result<bool> {
+    let mut store = crate::auth::CredentialStore::load().unwrap_or_default();
+    if !store.remove_profile(profile) {
+        return Ok(false);
+    }
+    if store.current_profile == profile {
+        store.current_profile = String::new();
+    }
+    store.save()?;
+    Ok(true)
+}
+
+/// Ask whether to go ahead despite `reason`; without a terminal only `flag`
+/// says yes.
+fn confirm(asker: Asker, reason: &str, flag: &str) -> Result<bool> {
+    if asker.yes {
+        return Ok(true);
+    }
+    if !asker.interactive {
+        bail!("{reason} No terminal to ask on; pass {flag} to go ahead");
+    }
+    dialoguer::Confirm::new()
+        .with_prompt(format!("{reason} Continue?"))
+        .default(false)
+        .interact()
+        .context("Failed to read the answer")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -861,6 +1198,45 @@ mod tests {
         // Skip needs no key and records the answer.
         set_provider(&mut s, LlmProvider::Skip, quiet).unwrap();
         assert_eq!(s.value(settings::LLM_PROVIDER), Some("skip"));
+    }
+
+    #[test]
+    fn only_an_older_release_is_a_downgrade() {
+        assert!(is_downgrade("v0.49.0", "v0.48.3"));
+        assert!(is_downgrade("v1.0.0", "v0.99.99"));
+        assert!(!is_downgrade("v0.48.0", "v0.49.0"));
+        assert!(!is_downgrade("v0.48.0", "v0.48.0"));
+        // `latest` and other names cannot be compared, so they never ask.
+        assert!(!is_downgrade("latest", "v0.48.0"));
+        assert!(!is_downgrade("v0.48.0", "latest"));
+        assert_eq!(release("v0.48.10"), Some((0, 48, 10)));
+        assert_eq!(release("main"), None);
+    }
+
+    #[test]
+    fn suggested_commands_name_only_other_instances() {
+        assert_eq!(name_flag("default"), "");
+        assert_eq!(name_flag("demo"), " --name demo");
+    }
+
+    #[test]
+    fn confirm_without_a_terminal_needs_the_flag() {
+        let quiet = Asker {
+            interactive: false,
+            yes: false,
+        };
+        let err = confirm(quiet, "It is older.", "--yes")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("It is older.") && err.contains("--yes"),
+            "{err}"
+        );
+        let yes = Asker {
+            interactive: false,
+            yes: true,
+        };
+        assert!(confirm(yes, "It is older.", "--yes").unwrap());
     }
 
     #[test]

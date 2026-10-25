@@ -292,6 +292,11 @@ pub fn password() -> String {
     }
 }
 
+/// Readable only by the user, like `.env`.
+pub fn set_private(path: &Path) -> Result<()> {
+    set_mode(path, 0o600)
+}
+
 fn set_mode(path: &Path, mode: u32) -> Result<()> {
     #[cfg(unix)]
     {
