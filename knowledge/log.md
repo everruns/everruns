@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-25
+
+* **Local setup.** `everruns docker up` runs the self-hosted Platform through
+  Docker Compose with a converging, re-runnable setup and a sign-in question;
+  Kubernetes gets a Helm chart rather than an operator. See
+  [Local Setup and Kubernetes](operations/local-setup.md).
+
 ## 2026-10-24
 
 * **Chat across app pages.** Bind every adopted app page to explicit context, live

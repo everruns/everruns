@@ -93,6 +93,12 @@ context set	--content! --context-revision --entity-ref --expected-revision --kin
 credential-bindings create	--binding --context-revision --label! --mcp --name --owner-id --reason --scope! --source --usage!
 credential-bindings list	--context-revision --owner-id --reason --scope! --usage!
 credential-bindings revoke	--context-revision --id! --reason --revision!
+docker doctor	--name
+docker logs	--name --no-follow <service>
+docker open	--name
+docker status	--name
+docker stop	--name
+docker up	--admin-email --auth --image-tag --name --no-open --port --provider --yes/-y
 durable executions get	--context-revision --execution-id --reason <execution_id>
 durable schedules create	--catch-up-missed --context-revision --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --reason --retry-policy --target! --timezone
 durable schedules delete	--context-revision --reason --schedule-id!

@@ -120,6 +120,20 @@ impl CredentialStore {
     }
 }
 
+/// The profile a command uses: the one named by `--profile` or
+/// `EVERRUNS_PROFILE`, else the one signed in to last, else `default`.
+pub fn profile_name(explicit: Option<&str>) -> String {
+    if let Some(name) = explicit {
+        return name.to_string();
+    }
+    let store = CredentialStore::load().unwrap_or_default();
+    if store.current_profile.is_empty() {
+        "default".to_string()
+    } else {
+        store.current_profile
+    }
+}
+
 /// Resolve credentials with priority: CLI flag > env var > credential file
 pub fn resolve_credentials(
     cli_api_key: Option<&str>,

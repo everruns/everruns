@@ -40,9 +40,10 @@ pub struct Cli {
     #[arg(long, short, global = true)]
     pub quiet: bool,
 
-    /// Profile name for credential storage
-    #[arg(long, global = true, default_value = "default")]
-    pub profile: String,
+    /// Profile name for credential storage (default: the profile you signed
+    /// in to last)
+    #[arg(long, global = true, env = "EVERRUNS_PROFILE")]
+    pub profile: Option<String>,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -94,6 +95,12 @@ pub enum Commands {
     Files {
         #[command(subcommand)]
         command: commands::files::FilesCommand,
+    },
+
+    /// Run Everruns on this machine with Docker
+    Docker {
+        #[command(subcommand)]
+        command: commands::docker::DockerCommand,
     },
 
     /// Send a message and stream the response
@@ -175,26 +182,33 @@ async fn run() -> anyhow::Result<()> {
     // Commands that don't need authentication
     match &cli.command {
         Commands::Login { token } => {
+            // Signing in names its profile, `default` unless one is given;
+            // it then becomes the current one.
             return Box::pin(commands::login::run(
                 cli.api_url.as_deref(),
                 *token,
-                &cli.profile,
+                cli.profile.as_deref().unwrap_or("default"),
             ))
             .await;
         }
         Commands::Logout => {
-            return commands::logout::run(&cli.profile);
+            return commands::logout::run(&auth::profile_name(cli.profile.as_deref()));
         }
         Commands::Status => {
-            return commands::status::run(&cli.profile);
+            return commands::status::run(&auth::profile_name(cli.profile.as_deref()));
         }
         Commands::Orgs { command } => {
+            let profile = auth::profile_name(cli.profile.as_deref());
             return match command {
-                Some(OrgsCommand::Select) => {
-                    Box::pin(commands::orgs::run_select(&cli.profile)).await
-                }
-                None => Box::pin(commands::orgs::run_list(output_format, &cli.profile)).await,
+                Some(OrgsCommand::Select) => Box::pin(commands::orgs::run_select(&profile)).await,
+                None => Box::pin(commands::orgs::run_list(output_format, &profile)).await,
             };
+        }
+        Commands::Docker { .. } => {
+            let Commands::Docker { command } = cli.command else {
+                unreachable!()
+            };
+            return Box::pin(commands::docker::run(command)).await;
         }
         _ => {}
     }
@@ -203,7 +217,7 @@ async fn run() -> anyhow::Result<()> {
     let creds = auth::resolve_credentials(
         cli.api_key.as_deref(),
         cli.api_url.as_deref(),
-        Some(&cli.profile),
+        cli.profile.as_deref(),
     )?;
     let api_key = creds.api_key;
     let api_url = creds.api_url;
@@ -277,7 +291,11 @@ async fn run() -> anyhow::Result<()> {
             .await
         }
         // Already handled above
-        Commands::Login { .. } | Commands::Logout | Commands::Status | Commands::Orgs { .. } => {
+        Commands::Login { .. }
+        | Commands::Logout
+        | Commands::Status
+        | Commands::Orgs { .. }
+        | Commands::Docker { .. } => {
             unreachable!()
         }
     }
@@ -770,7 +788,7 @@ mod tests {
     #[test]
     fn test_cli_parse_profile() {
         let cli = Cli::try_parse_from(["everruns", "--profile", "staging", "status"]).unwrap();
-        assert_eq!(cli.profile, "staging");
+        assert_eq!(cli.profile.as_deref(), Some("staging"));
     }
 
     #[test]

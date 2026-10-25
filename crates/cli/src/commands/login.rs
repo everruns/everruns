@@ -55,10 +55,10 @@ struct CliUserInfo {
 }
 
 #[derive(Deserialize, Clone)]
-struct OrgInfo {
-    public_id: String,
-    name: String,
-    role: String,
+pub(crate) struct OrgInfo {
+    pub(crate) public_id: String,
+    pub(crate) name: String,
+    pub(crate) role: String,
 }
 
 /// Parsed `code`/`state` query parameters from the loopback OAuth callback.
@@ -360,7 +360,7 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
 }
 
 /// Interactive org selection
-fn select_org(orgs: &[OrgInfo]) -> Result<String> {
+pub(crate) fn select_org(orgs: &[OrgInfo]) -> Result<String> {
     if orgs.is_empty() {
         return Err(anyhow!("No organizations found for this user"));
     }

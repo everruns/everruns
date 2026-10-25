@@ -40,6 +40,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`connections`](/reference/cli/connections/) | Your LLM provider API keys |
 | [`context`](/reference/cli/context/) | Notes managers keep about an entity, read by agents that manage it. |
 | [`credential-bindings`](/reference/cli/credential-bindings/) | Declare, list and revoke write-only credential bindings. |
+| [`docker`](/reference/cli/docker/) | Run Everruns on this machine with Docker |
 | [`durable`](/reference/cli/durable/) | Durable scheduled tasks and their executions. |
 | [`evals`](/reference/cli/evals/) | Evaluation cases, runs, results and scores. |
 | [`files`](/reference/cli/files/) | Sync files between a local folder and a session |

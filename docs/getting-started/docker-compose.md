@@ -53,7 +53,13 @@ COMPOSE_PROFILES=scale,metrics
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 DEFAULT_GEMINI_API_KEY=AIza...
+SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true
 ```
+
+`SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true` copies the keys into the default
+organization's providers at startup; without it they are ignored. The server
+refuses it when people can sign themselves up (`AUTH_MODE=full` with signup or
+Google/GitHub sign-in), because anyone who joins could spend the keys.
 
 ### 4. Start Services
 

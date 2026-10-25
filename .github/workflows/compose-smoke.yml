@@ -29,6 +29,8 @@ on:
       - 'docs/getting-started/docker-compose.md'
       - 'scripts/smoke-docker-compose.sh'
       - '.github/workflows/compose-smoke.yml'
+      - 'crates/cli/**'
+      - 'scripts/smoke-everruns-docker.sh'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -63,3 +65,32 @@ jobs:
           SMOKE_PROFILES: ${{ matrix.profiles }}
           COMPOSE_PROJECT_NAME: everruns-smoke-${{ matrix.stack }}
         run: scripts/smoke-docker-compose.sh
+
+  # `everruns docker up` with the CLI built from this checkout, against the
+  # same published images.
+  cli-up:
+    name: everruns docker up Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    timeout-minutes: 30
+    env:
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_MULTIPLEXING: "false"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: "cli"
+
+      - name: Build CLI
+        run: cargo build -p everruns-cli
+
+      - name: Run everruns docker up
+        env:
+          EVERRUNS_TAG: ${{ inputs.tag || 'latest' }}
+        run: scripts/smoke-everruns-docker.sh target/debug/everruns
