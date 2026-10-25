@@ -84,6 +84,7 @@ pub(crate) struct Skill {
 }
 
 pub(crate) struct AppInner {
+    pub declared_secrets: std::collections::BTreeSet<&'static str>,
     pub name: String,
     pub version: String,
     pub config: AppConfig,
@@ -140,14 +141,6 @@ impl App {
             .find(|agent| agent.default)
             .or_else(|| (top.len() == 1).then(|| &top[0]))
             .copied()
-    }
-
-    pub(crate) fn asset(&self, path: &str) -> Option<&'static AssetRegistration> {
-        self.inner
-            .assets
-            .iter()
-            .copied()
-            .find(|asset| asset.path == path)
     }
 
     /// Tools an agent gets: its filter, or every discovered tool.
@@ -244,6 +237,7 @@ impl AppBuilder {
         }
 
         let mut app = AppInner {
+            declared_secrets: Default::default(),
             name,
             version,
             config,
@@ -259,7 +253,8 @@ impl AppBuilder {
             errors,
         };
         if self.discover {
-            discover(&mut app);
+            let ((), secrets) = crate::connection::capture_secrets(|| discover(&mut app));
+            app.declared_secrets = secrets;
         }
         for (source, spec) in self.packages {
             match spec {

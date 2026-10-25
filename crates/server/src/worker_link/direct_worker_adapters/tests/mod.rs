@@ -34,6 +34,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
             acts_as,
             connect_in_chat: Default::default(),
             elicitation_policy: Default::default(),
+            tool_timeout_ms: None,
             api_key: None,
             headers: HashMap::new(),
         };
@@ -102,6 +103,7 @@ async fn get_agent_resolves_by_public_id() {
 }
 
 mod actors;
+mod dreaming_memory;
 mod internal_commands;
 mod phase_read_tests;
 
@@ -1450,3 +1452,5 @@ async fn platform_store_agent_count_isolated_per_org() {
 }
 
 mod deleted_session_events;
+
+mod knowledge;

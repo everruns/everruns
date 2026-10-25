@@ -433,6 +433,12 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         resolved.name = name;
         resolved.acts_as = server.acts_as;
         resolved.connect_in_chat = server.connect_in_chat;
+        // Unlike auth and elicitation, the timeout is not a trust decision: an
+        // attachment may set its own (validated to the same range) and
+        // otherwise inherits the catalog's.
+        if server.tool_timeout_ms.is_some() {
+            resolved.tool_timeout_ms = server.tool_timeout_ms;
+        }
 
         if !server.acts_as.is_none() {
             // A non-`none` attachment resolves its credential from a connection
@@ -472,6 +478,7 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         auth_mode: server.auth_mode,
         protocol_mode: server.protocol_mode,
         elicitation_policy: server.elicitation_policy,
+        tool_timeout_ms: server.tool_timeout_ms,
         oauth_provider_id: server.oauth_provider_id,
         acts_as: server.acts_as,
         connect_in_chat: server.connect_in_chat,
@@ -503,6 +510,14 @@ pub async fn materialize_scoped_mcp_servers(
         materialized.insert(
             name.clone(),
             ScopedMcpServer {
+                // Keep the attachment's explicit description when supplied;
+                // otherwise use the catalog operator's description for search.
+                description: server
+                    .description
+                    .as_ref()
+                    .filter(|description| !description.trim().is_empty())
+                    .cloned()
+                    .or_else(|| row.description.clone()),
                 transport_type: McpServerTransportType::from(row.transport_type.as_str()),
                 url: row.url,
                 headers: serde_json::from_value(row.headers).unwrap_or_default(),
@@ -510,6 +525,7 @@ pub async fn materialize_scoped_mcp_servers(
                 // The catalog record is the operator's decision; an attachment
                 // that references it cannot widen it (TM-TOOL-045).
                 elicitation_policy: settings.elicitation_policy,
+                tool_timeout_ms: server.tool_timeout_ms.or(settings.tool_timeout_ms),
                 acts_as: server.acts_as,
                 ..Default::default()
             },
@@ -819,6 +835,58 @@ pub async fn build_materialized_scoped_mcp_tool_definitions(
     .await
 }
 
+/// Attach the authorized server identity and description to its MCP tools.
+/// The search index uses this metadata to rank source descriptions separately
+/// from operation names and schemas.
+pub(crate) fn attach_server_search_metadata(
+    definitions: &mut [ToolDefinition],
+    servers: &ScopedMcpServers,
+) {
+    let servers_by_prefix: HashMap<_, _> = servers
+        .iter()
+        .map(|(name, server)| (sanitize_mcp_server_name(name), (name, server)))
+        .collect();
+    for definition in definitions {
+        let prefix = everruns_core::deferred_mcp_server_prefix(definition.name())
+            .map(str::to_owned)
+            .or_else(|| {
+                everruns_core::mcp_server::parse_mcp_tool_name(definition.name())
+                    .map(|(prefix, _)| prefix)
+            });
+        let Some((server_name, server)) = prefix
+            .as_deref()
+            .and_then(|prefix| servers_by_prefix.get(prefix).copied())
+        else {
+            continue;
+        };
+        let ToolDefinition::Builtin(tool) = definition else {
+            continue;
+        };
+        let metadata = tool
+            .hints
+            .metadata
+            .get_or_insert_with(|| serde_json::json!({}));
+        let Some(metadata) = metadata.as_object_mut() else {
+            // Keep non-object extension metadata intact instead of replacing it.
+            continue;
+        };
+        let server_metadata = metadata
+            .entry("mcp_server")
+            .or_insert_with(|| serde_json::json!({}));
+        let Some(server_metadata) = server_metadata.as_object_mut() else {
+            continue;
+        };
+        server_metadata.insert("name".to_string(), serde_json::json!(server_name));
+        if let Some(description) = server
+            .description
+            .as_deref()
+            .filter(|description| !description.trim().is_empty())
+        {
+            server_metadata.insert("description".to_string(), serde_json::json!(description));
+        }
+    }
+}
+
 /// [`build_materialized_scoped_mcp_tool_definitions`] that also names, in
 /// `failed`, the servers it skipped because listing their tools failed (as
 /// opposed to servers with discovery off or no connection to list them as).
@@ -969,6 +1037,7 @@ pub(crate) async fn build_materialized_scoped_mcp_tool_definitions_reporting(
                 .tool_definitions(),
         );
     }
+    attach_server_search_metadata(&mut definitions, &materialized);
     Ok(definitions)
 }
 pub async fn build_scoped_mcp_tool_definitions(
@@ -1068,6 +1137,7 @@ async fn build_labeled_scoped_mcp_tool_definitions(
         definitions.extend(capability.tool_definitions());
     }
 
+    attach_server_search_metadata(&mut definitions, servers);
     Ok(definitions)
 }
 
@@ -1322,3 +1392,5 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod cache_tests;
 #[cfg(test)]
 pub(super) mod tests;
+#[cfg(test)]
+mod timeout_tests;

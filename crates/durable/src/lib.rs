@@ -117,7 +117,7 @@ pub use persistence::{
     SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
     TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerHeartbeat,
     WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
-    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, begin_transaction, commit_transaction,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,

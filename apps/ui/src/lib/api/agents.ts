@@ -251,10 +251,11 @@ export async function setAgentCredentialValue(
   agentId: string,
   bindingId: string,
   value: string,
+  revision: number,
 ): Promise<AgentCredentialBinding> {
   const response = await api.put<AgentCredentialBinding>(
     `/v1/agents/${agentId}/credentials/${bindingId}`,
-    { value },
+    { value, revision },
   );
   return response.data;
 }

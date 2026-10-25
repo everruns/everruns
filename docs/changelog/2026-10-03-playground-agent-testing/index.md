@@ -28,3 +28,7 @@ the shell-based implementation for every organization.
 See [Chat and Threads](/features/ui/#chat-and-threads) and
 [Platform Chat](/built-ins/harnesses/platform-chat/). PRs [#4060](https://github.com/everruns/everruns/pull/4060),
 [#4076](https://github.com/everruns/everruns/pull/4076), [#4121](https://github.com/everruns/everruns/pull/4121), [#4129](https://github.com/everruns/everruns/pull/4129).
+
+## Update 2026-10-24
+
+Setup now supports search. **Test in Playground** opens normal setup; its existing **Dry run** checkbox selects simulated actions. See [Agent actions and searchable Playground setup](/changelog/2026-10-24-agent-actions-playground-search/).

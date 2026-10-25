@@ -358,6 +358,12 @@ impl CommandMeta {
         self.path.starts_with(INTERNAL_COMMAND_PATH_PREFIX)
     }
 
+    /// Undeployed split Knowledge commands remain usable by internal migration
+    /// code, but are absent from discovery and public command dispatch.
+    pub fn is_retired(&self) -> bool {
+        matches!(self.category, "knowledge_bases" | "knowledge_indexes")
+    }
+
     /// Feature flag required for this operation to exist in an organization's
     /// API-derived command surfaces.
     pub fn required_feature(&self) -> Option<&'static str> {
@@ -365,7 +371,7 @@ impl CommandMeta {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
             "memories" => Some("memory"),
-            "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
+            "knowledge" | "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "payments" => Some("machine_payments"),
@@ -470,6 +476,9 @@ pub struct Ctx {
         Option<Arc<dyn crate::domains::mcp_servers::connection_check::McpOAuthConnectionChecker>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,
+    /// The channel host Slack runs on, for a schedule trigger fired by hand
+    /// that runs in a channel conversation; `None` on surfaces without it.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
     /// GitHub client and public URLs for agents' own GitHub Apps.
     pub github_apps: crate::github_apps::GitHubAppContext,
     /// Per-org/per-user resource caps enforced in create paths (harnesses, agents, sessions).
@@ -535,6 +544,7 @@ impl Ctx {
             decisions: None,
             health_check_service: None,
             mcp_event_triggers: None,
+            channels: None,
             mcp_oauth_checker: None,
             github_apps: crate::github_apps::GitHubAppContext::from_env(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
@@ -742,7 +752,19 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                 let body = Box::pin(async {
                     // Entity history: an invalid reason fails before anything changes.
                     let pending = super::change_history::PendingChange::of(&self, ctx).await?;
+                    let check_chat = Self::transactional()
+                        && meta.method != "GET"
+                        && matches!(
+                            meta.category,
+                            "agents" | "harnesses" | "agent_channels" | "agent_packages"
+                        );
+                    if check_chat {
+                        ctx.db.lock_chat_configuration(ctx.org_id()).await?;
+                    }
                     let output = self.execute(ctx).await?;
+                    if check_chat {
+                        super::agent_channels::work_chat::validate_live(ctx).await?;
+                    }
                     super::change_history::PendingChange::record(pending, &meta, ctx, &output)
                         .await?;
                     Ok(output)
@@ -1046,6 +1068,11 @@ pub async fn dispatch(
     let desc = DISPATCH_TABLE
         .get(name)
         .ok_or_else(|| CommandError::not_found_msg(format!("Unknown command: {name}")))?;
+    if (desc.meta)().is_retired() {
+        return Err(CommandError::not_found_msg(format!(
+            "Unknown command: {name}"
+        )));
+    }
     (desc.dispatch)(params, ctx).await
 }
 
@@ -1054,7 +1081,7 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
-        .filter(|meta| !meta.is_internal())
+        .filter(|meta| !meta.is_internal() && !meta.is_retired())
         .collect()
 }
 
@@ -1090,7 +1117,7 @@ pub fn catalog_entries_with_schemas(
         .into_iter()
         .filter(|desc| {
             let meta = (desc.meta)();
-            !meta.is_internal() && meta.is_enabled(feature_flags)
+            !meta.is_internal() && !meta.is_retired() && meta.is_enabled(feature_flags)
         })
         .map(|desc| {
             let meta = (desc.meta)();

@@ -33,6 +33,12 @@ function workspace(teamId: string, name: string, status: SlackWorkspace["status"
 }
 
 let mockWorkspaces: SlackWorkspace[] = [workspace("T1", "Acme")];
+let mockSource: { managed_channels: string[] } | null = null;
+let mockChannelConfig: AgentChannel["channel_config"] = {};
+
+jest.mock("@/hooks/use-agent-source", () => ({
+  useAgentSource: () => ({ data: mockSource, isLoading: false, isError: false }),
+}));
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/agents/agent_123/channels/new",
@@ -104,7 +110,7 @@ function slackChannel(): AgentChannel {
   return {
     id: "appchan_123",
     channel_type: "slack",
-    channel_config: {},
+    channel_config: mockChannelConfig,
     enabled: true,
     status: "draft",
     created_at: "2026-09-23T00:00:00Z",
@@ -142,6 +148,8 @@ describe("Slack channel first run", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     window.history.replaceState(null, "", "/agents/agent_123/channels/new");
+    mockSource = null;
+    mockChannelConfig = {};
     mockSlackCapability = {
       supported: true,
       connected: true,
@@ -153,6 +161,18 @@ describe("Slack channel first run", () => {
     createChannel.mockImplementation(
       (_request: unknown, options: { onSuccess: (endpoint: AgentChannel) => void }) =>
         options.onSuccess(slackChannel()),
+    );
+  });
+
+  it("keeps source-owned channel configuration read-only", async () => {
+    mockSource = { managed_channels: ["chat"] };
+    mockChannelConfig = { package_name: "chat" };
+    await renderEditChannelPage("unknown_error");
+    expect(screen.getByText(/configuration is managed by GitHub/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Agent" })).toHaveAttribute(
+      "href",
+      "/agents/agent_123?tab=integrations",
     );
   });
 

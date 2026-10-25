@@ -33,8 +33,7 @@ fn get_database_url() -> String {
 }
 
 async fn reset_durable_tables(pool: &PgPool) {
-    let mut tx = pool
-        .begin()
+    let mut tx = everruns_durable::begin_transaction(pool)
         .await
         .expect("Failed to begin durable test table reset");
 
@@ -73,7 +72,7 @@ async fn reset_durable_tables(pool: &PgPool) {
         .await
         .expect("Failed to reset durable stat counters");
 
-    tx.commit()
+    everruns_durable::commit_transaction(tx)
         .await
         .expect("Failed to commit durable test table reset");
 }

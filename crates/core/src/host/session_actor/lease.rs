@@ -35,6 +35,17 @@
 //!   it reaching the follow-up message's turn, where clearing it would.
 //!   Any cancel requested while a turn runs targets it, since the turn's input
 //!   is in the inbox by then.
+//! - Stall watchdog. The renewer extends the lease whatever the turn does, so
+//!   a holder stuck where nothing is written (setup before the turn is
+//!   driven, or the flush and checkpoint after it) used to keep a session
+//!   `active` with no events for days: the lease never expired, so neither
+//!   resume nor the poison guard ever ran. Those phases are bounded by
+//!   `stall_timeout`: the watchdog is armed while the holder is in one
+//!   ([`Lease::arm_watchdog`]), and a renewer tick that finds it armed past
+//!   the bound stops renewing and flips `lost` and `stalled` instead, so the
+//!   lease expires and the next one resumes from the log (counting an attempt
+//!   toward the poison guard). The driven turn is not bounded here: a long
+//!   tool call or model stream is legitimate progress, with its own timeouts.
 
 use everruns_contracts::rt::Instant;
 use std::sync::Arc;
@@ -82,6 +93,12 @@ pub(crate) struct Lease {
     inbox_seq: AtomicI64,
     last_renewed: Mutex<Instant>,
     lost: Arc<watch::Sender<bool>>,
+    /// Longest the watchdog may stay armed; see the module notes.
+    stall_timeout: Duration,
+    /// When the watchdog was armed; `None` while a turn is driven.
+    watchdog: Mutex<Option<Instant>>,
+    /// Raised (with `lost`) once the watchdog fired.
+    stalled: watch::Sender<bool>,
     /// Raised once a pending cancel targets this lease's turn.
     cancel: watch::Sender<bool>,
     target: Mutex<CancelTarget>,
@@ -117,12 +134,67 @@ impl Lease {
             inbox_seq: AtomicI64::new(actor.inbox_seq),
             last_renewed: Mutex::new(Instant::now()),
             lost: Arc::new(watch::channel(false).0),
+            stall_timeout: super::DEFAULT_ACTOR_STALL_TIMEOUT,
+            // Armed from the start: setup writes nothing until the turn runs.
+            watchdog: Mutex::new(Some(Instant::now())),
+            stalled: watch::channel(false).0,
             cancel: watch::channel(false).0,
             target: Mutex::new(CancelTarget {
                 pending: actor.cancel_inbox_seq,
                 turn_input: None,
             }),
         }
+    }
+
+    /// Bound the phases that write nothing by `timeout` (module notes).
+    pub(crate) fn with_stall_timeout(mut self, timeout: Duration) -> Self {
+        self.stall_timeout = timeout;
+        self
+    }
+
+    /// The holder entered a phase that writes nothing: start the bound.
+    pub(crate) fn arm_watchdog(&self) {
+        *self
+            .watchdog
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+    }
+
+    /// The turn is about to be driven: lift the bound. `false` when the
+    /// watchdog already fired, so the turn must not start.
+    pub(crate) fn disarm_watchdog(&self) -> bool {
+        let mut watchdog = self
+            .watchdog
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.is_stalled() {
+            return false;
+        }
+        *watchdog = None;
+        true
+    }
+
+    /// Fire the watchdog when it has been armed for `stall_timeout`: the
+    /// lease is lost and `stalled` is raised. `true` once it fired.
+    pub(crate) fn check_watchdog(&self) -> bool {
+        let watchdog = self
+            .watchdog
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if watchdog.is_some_and(|armed| armed.elapsed() >= self.stall_timeout) {
+            self.stalled.send_replace(true);
+            self.lost.send_replace(true);
+        }
+        self.is_stalled()
+    }
+
+    /// Raised once the watchdog fired.
+    pub(crate) fn stalled(&self) -> watch::Receiver<bool> {
+        self.stalled.subscribe()
+    }
+
+    pub(crate) fn is_stalled(&self) -> bool {
+        *self.stalled.borrow()
     }
 
     fn update_target(&self, update: impl FnOnce(&mut CancelTarget)) {
@@ -179,6 +251,16 @@ impl Lease {
     /// its input may be committed.
     pub(crate) fn turn_stored(&self) {
         self.unstarted_input.store(0, Ordering::SeqCst);
+    }
+
+    /// Run the lease's turn again from the log (a retry after a
+    /// control-plane failure, see `turn.rs`): the cursor goes back to what
+    /// renew and release commit, as the next holder's would, so a fresh
+    /// turn's input that never reached the log is found again.
+    pub(crate) fn rewind(&self) {
+        let committed = self.committed_cursor();
+        self.unstarted_input.store(0, Ordering::SeqCst);
+        self.cursor.store(committed, Ordering::SeqCst);
     }
 
     /// The cursor renew and release commit.
@@ -437,7 +519,8 @@ impl Lease {
 }
 
 /// Renew `lease` every third of its TTL, or at once when `poke` fires (a
-/// cancel landed), until it is lost or this task is aborted.
+/// cancel landed), until it is lost, its stall watchdog fires, or this task
+/// is aborted.
 ///
 /// Decision: after a failed renew the next one comes after a tenth of the TTL,
 /// not a third. The lease is lost once no renew succeeds for a whole TTL (the
@@ -449,10 +532,28 @@ pub(crate) async fn renew_loop(lease: Arc<Lease>, poke: Arc<Notify>) {
     let retry = lease.ttl / 10;
     let mut failing = false;
     loop {
-        let wait = if failing { retry } else { period };
+        // Decision: while renews fail, the last retry lands on the TTL itself
+        // (where `renew`'s bound is zero and flips `lost`), not up to a retry
+        // period past it. The control plane's expiry is at least that late
+        // (its `now()` is read after `started`), so the turn stops before the
+        // next holder can start (chaos harness: a worker cut off from a killed
+        // server kept running 0.9 s past expiry, 0.5 s beside the next holder).
+        let wait = if failing {
+            retry.min(lease.ttl.saturating_sub(lease.since_renewed()))
+        } else {
+            period
+        };
         tokio::select! {
             _ = everruns_contracts::rt::sleep(wait) => {}
             _ = poke.notified() => {}
+        }
+        if lease.check_watchdog() {
+            tracing::warn!(
+                session_id = %lease.session_id,
+                stall_timeout_ms = lease.stall_timeout.as_millis() as u64,
+                "Actor made no progress before or after its turn; letting the lease expire"
+            );
+            return;
         }
         let since_renewed = lease.since_renewed();
         match lease.renew().await {

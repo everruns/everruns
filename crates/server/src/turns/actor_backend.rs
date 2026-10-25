@@ -38,9 +38,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnResult, TurnTicket};
-use everruns_core::turn::TurnStopReason;
 
 use everruns_worker::actor_runtime::ActorWakeups;
 

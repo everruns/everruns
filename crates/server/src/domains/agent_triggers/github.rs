@@ -409,6 +409,25 @@ pub async fn dispatch_github_delivery(
     delivery: &GitHubDelivery,
     request_id: Option<String>,
 ) -> Result<Vec<GitHubDispatch>, CommandError> {
+    // Source reconciliation also consumes pushes made by this App's own bot.
+    // Only installation-scoped, signed recipients reach this routing boundary.
+    if delivery.event == "push"
+        && let (Some(repo), Some(branch)) = (
+            delivery
+                .payload
+                .pointer("/repository/id")
+                .and_then(Value::as_i64),
+            delivery
+                .payload
+                .get("ref")
+                .and_then(Value::as_str)
+                .and_then(|r| r.strip_prefix("refs/heads/")),
+        )
+    {
+        let identities: Vec<_> = recipients.identities.iter().map(|id| id.uuid()).collect();
+        db.request_agent_source_push(recipients.org_id, &identities, repo, branch)
+            .await?;
+    }
     if recipients.identities.is_empty()
         || sent_by_bot(recipients.bot_login.as_deref(), &delivery.payload)
     {
@@ -499,6 +518,7 @@ pub async fn dispatch_github_delivery(
                 session_source: crate::domains::sessions::record::SessionSource::Webhook,
                 webhook_compat: None,
                 script: None,
+                channel: None,
             },
             TriggerEvent {
                 source: "github",

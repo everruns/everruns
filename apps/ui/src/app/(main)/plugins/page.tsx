@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useRef, useState } from "react";
 import { inferMarketplaceSourceType, marketplaceSourceLabel } from "@/lib/api/plugins";
 import { Button } from "@/components/ui/button";
@@ -798,6 +800,7 @@ function UninstallPluginDialog({
 export default function PluginsPage() {
   usePageTitle("Plugins");
   const [activeTab, setActiveTab] = useState<"installed" | "marketplaces">("installed");
+  useChatPageFilters({ tab: activeTab });
 
   // Marketplace state
   const {

@@ -243,6 +243,7 @@ jobs:
               - 'scripts/lib/core-feature-modules.sh'
               - 'scripts/test-core-feature-modules.sh'
               - 'scripts/lib/check-durable-isolation.sh'
+              - 'scripts/test-durable-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.sh'
               - 'scripts/lib/check-database-driver-isolation.py'
               - 'scripts/test-database-driver-isolation.py'
@@ -270,6 +271,11 @@ jobs:
             chaos:
               - 'scripts/chaos/**'
               - '!scripts/chaos/**/*.md'
+              # Cancellation ownership must survive concurrent completion and
+              # backend failures under the multi-process harness.
+              - 'crates/server/src/domains/sessions/commands/**'
+              - 'crates/server/src/api/channel_api.rs'
+              - 'crates/server/src/channels/a2a/mod.rs'
               - '.github/workflows/chaos.yml'
               - '.github/workflows/ci.yml'
             sdk_compat:
@@ -358,6 +364,7 @@ jobs:
               - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
+              - 'apps/chat-ui/**'
               # api-types:check regenerates apps/ui/src/lib/api/generated from
               # this spec, so a spec-only change can leave the committed types
               # stale. Without it here the UI job is skipped and the drift only
@@ -380,6 +387,8 @@ jobs:
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
+              - 'apps/ui/scripts/patch-zod-v3.mjs'
+              - 'apps/ui/scripts/zod-v3-compatibility.json'
               - 'docs/**'
               - 'release-card.yml'
               - '.github/workflows/ci.yml'
@@ -769,7 +778,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             . -> target
-            examples/celld-engine -> target
+            examples/durable-object-agent -> target
 
       - name: Check wasm portability
         run: bash scripts/lib/check-wasm-portability.sh
@@ -814,8 +823,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
 
+      - name: Install durable guard scanner
+        timeout-minutes: 5
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            sudo apt-get update || true
+            sudo apt-get install -y ripgrep
+          fi
+          rg --version
+
       - name: Check durable isolation
-        run: bash scripts/lib/check-durable-isolation.sh
+        run: |
+          bash scripts/test-durable-isolation.sh
+          bash scripts/lib/check-durable-isolation.sh
 
       - name: Check database driver isolation
         run: |
@@ -1014,7 +1034,10 @@ jobs:
     # A docs/framework-only change still runs, but only the facade-cli leg
     # does work: it compiles the Framework docs snippets (crates/docs-snippets).
     if: (needs.changes.outputs.mode != 'pr' || needs.changes.outputs.rust != 'true') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_snippets == 'true')
-    timeout-minutes: 30
+    # 40: facade-cli adds ~9 serial integration-crate invocations in nightly/full
+    # mode. It took 28m in the 2026-10-22 nightly and hit the old 30m limit in the
+    # full run 39749578382, while running those extras with every test passing.
+    timeout-minutes: 40
 
 
     # Sharded: ~27 sequential `cargo test` invocations were ~20 min of
@@ -1143,12 +1166,9 @@ jobs:
           CARGO_TARGET_DIR="$PWD/target" cargo test --locked \
             --manifest-path crates/everruns/tests/fixtures/external-consumer/Cargo.toml \
             -p external-platform-store
-          # capability_boundary's dependency/narration invariants only hold
-          # with `environment-capabilities` on: every hosted binary
-          # (crates/server, crates/worker) enables it, and some hosted
-          # capabilities (memory, data_knowledge, platform) declare a hard
-          # dependency on the filesystem integration it links.
-          cargo test -p everruns-capabilities --features environment-capabilities \
+          # Match server/worker composition: hosted dependencies require both
+          # environment capabilities (filesystem) and portable builtins (skills).
+          cargo test -p everruns-capabilities --features environment-capabilities,portable-builtins \
             --test capability_boundary
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.
@@ -1549,11 +1569,17 @@ jobs:
         if: ${{ matrix.shard == 'domain' }}
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Install pi-poppy and Datalayer's PAP library
         if: ${{ matrix.shard == 'domain' }}
         run: bash scripts/poppy-interop.sh --setup-only
+
+      # The official MCP TypeScript client for `official_ts_client_drives_mcp_tasks`
+      # (scripts/mcp-tasks-interop.sh), which also rides the domain step.
+      - name: Install the official MCP Tasks client
+        if: ${{ matrix.shard == 'domain' }}
+        run: bash scripts/mcp-tasks-interop.sh --setup-only
 
       - name: Run domain integration tests
         if: ${{ matrix.shard == 'domain' }}
@@ -1563,6 +1589,7 @@ jobs:
           DEPLOYMENT_GRADE: dev
           PI_POPPY_DIR: ${{ github.workspace }}/.local/pi-poppy
           PAP_PYTHON: ${{ github.workspace }}/.local/pap-venv/bin/python
+          MCP_TASKS_INTEROP_DIR: ${{ github.workspace }}/scripts/mcp-tasks-interop
         run: |
           python3 .github/scripts/ci/libtest.py compile "$RUNNER_TEMP/domain-tests.jsonl" -- \
             cargo test --locked -p everruns-server --no-run --message-format=json \
@@ -1626,7 +1653,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-    timeout-minutes: 20
+    # 30, like the S3 job sharing this cache: when the `integration-v2` and sqlx
+    # caches are both evicted, installing sqlx-cli from source (~8m) plus a cold
+    # server test build overran 20 and cancelled the 2026-10-21 nightly.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -2606,7 +2636,7 @@ jobs:
         if: matrix.language == 'typescript'
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Setup Python
         if: matrix.language == 'python'
@@ -2707,7 +2737,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: chat_test
+          POSTGRES_PASSWORD: chat_test
+          POSTGRES_DB: chat_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chat_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
 
     defaults:
       run:
@@ -2726,7 +2767,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2741,6 +2782,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
+
+      - name: Verify standalone Work Chat
+        timeout-minutes: 15
+        working-directory: apps/chat-ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm exec tsc --noEmit
+          pnpm build
+          pnpm exec playwright install --with-deps chromium
+          pnpm e2e
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+          TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test pnpm test:broker
+
+      - name: Upload Work Chat browser evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: work-chat-browser-evidence
+          path: work/work-chat-*.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Format check
         run: pnpm run format:check
@@ -2784,7 +2847,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2870,7 +2933,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/ui/pnpm-lock.yaml
 
@@ -2980,7 +3043,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: 'pnpm'
           cache-dependency-path: apps/docs/pnpm-lock.yaml
 

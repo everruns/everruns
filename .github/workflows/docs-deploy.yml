@@ -10,13 +10,15 @@ name: Docs Deploy
 #
 # Pull requests are covered by ci.yml's docs build; the deploy job holds the
 # Doppler token, so it runs only on main (scripts/test-workflow-vault-token-scope.sh)
-# and uses no actions beyond SHA-pinned ones. Node comes from the runner image
-# and pnpm from npm, at the `packageManager` version in apps/docs/package.json.
+# and uses no actions beyond SHA-pinned ones. Node is pinned by the docs
+# .node-version and pnpm by `packageManager` in apps/docs/package.json.
 on:
   push:
     branches: [main]
     paths:
       - 'apps/docs/**'
+      - 'apps/ui/scripts/patch-zod-v3.mjs'
+      - 'apps/ui/scripts/zod-v3-compatibility.json'
       - 'docs/**'
       - '.github/workflows/docs-deploy.yml'
   schedule:
@@ -45,6 +47,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup patched Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: apps/docs/.node-version
 
       - name: Setup pnpm
         run: |
@@ -99,6 +106,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup patched Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: apps/docs/.node-version
       - name: Check everruns.com/docs and the docs.everruns.com redirects
         run: node apps/docs/scripts/check-live.mjs --site https://everruns.com/docs --old https://docs.everruns.com
       - name: Check the docs header and footer match everruns.com

@@ -8,7 +8,7 @@
 
 use sqlx::PgPool;
 
-use super::PostgresWorkflowEventStore;
+use super::{PostgresWorkflowEventStore, begin_transaction};
 
 /// Arbitrary, stable key for the transaction-scoped advisory lock that
 /// serializes concurrent [`PostgresWorkflowEventStore::migrate`] calls.
@@ -84,7 +84,7 @@ impl PostgresWorkflowEventStore {
         if applied_marker(pool).await?.as_deref() == Some(marker.as_str()) {
             return Ok(());
         }
-        let mut tx = pool.begin().await?;
+        let mut tx = begin_transaction(pool).await?;
         // `CREATE ... IF NOT EXISTS` reports every existing object as a
         // NOTICE; keep re-runs quiet.
         sqlx::query("SET LOCAL client_min_messages = warning")
@@ -96,7 +96,7 @@ impl PostgresWorkflowEventStore {
             .await?;
         // Another caller may have applied it while this one waited.
         if applied_marker(&mut *tx).await?.as_deref() == Some(marker.as_str()) {
-            return tx.commit().await;
+            return crate::commit_transaction(tx).await;
         }
         sqlx::raw_sql(Self::SCHEMA_SQL).execute(&mut *tx).await?;
         // COMMENT takes no bind parameters; the statement is built only from
@@ -105,7 +105,7 @@ impl PostgresWorkflowEventStore {
         sqlx::raw_sql(sqlx::AssertSqlSafe(comment))
             .execute(&mut *tx)
             .await?;
-        tx.commit().await
+        crate::commit_transaction(tx).await
     }
 
     /// Connect to the database at `url`, apply the schema with

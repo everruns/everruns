@@ -13,8 +13,8 @@
 
   <text x="110" y="53" text-anchor="middle" class="header-text">REQUESTER</text>
   <rect x="25" y="68" width="170" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <text x="110" y="106" text-anchor="middle" class="label">Authenticated</text>
-  <text x="110" y="128" text-anchor="middle" class="label">application</text>
+  <text x="110" y="106" text-anchor="middle" class="label">Framework</text>
+  <text x="110" y="128" text-anchor="middle" class="label">Engine / Session</text>
 
   <text x="400" y="53" text-anchor="middle" class="header-text">SESSION AUTHORITY</text>
   <rect x="315" y="68" width="170" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
@@ -23,8 +23,8 @@
 
   <text x="700" y="53" text-anchor="middle" class="header-text">EXECUTION HOST</text>
   <rect x="615" y="68" width="170" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <text x="700" y="106" text-anchor="middle" class="label">Native executor</text>
-  <text x="700" y="130" text-anchor="middle" class="sublabel">or Wasm host</text>
+  <text x="700" y="106" text-anchor="middle" class="label">Engine executor</text>
+  <text x="700" y="130" text-anchor="middle" class="sublabel">native or Wasm</text>
 
   <text x="400" y="263" text-anchor="middle" class="header-text">AGENT LOOP</text>
   <rect x="315" y="275" width="170" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>

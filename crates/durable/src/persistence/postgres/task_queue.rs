@@ -135,9 +135,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         // NOTE: The `attempt < max_attempts` check is critical for preventing infinite
         // retries when workers panic. Without fail_task being called, the task becomes
         // stale, gets reclaimed, but must not be claimed if attempts are exhausted.
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -324,7 +322,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             }
         }
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit task claim");
             StoreError::Database(e.to_string())
         })?;
@@ -360,10 +358,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(worker_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to heartbeat task");
-            StoreError::Database(e.to_string())
-        })?;
+        .map_err(|e| store_failure("durable.tasks.heartbeat", "Failed to heartbeat task", e))?;
 
         #[cfg(feature = "failpoints")]
         fail_point!("postgres_heartbeat_update", |_| {
@@ -448,9 +443,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         // if a reclaimer has already requeued or sealed this task, there is
         // nothing for this caller to fail and we return TaskNotOwned rather than
         // clobbering the reclaimer's decision.
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -536,7 +529,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             TaskFailureOutcome::MovedToDlq
         };
 
-        tx.commit()
+        crate::commit_transaction(tx)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -936,5 +929,44 @@ impl TaskQueue for PostgresWorkflowEventStore {
             .collect();
 
         Ok(tasks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::db_failure::capture::capture;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// EVERRUNS-2T: a heartbeat that cannot reach the database must be
+    /// reported through the shared classifier, so a pool exhaustion groups
+    /// with every other starved subsystem instead of opening its own issue.
+    #[test]
+    fn heartbeat_failure_is_reported_through_the_shared_classifier() {
+        // Nothing listens on port 1, so every acquire fails without a database.
+        let emitted = capture(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                let pool = PgPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(Duration::from_millis(200))
+                    .connect_lazy("postgres://durable@127.0.0.1:1/durable")
+                    .unwrap();
+                let store = PostgresWorkflowEventStore::new(pool);
+                let result = store.heartbeat_task(Uuid::now_v7(), "worker-1", None).await;
+                assert!(matches!(result, Err(StoreError::Database(_))), "{result:?}");
+            });
+        });
+
+        let reported: Vec<_> = emitted.iter().filter(|e| !e.subsystem.is_empty()).collect();
+        assert_eq!(reported.len(), 1, "{emitted:#?}");
+        assert_eq!(reported[0].subsystem, "durable.tasks.heartbeat");
+        assert!(
+            reported[0].db_failure.starts_with("database."),
+            "{emitted:#?}"
+        );
     }
 }

@@ -30,12 +30,12 @@ assert!(second.success);
 
 `Session` is always a live conversation. `send` accepts a message without
 waiting for a response. If a turn is active, the message steers that turn; if
-the previous turn has already finished, it starts a follow-up turn. The receipt
-reports which case occurred, so applications do not need to race on session
-state themselves:
+the previous turn has already finished, it starts a follow-up turn. Admission returns before the executor assigns a turn. The receipt
+reports `Pending`; query its authoritative assignment to learn whether it
+started or steered a turn:
 
 ```rust
-# use everruns::{Agent, Engine, Model, SendDisposition};
+# use everruns::{Agent, Engine, Model};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder().instructions("Remember input.").model(Model::simulated("Done.")).build()?;
@@ -44,23 +44,16 @@ let session = engine.create(agent);
 let initial = session.send("Plan my trip.").await?;
 let latest = session.send("Prefer trains.").await?;
 
-match latest.disposition {
-    SendDisposition::Steered => {
-        assert_eq!(latest.turn_id, initial.turn_id);
-    }
-    SendDisposition::Started => {
-        // The first turn completed before the second message was accepted.
-    }
-    _ => {}
-}
-
 let result = latest.wait().await?;
+if let Some(assignment) = latest.assignment().await? {
+    println!("turn: {}, steered: {}", assignment.turn_id, assignment.steered);
+}
 # let _ = result;
 # Ok(())
 # }
 ```
 
-Waiting on the latest receipt works in both cases. `send_and_wait` (also
+Waiting on the latest receipt works before or after assignment. `send_and_wait` (also
 available as the shorter `run` alias) is request/response convenience over the
 same live session, not a separate mode.
 
@@ -238,13 +231,13 @@ Framework history is a read-only projection of canonical events. Normal
 execution has one write path, the engine's event log, so a resumed session and a
 running session cannot disagree about the conversation.
 
-![Framework persistence ladder: Engine::new() keeps volatile state in memory for one Engine; adding LocalConfig gives a crash-durable event log and SQLite task and schedule state for one application process; the Everruns Platform stores PostgreSQL checkpoints and canonical events across a distributed server and workers.](./persistence-ladder.svg)
-
 | Deployment | Conversation state | Recovery boundary | Use when |
 | --- | --- | --- | --- |
-| `Engine::new()` | Volatile memory | One Engine in one process | Embedding, tests, and short-lived tools |
-| `Engine` with `LocalConfig` | Crash-durable local canonical events and catalog | One trusted application process | Desktop apps, CLIs, and single-node services |
-| Everruns Platform | PostgreSQL-backed durable workflow state and canonical events | Distributed server and workers | Restarts, retries, horizontal workers, and remote clients |
+| `Engine::new()` | Volatile coherent memory authority | One process | Embedding, tests and short-lived tools |
+| Engine with `SqliteHosting` | Transactional local session authority | The configured disk plus native supervisor | Durable single-node Framework services |
+| Engine with `ObjectHosting` | Per-session object authority | Platform storage and alarms | Native or Wasm execution on Cloudflare/celld |
+| Legacy `LocalConfig` | Local canonical events and catalog | One trusted application process | Existing local-store integrations |
+| Everruns Platform | PostgreSQL canonical events and actor authority | Distributed server and workers | Horizontal workers and remote clients |
 
 ### Default: engine-lifetime memory
 
@@ -259,6 +252,22 @@ volatile history.
 
 This default fits tests, command-line tools, short-lived workers, and
 applications that deliberately own a higher-level record elsewhere.
+
+### Coherent native and Durable Object hosting
+
+For durable admission and independently recoverable execution, choose a coherent
+session authority on Engine. Native `hosting::SqliteHosting` owns one transactional
+database; the [session hosting SPI](/framework/hosting/) supports external
+authorities for native or Wasm Engine placement. A source-only Durable Object
+reference demonstrates the extension. Register immutable `AgentBuild`
+identities and retained Environment factories before creating sessions. Start the
+native supervisor or configure platform alarms so recovery does not depend on a
+client reconnecting. See [Durable Object hosting](/framework/durable-objects/).
+
+`create_registered` and `send_with_id` accept caller-retained identities for retry
+after uncertain responses. Admissions, approvals, client results and cancellation
+are authority commands; the journal and wakeup obligation commit together.
+Resources such as workspace files and compute still require explicit host services.
 
 ### Local: crash-durable events
 
@@ -391,6 +400,94 @@ typed recovery-limit error instead of allocating or scanning without bound.
 
 Do not design new application persistence around a legacy storage
 representation.
+
+### Moving legacy sessions to `SqliteHosting`
+
+`Engine::cut_over_legacy_session` (experimental) moves an existing `LocalConfig`
+or custom-backend session into `SqliteHosting` with the same `SessionId`. The
+import is lossless and atomic: the full event history keeps its event ids and
+sequences, and admissions, parked client calls and approvals, compaction
+checkpoints, session values, finished task records and the workspace binding
+come along. Retrying after a crash or a lost reply returns the same result. A
+cutover to a different build fails. `cut_over_legacy_session_with_metadata`
+also records binding metadata the legacy lane never stored, such as the
+`parent_session_id` of a child session.
+
+```rust ignore
+let profile = SqliteHosting::open("authority.db")?;
+let engine = Engine::builder().hosting(profile.clone()).build();
+engine.register_agent_with_environment(
+    build.clone(),
+    agent.clone(),
+    None,
+    "imported-workspace",
+    ImportedWorkspaceFactory::new(agent, profile),
+)?;
+let report = engine.cut_over_legacy_session(session_id, &legacy_agent, &build).await?;
+let session = engine.resume(session_id).await?;
+```
+
+The legacy lane is frozen first. After that, `Engine::attach` with the legacy
+Agent returns `ResumeError::CutOver` and no legacy turn starts, in any process
+that shares the store. The JSONL file is never written again; when a tool still
+needs JSONL, rebuild it from the authority with
+`SqliteHosting::rebuild_jsonl_export(session_id, path)`, which writes the same
+line format atomically and can be repeated at any time. If a cutover
+fails before the authority commits, the session stays frozen until you retry or
+call `Engine::abandon_legacy_cutover`.
+
+The session must be quiescent. A cutover refuses, without writing anything to
+the authority, while a legacy turn is running or while the session has a task
+still running under its legacy owner. Schedules move with the session and fire
+from `SqliteHosting::supervise`; the legacy lane no longer delivers them. Tasks whose
+owner is gone move with the session; the authority re-attaches or settles them
+on the next activation without re-running uncertain work. Session secrets move only when the
+authority has secret keys (`SqliteHosting::with_secret_keys`, the same
+`key_id:base64_key` format as `SECRETS_ENCRYPTION_KEY`); they are stored
+encrypted and the cutover refuses without keys. It also refuses when the
+target build cannot reopen the session's workspace head. Use
+`ImportedWorkspaceFactory` so the authority reopens that head after restarts.
+The Agent's in-memory default workspace is not durable on either lane, so its
+files are not migrated; the report sets `volatile_workspace`.
+
+### Rewinding and branching history
+
+`SqliteHosting` keeps every event forever and tracks which events form the
+conversation (experimental). A branch is a list of event-sequence ranges made of
+whole turns. The model context, `Session::history` and `Session::events_after`
+follow the active branch. `SqliteHosting::export_jsonl` still returns every
+event with its original id and sequence. New input extends the active branch, so
+sequences on a branch can have gaps.
+
+```rust ignore
+let lineage = engine.history_lineage(session_id).await?;
+// Rewind to just after sequence 12; the old branch stays retained.
+let ranges = lineage.rewind_ranges(12).expect("12 is on the active branch");
+engine
+    .select_history_branch(session_id, command_id, lineage.revision, "undo-1", Some(ranges))
+    .await?;
+// Redo: reselect the retained branch by name.
+engine
+    .select_history_branch(session_id, redo_id, lineage.revision + 1, "main", None)
+    .await?;
+```
+
+A selection is accepted only when the session is quiescent: no execution, no
+open turn, no pending tool call or approval, and no unconsumed input. It also
+checks the revision you read. Anything else is refused, never queued or
+discarded. Retrying the same command id returns the first reply. Compaction
+checkpoints follow the branch too. A checkpoint can be used only on a branch
+that shares the history it summarized, so a summary of an abandoned branch never
+shows up on another branch. Checkpoints of a shared earlier part stay usable.
+`MemoryHosting` and other authorities without branch support refuse these
+calls.
+
+To import saved history that already has branches, convert your own timeline
+format into a `ConversationLineage` and pass it with
+`Engine::cut_over_legacy_session_with_options(.., CutoverOptions::new().lineage(lineage))`.
+The whole journal is imported. The lineage names the active branch, the
+retained branches and each branch's compaction checkpoints. A retry must pass
+the same lineage.
 
 ### One process runs a session at a time
 

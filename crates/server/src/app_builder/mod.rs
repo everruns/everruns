@@ -2,8 +2,10 @@ mod background;
 mod channels;
 mod http_layers;
 mod integrations;
+use integrations::optional_connection_resolver;
 mod listeners;
 mod pat_scope;
+use pat_scope::{PersonalAccessTokenRoutesWrapFn, apply_personal_access_token_routes_wrap};
 mod serve;
 
 // Server app builder for composable server configurations
@@ -54,13 +56,15 @@ pub(crate) type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
-type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
-
 fn github_app_token_minter(
     auth_config: &auth::AuthConfig,
 ) -> Option<crate::storage::GitHubAppTokenMinter> {
     auth_config.github_connection.as_ref().map(|config| {
         crate::storage::GitHubAppTokenMinter::new(config.app_id.clone(), config.private_key.clone())
+            .with_user_client(crate::github_user_token::GitHubUserClient::new(
+                config.client_id.as_deref(),
+                config.client_secret.as_deref(),
+            ))
     })
 }
 
@@ -78,17 +82,6 @@ pub(super) fn build_connection_resolver(
     ))
 }
 
-fn optional_connection_resolver(
-    db: &Arc<StorageBackend>,
-    encryption: &Option<Arc<EncryptionService>>,
-    auth_config: &auth::AuthConfig,
-    egress: Arc<dyn everruns_core::EgressService>,
-) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
-    encryption
-        .as_ref()
-        .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
-}
-
 fn spawn_background_tasks(
     supervisor: &mut TaskSupervisor,
     server_context: &ServerContext,
@@ -98,18 +91,6 @@ fn spawn_background_tasks(
     for task_fn in background_tasks {
         let ctx = server_context.clone();
         supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
-    }
-}
-
-/// Apply the optional personal-access-token-routes wrap closure to the router.
-/// Identity when no wrap is configured.
-fn apply_personal_access_token_routes_wrap(
-    wrap: Option<PersonalAccessTokenRoutesWrapFn>,
-    router: Router,
-) -> Router {
-    match wrap {
-        Some(wrap) => wrap(router),
-        None => router,
     }
 }
 
@@ -534,12 +515,18 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry((*driver_registry).clone()),
+        );
         let listeners::Listeners {
             event_listeners,
             budget_service,
             mcp_events,
             mcp_event_triggers,
             thread_turns,
+            automatic_titles,
             session_sandbox_service,
             notification_service,
             observer_wake,
@@ -550,6 +537,7 @@ impl ServerAppBuilder {
                 host_composition: host_composition.clone(),
                 auth_state: auth_state.clone(),
                 auth_config: auth_config.clone(),
+                provider_resolver: provider_resolver.clone(),
                 observers_enabled: feature_flags.observers,
                 prometheus_enabled: prometheus_handle.is_some(),
             },
@@ -579,6 +567,7 @@ impl ServerAppBuilder {
             event_listeners.clone(),
         ));
         thread_turns.bind_registry(&db, &event_service, &runner);
+        automatic_titles.bind_events(&event_service);
         let background_event_service = Arc::new(services::EventService::with_listeners(
             background_db.clone(),
             event_delivery.clone(),
@@ -698,11 +687,6 @@ impl ServerAppBuilder {
             notification_broadcaster,
             auth: auth_state.clone(),
         };
-        let driver_registry = Arc::new(host_composition.driver_registry().clone());
-        let provider_resolver = Arc::new(
-            services::ProviderResolverService::new(db.clone(), encryption.clone())
-                .with_driver_registry((*driver_registry).clone()),
-        );
 
         // Now that the LLM stack exists, spawn the observer scoring worker with
         // an LLM-judge client backed by the org's own configured providers.
@@ -778,6 +762,7 @@ impl ServerAppBuilder {
                 driver_registry.as_ref().clone(),
                 sqldb_store.clone(),
             )
+            .with_encryption(encryption.clone())
             .with_virtual_registry(virtual_registry.clone()),
         );
         let plugins_state =
@@ -901,6 +886,7 @@ impl ServerAppBuilder {
         .with_channel_host();
         let channel_recovery = slack_state.channels.clone();
         let channel_states = channels::ChannelStates::build(channels::ChannelDeps {
+            session_service: sessions_state.session_service.clone(),
             db: db.clone(),
             encryption: encryption.clone(),
             runner: runner.clone(),
@@ -980,7 +966,8 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         )
-        .with_mcp_event_triggers(mcp_event_triggers.clone());
+        .with_mcp_event_triggers(mcp_event_triggers.clone())
+        .with_channels(channel_recovery.clone());
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1006,11 +993,6 @@ impl ServerAppBuilder {
         let workspace_files_state =
             api::workspace_files::AppState::new(db.clone(), auth_state.clone())
                 .with_virtual_registry(virtual_registry.clone());
-        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
-            db.clone(),
-            auth_state.clone(),
-            driver_registry.clone(),
-        );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
@@ -1064,10 +1046,17 @@ impl ServerAppBuilder {
         .with_elicitation_base_url(mcp_root_url.clone())
         .with_mcp_events(mcp_events)
         .with_slack_provisioner(slack_provisioner.clone())
+        .with_channels(channel_recovery.clone())
         .with_mcp_oauth_checker(Some(api::user_connections::OAuthConnectionChecker::shared(
             user_connections_state.clone(),
         )))
-        .with_provider_services(provider_services.clone());
+        .with_provider_services(provider_services.clone())
+        .with_connection_resolver(optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            host_composition.egress_service(),
+        ));
         let mcp_endpoint_state = match &session_sandbox_service {
             Some(service) => mcp_endpoint_state.with_session_sandbox_service(service.clone()),
             None => mcp_endpoint_state,
@@ -1077,6 +1066,10 @@ impl ServerAppBuilder {
             None => mcp_endpoint_state,
         };
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
+        let agent_source_ctx = api::mcp_endpoint::domain_context(
+            everruns_core::Caller::internal(0),
+            &mcp_endpoint_state,
+        );
 
         let health_state = health::HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
@@ -1101,6 +1094,7 @@ impl ServerAppBuilder {
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
             .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::credentials::routes(api_state.clone()))
             .merge(api::github_apps::agent_routes(api_state.clone()))
             .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
                 db: db.clone(),
@@ -1179,8 +1173,7 @@ impl ServerAppBuilder {
             .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(api_state.clone()))
-            .merge(api::knowledge_bases::routes(api_state.clone()))
-            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
+            .merge(api::knowledge::routes(api_state.clone()))
             .merge(api::payments::routes(
                 api_state.clone(),
                 feature_flags.machine_payments,
@@ -1377,6 +1370,7 @@ impl ServerAppBuilder {
             org_rate_limiter: org_rate_limiter.clone(),
             virtual_registry: virtual_registry.clone(),
             slack_provisioner: slack_provisioner.clone(),
+            channels: channel_recovery.clone(),
         };
         if !self.config.dev_mode {
             background::spawn_grpc_server(
@@ -1455,6 +1449,8 @@ impl ServerAppBuilder {
         background::start_maintenance(
             &mut supervisor,
             background::MaintenanceDeps {
+                agent_source_ctx,
+                encryption: encryption.clone(),
                 background_db: background_db.clone(),
                 background_pool: db.background_pool().clone(),
                 background_runner,
@@ -1468,9 +1464,7 @@ impl ServerAppBuilder {
                     &auth_config,
                     host_composition.egress_service(),
                 ),
-                provider_resolver: provider_resolver.clone(),
                 driver_registry: driver_registry.clone(),
-                host_composition: host_composition.clone(),
                 session_sandbox_service: session_sandbox_service.clone(),
             },
             cluster_jobs_store,

@@ -67,7 +67,7 @@ async fn archive_old_events(pool: &PgPool, retention_days: u64) -> Result<i64, s
     let mut total_archived: i64 = 0;
 
     loop {
-        let mut tx = pool.begin().await?;
+        let mut tx = everruns_durable::begin_transaction(pool).await?;
 
         // Copy batch to archived_events
         let inserted = sqlx::query_scalar::<_, i64>(
@@ -117,7 +117,7 @@ async fn archive_old_events(pool: &PgPool, retention_days: u64) -> Result<i64, s
         .fetch_all(&mut *tx)
         .await?;
 
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
 
         let batch_count = deleted.len() as i64;
         total_archived += batch_count;

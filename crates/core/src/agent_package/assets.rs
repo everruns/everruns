@@ -409,22 +409,6 @@ impl AgentPackage {
     /// Materialize a bounded package from a host-provided virtual directory.
     /// Entries are relative names and bytes, never worker-host filesystem paths.
     pub fn from_entries(entries: BTreeMap<String, Vec<u8>>) -> Result<Self> {
-        if entries.len() > MAX_FILES + 20
-            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
-        {
-            return Err(error("assets", "package exceeds limits"));
-        }
-        for (path, bytes) in &entries {
-            asset_path(path)?;
-            let limit = if path.starts_with("agent.") {
-                MAX_PACKAGE_BYTES
-            } else {
-                MAX_FILE_BYTES
-            };
-            if bytes.len() > limit {
-                return Err(error(path, "file exceeds size limit"));
-            }
-        }
         let names = [
             "agent.toml",
             "agent.md",
@@ -443,8 +427,39 @@ impl AgentPackage {
                 "archive root must contain exactly one agent manifest",
             ));
         }
-        let manifest = &manifests[0];
-        let text = std::str::from_utf8(&entries[manifest]).map_err(|e| error("manifest", e))?;
+        Self::from_manifest_entries(entries, &manifests[0])
+    }
+
+    /// Materialize a virtual directory using an explicitly selected root manifest.
+    /// Other manifest-looking files remain ordinary assets, including name collisions.
+    pub fn from_manifest_entries(
+        entries: BTreeMap<String, Vec<u8>>,
+        manifest: &str,
+    ) -> Result<Self> {
+        asset_path(manifest)?;
+        if manifest.contains('/') {
+            return Err(error("manifest", "select a manifest at the package root"));
+        }
+        if entries.len() > MAX_FILES + 20
+            || entries.values().map(Vec::len).sum::<usize>() > MAX_PACKAGE_BYTES
+        {
+            return Err(error("assets", "package exceeds limits"));
+        }
+        for (path, bytes) in &entries {
+            asset_path(path)?;
+            let limit = if path == manifest || path.starts_with("agent.") {
+                MAX_PACKAGE_BYTES
+            } else {
+                MAX_FILE_BYTES
+            };
+            if bytes.len() > limit {
+                return Err(error(path, "file exceeds size limit"));
+            }
+        }
+        let bytes = entries
+            .get(manifest)
+            .ok_or_else(|| error("manifest", "selected manifest is missing"))?;
+        let text = std::str::from_utf8(bytes).map_err(|e| error("manifest", e))?;
         let mut package = Self::parse(text, Format::from_extension(Path::new(manifest)))?;
         package.resolve_assets(entries, true)?;
         package.files()?;

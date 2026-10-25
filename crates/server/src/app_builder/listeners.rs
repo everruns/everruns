@@ -21,6 +21,7 @@ pub(super) struct ListenerDeps {
     pub host_composition: Arc<HostComposition>,
     pub auth_state: auth::AuthState,
     pub auth_config: auth::AuthConfig,
+    pub provider_resolver: Arc<crate::services::ProviderResolverService>,
     pub observers_enabled: bool,
     pub prometheus_enabled: bool,
 }
@@ -32,6 +33,7 @@ pub(super) struct Listeners {
     pub mcp_events: Arc<domains::mcp_servers::McpEventsService>,
     pub mcp_event_triggers: Arc<crate::domains::agent_triggers::McpEventTriggers>,
     pub thread_turns: Arc<listeners::coordination::ThreadTurnListener>,
+    pub automatic_titles: Arc<listeners::automatic_session_titles::AutomaticSessionTitlesListener>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub notification_service: Arc<crate::domains::notifications::NotificationService>,
@@ -65,6 +67,20 @@ pub(super) fn build(
         &auth_state,
     );
     let thread_turns = Arc::new(listeners::coordination::ThreadTurnListener::new(db.clone()));
+    let automatic_titles = Arc::new(
+        listeners::automatic_session_titles::AutomaticSessionTitlesListener::new(
+            db.clone(),
+            crate::domains::sessions::SessionService::with_registry(
+                db.clone(),
+                (*host_composition.capability_registry()).clone(),
+            ),
+            Arc::new(listeners::automatic_session_titles::LlmTitleGenerator {
+                resolver: deps.provider_resolver.clone(),
+                drivers: Arc::new(host_composition.driver_registry().clone()),
+                db: db.clone(),
+            }),
+        ),
+    );
     let mut event_listeners: Vec<Arc<dyn EventListener>> = vec![
         Arc::new(OtelEventListener::new()),
         Arc::new(domains::usage::UsageTrackingListener::new(db.clone())),
@@ -75,6 +91,7 @@ pub(super) fn build(
         A2aPushListener::shared(&db, &encryption, &host_composition, &auth_state),
         Arc::new(listeners::TurnLatencyListener::new()),
         thread_turns.clone(),
+        automatic_titles.clone(),
     ];
     // Run summaries (EVE-867). Registered only when a utility LLM is
     // configured, so the OSS default adds no listener at all rather than one
@@ -167,6 +184,7 @@ pub(super) fn build(
         mcp_events,
         mcp_event_triggers,
         thread_turns,
+        automatic_titles,
         session_sandbox_service,
         notification_service,
         observer_wake,

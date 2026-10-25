@@ -16,6 +16,9 @@
 //! See the "Run domain integration tests" step in `.github/workflows/ci.yml`
 //! for the current list.
 
+// Nothing cancels a test mid-`BEGIN`; see the root clippy.toml.
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../test_harness.rs"]
 mod test_harness;
 
@@ -57,6 +60,7 @@ mod db_pool_isolation_test;
 mod dev_grade;
 mod evals_integration_test;
 mod fcp_integration_test;
+mod github_person_installs_migration_test;
 mod guardrails_integration_test;
 mod llm_model_default_test;
 mod mcp_acts_as_grpc_test;
@@ -67,6 +71,7 @@ mod mcp_event_triggers_test;
 mod mcp_events_test;
 mod mcp_files_test;
 mod mcp_oauth_user_switch_test;
+mod mcp_tasks_interop_test;
 mod mcp_tool_labels_test;
 mod migration_baseline_test;
 mod migration_history_test;
@@ -95,6 +100,7 @@ mod subagent_spawn_handles_test;
 mod thread_binding_ambiguity_migration_test;
 mod trigger_budget_subject_test;
 mod webhook_trigger_migration_test;
+mod work_chat_test;
 mod workspace_files_integration_test;
 
 mod virtual_users_migration_test;

@@ -49,6 +49,9 @@ pub struct SnapshotMcpServer {
     /// serialize identically.
     #[serde(default, skip_serializing_if = "McpElicitationPolicy::is_default")]
     pub elicitation_policy: McpElicitationPolicy,
+    /// Omitted when unset so older snapshots serialize identically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_timeout_ms: Option<u64>,
     pub oauth_provider_id: Option<String>,
     pub tool_discovery: bool,
 }
@@ -66,6 +69,7 @@ impl From<&ScopedMcpServer> for SnapshotMcpServer {
             auth_mode: server.auth_mode.clone(),
             protocol_mode: server.protocol_mode,
             elicitation_policy: server.elicitation_policy,
+            tool_timeout_ms: server.tool_timeout_ms,
             oauth_provider_id: server.oauth_provider_id.clone(),
             tool_discovery: server.tool_discovery,
         }
@@ -480,6 +484,7 @@ mod tests {
                         auth_mode: McpServerAuthMode::OAuth,
                         protocol_mode: McpProtocolMode::V2025June,
                         elicitation_policy: McpElicitationPolicy::UrlAndForm,
+                        tool_timeout_ms: None,
                         oauth_provider_id: Some("session-provider".into()),
                         tool_discovery: false,
                     }
@@ -493,6 +498,7 @@ mod tests {
                         auth_mode: McpServerAuthMode::None,
                         protocol_mode: McpProtocolMode::Auto,
                         elicitation_policy: McpElicitationPolicy::Url,
+                        tool_timeout_ms: None,
                         oauth_provider_id: None,
                         tool_discovery: true,
                     }

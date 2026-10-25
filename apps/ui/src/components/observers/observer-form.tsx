@@ -1,5 +1,13 @@
 "use client";
 
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  observerDraftSchema,
+  observerReadScorersSchema,
+  canEditObserverScorers,
+} from "@/components/chat-mode/observer-draft-schema";
+import { usePolicies } from "@/hooks/use-policies";
+
 // Shared create/edit form for observers.
 //
 // Validation: requires a name, at least one scorer, and a non-empty rubric for
@@ -97,6 +105,52 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
   const mutationError = observer ? updateObserver.error : createObserver.error;
   const isPending = observer ? updateObserver.isPending : createObserver.isPending;
 
+  const agentPolicies = usePolicies("agents");
+  const sessionPolicies = usePolicies("sessions");
+  const values = {
+    name,
+    description,
+    sampling_rate: samplingRate,
+    agent_ids: agentIds,
+    harness_ids: harnessIds,
+    session_tags: sessionTags,
+    scorers,
+  };
+  const savedValues = {
+    name: observer?.name ?? initial?.name ?? "",
+    description: observer?.description ?? initial?.description ?? "",
+    sampling_rate: observer?.sampling_rate ?? initial?.sampling_rate ?? DEFAULT_SAMPLING_RATE,
+    agent_ids: observer?.match.agent_ids ?? initial?.agent_ids ?? [],
+    harness_ids: observer?.match.harness_ids ?? initial?.harness_ids ?? [],
+    session_tags: (observer?.match.session_tags ?? initial?.session_tags ?? []).join(", "),
+    scorers: observer?.scorers ?? initial?.scorers ?? [],
+  };
+  const editableScorers = canEditObserverScorers(scorers);
+  const chatDraft = usePageFormDraft<Omit<typeof values, "scorers"> & { scorers: unknown[] }>({
+    schema: editableScorers ? observerDraftSchema : observerReadScorersSchema,
+    readonlyFields: editableScorers ? [] : ["scorers"],
+    values,
+    entityId: observer?.id,
+    entityType: "observer",
+    label: observer?.name ?? "New Observer",
+    baseline: observer?.updated_at ?? "new",
+    dirty: JSON.stringify(values) !== JSON.stringify(savedValues),
+    writable:
+      !isPending && agentPolicies.can("agent.manage") && sessionPolicies.can("session.manage"),
+    apply: (next) => {
+      const nextScorers = editableScorers
+        ? observerDraftSchema.shape.scorers.parse(next.scorers)
+        : undefined;
+      setName(next.name);
+      setDescription(next.description);
+      setSamplingRate(next.sampling_rate);
+      setAgentIds(next.agent_ids);
+      setHarnessIds(next.harness_ids);
+      setSessionTags(next.session_tags);
+      if (nextScorers) setScorers(nextScorers);
+    },
+  });
+
   const toggleAgent = (id: string) => {
     setAgentIds((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   };
@@ -116,6 +170,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     setSubmitted(true);
 
     if (nameMissing || noScorers || hasScorerErrors) {
@@ -154,6 +209,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {chatDraft.notice}
       <Card>
         <CardHeader>
           <CardTitle>Details</CardTitle>
@@ -290,7 +346,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
       )}
 
       <div className="flex gap-4">
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending || chatDraft.blocked}>
           {isPending ? "Saving..." : observer ? "Save changes" : "Create observer"}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>

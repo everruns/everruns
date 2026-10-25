@@ -11,10 +11,9 @@
 //!   `tools`, which its own hook always hides from the model, and the shell
 //!   installs the builtin when that marker is registered. No capability, no
 //!   marker, no command.
-//! - **One predicate.** [`goes_behind_tools`] decides both what the hook hides
-//!   from the model and what the command can reach, so a hidden tool is always
-//!   reachable and a tool that must stay direct is never callable from a
-//!   script.
+//! - **One predicate.** [`goes_behind_tools`] classifies operations the shell
+//!   adapter can reach. CLI mode hides those native definitions; hybrid mode
+//!   keeps them on both surfaces. Owner-required direct tools remain native.
 //! - **Spelling.** MCP tools are grouped by server (`tools github list-pulls`);
 //!   every other tool is a top-level command (`tools web-fetch`). Registry
 //!   tools carry no capability attribution to group the rest by.
@@ -22,8 +21,8 @@
 //!   emitted as its own `tool.started` / `tool.completed`: the shell call is
 //!   the one tool call the conversation records. Each call is recorded as a
 //!   `tool.nested_call` event under that shell call instead (see `timeline`).
-//! - **Tool search.** The catalog is the discovery surface, so this capability
-//!   supersedes the tool search capabilities (see [`Capability::supersedes`]).
+//! - **Tool search.** CLI mode uses the catalog as its discovery surface. Hybrid
+//!   mode keeps native search available alongside the shell adapter.
 
 mod builtin;
 mod catalog;
@@ -46,13 +45,15 @@ use async_trait::async_trait;
 use bashkit::BashBuilder;
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
-    ToolDefinitionHook,
+    SystemPromptContext, ToolDefinitionHook,
 };
 use everruns_contracts::runtime::mcp_deferred::deferred_mcp_server_prefix;
-use everruns_contracts::runtime::mcp_server::parse_mcp_tool_name;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_narration::{
     ToolNarrationContext, ToolNarrationPhase, narrate_shell_exec,
+};
+use everruns_contracts::runtime::tool_surface::{
+    NATIVE_ONLY_TOOL_NAMES, NativeToolDisclosure, ToolSurface, ToolSurfaceMode, ToolSurfaceRoute,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::{
@@ -76,23 +77,8 @@ const SUPERSEDED: &[&str] = &[
     "claude_tool_search",
 ];
 
-/// Tools that are themselves the way in (`bash`, `lua`, the marker), the
-/// discovery surface this replaces, or drive a screen the model must watch.
-/// `spawn_agent` is named here because three capabilities (subagents, handoff,
-/// A2A delegation) each contribute a tool by that name; every other tool's
-/// owner marks it with [`ToolHints::stays_direct`].
-const ALWAYS_DIRECT: &[&str] = &[
-    "bash",
-    "lua",
-    TOOLS_COMMAND,
-    "tool_search",
-    "computer",
-    "browser",
-    "spawn_agent",
-];
-
-/// Behaviour contract only; the inventory lives in the `bash` description and
-/// in `tools --help`.
+/// Behaviour contract only; discover the current inventory with `tools --help`
+/// or search it with `tools search`.
 const SYSTEM_PROMPT: &str = "Most tools are not in your direct tool list: call them from the \
 `bash` tool with the `tools` command (`tools --help` lists them, input is one JSON object, output \
 is JSON). Prefer one script that chains several calls and prints only what you need over a series \
@@ -105,37 +91,35 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
     factory: || Box::new(ToolsInShellCapability),
 }];
 
-/// Whether a tool is reached through `tools` rather than called directly.
+/// Whether a tool is eligible for the `tools` command adapter.
 ///
 /// A tool stays direct when it pauses or shapes the turn, or when its result
 /// only makes sense to the model directly. Approval-gated and destructive
 /// tools go behind: the turn's approval gate judges each call from a script as
 /// it would a direct one, and a call it holds stops the script with a report
 /// (see `run`). A deferred MCP server's placeholder (`mcp_<server>`) goes
-/// behind too: the shell loads the server itself.
+/// behind too: the shell loads the server itself. This is independent of
+/// whether a native schema can be deferred.
 pub(crate) fn goes_behind_tools(
     name: &str,
     is_client_side: bool,
     policy: &ToolPolicy,
-    deferrable: &DeferrablePolicy,
     hints: &ToolHints,
 ) -> bool {
     if !is_client_side && deferred_mcp_server_prefix(name).is_some() {
         return true;
     }
-    !(ALWAYS_DIRECT.contains(&name)
+    !(NATIVE_ONLY_TOOL_NAMES.contains(&name)
         || is_client_side
         || *policy == ToolPolicy::ClientSide
-        || *deferrable == DeferrablePolicy::Never
         || hints.stays_direct == Some(true))
 }
 
-fn definition_goes_behind_tools(def: &ToolDefinition) -> bool {
+pub(crate) fn definition_goes_behind_tools(def: &ToolDefinition) -> bool {
     goes_behind_tools(
         def.name(),
         matches!(def, ToolDefinition::ClientSide(_)),
         def.policy(),
-        def.deferrable(),
         def.hints(),
     )
 }
@@ -163,6 +147,7 @@ fn installs(context: &ToolContext) -> bool {
 /// Capability that puts the agent's tools behind one shell command.
 pub struct ToolsInShellCapability;
 
+#[async_trait]
 impl Capability for ToolsInShellCapability {
     fn id(&self) -> &str {
         TOOLS_IN_SHELL_CAPABILITY_ID
@@ -207,12 +192,75 @@ one turn instead of a chain of tool calls.
         Some(SYSTEM_PROMPT)
     }
 
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        if surface_mode(config) == ToolSurfaceMode::Hybrid {
+            Some(format!(
+                "<capability id=\"{TOOLS_IN_SHELL_CAPABILITY_ID}\">\n\
+                 Native tool calls and the shell `tools` command can reach the same operations. \
+                 Use native calls for one-off structured work; use `tools` inside `bash` to batch \
+                 calls, filter results with `jq`, and return only what you need. Run `tools --help` \
+                 to discover shell commands and `tools <name> --help` for input schemas. \
+                 A call that needs approval stops the script; after the answer, write a new script \
+                 for what is left and never rerun the stopped one.\n</capability>"
+            ))
+        } else {
+            self.system_prompt_contribution(ctx).await
+        }
+    }
+
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["bashkit_shell"]
     }
 
     fn supersedes(&self) -> Vec<&'static str> {
         SUPERSEDED.to_vec()
+    }
+
+    fn supersedes_with_config(&self, config: &Value) -> Vec<&'static str> {
+        if surface_mode(config) == ToolSurfaceMode::Hybrid {
+            vec![]
+        } else {
+            SUPERSEDED.to_vec()
+        }
+    }
+
+    fn tool_surface_mode_with_config(&self, config: &Value) -> ToolSurfaceMode {
+        surface_mode(config)
+    }
+
+    fn tool_surface_routes_with_config(
+        &self,
+        config: &Value,
+        definitions: &[ToolDefinition],
+    ) -> std::collections::BTreeMap<String, ToolSurfaceRoute> {
+        let mode = surface_mode(config);
+        let keep = keep_visible(config);
+        definitions
+            .iter()
+            .map(|definition| {
+                let eligible = definition_goes_behind_tools(definition);
+                let explicitly_kept = keep.contains(definition.name()) && eligible;
+                let surface = if explicitly_kept || (mode == ToolSurfaceMode::Hybrid && eligible) {
+                    ToolSurface::Both
+                } else if mode == ToolSurfaceMode::Cli && eligible {
+                    ToolSurface::Cli
+                } else {
+                    ToolSurface::Native
+                };
+                let native_disclosure = NativeToolDisclosure::Eager;
+                (
+                    definition.name().to_string(),
+                    ToolSurfaceRoute {
+                        surface,
+                        native_disclosure,
+                    },
+                )
+            })
+            .collect()
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -229,6 +277,18 @@ one turn instead of a chain of tool calls.
     ) -> Vec<Arc<dyn ToolDefinitionHook>> {
         vec![Arc::new(HideBehindToolsHook {
             keep_visible: keep_visible(config),
+            mode: surface_mode(config),
+        })]
+    }
+
+    fn tool_definition_hooks_with_context(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        vec![Arc::new(HideBehindToolsHook {
+            keep_visible: keep_visible(config),
+            mode: ctx.tool_surface_plan.mode,
         })]
     }
 
@@ -236,6 +296,13 @@ one turn instead of a chain of tool calls.
         Some(json!({
             "type": "object",
             "properties": {
+                "mode": {
+                    "type": "string",
+                    "title": "Tool surface",
+                    "enum": ["cli", "hybrid"],
+                    "default": "cli",
+                    "description": "CLI keeps eligible operations in the shell. Hybrid also exposes eligible operations as native tools, with schemas loaded through native search when needed."
+                },
                 "keep_visible": {
                     "type": "array",
                     "title": "Keep visible",
@@ -273,7 +340,7 @@ one turn instead of a chain of tool calls.
         if let Some(key) = object.keys().find(|key| {
             !matches!(
                 key.as_str(),
-                "keep_visible" | "manage_scripts" | "rate_unlabeled_tools"
+                "keep_visible" | "manage_scripts" | "rate_unlabeled_tools" | "mode"
             )
         }) {
             return Err(format!("unknown config key: {key}"));
@@ -282,6 +349,11 @@ one turn instead of a chain of tool calls.
             if object.get(flag).is_some_and(|v| !v.is_boolean()) {
                 return Err(format!("{flag} must be true or false"));
             }
+        }
+        if let Some(mode) = object.get("mode")
+            && !matches!(mode.as_str(), Some("cli" | "hybrid"))
+        {
+            return Err("mode must be `cli` or `hybrid`".to_string());
         }
         if let Some(keep) = object.get("keep_visible") {
             let list = keep
@@ -361,6 +433,13 @@ pub fn rate_unlabeled_tools(config: &Value) -> bool {
         .unwrap_or(true)
 }
 
+fn surface_mode(config: &Value) -> ToolSurfaceMode {
+    match config.get("mode").and_then(Value::as_str) {
+        Some("hybrid") => ToolSurfaceMode::Hybrid,
+        _ => ToolSurfaceMode::Cli,
+    }
+}
+
 fn keep_visible(config: &Value) -> HashSet<String> {
     config
         .get("keep_visible")
@@ -373,47 +452,41 @@ fn keep_visible(config: &Value) -> HashSet<String> {
         .unwrap_or_default()
 }
 
-/// Hides the tools the shell can reach and names them on the `bash` tool, the
-/// description the model reads right before it writes a script.
-#[derive(Default)]
+/// Hides the tools the shell can reach while preserving a stable bash schema.
 struct HideBehindToolsHook {
     keep_visible: HashSet<String>,
+    mode: ToolSurfaceMode,
+}
+
+impl Default for HideBehindToolsHook {
+    fn default() -> Self {
+        Self {
+            keep_visible: HashSet::new(),
+            mode: ToolSurfaceMode::Cli,
+        }
+    }
 }
 
 impl ToolDefinitionHook for HideBehindToolsHook {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         let mut kept = Vec::new();
-        let mut hidden: Vec<(String, Option<String>)> = Vec::new();
         for def in tools {
             if def.name() == TOOLS_COMMAND {
                 continue;
             }
-            if !self.keep_visible.contains(def.name()) && definition_goes_behind_tools(&def) {
-                let server = parse_mcp_tool_name(def.name()).map(|(server, _)| server);
-                hidden.push((def.name().to_string(), server));
-            } else {
-                kept.push(def);
+            if self.mode == ToolSurfaceMode::Cli
+                && !self.keep_visible.contains(def.name())
+                && definition_goes_behind_tools(&def)
+            {
+                continue;
             }
-        }
-        if !hidden.is_empty()
-            && let Some(bash) = kept.iter_mut().find(|d| d.name() == "bash")
-        {
-            let summary = catalog::Catalog::summary_line(
-                hidden
-                    .iter()
-                    .map(|(name, server)| (name.as_str(), server.as_deref())),
-            );
-            let block = format!(
-                "\n\nMore tools are available ONLY inside this shell through the `tools` command: \
-                 {summary}. Run `tools --help` to list them and `tools <name> --help` for one \
-                 tool's input; pass input as one JSON object."
-            );
-            match bash {
-                ToolDefinition::Builtin(b) => b.description.push_str(&block),
-                ToolDefinition::ClientSide(c) => c.description.push_str(&block),
-            }
+            kept.push(def);
         }
         kept
+    }
+
+    fn preserves_execution_scope(&self) -> bool {
+        true
     }
 
     fn applies_with_native_tool_search(&self) -> bool {
@@ -459,13 +532,14 @@ impl Tool for ToolsMarkerTool {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: ToolNarrationContext<'_>,
+        ctx: ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_shell_exec(
             &tool_call.arguments,
             TOOLS_COMMAND,
             phase,
             locale,
+            ctx,
         ))
     }
 }

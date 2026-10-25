@@ -34,20 +34,21 @@ use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId
 // stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
-    WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
-    proto_struct_to_json,
+    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
 };
 use std::sync::Arc;
-use tonic::transport::Channel;
 use uuid::Uuid;
 
-use crate::grpc_durable_store::GrpcClientAuth;
 mod checkpoint_availability;
 mod compaction_checkpoints;
+mod connect;
 mod event_batch;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
+pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
 pub use shared_client::SharedClient;
+mod mcp_definitions;
+use mcp_definitions::proto_mcp_tool_def_to_tool_definition;
 mod definition_reads;
 use definition_reads::proto_agent_to_definition;
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
@@ -106,48 +107,7 @@ pub struct GrpcClient {
     checkpoints: Arc<CheckpointAvailability>,
 }
 
-/// Max gRPC message size (16MB)
-///
-/// Image data no longer flows through gRPC — workers fetch images via presigned
-/// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-/// to accommodate metadata, proto messages, and session file content.
-const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
-
 impl GrpcClient {
-    /// Connect to the control plane gRPC server
-    pub async fn connect(addr: &str) -> Result<Self> {
-        let endpoint = format!("http://{}", addr);
-        let channel = tonic::transport::Endpoint::from_shared(endpoint)
-            .map_err(|e| AgentLoopError::store(format!("Invalid gRPC endpoint: {}", e)))?
-            .connect()
-            .await
-            .map_err(|e| AgentLoopError::store(format!("gRPC connection failed: {e}")))?;
-
-        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-        // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-
-        Ok(Self {
-            inner: SharedClient::new(client),
-            checkpoints: CheckpointAvailability::new(),
-        })
-    }
-
-    /// Create from an existing channel
-    pub fn from_channel(channel: Channel) -> Self {
-        let auth = GrpcClientAuth::from_env();
-        let client = WorkerServiceClient::with_interceptor(channel, auth)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-        Self {
-            inner: SharedClient::new(client),
-            checkpoints: CheckpointAvailability::new(),
-        }
-    }
-
     /// Set session status (started, active, idle).
     ///
     /// Acknowledgement only (EVE-882): the wire response still carries the
@@ -1764,39 +1724,6 @@ pub async fn load_turn_context_for_execution(
         messages,
         model,
         mcp_tool_definitions,
-    })
-}
-
-/// Convert proto McpToolDef to core ToolDefinition. Hints carry annotations and
-/// any saved risk label; an older server sends none, so default to open_world.
-fn proto_mcp_tool_def_to_tool_definition(
-    t: proto::McpToolDef,
-) -> everruns_contracts::tool_types::ToolDefinition {
-    use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
-    let parameters = t.parameters.map(|s| proto_struct_to_json(&s));
-    let mut hints = ToolHints {
-        readonly: t.readonly,
-        destructive: t.destructive,
-        idempotent: t.idempotent,
-        open_world: Some(t.open_world.unwrap_or(true)),
-        ..Default::default()
-    };
-    if !t.capability_id.is_empty() {
-        hints = hints.with_capability_attribution(
-            t.capability_id.clone(),
-            (!t.capability_name.is_empty()).then_some(t.capability_name.clone()),
-        );
-    }
-    ToolDefinition::Builtin(BuiltinTool {
-        name: t.name,
-        display_name: t.display_name,
-        description: t.description,
-        parameters: parameters.unwrap_or_else(|| serde_json::json!({"type": "object"})),
-        policy: everruns_contracts::tool_types::ToolPolicy::Auto, // MCP tools are auto-executed
-        category: None,
-        deferrable: Default::default(),
-        hints,
-        full_parameters: None,
     })
 }
 

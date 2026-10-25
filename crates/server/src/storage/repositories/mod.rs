@@ -16,12 +16,14 @@ mod agent_health_checks;
 pub use agent_health_checks::rows::*;
 mod agent_keys;
 pub use agent_keys::rows::*;
-mod agent_mcp_secret_bindings;
-pub use agent_mcp_secret_bindings::rows::*;
+mod credential_bindings;
+pub use credential_bindings::rows::*;
 mod agent_scripts;
 pub use agent_scripts::rows::*;
 mod agent_triggers;
 pub use agent_triggers::rows::*;
+mod agent_sources;
+pub use agent_sources::AgentSourceRow;
 mod agents;
 pub use agents::rows::*;
 mod apps;
@@ -516,3 +518,5 @@ impl Database {
         }
     }
 }
+
+mod session_command;

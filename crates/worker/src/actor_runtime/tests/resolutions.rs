@@ -90,6 +90,49 @@ async fn an_approval_resumes_the_turn_on_approve_and_on_deny() {
 }
 
 #[tokio::test]
+async fn a_resolution_before_the_parking_lease_releases_is_not_consumed() {
+    use everruns_contracts::tool_approval_types::APPROVE_TOOL_CALL_TOOL;
+
+    for tool in ["confirm", APPROVE_TOOL_CALL_TOOL] {
+        let fixture =
+            Arc::new(Fixture::new(model("Approved.", vec![vec![call("a1", tool)]])).await);
+        let (worker, probe) = fixture.worker("w1");
+        let resolving = fixture.clone();
+        let renew = worker.renew_poke();
+        // The drive has parked, but its final flush/release is still pending.
+        *probe.at_flush.lock().unwrap() = Some((
+            2,
+            Box::pin(async move {
+                resolving.resolve("a1", tool, Ok("approved")).await;
+                let before = resolving.store.renews();
+                tokio::time::timeout(WAIT, async {
+                    while resolving.store.renews() == before {
+                        renew.notify_waiters();
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .expect("the parking holder observes the resolution's inbox position");
+            }),
+        ));
+        fixture.send("Go ahead.").await;
+
+        assert!(run_once(&worker).await);
+        assert_eq!(fixture.count("tool.completed").await, 1);
+        assert_eq!(
+            run_until_idle(&worker).await,
+            1,
+            "the recorded resolution must wake a continuation ({tool})"
+        );
+        fixture.assert_idle();
+        assert!(fixture.open_turn().await.is_none());
+        assert_eq!(fixture.count("turn.started").await, 1);
+        assert_eq!(fixture.count("turn.completed").await, 1);
+        assert_eq!(fixture.answers().await, vec!["Approved."]);
+    }
+}
+
+#[tokio::test]
 async fn an_answered_question_resumes_the_turn() {
     // A question is a client-side pause like any other: the answer is the
     // call's recorded result.

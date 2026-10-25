@@ -46,7 +46,12 @@ import {
   type FieldErrors,
 } from "@/lib/form-validation";
 import { pluralize } from "@/lib/formatting";
-import { ElicitationPolicyField, ServiceConnectionField } from "@/components/mcp/mcp-server-fields";
+import {
+  ElicitationPolicyField,
+  ServiceConnectionField,
+  ToolTimeoutField,
+  parseToolTimeoutSeconds,
+} from "@/components/mcp/mcp-server-fields";
 
 export function AddMcpServerDialog({
   open,
@@ -62,6 +67,7 @@ export function AddMcpServerDialog({
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [toolTimeout, setToolTimeout] = useState("");
   const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
@@ -114,6 +120,12 @@ export function AddMcpServerDialog({
         ? Object.fromEntries(nonEmptyHeaders.map((h) => [h.key, h.value]))
         : undefined;
 
+    const timeout = parseToolTimeoutSeconds(toolTimeout);
+    if ("error" in timeout) {
+      setFieldErrors((prev) => ({ ...prev, tool_timeout_ms: timeout.error }));
+      return;
+    }
+
     const data: CreateMcpServerRequest = {
       name: parsed.data.name,
       description: parsed.data.description,
@@ -122,6 +134,7 @@ export function AddMcpServerDialog({
       auth_mode: parsed.data.auth_mode,
       protocol_mode: protocolMode === "auto" ? undefined : protocolMode,
       elicitation_policy: elicitationPolicy === "url" ? undefined : elicitationPolicy,
+      tool_timeout_ms: timeout.ms,
       service_connection_provider:
         parsed.data.service_connection_provider === "none"
           ? undefined
@@ -255,6 +268,15 @@ export function AddMcpServerDialog({
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
           />
+          <ToolTimeoutField
+            id="tool-timeout"
+            value={toolTimeout}
+            onChange={(next) => {
+              setToolTimeout(next);
+              setFieldErrors((prev) => ({ ...prev, tool_timeout_ms: undefined }));
+            }}
+            error={fieldErrors.tool_timeout_ms}
+          />
           <ServiceConnectionField
             id="service-connection"
             value={serviceConnection}
@@ -380,6 +402,7 @@ export function EditMcpServerDialog({
   const [url, setUrl] = useState("");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [toolTimeout, setToolTimeout] = useState("");
   const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -401,6 +424,7 @@ export function EditMcpServerDialog({
     setUrl(server.url);
     setProtocolMode(server.protocol_mode ?? "auto");
     setElicitationPolicy(server.elicitation_policy ?? "url");
+    setToolTimeout(server.tool_timeout_ms ? String(server.tool_timeout_ms / 1000) : "");
     setServiceConnection(server.service_connection_provider === "github" ? "github" : "none");
     setApiKey("");
     setFieldErrors({});
@@ -424,6 +448,11 @@ export function EditMcpServerDialog({
       setFieldErrors(getFieldErrors(parsed.error));
       return;
     }
+    const timeout = parseToolTimeoutSeconds(toolTimeout);
+    if ("error" in timeout) {
+      setFieldErrors({ tool_timeout_ms: timeout.error });
+      return;
+    }
     const freshApiKey = apiKey.trim();
     if (needsFreshApiKey && !freshApiKey) {
       setFieldErrors({
@@ -442,6 +471,9 @@ export function EditMcpServerDialog({
         url: parsed.data.url,
         protocol_mode: parsed.data.protocol_mode,
         elicitation_policy: parsed.data.elicitation_policy,
+        // An emptied field sends `0`, which clears a saved timeout back to
+        // the default; an untouched empty field sends nothing.
+        tool_timeout_ms: timeout.ms ?? (server.tool_timeout_ms ? 0 : undefined),
         // An empty string clears it.
         service_connection_provider:
           parsed.data.service_connection_provider === "none"
@@ -563,6 +595,15 @@ export function EditMcpServerDialog({
             id="edit-elicitation-policy"
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
+          />
+          <ToolTimeoutField
+            id="edit-tool-timeout"
+            value={toolTimeout}
+            onChange={(next) => {
+              setToolTimeout(next);
+              setFieldErrors((prev) => ({ ...prev, tool_timeout_ms: undefined }));
+            }}
+            error={fieldErrors.tool_timeout_ms}
           />
           <ServiceConnectionField
             id="edit-service-connection"

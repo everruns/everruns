@@ -1,5 +1,8 @@
 "use client";
 
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { declarativeDraftSchema } from "@/components/chat-mode/page-form-schemas";
+
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -86,8 +89,28 @@ export function DeclarativeCapabilityForm({
 
   const definition = useMemo(() => formStateToDefinition(state), [state]);
 
+  const chatDraft = usePageFormDraft({
+    schema: declarativeDraftSchema,
+    values: {
+      name: state.name,
+      displayName: state.displayName,
+      description: state.description,
+      skills: state.skills,
+      files: state.files,
+    },
+    entityId: id,
+    entityType: "capability",
+    label: initialDefinition?.display_name || initialDefinition?.name || "New capability",
+    baseline: JSON.stringify(initialDefinition ?? {}),
+    dirty: JSON.stringify(definition) !== JSON.stringify(initialDefinition ?? {}),
+    writable: !isPending,
+    // MCP headers, environment values and connection setup stay in their manual editor.
+    apply: (values) => setState((previous) => ({ ...previous, ...values })),
+  });
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setError(null);
     try {
       if (mode === "create") {
@@ -175,7 +198,11 @@ export function DeclarativeCapabilityForm({
         }
         actions={
           <>
-            <Button type="submit" form={FORM_ID} disabled={isPending || !canSubmit}>
+            <Button
+              type="submit"
+              form={FORM_ID}
+              disabled={isPending || !canSubmit || chatDraft.blocked}
+            >
               <Pencil className="size-4" />
               {isPending ? "Saving..." : mode === "create" ? "Create" : "Save changes"}
             </Button>
@@ -191,6 +218,7 @@ export function DeclarativeCapabilityForm({
       </PageControlStrip>
 
       <form id={FORM_ID} onSubmit={handleSubmit}>
+        {chatDraft.notice}
         {hasUnresolvedMcpIdentity && (
           <p role="alert" className="mb-4 text-sm text-destructive">
             Choose an acting identity for each OAuth MCP server.

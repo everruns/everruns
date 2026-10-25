@@ -24,7 +24,10 @@
 //! - The worker's host is `WorkerRuntimeHost` with its phase setup reads,
 //!   turn read cache and write-behind events, built once per turn and
 //!   re-armed at each phase boundary (`ActorHosts`). The lease renewer keeps
-//!   the turn alive; nothing heartbeats the model stream.
+//!   the turn alive; nothing heartbeats the model stream. The renewer stops
+//!   for a lease stuck in setup or post-turn flush past `stall_timeout` (the
+//!   core driver's stall watchdog), so a stalled holder cannot keep a session
+//!   `active` forever.
 
 #[cfg(test)]
 mod tests;
@@ -106,6 +109,14 @@ pub struct ActorRuntimeConfig {
     /// Held leases past which an org's actors are leased after every other
     /// org's (`None` = the control plane's).
     pub max_leased_per_org: Option<u32>,
+    /// Bound on a lease's phases that write nothing (the stall watchdog,
+    /// `WORKER_ACTOR_STALL_TIMEOUT_SECS`).
+    pub stall_timeout: Duration,
+    /// Times a lease runs its turn again after a retryable (control-plane)
+    /// failure before it lets the lease expire, off the poison guard's count.
+    pub control_plane_retries: u32,
+    /// Wait before the first such retry; doubles with each one.
+    pub control_plane_backoff: Duration,
 }
 
 impl ActorRuntimeConfig {
@@ -116,6 +127,12 @@ impl ActorRuntimeConfig {
             poison_attempts: crate::durable::persistence::no_progress_seal_threshold_from_env(),
             journal_page: 0,
             max_leased_per_org: None,
+            stall_timeout: crate::core::config::env_duration_secs(
+                "WORKER_ACTOR_STALL_TIMEOUT_SECS",
+                crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
+            ),
+            control_plane_retries: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
+            control_plane_backoff: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_BACKOFF,
         }
     }
 }
@@ -195,6 +212,9 @@ impl<H: ActorHosts> ActorRuntime<H> {
                 lease_ttl: self.config.lease_ttl,
                 poison_attempts: self.config.poison_attempts,
                 journal_page: self.config.journal_page,
+                stall_timeout: self.config.stall_timeout,
+                control_plane_retries: self.config.control_plane_retries,
+                control_plane_backoff: self.config.control_plane_backoff,
             },
         )
         .with_renew_poke(self.renew_poke.clone())

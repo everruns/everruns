@@ -358,6 +358,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
                 acts_as: server.acts_as,
                 protocol_mode: server.protocol_mode,
                 elicitation_policy: server.elicitation_policy,
+                tool_timeout_ms: server.tool_timeout_ms,
                 tool_discovery: server.tool_discovery,
                 ..Default::default()
             };

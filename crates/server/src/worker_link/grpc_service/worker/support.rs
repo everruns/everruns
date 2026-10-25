@@ -77,6 +77,7 @@ pub(crate) fn resolved_mcp_server_to_proto(
         auth_mode: resolved.auth_mode.to_string(),
         protocol_mode: resolved.protocol_mode.to_string(),
         elicitation_policy: resolved.elicitation_policy.to_string(),
+        tool_timeout_ms: resolved.tool_timeout_ms,
         oauth_provider_id: resolved.oauth_provider_id,
         secret_bindings: flatten_secret_bindings(secret_bindings),
         acts_as: resolved.acts_as.to_string(),
@@ -85,7 +86,8 @@ pub(crate) fn resolved_mcp_server_to_proto(
 }
 
 /// Send an MCP tool definition to the worker with its hints, so a saved risk
-/// label (and the tool's own annotations) reach tool approval there.
+/// label (and the tool's own annotations) reach tool approval there. Preserve
+/// MCP source context separately so worker-side search can rank descriptions.
 pub(crate) fn mcp_tool_definition_to_proto(
     tool: &everruns_contracts::tool_types::ToolDefinition,
 ) -> McpToolDef {
@@ -110,6 +112,19 @@ pub(crate) fn mcp_tool_definition_to_proto(
         idempotent: hints.idempotent,
         open_world: hints.open_world,
         display_name: tool.display_name().map(str::to_string),
+        search_metadata: hints
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("mcp_server"))
+            .filter(|source| source.is_object())
+            .map(|source| {
+                everruns_internal_protocol::json_to_proto_struct(&serde_json::json!({
+                    "mcp_server": {
+                        "name": source.get("name").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                        "description": source.get("description").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                    }
+                }))
+            }),
     }
 }
 
@@ -278,6 +293,27 @@ pub(crate) fn workflow_status_to_proto(status: WorkflowStatus) -> DurableWorkflo
 #[cfg(test)]
 mod tests {
 
+    #[test]
+    fn mcp_search_metadata_reaches_worker_without_unrelated_extensions() {
+        let tool = serde_json::from_value(serde_json::json!({
+            "type": "builtin", "name": "mcp_alpha__search", "description": "Search records",
+            "parameters": {"type":"object"},
+            "hints": {"readonly":true,"metadata":{
+                "mcp_server":{"name":"alpha","description":"Basalt borehole surveying"},
+                "unrelated_extension":"kept server-side"
+            }}
+        }))
+        .unwrap();
+        let wire = super::mcp_tool_definition_to_proto(&tool);
+        assert_eq!(wire.readonly, Some(true));
+        assert_eq!(
+            everruns_internal_protocol::proto_struct_to_json(
+                wire.search_metadata.as_ref().unwrap()
+            ),
+            serde_json::json!({"mcp_server":{"name":"alpha","description":"Basalt borehole surveying"}})
+        );
+    }
+
     /// Every `.rs` file under `dir`, recursively. The guard above covers a tree, so
     /// a handler module added tomorrow is covered without anyone remembering to list
     /// it here.
@@ -441,6 +477,7 @@ mod tests {
                 auth_mode: everruns_core::McpServerAuthMode::None,
                 protocol_mode: everruns_core::McpProtocolMode::Auto,
                 elicitation_policy: Default::default(),
+                tool_timeout_ms: None,
                 oauth_provider_id: None,
                 acts_as,
                 connect_in_chat: everruns_core::McpConnectInChat::Never,

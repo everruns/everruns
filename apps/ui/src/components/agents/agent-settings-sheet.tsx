@@ -11,7 +11,7 @@
 //   resources and save as they go, as they did when they were tabs.
 
 import { Check, Loader2, X, Zap } from "lucide-react";
-import { useAgentNameAvailability } from "@/hooks";
+import { useAgentNameAvailability, useAgentTriggers } from "@/hooks";
 import { AgentAvatarField } from "@/components/agents/agent-avatar-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,8 @@ import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { useRetainedSection } from "@/components/workspace/use-retained-section";
 import { cn } from "@/lib/utils";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { ChatChangeMark } from "@/components/chat-mode/chat-change-mark";
 
 export type AgentSettingsSection =
   | "branding"
@@ -68,7 +70,7 @@ const SECTIONS: Record<
   },
   credentials: {
     title: "Credentials",
-    description: "Secrets bound to tool parameters for this agent's runs.",
+    description: "Secure access for this agent's tools and API calls.",
     kind: "live",
     wide: true,
   },
@@ -91,7 +93,7 @@ const SECTIONS: Record<
     kind: "draft",
   },
   sandbox: {
-    title: "Primary sandbox",
+    title: "Sandbox",
     description: "Sandbox bindings available when a new Playground Session starts.",
     kind: "draft",
     wide: true,
@@ -123,6 +125,15 @@ interface AgentSettingsSheetProps {
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
 }
 
+/** Loads the agent's triggers only when the sandbox section is open. */
+function AgentSandboxPolicyEditor({
+  agentId,
+  ...props
+}: { agentId: string } & Omit<Parameters<typeof SandboxPolicyEditor>[0], "hasTriggers">) {
+  const { data: triggers = [] } = useAgentTriggers(agentId);
+  return <SandboxPolicyEditor {...props} hasTriggers={triggers.length > 0} />;
+}
+
 export function AgentSettingsSheet({
   section,
   onOpenChange,
@@ -132,12 +143,14 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
+  const chatMode = usePageChatMode();
   const active = useRetainedSection(section);
   const meta = active ? SECTIONS[active] : null;
 
   return (
-    <Drawer open={section !== null} onOpenChange={onOpenChange}>
+    <Drawer modal={!chatMode?.open} open={section !== null} onOpenChange={onOpenChange}>
       <DrawerContent
+        scopeToPage
         className={cn("gap-0 overflow-y-auto p-0", meta?.wide ? "sm:max-w-3xl" : "sm:max-w-xl")}
       >
         {active && meta && (
@@ -146,7 +159,29 @@ export function AgentSettingsSheet({
               <DrawerTitle>{meta.title}</DrawerTitle>
               <DrawerDescription>{meta.description}</DrawerDescription>
             </DrawerHeader>
-            <div className="flex-1 p-5">
+            <ChatChangeMark
+              className="flex-1 p-5"
+              field={
+                active === "branding"
+                  ? [
+                      "name",
+                      "display_name",
+                      "description",
+                      "intro_markdown",
+                      "short_description",
+                      "starters",
+                    ]
+                  : ((
+                      {
+                        files: "initial_files",
+                        network: "network_access",
+                        sandbox: "sandbox_policy",
+                        mcp: ["mcpServers", "mcp_servers"],
+                        service: "service_virtual_user_id",
+                      } as Record<string, string | string[]>
+                    )[active] ?? active)
+              }
+            >
               {active === "branding" && (
                 <BrandingSection
                   agent={agent}
@@ -155,7 +190,7 @@ export function AgentSettingsSheet({
                   onDraftChange={onDraftChange}
                 />
               )}
-              {active === "mcp" && <AgentMcpPanel agent={agent} />}
+              {active === "mcp" && <AgentMcpPanel agent={agent} readOnly={readOnly} />}
               {active === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
               {active === "service" && (
                 <AgentServiceAccount
@@ -190,7 +225,8 @@ export function AgentSettingsSheet({
                     </p>
                   </div>
                 ) : (
-                  <SandboxPolicyEditor
+                  <AgentSandboxPolicyEditor
+                    agentId={agent.id}
                     value={draft.sandboxPolicy}
                     onChange={onDraftChange(draft.setSandboxPolicy)}
                     disabled={readOnly}
@@ -198,7 +234,7 @@ export function AgentSettingsSheet({
                 ))}
               {active === "usage" && <UsageSection agent={agent} />}
               {active === "health" && <AgentHealthCheck agentId={agent.id} />}
-            </div>
+            </ChatChangeMark>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 {meta.kind === "draft"

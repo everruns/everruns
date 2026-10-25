@@ -8,7 +8,7 @@ This check compares each against its source of truth without compiling Rust:
 - Capabilities: ``docs/api/capability-catalog.json``, the registry snapshot that
   ``crates/server/src/docs_catalog.rs`` writes and keeps fresh.
 - Generic and Platform Chat Agent: the capability lists in ``crates/contracts/src/capability/presets.rs``
-  (generic) and ``crates/server/src/platform_chat_agent.rs``.
+  (generic) and ``crates/server/src/platform_chat_agent/mod.rs``.
 - Events: the event-type constants in ``crates/contracts/src/runtime/events/mod.rs``.
 - Environment variables: string literals the Rust sources read.
 
@@ -32,7 +32,7 @@ ENV_PAGE = "docs/sre/environment-variables.md"
 GENERIC_PAGE = "docs/built-ins/harnesses/generic.md"
 GENERIC_SOURCE = "crates/contracts/src/capability/presets.rs"
 PLATFORM_CHAT_PAGE = "docs/built-ins/harnesses/platform-chat.md"
-PLATFORM_CHAT_SOURCE = "crates/server/src/platform_chat_agent.rs"
+PLATFORM_CHAT_SOURCE = "crates/server/src/platform_chat_agent/mod.rs"
 
 # Production-grade capabilities the index deliberately leaves out. Each one is
 # a building block a harness composes rather than something a user picks from

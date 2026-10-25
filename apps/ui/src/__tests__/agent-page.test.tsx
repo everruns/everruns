@@ -2,6 +2,35 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { Suspense } from "react";
 import AgentPage from "@/app/(main)/agents/[agentId]/page";
 import type { Agent, Session } from "@/lib/api/types";
+import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
+
+let mockChatMode: ChatModeState | null = null;
+jest.mock("@/components/chat-mode/chat-mode-context", () => ({
+  ...jest.requireActual("@/components/chat-mode/chat-mode-context"),
+  useChatMode: () => mockChatMode,
+  usePageChatMode: () => mockChatMode,
+}));
+jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
+  AgentChatBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+let mockSourceManaged = false;
+let mockSourceLoading = false;
+let mockSourceError: Error | null = null;
+jest.mock("@/hooks/use-agent-source", () => ({
+  useAgentSource: () => ({
+    data: mockSourceManaged ? { repository: "acme/agents", branch: "main" } : null,
+    isLoading: mockSourceLoading,
+    error: mockSourceError,
+    isError: !!mockSourceError,
+  }),
+}));
+jest.mock("@/components/agents/agent-source", () => ({
+  AgentSourcePanel: ({ open }: { open: boolean }) => (
+    <div>Agent source{open && <div role="dialog">Source setup</div>}</div>
+  ),
+}));
 
 let mockSearchParams = new URLSearchParams();
 const push = jest.fn();
@@ -153,6 +182,7 @@ const mockSession: Session = {
 };
 
 const mockUseAgent = jest.fn();
+const mockUseCapabilities = jest.fn();
 const mockUseAgentChannels = jest.fn();
 const mockUseAgentTriggers = jest.fn();
 
@@ -179,7 +209,7 @@ jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
   useCreateSession: () => mutation(mockCreateSession),
-  useCapabilities: () => ({ data: [] }),
+  useCapabilities: () => mockUseCapabilities(),
   useModels: () => ({ data: [] }),
   useExportAgent: () => mutation(),
   useCopyAgent: () => mutation(),
@@ -187,6 +217,7 @@ jest.mock("@/hooks", () => ({
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
   useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
   useAgentCredentials: () => ({ data: [] }),
+  useAgentTriggers: () => ({ data: [] }),
   useLatestHealthCheckRun: () => ({ data: { config_changed: false } }),
   useUpdateAgent: () => mutation(mockUpdate),
   useDeleteAgent: () => mutation(mockArchive),
@@ -246,10 +277,15 @@ async function save() {
 }
 
 beforeEach(() => {
+  mockSourceManaged = false;
+  mockSourceLoading = false;
+  mockSourceError = null;
+  mockChatMode = null;
   jest.clearAllMocks();
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
+  mockUseCapabilities.mockReturnValue({ data: [] });
   mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
   mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
@@ -313,8 +349,9 @@ describe("AgentPage layout", () => {
     expect(
       more.getByRole("button", { name: /Service account\s*On first use/ }),
     ).toBeInTheDocument();
+    expect(more.queryByRole("button", { name: /Files/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
-    expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -326,6 +363,37 @@ describe("AgentPage layout", () => {
     expect(
       screen.getByText("Connections the agent uses for operations configured to act as a service."),
     ).toBeInTheDocument();
+  });
+
+  it("shows Files when the agent has a filesystem or starter files", async () => {
+    mockUseCapabilities.mockReturnValue({
+      data: [
+        { id: "session_file_system", features: ["file_system"] },
+        { id: "skills", dependencies: ["session_file_system"] },
+      ],
+    });
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, capabilities: [{ ref: "skills", config: {} }] },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*None/ })).toBeInTheDocument();
+
+    cleanup();
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...mockAgent,
+        capabilities: [],
+        initial_files: [
+          { path: "/notes.txt", content: "hello", encoding: "text", is_readonly: false },
+        ],
+      },
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(screen.getByRole("button", { name: /Files\s*1 file/ })).toBeInTheDocument();
   });
 
   it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {
@@ -347,10 +415,10 @@ describe("AgentPage layout", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Primary sandbox\s*Bashkit Virtual Workspace/,
+        name: /Sandbox\s*Bashkit Virtual Workspace/,
       }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     expect(
       screen.getByText("Locked by the selected Harness.", { exact: false }),
     ).toBeInTheDocument();
@@ -359,19 +427,11 @@ describe("AgentPage layout", () => {
   it("opens Playground setup with the Agent preselected without creating a session", async () => {
     await renderPage();
 
+    expect(screen.queryByRole("button", { name: /^Dry run$/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Test in Playground/ }));
 
     expect(mockCreateSession).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
-  });
-
-  it("opens a dry-run Playground setup from Test run", async () => {
-    await renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: /Test run/ }));
-
-    expect(mockCreateSession).not.toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1&dry_run=1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {
@@ -496,6 +556,15 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
+  });
+
+  it("keeps a GitHub-managed Agent read-only even when edit mode is requested", async () => {
+    mockSourceManaged = true;
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Editing")).not.toBeInTheDocument();
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
   });
 
   it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
@@ -689,7 +758,7 @@ describe("AgentPage edit mode", () => {
   it("includes sandbox policy edited in their sheet", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Sandbox/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Add Daytona sandbox" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
@@ -743,6 +812,7 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(items).toEqual([
+      "Sync from GitHub",
       "Copy",
       "Export package (ZIP)",
       "Export Markdown",
@@ -858,6 +928,129 @@ describe("AgentPage entity actions", () => {
     expect(mockArchive).not.toHaveBeenCalled();
   });
 
+  it("keeps GitHub-owned fields read-only in the Chat draft adapter", async () => {
+    mockSourceManaged = true;
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    const snapshot = adapter!.read(adapter!.describe().binding);
+    expect(snapshot.writable).toBe(false);
+    expect(() =>
+      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" }),
+    ).toThrow(/read-only/);
+    expect(screen.getByText("Agent source")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("stages a Chat edit in the visible unsaved form, then saves through the ordinary page action", async () => {
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
+      target: { value: "My manual draft" },
+    });
+    const before = adapter!.read(adapter!.describe().binding);
+    expect(before.values.system_prompt).toBe("My manual draft");
+    act(() => {
+      adapter!.patch(before.binding, before.revision, {
+        system_prompt: "My manual draft, improved by Chat",
+      });
+    });
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue(
+      "My manual draft, improved by Chat",
+    );
+    expect(
+      screen.getByText("Chat edited your draft. Save changes to apply it."),
+    ).toBeInTheDocument();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    await save();
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        request: expect.objectContaining({ system_prompt: "My manual draft, improved by Chat" }),
+      }),
+    );
+    expect(
+      screen.queryByText("Chat edited your draft. Save changes to apply it."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a dirty draft and blocks Save when Chat refreshes the saved definition", async () => {
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: () => () => {},
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    const params = Promise.resolve({ agentId: "agent-1" });
+    let rendered: ReturnType<typeof render>;
+    await act(async () => {
+      rendered = render(
+        <Suspense fallback={null}>
+          <AgentPage params={params} />
+        </Suspense>,
+      );
+      await params;
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
+      target: { value: "My unsaved prompt" },
+    });
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...mockAgent,
+        system_prompt: "Chat saved prompt",
+        updated_at: "2026-10-18T10:30:00Z",
+      },
+      isLoading: false,
+    });
+    await act(async () => {
+      rendered!.rerender(
+        <Suspense fallback={null}>
+          <AgentPage params={params} />
+        </Suspense>,
+      );
+    });
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue("My unsaved prompt");
+    expect(screen.getByRole("button", { name: /Save changes/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("saved agent changed");
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.getByTestId("markdown")).toHaveTextContent("Chat saved prompt");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows the manager notes hint only in edit mode", async () => {
     mockManagerNotes = { content: "Keep it kid friendly.", revision: 2 };
     await renderPage();
@@ -866,4 +1059,45 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
     expect(screen.getByText("This agent has manager notes")).toBeInTheDocument();
   });
+});
+
+describe("Agent source menu", () => {
+  it("opens source setup from the overflow menu", async () => {
+    await renderPage();
+    expect(screen.queryByRole("button", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sync from GitHub" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Source setup");
+  });
+  it.each(["loading", "error"])("disables connection while source lookup is %s", async (state) => {
+    mockSourceLoading = state === "loading";
+    mockSourceError = state === "error" ? new Error("Unavailable") : null;
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    expect(await screen.findByRole("menuitem", { name: "Sync from GitHub" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+  it.each(["reader", "built-in", "archived", "connected"])(
+    "hides the connection action for %s Agents",
+    async (state) => {
+      if (state === "reader") mockCan.mockReturnValue(false);
+      if (state === "built-in")
+        mockUseAgent.mockReturnValue({
+          data: { ...mockAgent, is_built_in: true },
+          isLoading: false,
+        });
+      if (state === "archived")
+        mockUseAgent.mockReturnValue({
+          data: { ...mockAgent, status: "archived" },
+          isLoading: false,
+        });
+      if (state === "connected") mockSourceManaged = true;
+      await renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+      await screen.findByRole("menuitem", { name: "Copy" });
+      expect(screen.queryByRole("menuitem", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+    },
+  );
 });

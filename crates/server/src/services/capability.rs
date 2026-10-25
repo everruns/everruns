@@ -179,6 +179,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -210,6 +211,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                feature_flag: None,
                 localizations: Default::default(),
             });
         }
@@ -378,6 +380,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }
@@ -408,6 +411,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    feature_flag: None,
                     localizations: Default::default(),
                 }));
             }
@@ -995,8 +999,8 @@ mod tests {
 
     // Regression tests for fix(capabilities): restore high-risk levels for
     // bash/fetch (#1500). `high_risk_ids` is the admin-gating primitive used
-    // by `api::agents::require_admin_for_high_risk`, the agent domain command
-    // `check_high_risk_caps`, and the session service's high-risk guard. If a
+    // by the agent domain command `check_high_risk_caps` and the session
+    // service's high-risk guard. If a
     // refactor again downgrades `bashkit_shell` or `web_fetch` the admin gate
     // would silently stop firing (TM-AGENT-005).
     mod high_risk_ids_tests {

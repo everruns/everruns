@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -299,6 +301,7 @@ export default function ScheduleDetailPage() {
   const scheduleId = params.scheduleId as string;
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  useChatPageFilters({ status: statusFilter });
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const {

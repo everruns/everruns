@@ -6,7 +6,18 @@ tags:
   - everruns
   - runtime-resources
 ---
+
+> The undeployed split product is retired. [Unified Knowledge](knowledge.md) owns
+> the current implementation and explicitly distinguishes delivered behavior
+> from remaining target-design work. The older design below is historical.
+
 # Knowledge Bases Specification
+
+> Status: existing undeployed design and implementation. The product owner
+> confirms this feature is not deployed. [Unified Knowledge](knowledge.md)
+> proposes one collection model with optional indexing in place of the separate
+> Knowledge Base and Knowledge Index products. The sections below describe the
+> existing split; they do not establish deployment status.
 
 ## Abstract
 

@@ -134,11 +134,19 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::dreaming::DreamingStore>> {
+        None
+    }
+
     fn compaction_checkpoint_store(&self) -> Option<Arc<dyn CompactionCheckpointStore>> {
         None
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter>;
+    /// Background metadata is not a foreground-turn effect and carries no turn fence.
+    fn dreaming_event_emitter(&self) -> Arc<dyn EventEmitter> {
+        self.event_emitter()
+    }
 
     fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem>;
 
@@ -298,6 +306,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Effort each turn's live handle starts from (EVE-1297); `None` lets message controls decide.
+    fn session_reasoning_effort(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_contracts::ReasoningEffort> {
+        None
+    }
+
     /// Provider stall timeout for the Reason activity (EVE-531).
     /// Default: `None` (use built-in 120s default).
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
@@ -360,6 +376,7 @@ struct RuntimeExecutionCapabilities {
     tool_call_hooks: Vec<Arc<dyn crate::ToolCallHook>>,
     subagent_nesting_policy: crate::delegation_services::SubagentNestingPolicy,
     resolved_capabilities: Vec<CapabilityRef>,
+    tool_surface_plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
 }
 
 fn subagent_nesting_policy_from_configs(
@@ -523,58 +540,6 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         self.adapter.event_emitter().emit(request).await.map(|_| ())
     }
 
-    pub async fn turn_started(
-        &self,
-        turn_id: TurnId,
-        input_message_id: MessageId,
-    ) -> everruns_contracts::error::Result<()> {
-        // The input read is independent of the status write; run them
-        // together, since each is a store round trip on the turn's path to its
-        // first model call. The agent identity reads the session, so it
-        // follows the write rather than racing it.
-        let input_content = async {
-            self.adapter
-                .message_store()
-                .get(self.session_id, input_message_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|message| message.content_to_llm_string())
-        };
-        let activated = async {
-            self.set_session_status(SessionExecutionState::Active, "turn_started")
-                .await?;
-            Ok::<_, everruns_contracts::error::AgentLoopError>(self.agent_identity().await)
-        };
-        let (input_content, agent) = futures::join!(input_content, activated);
-        let agent = agent?;
-
-        self.emit_event(EventRequest::new(
-            self.session_id,
-            EventContext::turn(turn_id, input_message_id),
-            SessionActivatedData {
-                turn_id,
-                input_message_id,
-            },
-        ))
-        .await?;
-
-        self.emit_event(EventRequest::new(
-            self.session_id,
-            EventContext::turn(turn_id, input_message_id),
-            TurnStartedData {
-                turn_id,
-                input_message_id,
-                input_content,
-                agent_id: agent.id,
-                agent_name: agent.name,
-                agent_description: agent.description,
-            },
-        ))
-        .await?;
-        Ok(())
-    }
-
     /// Agent identity for the turn root event, resolved best-effort: a store
     /// miss or failure yields `None` fields rather than failing the turn, since
     /// the identity only labels traces.
@@ -655,6 +620,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
+                termination_reason: None,
                 turn_id,
                 iterations,
                 duration_ms: None,
@@ -920,11 +886,10 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     org_id: i64,
     input: InputAtomInput,
 ) -> everruns_contracts::error::Result<InputAtomResult> {
-    // The live effort override is turn-scoped. Clear any value left by the
-    // previous turn before ReasonAtom can prefer it over this turn's message
-    // controls.
+    // The live effort override is turn-scoped: reset what the previous turn
+    // left to the session's selection before ReasonAtom prefers it.
     if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
-        handle.set(None);
+        handle.set(adapter.session_reasoning_effort(input.context.session_id));
     }
 
     RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
@@ -1177,12 +1142,14 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         Some(store) => context_resolver.with_session_storage(store),
         None => context_resolver,
     };
+    let causes = causal::reason_causes(&turn_inputs.messages, input.context.input_message_id);
     let mut atom = ReasonAtom::new(
         context_resolver,
         adapter.message_store(),
         reason_capability_registry.clone(),
         adapter.event_emitter(),
-    );
+    )
+    .with_causal_context(causes);
     // A host without an upload store keeps attachments in the session's own
     // files; read them back from there.
     let session_attachments = || {
@@ -1295,77 +1262,6 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     crate::host::reason_backend::execute_reason(adapter, org_id, input, assembled, atom).await
 }
 
-/// Emit `session.model.changed` when this turn's input selects a model
-/// different from the previous turn's.
-///
-/// Best effort: a missing marker must not fail the turn.
-async fn emit_model_change_if_switched<A: RuntimeHostAdapter>(
-    adapter: &A,
-    org_id: i64,
-    input: &ReasonInput,
-    assembled: &AssembledTurnContext,
-) {
-    let Some((previous_model_id, model_id)) = model_switch(&assembled.messages) else {
-        return;
-    };
-    if assembled.resolved_model_id != Some(model_id) {
-        // The requested model did not survive resolution (unknown or removed),
-        // so the turn runs on a fallback this marker would misname.
-        return;
-    }
-
-    // The previous model is named by looking it up; the current one is already
-    // resolved for this turn. Names are captured now so the transcript stays
-    // readable after a model is removed from the org.
-    let previous_model_name = adapter
-        .provider_store(org_id)
-        .get_model_spec(previous_model_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|spec| spec.model);
-
-    let request = EventRequest::new(
-        input.context.session_id,
-        EventContext::turn(input.context.turn_id, input.context.input_message_id),
-        SessionModelChangedData {
-            previous_model_id: Some(previous_model_id),
-            previous_model_name,
-            model_id,
-            model_name: assembled.model.model.clone(),
-        },
-    );
-    if let Err(e) = adapter.event_emitter().emit(request).await {
-        warn!(error = %e, "Failed to emit session.model.changed event");
-    }
-}
-
-/// `(previous, current)` model overrides when the turn's input switched models.
-///
-/// Only an explicit override replacing a different explicit override counts. A
-/// turn without an override runs on an inherited default, and history visible
-/// here is capability-filtered: treating a missing override as "the default"
-/// would report a switch whenever an older message was filtered out.
-fn model_switch(messages: &[RuntimeMessage]) -> Option<(ModelId, ModelId)> {
-    let mut user_model_ids = messages
-        .iter()
-        .rev()
-        .filter(|message| message.role == RuntimeMessageRole::User)
-        .map(|message| {
-            message
-                .controls
-                .as_ref()
-                .and_then(|controls| controls.model_id)
-        });
-
-    // `latest_model_override` in `runtime_context` resolves the turn's model
-    // from the last user message alone, so the comparison is between the last
-    // two user messages — not the last two overrides anywhere in history.
-    let model_id = user_model_ids.next().flatten()?;
-    let previous_model_id = user_model_ids.next().flatten()?;
-    (previous_model_id != model_id).then_some((previous_model_id, model_id))
-}
-
 pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     input: ActInput,
@@ -1462,7 +1358,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let executor: Arc<dyn crate::tool_execution::ToolExecutor> = Arc::new(tool_registry);
 
     let mut atom = ActAtom::new(executor, adapter.event_emitter())
+        .with_thread_cpu_clock(super::thread_cpu::clock())
         .with_context_services(context_services)
+        .with_tool_surface_plan(execution_capabilities.tool_surface_plan.clone())
         .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
         .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
         .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
@@ -1489,3 +1387,9 @@ use execution_capabilities::load_execution_capabilities;
 #[path = "host/reason_surface.rs"]
 mod reason_surface;
 pub(crate) use reason_surface::reason_turn_context;
+
+#[path = "host/model_switch.rs"]
+mod model_switch;
+use model_switch::emit_model_change_if_switched;
+#[path = "host/causal.rs"]
+mod causal;

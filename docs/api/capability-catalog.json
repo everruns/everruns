@@ -138,6 +138,21 @@
       "tools": []
     },
     {
+      "category": "Session",
+      "dependencies": [],
+      "docs_slug": "automatic-session-titles",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "automatic_session_titles",
+      "name": "Automatic session titles",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Execution",
       "dependencies": [],
       "docs_slug": null,
@@ -597,6 +612,23 @@
       ]
     },
     {
+      "category": "Optimization",
+      "dependencies": [
+        "session_file_system"
+      ],
+      "docs_slug": null,
+      "feature_flag": "dreaming",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "dreaming",
+      "name": "Dreaming",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Safety",
       "dependencies": [],
       "docs_slug": "dry-run",
@@ -794,8 +826,10 @@
     },
     {
       "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-base",
+      "dependencies": [
+        "session_file_system"
+      ],
+      "docs_slug": "knowledge",
       "feature_flag": "knowledge",
       "features": [
         "knowledge"
@@ -804,29 +838,13 @@
         "prod",
         "dev"
       ],
-      "id": "knowledge_base",
-      "name": "Knowledge Base",
+      "id": "knowledge",
+      "name": "Knowledge",
       "status": "available",
       "tools": [
+        "browse_knowledge",
         "search_knowledge"
       ]
-    },
-    {
-      "category": "Knowledge",
-      "dependencies": [],
-      "docs_slug": "knowledge-index",
-      "feature_flag": "knowledge",
-      "features": [
-        "knowledge"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "knowledge_index",
-      "name": "Knowledge Index",
-      "status": "available",
-      "tools": []
     },
     {
       "category": null,
@@ -1100,6 +1118,7 @@
     {
       "category": "Platform",
       "dependencies": [
+        "skills",
         "session_file_system"
       ],
       "docs_slug": "platform",
@@ -1540,6 +1559,7 @@
       "name": "Task Management",
       "status": "available",
       "tools": [
+        "report_done",
         "write_todos"
       ]
     },

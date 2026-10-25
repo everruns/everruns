@@ -1,8 +1,11 @@
 mod actors;
 mod command_context;
+mod construction;
 mod definition_reads;
 pub mod files;
+mod image_store;
 mod internal_commands;
+use image_store::DirectImageArtifactStore;
 pub(crate) mod mcp;
 mod message_projection;
 mod user_mcp;
@@ -27,11 +30,13 @@ use crate::kernel_imports::{
     contracts::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
 use crate::kernel_imports::{
-    connection_services::ProviderCredentialStore, contracts::model_spec::ModelSpec,
-    delegation_services::SessionCreationAuthority, file_services::ResolvedFile,
-    image_services::CreateStoredImage, image_services::ImageArtifactStore,
-    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
-    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+    connection_services::ProviderCredentialStore,
+    contracts::model_spec::ModelSpec,
+    delegation_services::SessionCreationAuthority,
+    file_services::ResolvedFile,
+    image_services::{ImageArtifactStore, ResolvedImage},
+    tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use crate::max_iterations;
 use crate::services::{EventService, ProviderResolverService};
@@ -41,7 +46,7 @@ use async_trait::async_trait;
 use everruns_capabilities::capabilities::PoppyInvoker;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, ImageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, BudgetId, HarnessId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
@@ -68,68 +73,6 @@ struct DirectBudgetChecker {
     budget_service: Arc<BudgetService>,
     org_id: i64,
     agent_id: Option<String>,
-}
-
-struct DirectImageArtifactStore {
-    db: Arc<StorageBackend>,
-    org_id: i64,
-}
-
-#[async_trait]
-impl ImageArtifactStore for DirectImageArtifactStore {
-    async fn create_image(&self, input: CreateStoredImage) -> Result<StoredImageInfo> {
-        let (thumbnail_data, thumbnail_content_type) =
-            crate::api::images::generate_thumbnail(&input.data, &input.content_type)
-                .map(|(data, content_type)| (Some(data), Some(content_type)))
-                .unwrap_or((None, None));
-
-        let row = self
-            .db
-            .create_image(
-                self.org_id,
-                crate::storage::CreateImageRow {
-                    org_id: self.org_id,
-                    filename: input.filename,
-                    content_type: input.content_type,
-                    size_bytes: input.data.len() as i64,
-                    data: input.data,
-                    thumbnail_data,
-                    thumbnail_content_type,
-                    metadata: input.metadata,
-                },
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to create image artifact: {e}")))?;
-
-        Ok(StoredImageInfo {
-            id: row.id,
-            filename: row.filename,
-            content_type: row.content_type,
-            size_bytes: row.size_bytes,
-            metadata: row.metadata,
-            created_at: row.created_at,
-        })
-    }
-
-    async fn get_image(&self, image_id: ImageId) -> Result<Option<StoredImage>> {
-        let row = self
-            .db
-            .get_image(self.org_id, image_id.uuid())
-            .await
-            .map_err(|e| store_error(format!("Failed to get image artifact: {e}")))?;
-
-        Ok(row.map(|row| StoredImage {
-            info: StoredImageInfo {
-                id: row.id,
-                filename: row.filename,
-                content_type: row.content_type,
-                size_bytes: row.size_bytes,
-                metadata: row.metadata,
-                created_at: row.created_at,
-            },
-            data: row.data,
-        }))
-    }
 }
 
 struct DirectProviderCredentialStore {
@@ -245,6 +188,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    channels: Option<Arc<crate::channels::host::ServerChannels>>,
     slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     pub(crate) virtual_registry:
@@ -255,47 +199,6 @@ pub struct DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    /// Create new direct adapters with access to storage and services
-    pub fn new(
-        db: Arc<StorageBackend>,
-        event_service: Arc<EventService>,
-        provider_resolver: Arc<ProviderResolverService>,
-        mcp_server_service: Arc<McpServerService>,
-        capability_registry: CapabilityRegistry,
-        driver_registry: DriverRegistry,
-        sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
-    ) -> Self {
-        Self {
-            input_message_id: None,
-            db,
-            event_service,
-            budget_service: None,
-            provider_resolver,
-            mcp_server_service,
-            capability_registry,
-            connector_registry: everruns_contracts::connector::ConnectorRegistry::new(),
-            driver_registry,
-            utility_llm_service: None,
-            decisions: None,
-            egress_service: None,
-            sqldb_store,
-            storage_store: None,
-            connection_resolver: None,
-            vector_store: None,
-            runner: None,
-            encryption: None,
-            in_memory_compaction_checkpoint_store: None,
-            proactive_compaction_attempts: Arc::default(),
-            workflow_store: None,
-            slack_provisioner: None,
-            permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
-            virtual_registry: None,
-            org_rate_limiter: None,
-            provider_services: None,
-            quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
-        }
-    }
-
     async fn load_turn_messages(
         &self,
         session: &Session,
@@ -425,14 +328,6 @@ impl DirectWorkerAdapters {
         self
     }
 
-    pub fn with_slack_provisioner(
-        mut self,
-        provisioner: Option<Arc<dyn SlackAppProvisioner>>,
-    ) -> Self {
-        self.slack_provisioner = provisioner;
-        self
-    }
-
     pub fn with_decisions(mut self, service: Arc<dyn everruns_core::DecisionsService>) -> Self {
         self.decisions = Some(service);
         self
@@ -527,10 +422,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<everruns_core::AgentDefinition>> {
-        self.get_agent_record(org_id, id)
-            .await?
-            .map(|a| a.execution_definition())
-            .transpose()
+        let mut agent = self.get_agent_record(org_id, id).await?;
+        if let Some(agent) = agent.as_mut() {
+            self.filter_dreaming(org_id, &mut agent.capabilities)
+                .await?;
+        }
+        agent.map(|a| a.execution_definition()).transpose()
     }
     async fn get_agent_blocker(
         &self,
@@ -913,6 +810,35 @@ impl WorkerAdapters for DirectWorkerAdapters {
         .await
     }
 
+    async fn create_memory_artifact(
+        &self,
+        org: i64,
+        session: Uuid,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        everruns_worker::internal_commands::dreaming::create_artifact(
+            &self.internal_commands(org),
+            SessionId::from_uuid(session),
+            path,
+            content,
+        )
+        .await
+    }
+    async fn dreaming_scope(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        mount: &str,
+    ) -> Result<Option<everruns_core::dreaming::DreamMemoryScope>> {
+        everruns_worker::internal_commands::dreaming::memory_scope(
+            &self.internal_commands(org_id),
+            SessionId::from_uuid(session_id),
+            mount,
+        )
+        .await
+    }
+
     async fn delete_file(
         &self,
         org_id: i64,
@@ -981,14 +907,18 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
-        let mut runtime_agent_id = None;
+        let credential_invocation = session_id.zip(self.input_message_id).map(|(s, i)| {
+            everruns_contracts::runtime::credential_services::CredentialInvocation {
+                session_id: s.into(),
+                input_message_id: i,
+            }
+        });
         if let Some(session_id) = session_id
             && let Some(session) = self.get_turn_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
         {
-            runtime_agent_id = session.agent_id;
             let agent = match session.agent_id {
                 Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
@@ -1000,13 +930,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
             {
                 let secret_bindings =
-                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         org_id,
-                        runtime_agent_id,
-                        &resolved.name,
-                        &resolved.url,
+                        credential_invocation,
+                        &resolved,
                     )
                     .await
                     .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
@@ -1027,16 +956,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?
             .ok_or_else(|| store_error(format!("MCP server not found: {}", server_prefix)))?;
 
-        let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
-            self.db.as_ref(),
-            self.encryption.as_deref(),
-            org_id,
-            runtime_agent_id,
-            &resolved.name,
-            &resolved.url,
-        )
-        .await
-        .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
+        let secret_bindings =
+            crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
+                self.db.as_ref(),
+                self.encryption.as_deref(),
+                org_id,
+                credential_invocation,
+                &resolved,
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
 
         Ok(mcp::resolved_mcp_server_to_worker_info(
             resolved,
@@ -1108,7 +1037,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let hydrated_capabilities = self
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await?;
-                let agent = Self::row_to_agent(row, hydrated_capabilities);
+                let mut agent = Self::row_to_agent(row, hydrated_capabilities);
+                self.configure_agent_for_org(org_id, &mut agent).await?;
 
                 (Some(agent), mcp_tools)
             } else {
@@ -1164,8 +1094,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
             self.db.as_ref(),
             org_id,
-            session.agent_id,
-            None,
+            self.input_message_id.map(|i| {
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session.id,
+                    input_message_id: i,
+                }
+            }),
         )
         .await
         .map_err(|e| store_error(format!("Failed to load MCP credential metadata: {e}")))?;
@@ -1273,6 +1207,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
         crate::storage::PgAgentsApiStore::shared(&self.db, self.encryption.as_ref())
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn everruns_core::dreaming::DreamingStore>> {
+        let adapters = self.clone();
+        Some(Arc::new(
+            everruns_worker::internal_commands::dreaming::CommandDreamingStore {
+                transport: Arc::new(move |org| Arc::new(adapters.internal_commands(org))),
+            },
+        ))
+    }
+
+    fn session_file_system(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::session_files::SessionFileSystem>> {
+        let mut files = crate::domains::session_files::WorkspaceFileService::new(self.db.clone())
+            .with_quota_limits(self.quota);
+        if let Some(registry) = &self.virtual_registry {
+            files = files.with_virtual_registry(registry.clone());
+        }
+        Some(Arc::new(files))
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
@@ -1297,6 +1252,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.command_storage_store(org_id)
     }
 
+    fn knowledge_runtime(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        Some(Arc::new(
+            everruns_worker::internal_commands::knowledge::CommandKnowledgeRuntime::new(
+                self.internal_commands(org_id),
+            ),
+        ))
+    }
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         Some(Arc::new(
             crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),
@@ -1489,6 +1454,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &self.db,
             &session_service,
             &message_service,
+            self.channels.as_deref(),
+            self.encryption.as_ref(),
             org_id,
             agent_id,
             trigger_id,
@@ -1659,167 +1626,6 @@ pub struct DirectPlatformStore {
     permission_resolver: Arc<dyn PermissionResolver>,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
     provider_services: crate::domains::providers::ProviderServices,
-}
-
-impl DirectPlatformStore {
-    fn new(
-        org_id: i64,
-        session_id: SessionId,
-        db: Arc<StorageBackend>,
-        deps: DirectPlatformStoreDeps,
-    ) -> Self {
-        let mut capability_service = crate::services::CapabilityService::with_registry(
-            db.clone(),
-            deps.encryption.clone(),
-            deps.capability_registry.clone(),
-        );
-        if let Some(egress) = &deps.egress_service {
-            capability_service = capability_service.with_mcp_egress_service(egress.clone());
-        }
-        let capability_service = Arc::new(capability_service);
-        let session_service = Arc::new(SessionService::with_registry(
-            db.clone(),
-            deps.capability_registry.clone(),
-        ));
-        let message_service = deps.runner.as_ref().map(|runner| {
-            Arc::new(MessageService::new(
-                db.clone(),
-                runner.clone(),
-                deps.event_service.event_delivery().clone(),
-            ))
-        });
-        Self {
-            input_message_id: None,
-            org_id,
-            session_id,
-            db,
-            runner: deps.runner,
-            capability_service,
-            session_service,
-            message_service,
-            event_service: deps.event_service,
-            encryption: deps.encryption,
-            workflow_store: deps.workflow_store,
-            slack_provisioner: deps.slack_provisioner,
-            permission_resolver: deps.permission_resolver,
-            connector_registry: deps.connector_registry,
-            provider_services: deps.provider_services,
-        }
-    }
-
-    fn base_url_from_env() -> String {
-        everruns_core::config::env_string_any(
-            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
-            "http://localhost:9300",
-        )
-    }
-
-    async fn resolve_caller(&self) -> everruns_contracts::error::Result<Caller> {
-        let message = self
-            .input_message_id
-            .ok_or_else(|| store_error("Management-authorized invocation required"))?;
-        let user = self
-            .db
-            .runtime_invocation_management_user(self.session_id, message)
-            .await
-            .map_err(|e| store_error(e.to_string()))?
-            .ok_or_else(|| store_error("Management-authorized invocation required"))?;
-        crate::auth::caller_resolution::caller_for_user(&self.db, self.org_id, user)
-            .await
-            .map_err(|e| store_error(e.to_string()))
-    }
-
-    async fn execute_domain_command<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-    ) -> everruns_contracts::error::Result<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let ctx = self.command_ctx().await?;
-        let json = crate::domains::common::dispatch(name, params, &ctx)
-            .await
-            .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
-        serde_json::from_str(&json)
-            .map_err(|e| store_error(format!("Failed to decode {name} response: {e}")))
-    }
-
-    async fn execute_runtime_lookup<T>(
-        &self,
-        name: &str,
-        params: serde_json::Value,
-    ) -> everruns_contracts::error::Result<Option<T>>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        let ctx = self.command_ctx().await?;
-        match super::runtime_command_view::dispatch_runtime_view(name, params, &ctx).await {
-            Ok(json) => serde_json::from_str(&json)
-                .map(Some)
-                .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
-            Err(crate::domains::common::CommandError {
-                kind: crate::domains::common::CommandErrorKind::NotFound(_),
-                ..
-            }) => Ok(None),
-            Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
-        }
-    }
-
-    async fn invoke_platform_command_surface(
-        &self,
-        operation: super::platform_command_surface::Operation,
-        arguments: serde_json::Value,
-    ) -> everruns_contracts::error::Result<String> {
-        let (base_url, ctx) = (Self::base_url_from_env(), self.command_ctx().await?);
-        let context = crate::api::mcp_endpoint::catalog::CatalogContext {
-            domain_ctx: crate::domains::change_history::on_platform(ctx, self.session_id).await,
-            link_builder: crate::api::common::UrlBuilder::new(&base_url, &base_url),
-        };
-        super::platform_command_surface::invoke(operation, &arguments, context)
-            .await
-            .map_err(AgentLoopError::tool)
-    }
-
-    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
-        const TURN_COMPLETED: &str = "turn.completed";
-        const TURN_FAILED: &str = "turn.failed";
-        const TURN_CANCELLED: &str = "turn.cancelled";
-        const TURN_SEALED: &str = "turn.sealed";
-
-        let response: serde_json::Value = self
-            .execute_domain_command(
-                "list_events",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "types": [TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED, TURN_SEALED],
-                    "limit": 1,
-                    "order_desc": true,
-                }),
-            )
-            .await?;
-
-        let Some(event_type) = response
-            .get("data")
-            .and_then(|data| data.as_array())
-            .and_then(|events| events.first())
-            .and_then(|event| event.get("type"))
-            .and_then(|event_type| event_type.as_str())
-        else {
-            return Ok(None);
-        };
-
-        let status = match event_type {
-            TURN_COMPLETED => Some("completed"),
-            TURN_FAILED => Some("failed"),
-            TURN_CANCELLED => Some("cancelled"),
-            // A sealed turn is terminal but distinct from a failure: surface it
-            // as "sealed" so the parent agent can decide what to do next.
-            TURN_SEALED => Some("sealed"),
-            _ => None,
-        };
-        Ok(status.map(str::to_string))
-    }
 }
 
 #[async_trait]

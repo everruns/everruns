@@ -181,6 +181,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ReasonCompleted(d) => to_json(d),
         EventData::ReasonRecovered(d) => to_json(d),
         EventData::CapabilityUsage(d) => to_json(d),
+        EventData::DreamingActivity(d) => to_json(d),
         EventData::ActStarted(d) => to_json(d),
         EventData::ActCompleted(d) => to_json(d),
         EventData::ToolStarted(d) => to_json(d),

@@ -298,6 +298,10 @@ impl From<&str> for McpServerTransportType {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(try_from = "ScopedMcpServerWire", into = "ScopedMcpServerWire")]
 pub struct ScopedMcpServer {
+    /// Searchable server context supplied by its attachment or catalog. It is
+    /// metadata, not an instruction or a credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// MCP transport type. Only remote HTTP is supported today.
     #[serde(
         default = "default_scoped_transport_type",
@@ -376,10 +380,18 @@ pub struct ScopedMcpServer {
     /// servers; dropped from session-scoped servers.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub tool_labels: HashMap<String, McpToolLabel>,
+    /// How long one `tools/call` to this server may take, in milliseconds.
+    /// Unset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is
+    /// [`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`
+    /// is accepted as an alias, matching common `mcpServers` config files.
+    #[serde(default, alias = "timeout", skip_serializing_if = "Option::is_none")]
+    pub tool_timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ScopedMcpServerWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
     #[serde(
         rename = "type",
         alias = "transport_type",
@@ -429,19 +441,30 @@ struct ScopedMcpServerWire {
     deferred: bool,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     tool_labels: HashMap<String, McpToolLabel>,
+    #[serde(default, alias = "timeout", skip_serializing_if = "Option::is_none")]
+    tool_timeout_ms: Option<u64>,
 }
 
 impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
     type Error = String;
 
     fn try_from(wire: ScopedMcpServerWire) -> Result<Self, Self::Error> {
+        if wire
+            .description
+            .as_ref()
+            .is_some_and(|description| description.len() > 4096)
+        {
+            return Err("MCP server description exceeds 4096 UTF-8 bytes".into());
+        }
         if wire.preset.is_some() && wire.transport_type.is_some() {
             return Err(
                 "MCP server preset reference cannot be combined with inline field 'type'"
                     .to_string(),
             );
         }
+        validate_mcp_tool_timeout_ms(wire.tool_timeout_ms)?;
         Ok(Self {
+            description: wire.description,
             transport_type: wire
                 .transport_type
                 .unwrap_or_else(default_scoped_transport_type),
@@ -460,6 +483,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             connect_in_chat: wire.connect_in_chat,
             deferred: wire.deferred,
             tool_labels: wire.tool_labels,
+            tool_timeout_ms: wire.tool_timeout_ms,
         })
     }
 }
@@ -467,6 +491,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
 impl From<ScopedMcpServer> for ScopedMcpServerWire {
     fn from(server: ScopedMcpServer) -> Self {
         Self {
+            description: server.description,
             transport_type: server.preset.is_none().then_some(server.transport_type),
             url: server.url,
             headers: server.headers,
@@ -483,6 +508,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             connect_in_chat: server.connect_in_chat,
             deferred: server.deferred,
             tool_labels: server.tool_labels,
+            tool_timeout_ms: server.tool_timeout_ms,
         }
     }
 }
@@ -490,6 +516,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
 impl Default for ScopedMcpServer {
     fn default() -> Self {
         Self {
+            description: None,
             transport_type: McpServerTransportType::Http,
             url: String::new(),
             headers: HashMap::new(),
@@ -506,7 +533,30 @@ impl Default for ScopedMcpServer {
             connect_in_chat: McpConnectInChat::Ask,
             deferred: false,
             tool_labels: HashMap::new(),
+            tool_timeout_ms: None,
         }
+    }
+}
+
+/// `tools/call` timeout used when a server sets none: the limit every MCP
+/// call had before it was configurable.
+pub const MCP_TOOL_TIMEOUT_DEFAULT_MS: u64 = 60_000;
+/// Shortest configurable `tools/call` timeout.
+pub const MCP_TOOL_TIMEOUT_MIN_MS: u64 = 1_000;
+/// Longest configurable `tools/call` timeout. A blocking call holds a worker
+/// for its whole duration, so the platform caps it; work longer than this
+/// belongs in an MCP task, which is polled instead of held open.
+pub const MCP_TOOL_TIMEOUT_MAX_MS: u64 = 30 * 60_000;
+
+/// Check a configured `tools/call` timeout against the accepted range.
+pub fn validate_mcp_tool_timeout_ms(value: Option<u64>) -> Result<(), String> {
+    match value {
+        Some(ms) if !(MCP_TOOL_TIMEOUT_MIN_MS..=MCP_TOOL_TIMEOUT_MAX_MS).contains(&ms) => {
+            Err(format!(
+                "MCP server tool_timeout_ms must be between {MCP_TOOL_TIMEOUT_MIN_MS} and {MCP_TOOL_TIMEOUT_MAX_MS} milliseconds, got {ms}"
+            ))
+        }
+        _ => Ok(()),
     }
 }
 

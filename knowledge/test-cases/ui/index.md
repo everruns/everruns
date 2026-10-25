@@ -9,6 +9,7 @@
 * [Virtual users](agent_identities/) - Manual UI cases.
 * [Agent integrations](agent_integrations/) - Manual UI cases.
 * [Agent packages](agent_packages/) - Manual UI cases.
+* [Agent sources](agent_sources/) - Continuous GitHub sync and source ownership.
 * [Agent MCP attachments](agent_mcp_attachments/) - Manual UI cases.
 * [Agent triggers](agent_triggers/) - Manual UI cases.
 * [ARD discovery](ard_discovery/) - Manual UI cases.
@@ -58,3 +59,8 @@
 * [Skills](skills/) - Manual UI cases.
 * [Tag editor](tag_editor/) - Manual UI cases.
 * [Webmcp](webmcp/) - Manual UI cases.
+
+* [Automatic session titles](automatic_session_titles/) - Model defaults and explicit naming.
+
+* [Knowledge](knowledge/) - File collections, original binaries, extracted views and optional indexing.
+* [Work Chat](work_chat/) - Hosted consumer identity, interfaces and workspace boundaries.

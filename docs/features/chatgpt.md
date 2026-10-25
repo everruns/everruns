@@ -16,6 +16,9 @@ framework's local login helper on the computer running the browser and transfer
 the resulting credentials to the host over a protected channel. The driver
 package includes a `chatgpt-login` example for this purpose. Hosts are
 responsible for securing tokens and binding each connection to its owner.
+The loopback helper returns a plain-text completion message by default. A host
+can call `LoginAttempt::with_success_page_html` before `finish` to show its own
+branded completion page after a valid callback.
 
 The driver uses streaming, stateless Responses requests with `store=false`.
 Local function and custom tools use namespaces. Web search is available when

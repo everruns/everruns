@@ -134,6 +134,7 @@ fn snapshot_turn_started() {
 #[test]
 fn snapshot_turn_completed() {
     let data = TurnCompletedData {
+        termination_reason: None,
         issue_count: None,
         turn_id: test_turn_id(),
         iterations: 3,
@@ -726,6 +727,7 @@ fn representative_event_payloads_preserve_wire_identity() {
         (
             "turn.completed",
             TurnCompletedData {
+                termination_reason: None,
                 issue_count: None,
                 turn_id: test_turn_id(),
                 iterations: 1,

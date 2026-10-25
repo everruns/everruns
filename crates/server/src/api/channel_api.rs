@@ -79,6 +79,11 @@ impl ChannelApiState {
         }
     }
 
+    pub fn with_session_service(mut self, service: Arc<SessionService>) -> Self {
+        self.session_service = service;
+        self
+    }
+
     pub fn with_egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
         self.egress = Some(egress);
         self
@@ -159,6 +164,7 @@ pub(crate) async fn cancel_session_turn_for(
         Ok(false) => {}
         Err(err) => {
             tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel failed");
+            return Err(err.into());
         }
     }
 

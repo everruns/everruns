@@ -25,7 +25,9 @@ import {
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
+import { capabilityTurnedOff, rolloutFlagMap } from "@/lib/capability-availability";
 import { useLocale } from "@/providers/locale-provider";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
 import {
@@ -102,6 +104,7 @@ export default function CapabilityDetailPage({
 }) {
   const { capabilityId } = use(params);
   const { locale } = useLocale();
+  const featureFlags = useOptionalFeatureFlags();
   const { data: capability, isLoading, error } = useCapability(capabilityId);
   usePageTitle(capability ? localizedCapabilityName(capability, locale) : null, "Capability");
   const { data: allCapabilities } = useCapabilities();
@@ -199,6 +202,14 @@ export default function CapabilityDetailPage({
               <InlineStreamdownMessage className="text-muted-foreground">
                 {localizedCapabilityDescription(capability, locale)}
               </InlineStreamdownMessage>
+              {capabilityTurnedOff(
+                capability,
+                featureFlags && !featureFlags.isLoading ? rolloutFlagMap(featureFlags.flags) : null,
+              ) && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  This capability is turned off for the organization.
+                </p>
+              )}
             </CardContent>
           </Card>
 

@@ -72,6 +72,7 @@ export type NavigationSection = {
 export const defaultChatsNavigation: NavigationItem[] = [
   {
     name: "Chat",
+    description: "Talk with your personal assistant.",
     href: "/chats",
     icon: ChatIcon,
     exact: true,
@@ -94,6 +95,7 @@ export const sideChatNavigation: NavigationItem[] = [
 export const defaultOperationalNavigation: NavigationItem[] = [
   {
     name: "Monitoring",
+    description: "Inspect running sessions, actors and leases.",
     href: "/monitoring",
     icon: DurableIcon,
     flag: "monitoring",
@@ -102,6 +104,7 @@ export const defaultOperationalNavigation: NavigationItem[] = [
   },
   {
     name: "Sessions",
+    description: "Review recorded conversations and execution traces.",
     href: "/sessions",
     icon: SessionIcon,
     keywords: ["recordings", "conversation", "transcript"],
@@ -109,14 +112,22 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
-  { name: "Agents", href: "/agents", icon: AgentIcon, keywords: ["bot", "assistant"] },
+  {
+    name: "Agents",
+    description: "Build and configure your AI assistants.",
+    href: "/agents",
+    icon: AgentIcon,
+    keywords: ["bot", "assistant"],
+  },
   {
     name: "Playground",
+    description: "Try agents in shared test conversations.",
     href: "/playground",
     icon: PlaygroundIcon,
   },
   {
     name: "Harnesses",
+    description: "Reusable instructions and tools for agents.",
     href: "/harnesses",
     icon: HarnessDomainIcon,
     keywords: ["template", "config"],
@@ -125,6 +136,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   // templates that configure it, and the provider accounts it runs on.
   {
     name: "Sandboxes",
+    description: "Manage agent environments, templates and providers.",
     href: "/sandboxes",
     icon: SandboxIcon,
     keywords: [
@@ -143,6 +155,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
   {
     name: "Virtual Users",
+    description: "Manage the identities and personas agents interact with.",
     href: "/virtual-users",
     icon: VirtualUserIcon,
     keywords: ["persona", "principal", "identity"],
@@ -151,14 +164,15 @@ export const defaultBuildingNavigation: NavigationItem[] = [
 
 export const defaultRegistriesNavigation: NavigationItem[] = [
   ...registryNavigationItems.map<NavigationItem>(
-    ({ name, href, icon, keywords }: RegistryNavigationItem) => {
+    ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
       const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-      return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
+      return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
     },
   ),
   {
-    name: "Knowledge indexes",
-    href: "/knowledge-indexes",
+    name: "Knowledge",
+    description: "Organize collections, sources and searchable knowledge for agents.",
+    href: "/knowledge",
     icon: KnowledgeIcon,
     flag: "knowledge",
     experimental: true,
@@ -166,6 +180,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   },
   {
     name: "Memory",
+    description: "Browse the persistent memory available to agents.",
     href: "/memory",
     icon: MemoryIcon,
     keywords: ["workspace", "files", "storage"],
@@ -177,6 +192,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
 export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Evals",
+    description: "Test and compare how well agents perform.",
     href: "/evals",
     icon: EvalsIcon,
     keywords: ["evaluation", "test", "benchmark", "score"],
@@ -185,6 +201,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   },
   {
     name: "Observers",
+    description: "Monitor agent behavior and quality over time.",
     href: "/observers",
     icon: ObserverIcon,
     keywords: ["monitor", "score", "production eval"],
@@ -193,6 +210,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
   },
   {
     name: "Reports",
+    description: "Explore saved views of session activity.",
     href: "/reports",
     icon: ReportIcon,
     flag: "reports",
@@ -204,6 +222,7 @@ export const defaultQualityNavigation: NavigationItem[] = [
 export const defaultBottomNavigation: NavigationItem[] = [
   {
     name: "Settings",
+    description: "Manage your organization, team and preferences.",
     href: "/settings/organization",
     icon: SettingsIcon,
     activePrefix: "/settings",
@@ -215,17 +234,39 @@ export const defaultBottomNavigation: NavigationItem[] = [
 export const defaultDurableNavigation: NavigationItem[] = [
   {
     name: "Monitoring",
+    description: "Inspect running sessions, actors and leases.",
     href: "/durable",
     icon: DurableIcon,
     exact: true,
     keywords: ["fleet", "workers", "actors", "leases", "monitor"],
   },
-  { name: "Workers", href: "/durable/workers", icon: WorkerIcon },
-  { name: "Workflows", href: "/durable/workflows", icon: WorkflowIcon },
-  { name: "Queues", href: "/durable/queues", icon: QueueIcon },
-  { name: "Schedules", href: "/durable/schedules", icon: ScheduleIcon },
+  {
+    name: "Workers",
+    description: "Inspect the workers that execute agent tasks.",
+    href: "/durable/workers",
+    icon: WorkerIcon,
+  },
+  {
+    name: "Workflows",
+    description: "Inspect durable workflow execution.",
+    href: "/durable/workflows",
+    icon: WorkflowIcon,
+  },
+  {
+    name: "Queues",
+    description: "Inspect queued work and task delivery.",
+    href: "/durable/queues",
+    icon: QueueIcon,
+  },
+  {
+    name: "Schedules",
+    description: "Inspect scheduled work and upcoming runs.",
+    href: "/durable/schedules",
+    icon: ScheduleIcon,
+  },
   {
     name: "Circuit Breakers",
+    description: "Inspect failure protection and recovery state.",
     href: "/durable/circuit-breakers",
     icon: CircuitBreakerIcon,
     keywords: ["failure", "resilience"],
@@ -233,7 +274,12 @@ export const defaultDurableNavigation: NavigationItem[] = [
 ];
 
 export const defaultDevNavigation: NavigationItem[] = [
-  { name: "Dev Tools", href: "/dev", icon: PlaygroundIcon },
+  {
+    name: "Dev Tools",
+    description: "Inspect local development tools and UI examples.",
+    href: "/dev",
+    icon: PlaygroundIcon,
+  },
 ];
 
 export const defaultNavigationSections: NavigationSection[] = [

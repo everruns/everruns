@@ -1086,15 +1086,14 @@ async fn cancel_a2a_session_turn(
     use everruns_core::events::{EventRequest, InputMessageData, TurnCancelledData};
     use everruns_core::message::RuntimeMessage;
 
-    // Best-effort cancel of the active workflow run. Errors are logged but
-    // not surfaced — the turn-cancelled event is what tasks/get keys off.
     // A worker running the turn records the cancel itself; see
-    // `crate::turns::ActorTurnBackend`.
+    // `crate::turns::ActorTurnBackend`. An error leaves that ownership intact.
     match state.message_service.runner().cancel(session_id).await {
         Ok(true) => return Ok(()),
         Ok(false) => {}
         Err(err) => {
             tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel failed");
+            return Err(err.into());
         }
     }
 

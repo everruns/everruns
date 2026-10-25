@@ -248,6 +248,19 @@ impl LocalScheduleStore {
     }
 
     fn insert(&self, schedule: &SessionSchedule, metadata: &Value) -> Result<()> {
+        self.db
+            .with_conn(|conn| Ok(Self::insert_row(conn, self.org_id, schedule, metadata)))
+            .map_err(AgentLoopError::from)?
+    }
+
+    /// Upsert one schedule row on `conn` (session cutover writes it inside the
+    /// authority transaction).
+    pub(crate) fn insert_row(
+        conn: &rusqlite::QueryConnection,
+        org_id: i64,
+        schedule: &SessionSchedule,
+        metadata: &Value,
+    ) -> Result<()> {
         let snapshot = serde_json::to_string(schedule)
             .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
         let metadata_json = serde_json::to_string(metadata)
@@ -255,11 +268,8 @@ impl LocalScheduleStore {
         let id = schedule.id.to_string();
         let session = schedule.session_id.to_string();
         let enabled = schedule.enabled as i64;
-        let org_id = self.org_id;
         let next_trigger_at_ms = schedule.next_trigger_at.map(|time| time.timestamp_millis());
-        self.db
-            .with_conn(|conn| {
-                conn.execute(
+        conn.execute(
                     "INSERT INTO local_schedules (id, org_id, session_id, enabled, snapshot, metadata, next_trigger_at_ms)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(id) DO UPDATE SET
@@ -271,8 +281,7 @@ impl LocalScheduleStore {
                         claimed_at_ms = CASE WHEN excluded.enabled = 0 THEN NULL ELSE claimed_at_ms END",
                     rusqlite::params![id, org_id, session, enabled, snapshot, metadata_json, next_trigger_at_ms],
                 )
-            })
-            .map_err(AgentLoopError::from)?;
+                .map_err(LocalError::from)?;
         Ok(())
     }
 
@@ -907,5 +916,53 @@ impl SessionScheduleStore for LocalScheduleStore {
             })
             .map_err(AgentLoopError::from)?;
         Ok(count as u32)
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_delivery_keeps_retry_exclusive_until_timeout() -> Result<()> {
+        let store =
+            LocalScheduleStore::new(SqliteDb::open_in_memory()?, 1, PrincipalId::from_seed(1))?;
+        let start = Utc::now();
+        let schedule = store
+            .create_schedule(
+                SessionId::new(),
+                "retry".into(),
+                None,
+                Some(start),
+                "UTC".into(),
+            )
+            .await?;
+        let timeout = Duration::from_millis(100);
+        let first = store.claim_due("first", start, timeout, 8, None)?;
+        assert_eq!(first.len(), 1);
+        let failed_at = start + chrono::Duration::seconds(10);
+        store.fail_delivery(&first[0], "first", failed_at, "injected failure")?;
+        assert!(
+            store
+                .claim_due(
+                    "second",
+                    failed_at + chrono::Duration::milliseconds(99),
+                    timeout,
+                    8,
+                    None,
+                )?
+                .is_empty()
+        );
+        let retry = store.claim_due(
+            "second",
+            failed_at + chrono::Duration::milliseconds(101),
+            timeout,
+            8,
+            None,
+        )?;
+        assert_eq!(retry.len(), 1);
+        assert_eq!(retry[0].schedule.id, schedule.id);
+        assert_eq!(retry[0].schedule.trigger_count, 0);
+        Ok(())
     }
 }

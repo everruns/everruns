@@ -302,6 +302,28 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
             .map(Some)
     }
 
+    async fn create_memory_artifact(
+        &self,
+        org: i64,
+        session: Uuid,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        let _ = (org, session, path, content);
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "Memory artifact creation unsupported",
+        ))
+    }
+    async fn dreaming_scope(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        mount: &str,
+    ) -> Result<Option<crate::core::dreaming::DreamMemoryScope>> {
+        let _ = (org_id, session_id, mount);
+        Ok(None)
+    }
+
     /// Delete a file from session filesystem
     async fn delete_file(
         &self,
@@ -425,6 +447,19 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
+        None
+    }
+
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
+        None
+    }
+
+    /// An in-process host can supply the complete canonical filesystem port.
+    /// Remote workers use the org-scoped command adapter by default.
+    fn session_file_system(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn crate::core::session_files::SessionFileSystem>> {
         None
     }
 
@@ -656,6 +691,13 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    fn knowledge_runtime(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        None
+    }
+
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         None
@@ -785,10 +827,15 @@ pub struct TurnContext {
 //   - OrgAdapter<A>      (org-scoped, carries org_id)
 // =============================================================================
 
+/// One retained turn anchor, shared by the per-phase emitter adapters.
+pub(crate) type CausalTurnTrace =
+    Arc<std::sync::Mutex<Option<(everruns_contracts::typed_id::TurnId, serde_json::Value)>>>;
+
 /// Session-scoped adapter: bridges WorkerAdapters → core traits that don't need org_id.
 ///
 /// Implements: MessageRetriever, EventEmitter, SessionFileSystem.
 pub struct SessionAdapter<A: WorkerAdapters> {
+    causal_trace: CausalTurnTrace,
     adapters: A,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     /// The org whose turn this adapter serves, for the surfaces that reach the
@@ -804,6 +851,11 @@ pub struct SessionAdapter<A: WorkerAdapters> {
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
+    pub(crate) fn with_causal_trace(mut self, trace: CausalTurnTrace) -> Self {
+        self.causal_trace = trace;
+        self
+    }
+
     /// Scope this adapter to an org, which the file surface requires.
     pub fn for_org(mut self, org_id: i64) -> Self {
         self.org_id = Some(org_id);
@@ -823,6 +875,7 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
     pub fn new(adapters: A) -> Self {
         Self {
             adapters,
+            causal_trace: Default::default(),
             event_metadata: None,
             org_id: None,
             reads: None,
@@ -1112,6 +1165,40 @@ impl<A: WorkerAdapters> crate::core::MessageRetriever for SessionAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdapter<A> {
+    fn turn_causal_context(
+        &self,
+        context: &crate::core::events::EventContext,
+    ) -> crate::core::causal::CausalContext {
+        self.causal_trace
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .filter(|(turn, _)| Some(*turn) == context.turn_id)
+            .map(|(_, metadata)| {
+                crate::core::causal::CausalContext::from_turn_metadata(Some(metadata))
+            })
+            .unwrap_or_default()
+    }
+    fn restore_turn_context(
+        &self,
+        context: &crate::core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        if let (Some(turn), Some(value)) = (
+            context.turn_id,
+            metadata.and_then(|m| m.get(crate::core::causal::TURN_TRACEPARENT_KEY)),
+        ) && !crate::core::causal::CausalContext::from_turn_metadata(metadata).is_empty()
+        {
+            *self
+                .causal_trace
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((
+                turn,
+                serde_json::json!({crate::core::causal::TURN_TRACEPARENT_KEY:value}),
+            ));
+        }
+    }
+
     async fn emit(&self, mut request: EventRequest) -> Result<Event> {
         if let Some(extra) = &self.event_metadata {
             let mut metadata = request
@@ -1127,6 +1214,23 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
         if let Some(reads) = &self.reads {
             reads.note_event(&request.event_type);
         }
+        if let Some((turn, metadata)) = self
+            .causal_trace
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            && Some(*turn) == request.context.turn_id
+        {
+            let object = request
+                .metadata
+                .get_or_insert_with(|| serde_json::json!({}));
+            if let Some(object) = object.as_object_mut() {
+                object.insert(
+                    crate::core::causal::TURN_TRACEPARENT_KEY.into(),
+                    metadata[crate::core::causal::TURN_TRACEPARENT_KEY].clone(),
+                );
+            }
+        }
         let mut pending = Vec::new();
         if let Some(queue) = &self.write_behind {
             // A queued store that gave up stops every later emit, so nothing
@@ -1134,6 +1238,8 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
             if let Some(error) = queue.failure() {
                 return Err(error);
             }
+            // The real trace anchor is returned by the authority on turn start;
+            // retain it before tools can create children or session tasks.
             if WriteBehind::queues(&request) {
                 let event = provisional_event(&request);
                 let adapters = self.adapters.clone();
@@ -1167,22 +1273,30 @@ impl<A: WorkerAdapters> crate::core::event_emitter::EventEmitter for SessionAdap
                 return Err(error);
             }
         }
-        if let Some(fence) = &self.fence {
+        let event = if let Some(fence) = &self.fence {
             let provisional = provisional_event(&request);
             pending.push(request);
             let stored = self.adapters.emit_events_fenced(pending, fence).await;
             fence.observe(&stored);
-            return Ok(stored?.unwrap_or(provisional));
+            stored?.unwrap_or(provisional)
+        } else if !pending.is_empty() {
+            self.adapters.emit_events_then(pending, request).await?
+        } else {
+            self.adapters.emit_event(request).await?
+        };
+        if event.event_type == crate::core::events::TURN_STARTED {
+            self.restore_turn_context(&event.context, event.metadata.as_ref());
         }
-        if !pending.is_empty() {
-            return self.adapters.emit_events_then(pending, request).await;
-        }
-        self.adapters.emit_event(request).await
+        Ok(event)
     }
 }
 
 #[async_trait]
 impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for SessionAdapter<A> {
+    fn session_scoped_path(&self, path: &str) -> bool {
+        everruns_contracts::knowledge::is_mount(path)
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let org_id = self.require_org("read_file")?;
         self.adapters
@@ -1203,6 +1317,34 @@ impl<A: WorkerAdapters> crate::core::session_files::SessionFileSystem for Sessio
             .await
     }
 
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.adapters
+            .create_memory_artifact(
+                self.require_org("create_memory_artifact")?,
+                session.uuid(),
+                path,
+                content,
+            )
+            .await
+    }
+    async fn dreaming_scope(
+        &self,
+        session_id: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::core::dreaming::DreamMemoryScope>> {
+        self.adapters
+            .dreaming_scope(
+                self.require_org("dreaming_scope")?,
+                session_id.uuid(),
+                mount,
+            )
+            .await
+    }
     async fn write_file_if_content_matches(
         &self,
         session_id: SessionId,

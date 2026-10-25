@@ -24,6 +24,8 @@ import {
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { capabilitySelectable, rolloutFlagMap } from "@/lib/capability-availability";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 
 // Web search is the provider-neutral way to search; Brave Search, DuckDuckGo
 // and the hosted-tools capabilities stay for agents built around one
@@ -48,13 +50,16 @@ export function CapabilityDialog({
   onToggle,
 }: CapabilityDialogProps) {
   const { locale } = useLocale();
+  const featureFlags = useOptionalFeatureFlags();
+  const rolloutFlags =
+    featureFlags && !featureFlags.isLoading ? rolloutFlagMap(featureFlags.flags) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
   // Filter and group capabilities
   const { availableCapabilities, groupedCapabilities } = useMemo(() => {
-    const available = capabilities.filter((c) => c.status === "available");
+    const available = capabilities.filter((c) => capabilitySelectable(c, rolloutFlags));
     const query = searchQuery.toLowerCase().trim();
 
     // Filter by search query
@@ -94,7 +99,7 @@ export function CapabilityDialog({
         capabilities: grouped.get(category)!,
       })),
     };
-  }, [capabilities, searchQuery]);
+  }, [capabilities, rolloutFlags, searchQuery]);
 
   const toggleCategory = useCallback((category: string) => {
     setCollapsedCategories((prev) => {

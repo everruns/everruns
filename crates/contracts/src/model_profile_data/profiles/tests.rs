@@ -1479,3 +1479,14 @@ fn test_model_card_links_reach_every_route() {
             .is_none()
     );
 }
+
+#[test]
+fn openrouter_gpt_61_wire_id_keeps_canonical_prices_and_gateway_capabilities() {
+    let canonical = get_model_profile("openai", "gpt-6.1-sol").unwrap();
+    let routed = get_model_profile("openrouter", "openai/gpt-6.1-sol").unwrap();
+    assert_eq!(routed.cost, canonical.cost);
+    assert!(!routed.supports_phases);
+    assert!(routed.speed.is_none());
+    assert!(get_model_profile("openrouter", "untrusted/gpt-6.1-sol").is_none());
+    assert!(get_model_profile("openrouter", "openai/gpt-6.1-sol-pro").is_none());
+}

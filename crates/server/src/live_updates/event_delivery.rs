@@ -11,6 +11,7 @@
 
 use anyhow::{Context, Result};
 use everruns_core::Event;
+use everruns_core::events::EventData;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
@@ -248,7 +249,7 @@ impl NatsEventDelivery {
 
     pub async fn publish(&self, event: &Event) -> Result<()> {
         let subject = format!("{}.{}", NATS_SUBJECT_PREFIX, event.session_id.uuid());
-        let payload = serde_json::to_vec(event).context("Failed to serialize event")?;
+        let payload = live_payload(event, self.client.max_payload())?;
 
         self.jetstream
             .publish(subject, payload.into())
@@ -293,6 +294,77 @@ impl NatsEventDelivery {
     /// Shut down the NATS connection gracefully.
     pub async fn shutdown(&self) {
         let _ = self.client.drain().await;
+    }
+}
+
+/// `metadata` key set on a live copy whose bulky fields were dropped to fit
+/// the server's `max_payload`. The stored event keeps them; a client that
+/// needs them reads the event from the API.
+pub const LIVE_PAYLOAD_TRIMMED_KEY: &str = "live_payload_trimmed";
+
+/// Serialize `event` for live delivery within `max_payload` bytes.
+///
+/// Decision (Sentry EVERRUNS-32): `llm.generation` carries the whole prompt
+/// twice (`messages` and the captured `request_body`), so on long sessions it
+/// outgrows NATS `max_payload` (1 MiB by default) and every publish failed,
+/// leaving live subscribers without the generation's usage and output. Its
+/// copy on the wire drops the captured request body first, then the prompt
+/// messages and tool list, keeping output and metadata (usage, cost, model)
+/// that live views read. The PostgreSQL row is untouched. Other event types
+/// have no such fields, so an oversize one is still an error, with sizes.
+fn live_payload(event: &Event, max_payload: usize) -> Result<Vec<u8>> {
+    let payload = serde_json::to_vec(event).context("Failed to serialize event")?;
+    if payload.len() <= max_payload {
+        return Ok(payload);
+    }
+    let full_size = payload.len();
+
+    if let EventData::LlmGeneration(data) = &event.data {
+        let mut trimmed = event.clone();
+        let mut slim = data.clone();
+        slim.request_body = None;
+        trimmed.data = EventData::LlmGeneration(slim.clone());
+        mark_trimmed(&mut trimmed);
+        let payload = serde_json::to_vec(&trimmed).context("Failed to serialize event")?;
+        if payload.len() <= max_payload {
+            debug!(
+                full_size,
+                size = payload.len(),
+                max_payload,
+                "Dropped request_body from live llm.generation"
+            );
+            return Ok(payload);
+        }
+        slim.messages.clear();
+        slim.tools.clear();
+        trimmed.data = EventData::LlmGeneration(slim);
+        let payload = serde_json::to_vec(&trimmed).context("Failed to serialize event")?;
+        if payload.len() <= max_payload {
+            debug!(
+                full_size,
+                size = payload.len(),
+                max_payload,
+                "Dropped prompt from live llm.generation"
+            );
+            return Ok(payload);
+        }
+    }
+
+    anyhow::bail!(
+        "event payload of {full_size} bytes exceeds NATS max_payload of {max_payload} bytes"
+    )
+}
+
+fn mark_trimmed(event: &mut Event) {
+    match &mut event.metadata {
+        Some(serde_json::Value::Object(map)) => {
+            map.insert(LIVE_PAYLOAD_TRIMMED_KEY.into(), true.into());
+        }
+        None => {
+            event.metadata = Some(serde_json::json!({ LIVE_PAYLOAD_TRIMMED_KEY: true }));
+        }
+        // Non-object metadata is caller-owned; leave it as is.
+        Some(_) => {}
     }
 }
 
@@ -392,5 +464,127 @@ mod tests {
     fn test_event_delivery_in_memory_constructor() {
         let delivery = EventDelivery::in_memory();
         assert!(matches!(delivery, EventDelivery::InMemory(_)));
+    }
+
+    fn large_generation(prompt_bytes: usize) -> Event {
+        let prompt = "x".repeat(prompt_bytes);
+        let mut data = everruns_core::LlmGenerationData::success(
+            vec![everruns_core::RuntimeMessage::user(prompt.clone())],
+            vec![],
+            Some("done".into()),
+            vec![],
+            "gpt-6".into(),
+            Some("openai".into()),
+            Some(everruns_core::TokenUsage {
+                input_tokens: 4242,
+                output_tokens: 7,
+                ..Default::default()
+            }),
+            None,
+            None,
+        );
+        data.request_body = Some(serde_json::json!({ "input": prompt }));
+        Event::new(SessionId::new(), everruns_core::EventContext::empty(), data)
+    }
+
+    fn generation_of(payload: &[u8]) -> (Event, everruns_core::LlmGenerationData) {
+        let event: Event = serde_json::from_slice(payload).expect("live payload deserializes");
+        let EventData::LlmGeneration(data) = event.data.clone() else {
+            panic!("expected llm.generation");
+        };
+        (event, data)
+    }
+
+    #[test]
+    fn live_payload_passes_small_events_unchanged() {
+        let event = large_generation(100);
+        let payload = live_payload(&event, 1024 * 1024).unwrap();
+        assert_eq!(payload, serde_json::to_vec(&event).unwrap());
+    }
+
+    /// Regression test for Sentry EVERRUNS-32: an `llm.generation` whose
+    /// prompt (carried in both `messages` and `request_body`) exceeds NATS
+    /// `max_payload` failed every publish instead of reaching live
+    /// subscribers.
+    #[test]
+    fn live_payload_drops_request_body_from_oversize_generation() {
+        let event = large_generation(600 * 1024);
+        let max = 1024 * 1024;
+        assert!(serde_json::to_vec(&event).unwrap().len() > max);
+
+        let payload = live_payload(&event, max).unwrap();
+        assert!(payload.len() <= max);
+        let (live, data) = generation_of(&payload);
+        assert_eq!(live.id, event.id);
+        assert!(data.request_body.is_none());
+        assert_eq!(data.messages.len(), 1, "prompt kept when it fits");
+        assert_eq!(data.metadata.usage.unwrap().input_tokens, 4242);
+        assert_eq!(live.metadata.unwrap()[LIVE_PAYLOAD_TRIMMED_KEY], true);
+    }
+
+    #[test]
+    fn live_payload_drops_prompt_when_request_body_alone_is_not_enough() {
+        let event = large_generation(2 * 1024 * 1024);
+        let max = 1024 * 1024;
+
+        let payload = live_payload(&event, max).unwrap();
+        assert!(payload.len() <= max);
+        let (live, data) = generation_of(&payload);
+        assert!(data.request_body.is_none());
+        assert!(data.messages.is_empty());
+        assert_eq!(data.output.text.as_deref(), Some("done"));
+        assert_eq!(data.metadata.usage.unwrap().output_tokens, 7);
+        assert_eq!(live.metadata.unwrap()[LIVE_PAYLOAD_TRIMMED_KEY], true);
+    }
+
+    #[test]
+    fn live_payload_reports_sizes_for_other_oversize_events() {
+        let mut event = make_test_event(Uuid::new_v4());
+        let EventData::OutputMessageDelta(delta) = &mut event.data else {
+            unreachable!()
+        };
+        delta.accumulated = "y".repeat(4096);
+
+        let error = live_payload(&event, 1024).unwrap_err().to_string();
+        assert!(
+            error.contains("exceeds NATS max_payload of 1024 bytes"),
+            "{error}"
+        );
+    }
+
+    /// End-to-end check of EVERRUNS-32 against a real JetStream server:
+    /// `EVERRUNS_TEST_NATS_URL=nats://127.0.0.1:4222 cargo test -p
+    /// everruns-server --lib oversize_generation_reaches_nats -- --ignored`
+    #[tokio::test]
+    #[ignore = "needs a NATS JetStream server in EVERRUNS_TEST_NATS_URL"]
+    async fn oversize_generation_reaches_nats_subscribers() {
+        let url = std::env::var("EVERRUNS_TEST_NATS_URL").expect("EVERRUNS_TEST_NATS_URL");
+        let nats = NatsEventDelivery::connect(&url).await.unwrap();
+        let event = large_generation(nats.client.max_payload());
+        let mut sub = nats.subscribe(event.session_id.uuid()).await.unwrap();
+
+        // The untrimmed event is what failed in production.
+        let raw = nats
+            .jetstream
+            .publish(
+                format!("{NATS_SUBJECT_PREFIX}.{}", event.session_id.uuid()),
+                serde_json::to_vec(&event).unwrap().into(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            raw.kind(),
+            async_nats::jetstream::context::PublishErrorKind::MaxPayloadExceeded
+        );
+
+        nats.publish(&event).await.unwrap();
+
+        let received = tokio::time::timeout(std::time::Duration::from_secs(5), sub.recv())
+            .await
+            .expect("delivered")
+            .expect("subscription open");
+        assert_eq!(received.id, event.id);
+        assert_eq!(received.metadata.unwrap()[LIVE_PAYLOAD_TRIMMED_KEY], true);
+        nats.shutdown().await;
     }
 }

@@ -1,0 +1,38 @@
+name: Deepsec dependency security
+
+on:
+  pull_request:
+    paths:
+      - ".deepsec/**"
+      - ".github/workflows/deepsec-dependencies.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".deepsec/**"
+      - ".github/workflows/deepsec-dependencies.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+      - name: Install patched scanner dependencies without lifecycle scripts
+        working-directory: .deepsec
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Verify constrained collection bounds and actual consumer compatibility
+        working-directory: .deepsec
+        run: pnpm run test:security
+      - name: Audit production dependency graph
+        working-directory: .deepsec
+        run: pnpm audit --prod --audit-level high

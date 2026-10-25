@@ -5,7 +5,6 @@ on:
     paths:
       - "crates/contracts/**"
       - "crates/drivers/drivers/**"
-      - "examples/celld-engine/**"
       - "tests/wasm-providers/**"
       - "scripts/lib/test-wasm-providers.sh"
       - ".github/workflows/wasm-providers.yml"
@@ -16,7 +15,6 @@ on:
     paths:
       - "crates/contracts/**"
       - "crates/drivers/drivers/**"
-      - "examples/celld-engine/**"
       - "tests/wasm-providers/**"
       - "scripts/lib/test-wasm-providers.sh"
       - ".github/workflows/wasm-providers.yml"
@@ -39,7 +37,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.22.1"
           cache: npm
           cache-dependency-path: tests/wasm-providers/package-lock.json
       - uses: Swatinem/rust-cache@v2

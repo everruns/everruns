@@ -229,8 +229,8 @@ async fn a_form_pauses_once_and_the_recorded_answer_is_sent_typed() {
         "one paused call, then the retry and its answer"
     );
     assert_eq!(
-        capabilities(&calls[0]),
-        &json!({ "elicitation": { "url": {}, "form": {} } })
+        capabilities(&calls[0])["elicitation"],
+        json!({ "url": {}, "form": {} })
     );
     assert!(calls[1]["params"]["inputResponses"].is_null());
     assert_eq!(
@@ -330,10 +330,7 @@ async fn a_server_without_form_policy_is_never_told_forms_work() {
         .expect_err("a form the policy forbids never reaches a person");
     assert!(error.to_string().contains("did not declare form mode"));
     let calls = egress.calls();
-    assert_eq!(
-        capabilities(&calls[0]),
-        &json!({ "elicitation": { "url": {} } })
-    );
+    assert_eq!(capabilities(&calls[0])["elicitation"], json!({ "url": {} }));
     assert!(
         calls
             .iter()

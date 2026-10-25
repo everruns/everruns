@@ -12,6 +12,12 @@ tags:
 
 Capabilities are modular functionality units that extend Agent behavior. A Capability can contribute additions to the system prompt, provide tools, and modify execution behavior. Users can enable multiple capabilities on an Agent to compose functionality.
 
+[Native and CLI Tool Surfaces](tool-surfaces.md) defines the implemented,
+read-only `ToolSurfacePlan` shared with capability prompt and definition hooks.
+It preserves one canonical operation registration while allowing native calls,
+CLI, or both, with eager/deferred native schemas resolved separately from the
+invocation route.
+
 ## Requirements
 
 ### Persisted Declarative Capabilities
@@ -244,6 +250,17 @@ without rebuilding the runtime or replacing the session:
 `SessionMutator::{upsert_session_capability, remove_session_capability}` is the
 host-storage boundary. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
+
+The Framework Engine rebuilds a session's runtime from the trusted Agent on every
+attach, resume, inspection and restart, and must not reset that overlay. Agent
+capabilities therefore live only on the agent (and synthetic harness) layer, so
+the persisted session layer holds exactly the hot-enabled overlay: it survives
+reconstruction, a deactivated entry stays absent, and changing an Agent default
+reaches existing sessions instead of a pinned copy. Every other session-record
+field is either Agent/Engine-owned (re-derived, including association ids and
+MCP servers) or session-owned (persisted value wins). The field-by-field rules
+and the legacy-record caveat live in
+[`session_overlay.rs`](../../crates/everruns/src/engine/session_overlay.rs).
 
 ### Live registration
 
@@ -561,6 +578,19 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
+The hosted `platform` capability contributes the maintained `everruns`,
+`everruns-cli`, and `everruns-agent-authoring` product skills and depends on the
+`skills` loader. Both shell and three-tool surfaces receive the same authored
+content through read-only mounts, without organization registry rows. Its
+always-present interface guidance keeps external MCP examples from switching a
+session away from its organization-bound command surface. Workspace builds embed
+the allowlisted source trees. API and worker source image builds include the
+authored tree before compiling, so both binaries embed the same guides without
+a runtime checkout or fetch. Standalone crate builds without repository skills
+omit that content, matching the optional embedded-docs boundary. See the
+[contribution implementation](../../crates/capabilities/src/capabilities/platform_skills.rs)
+and [canonical skills](../../skills/).
+
 ### Capability Dependencies
 
 Capabilities can declare dependencies on other capabilities. When a capability is selected, its dependencies are automatically resolved and applied.
@@ -703,7 +733,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 
 High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
-See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents/mod.rs` for `require_admin_for_high_risk()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/domains/agents/managed.rs` for `check_high_risk_caps()`, which every agent create, update, import, and example adoption runs.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 
@@ -1328,7 +1358,7 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The [managed Platform Chat](../../crates/server/src/platform_chat_agent.rs) runs on
+The [managed Platform Chat](../../crates/server/src/platform_chat_agent/mod.rs) runs on
 Generic. Its platform capability exposes the authoritative command catalog through the
 session shell; product docs and durable operator memory share that namespace. The Agent
 owns its domain instructions, identity, introduction, and starters. Generic supplies the

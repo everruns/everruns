@@ -76,6 +76,8 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         archived_at: null,
         deleted_at: null,
       };
+    } else if (pathname === `/api/v1/agents/${AGENT_ID}/source`) {
+      json = null;
     } else if (
       pathname === `/api/v1/agents/${AGENT_ID}/channels` ||
       pathname === `/api/v1/agents/${AGENT_ID}/triggers` ||
@@ -418,7 +420,7 @@ test.describe("Agent settings drawer animation", () => {
         theme === "dark",
       );
       for (const title of [
-        "Primary sandbox",
+        "Sandbox",
         "Network access",
         "Files",
         "Token usage",
@@ -507,10 +509,8 @@ test.describe("Agent settings drawer animation", () => {
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
     for (const dismissal of ["Done", "Escape", "backdrop"]) {
-      await page.getByRole("button", { name: /^Primary sandbox/ }).click();
-      await expect(
-        drawer.getByRole("heading", { name: "Primary sandbox", exact: true }),
-      ).toBeVisible();
+      await page.getByRole("button", { name: /^Sandbox/ }).click();
+      await expect(drawer.getByRole("heading", { name: "Sandbox", exact: true })).toBeVisible();
       if (dismissal === "Done")
         await drawer.getByRole("button", { name: "Done", exact: true }).click();
       else if (dismissal === "Escape") await page.keyboard.press("Escape");
@@ -525,12 +525,8 @@ test.describe("Agent settings drawer animation", () => {
 
   test("respects reduced motion when opening and closing settings", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const opening = await sampleDrawerFrames(
-      page.getByRole("button", { name: /^Primary sandbox/ }),
-    );
-    expect(opening.some((frame) => frame.title === "Primary sandbox" && frame.opacity === 1)).toBe(
-      true,
-    );
+    const opening = await sampleDrawerFrames(page.getByRole("button", { name: /^Sandbox/ }));
+    expect(opening.some((frame) => frame.title === "Sandbox" && frame.opacity === 1)).toBe(true);
     expect(opening.every((frame) => frame.opacity === 0 || frame.opacity === 1)).toBe(true);
     const drawer = page.locator('[data-slot="drawer-content"]');
     expect(await drawer.evaluate((element) => getComputedStyle(element).transitionProperty)).toBe(
@@ -541,13 +537,10 @@ test.describe("Agent settings drawer animation", () => {
   });
 
   test("can close partway through opening without a blank frame", async ({ page }) => {
-    const frames = await sampleDrawerFrames(
-      page.getByRole("button", { name: /^Primary sandbox/ }),
-      true,
-    );
+    const frames = await sampleDrawerFrames(page.getByRole("button", { name: /^Sandbox/ }), true);
     const visible = frames.filter((frame) => frame.opacity > 0);
     expect(visible.length).toBeGreaterThan(1);
-    expect(visible.every((frame) => frame.title === "Primary sandbox")).toBe(true);
+    expect(visible.every((frame) => frame.title === "Sandbox")).toBe(true);
     expect(visible.every((frame) => Math.abs(frame.width - visible[0].width) < 1)).toBe(true);
     await expect(page.locator('[data-slot="drawer-content"]')).toHaveCount(0);
   });

@@ -1,5 +1,7 @@
 "use client";
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+
 // Organization defaults, one row per service, grouped by what they drive:
 // Chat (the model agents and sessions run on), Decisions (the Jev decision
 // model and who answers system checks), and Other services (provider-level
@@ -108,6 +110,22 @@ export function DefaultsTab({
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
     [models, currentModelId],
   );
+  const currentSmallModelId = org?.small_model_id;
+  const smallModelOptions = useMemo(
+    () =>
+      models
+        .filter(
+          (model) =>
+            model.id === currentSmallModelId ||
+            (model.enabled &&
+              !model.stale &&
+              isChatModel(model) &&
+              model.provider_type !== "chatgpt"),
+        )
+        .sort(compareByRecency)
+        .map((model) => ({ value: model.id, label: modelLabel(model) })),
+    [models, currentSmallModelId],
+  );
   const decisionOptions = useMemo(
     () =>
       models
@@ -143,6 +161,26 @@ export function DefaultsTab({
 
   const decisionId = decisionDefault.data?.id ?? "";
   const systemDecisions = org?.system_decisions ?? "deployment";
+  usePageReadContext({
+    fields: [
+      "default_model_id",
+      "small_model_id",
+      "decision_model_id",
+      "system_decisions",
+      "default_provider_per_service",
+    ],
+    values: {
+      default_model_id: currentModelId ?? "",
+      small_model_id: currentSmallModelId ?? "",
+      decision_model_id: decisionId,
+      system_decisions: systemDecisions,
+      default_provider_per_service: JSON.stringify(serviceDraft),
+    },
+    entityType: "model_defaults",
+    entityId: org?.id,
+    label: "Model defaults",
+    enabled: !!org,
+  });
   const busy = !canManage || !org || updateOrg.isPending;
 
   return (
@@ -155,7 +193,10 @@ export function DefaultsTab({
       {!canManage && (
         <p className="text-sm text-muted-foreground">Only organization admins change defaults.</p>
       )}
-      <DefaultSection title="Chat" description="The model agents and sessions run on.">
+      <DefaultSection
+        title="Chat"
+        description="Chat models for conversations and lightweight work."
+      >
         <DefaultRow
           label="Default model"
           description="Used when no model is set on the agent or session."
@@ -168,6 +209,22 @@ export function DefaultsTab({
               void run(() => updateOrg.mutateAsync({ default_model_id: value || null }))
             }
             placeholder={PLATFORM_DEFAULT_LABEL}
+            searchPlaceholder="Search chat models…"
+            disabled={busy}
+          />
+        </DefaultRow>
+        <DefaultRow
+          label="Small model"
+          description="Shared model for lightweight work, including automatic session titles."
+          problem={modelDefaultProblem(org?.small_model_id, models)}
+        >
+          <Combobox
+            options={smallModelOptions}
+            value={org?.small_model_id ?? ""}
+            onValueChange={(value) =>
+              void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
+            }
+            placeholder="Not set · titles use session model"
             searchPlaceholder="Search chat models…"
             disabled={busy}
           />

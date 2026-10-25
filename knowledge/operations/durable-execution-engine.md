@@ -188,6 +188,8 @@ External/gRPC workers and the in-process worker both run `crates/worker/src/unif
 | Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
 | Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
 | Shutdown grace | `WORKER_SHUTDOWN_GRACE_SECS` | `25` | How long a stopping worker lets in-flight tasks finish before it aborts them. Keep it under the orchestrator's kill timeout. |
+| Actor stall bound | `WORKER_ACTOR_STALL_TIMEOUT_SECS` | `300` | How long a leased session may sit before or after its turn writing nothing before the worker lets its lease expire ([stall watchdog](#session-actors-turn-execution)). |
+| Control-plane call deadline | `WORKER_GRPC_REQUEST_TIMEOUT_SECS` | `120` | Deadline of each worker call to the control plane; past it the call fails as a retryable error. |
 
 Guidance:
 
@@ -335,13 +337,35 @@ production and DEV_MODE alike; the worker side is
   The holder renews every third of the 10-second TTL. A holder whose renew
   finds the fence moved, or that renewed nothing for a whole TTL, has lost the
   lease: it stops the turn, drops its unwritten events and releases nothing.
-  A retryable failure (a store or transport error) also lets the lease
-  expire; the TTL is the backoff before another worker resumes from the log.
-  That includes a control-plane read or write the reason step needs (a pool
+  A retryable failure (a store or transport error) runs the turn again from
+  the log on the same lease, after a doubling backoff (default 5 retries from
+  1 s, about 30 s), once the failed run's queued writes are dropped or stored
+  so none lands behind the retry under the same fence. Only when the retries
+  are spent does the lease expire, with the TTL as the backoff before another
+  worker resumes from the log. That includes a control-plane read or write the reason step needs (a pool
   timeout loading the compaction checkpoint): the reason step returns it
   instead of reporting it as a model failure, so it never becomes a
   `turn.failed` with a provider-error message.
   Expiry is database time.
+- **A stalled holder lets its lease go.** The renewer extends the lease
+  whatever the turn does, so a holder stuck where it writes nothing (setup
+  before the turn is driven, or the flush and checkpoint after it) once kept a
+  session `active` with no events for two days: the lease never expired, so
+  neither resume nor the poison guard ran, and the idle sandbox sweep skipped
+  the session as active. A stall watchdog
+  ([`lease.rs`](../../crates/core/src/host/session_actor/lease.rs)) bounds
+  those phases (`WORKER_ACTOR_STALL_TIMEOUT_SECS`, default 5 minutes): past
+  the bound the renewer stops, the lease is lost and the stuck phase is
+  dropped, so the lease expires and the next one resumes from the log, each
+  stalled lease counting toward the poison guard. A driven turn is not bounded
+  this way; a long model stream or tool call is progress with its own
+  timeouts. Every worker control-plane call also has a deadline
+  (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`, default 120 s,
+  [`connect.rs`](../../crates/worker/src/grpc_adapters/connect.rs)), so a call
+  nobody answers fails as a retryable store error instead of hanging the turn.
+  The task subscription stream has its own channel and no deadline. Not yet
+  covered: a sweep for an `active` session whose actor is neither leased nor
+  runnable.
 - **Every log append is fenced.** Stopping on a lost renew leaves a window: a
   write already in flight when the lease ran out could land after another
   holder took the session. So every event a leased turn appends carries its
@@ -390,14 +414,28 @@ production and DEV_MODE alike; the worker side is
   by two lease lives); inside a command transaction that wait runs after the
   commit, when the holder can first see the request, still before the command
   answers. Past the bound the answer means "acknowledged": the request stays
-  on the row for the holder, or the next one, to record.
+  on the row for the holder, or the next one, to record. A backend error does
+  not transfer event ownership to the API: session and channel cancellation
+  return the error without synthesizing terminal events or idling the session.
+  Otherwise a worker completing while the API waits for a connection can leave
+  both completion and cancellation in the same turn's log.
 - **Poison guard.** `attempts` counts leases since the last release. A lease
   that finds more than `DURABLE_NO_PROGRESS_SEAL_THRESHOLD` (default 3) seals
   the turn instead of running it: a user-facing processing error,
   `turn.sealed { no_progress }`, `session.idled`, and the pending input
   consumed. A turn that kills its worker cannot loop forever, and the session
   is usable afterwards: the release resets the count, and the next message
-  starts a fresh turn.
+  starts a fresh turn. It counts holder deaths, not failures to reach the
+  control plane: those are retried on the lease (above), so a database blip
+  no longer spends leases. Before EVE-1301 every lease that ended on a
+  retryable error counted, and a pool exhaustion followed by a server kill
+  sealed healthy turns after three of them (chaos harness). A turn whose
+  failures outlast a lease's retries still lets the lease expire and counts
+  an attempt, so the seal stays the bound. Releasing instead of expiring was
+  rejected: release resets the count, so such a turn would never be sealed,
+  and it leaves an open turn with no pending input unrunnable. The reasoning
+  is next to the code in
+  [`turn.rs`](../../crates/core/src/host/session_actor/turn.rs).
 - **Per-org fairness order.** A lease call counts each org's held leases and
   takes actors of orgs under the cap (default 32) first, oldest first; an
   org's actors past it fill only the room left. It orders, it never holds

@@ -27,8 +27,8 @@ use everruns_core::events::ToolCallRequestedData;
 use serde_json::Value;
 
 use crate::api::question_answers::QUESTION_LOOKBACK_EVENTS;
-use crate::api::tool_results::{ClientToolResult, tool_results_plan};
 use crate::channels::ag_ui::interrupts::{ParkedCalls, ResumeError, ResumeOutcome, ResumeServices};
+use crate::domains::tool_results::types::ClientToolResult;
 use crate::storage::ClaimWaitingTurnResult;
 
 /// Most frontend tools one run may declare.
@@ -152,6 +152,7 @@ pub(crate) async fn submit_results(
     org_id: i64,
     session: &crate::domains::sessions::record::Session,
     names: &HashSet<String>,
+    config: &crate::domains::agent_channels::record::AgUiChannelConfig,
     results: Vec<ClientToolResult>,
 ) -> Result<ResumeOutcome, ResumeError> {
     if session.status != SessionStatus::WaitingForToolResults {
@@ -211,16 +212,21 @@ pub(crate) async fn submit_results(
         )));
     }
 
-    let context = crate::turns::open_turn_context(services.db, session.id)
-        .await
-        .map_err(ResumeError::Internal)?;
-    let plan = tool_results_plan(session.id, context, &results);
     let claim = match services
         .db
-        .claim_waiting_turn(org_id, session.id, plan)
+        .claim_tool_result_command(
+            org_id,
+            session.id,
+            results.iter().map(ClientToolResult::completed).collect(),
+        )
         .await
-        .map_err(ResumeError::Internal)?
-    {
+        .map_err(|error| {
+            if let Some(error) = error.downcast_ref::<everruns_contracts::AgentLoopError>() {
+                ResumeError::Invalid(error.to_string())
+            } else {
+                ResumeError::Internal(error)
+            }
+        })? {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { current_status } => {
             return Err(ResumeError::Conflict(format!(
@@ -241,6 +247,12 @@ pub(crate) async fn submit_results(
     )
     .await
     .map_err(ResumeError::Internal)?;
+    if claim.plan.response.get("resume").and_then(Value::as_bool) == Some(false) {
+        return Ok(ResumeOutcome::StillOpen {
+            tool_calls: Vec::new(),
+            interrupts: parked.interrupts(config),
+        });
+    }
     Ok(ResumeOutcome::Resumed {
         input_message_id: row
             .context

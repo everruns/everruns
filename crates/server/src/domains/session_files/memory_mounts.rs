@@ -323,6 +323,23 @@ impl MemoryMountRouter {
             .collect())
     }
 
+    pub async fn writable_for_dreaming(&self, mount: &MemoryMount) -> Result<bool> {
+        let memory = self.memory_row(mount).await?;
+        Ok(!mount.readonly && !memory.is_readonly && memory.status == "active")
+    }
+    pub async fn create_file_if_absent(
+        &self,
+        mount: &MemoryMount,
+        inner: &str,
+        content: &str,
+    ) -> Result<bool> {
+        self.ensure_writable(mount)?;
+        // Lock lifecycle while atomically creating: an archive or concurrent edit cannot be overwritten.
+        let written=sqlx::query("WITH writable AS (SELECT id FROM memories WHERE id=$1 AND org_id=$2 AND status='active' AND NOT is_readonly FOR SHARE) INSERT INTO memory_files(memory_id,path,content,is_directory,size_bytes) SELECT id,$3,$4,false,$5 FROM writable ON CONFLICT(memory_id,path) DO NOTHING")
+            .bind(mount.memory_id).bind(mount.org_id).bind(inner).bind(content.as_bytes()).bind(content.len() as i64).execute(self.db.pool()).await?;
+        Ok(written.rows_affected() == 1)
+    }
+
     pub async fn write_file(
         &self,
         mount: &MemoryMount,

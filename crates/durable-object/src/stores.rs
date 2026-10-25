@@ -2,21 +2,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::{Event, EventRequest};
-use everruns_core::execution_loading::SessionStore;
-use everruns_core::host::session_actor::store::{
-    ActorJournal, ActorRelease, ActorRenewal, SessionActorStore,
-};
-use everruns_core::host::{
-    EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
-    EventReader, HostBackends, RuntimeSessionStore, SessionMutator,
-};
-use everruns_core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
-use everruns_core::{
+use everruns::hosting::spi::actor::{ActorJournal, ActorRelease, ActorRenewal, SessionActorStore};
+use everruns::hosting::spi::error::{AgentLoopError, Result};
+use everruns::hosting::spi::events::{Event, EventRequest};
+use everruns::hosting::spi::ids::SessionId;
+use everruns::hosting::spi::loading::SessionStore;
+use everruns::hosting::spi::storage::{KeyInfo, SecretInfo, SessionStorageStore};
+use everruns::hosting::spi::{
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, ExecutionSession,
     ProactiveCompactionAttempt,
+};
+use everruns::hosting::spi::{
+    EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
+    EventReader, HostBackends, RuntimeSessionStore, SessionMutator,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -60,6 +58,7 @@ impl Authority {
     /// the retained build. Workspace durability is supplied separately by a host.
     pub fn backends(&self) -> HostBackends {
         let mut backends = HostBackends::in_memory();
+        backends.dreaming_store = self.client.dreaming_store.clone();
         backends.event_log = Arc::new(self.clone());
         backends.session_store = Arc::new(self.clone());
         backends.compaction_checkpoint_store = Arc::new(self.clone());
@@ -223,7 +222,16 @@ impl SessionActorStore for Authority {
 impl SessionStore for Authority {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.check_session(session_id)?;
-        self.store("session", "get", "record", Value::Null).await
+        #[derive(Deserialize)]
+        struct ExecutionView {
+            execution: Option<ExecutionSession>,
+            configuration: everruns::hosting::SessionConfiguration,
+        }
+        let mut view: ExecutionView = self.call("execution", json!({})).await?;
+        if let Some(record) = view.execution.as_mut() {
+            view.configuration.apply(record);
+        }
+        Ok(view.execution)
     }
 }
 

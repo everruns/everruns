@@ -1,0 +1,60 @@
+diff --git a/dist/cli.mjs b/dist/cli.mjs
+index 6245781287e188a088b157764e3b450923c4d1bf..e4face770295c43f46b12c19f848d8b9a5b8c6df 100755
+--- a/dist/cli.mjs
++++ b/dist/cli.mjs
+@@ -45994,6 +45994,7 @@ var ZodArray = class _ZodArray extends ZodType {
+           exact: true,
+           message: def.exactLength.message
+         });
++        if (tooBig) return INVALID;
+         status.dirty();
+       }
+     }
+@@ -46020,7 +46021,7 @@ var ZodArray = class _ZodArray extends ZodType {
+           exact: false,
+           message: def.maxLength.message
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+     if (ctx.common.async) {
+@@ -46944,7 +46945,7 @@ var ZodSet = class _ZodSet extends ZodType {
+           exact: false,
+           message: def.maxSize.message
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+     const valueType = this._def.valueType;
+diff --git a/dist/config.mjs b/dist/config.mjs
+index 2e876f0b1187449a1bf1c70dd108c935a76ed0f0..d742c4ad0a66ab40f73e657e68f217c758f089aa 100644
+--- a/dist/config.mjs
++++ b/dist/config.mjs
+@@ -2318,6 +2318,7 @@ var ZodArray = class _ZodArray extends ZodType {
+           exact: true,
+           message: def.exactLength.message
+         });
++        if (tooBig) return INVALID;
+         status.dirty();
+       }
+     }
+@@ -2344,7 +2345,7 @@ var ZodArray = class _ZodArray extends ZodType {
+           exact: false,
+           message: def.maxLength.message
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+     if (ctx.common.async) {
+@@ -3268,7 +3269,7 @@ var ZodSet = class _ZodSet extends ZodType {
+           exact: false,
+           message: def.maxSize.message
+         });
+-        status.dirty();
++        return INVALID;
+       }
+     }
+     const valueType = this._def.valueType;

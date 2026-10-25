@@ -48,9 +48,7 @@ impl DeadLetters for PostgresWorkflowEventStore {
                 StoreError::Database(e.to_string())
             }
         };
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(db_err("Failed to begin DLQ requeue"))?;
 
@@ -121,7 +119,7 @@ impl DeadLetters for PostgresWorkflowEventStore {
         .await
         .map_err(db_err("Failed to mark DLQ entry requeued"))?;
 
-        tx.commit()
+        crate::commit_transaction(tx)
             .await
             .map_err(db_err("Failed to commit DLQ requeue"))?;
 

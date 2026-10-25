@@ -381,7 +381,7 @@ impl Tool for DockerExecTool {
         tool_call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Docker");
         Some(
@@ -390,6 +390,7 @@ impl Tool for DockerExecTool {
                 fallback,
                 phase,
                 locale,
+                ctx,
             ),
         )
     }

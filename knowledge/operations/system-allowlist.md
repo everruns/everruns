@@ -291,13 +291,28 @@ LLM) never use it. Two reasons:
   `Proxy-Authorization: Bearer v1.<org>.<session>.<exp>.<hmac>`: org and session
   public ids (`-` when missing), a unix expiry five minutes out, and a hex
   HMAC-SHA256 over everything before the last dot with the shared secret. The
-  scope comes from `ScopedEgressService`, never from the tool.
+  scope comes from `ScopedEgressService`, never from the tool. Control-plane
+  requests made outside a turn for an org (MCP icons and event delivery, MCP
+  OAuth discovery, client registration, code exchange and token refresh) carry
+  the org with no session, so they count against the same limits.
 
 With a proxy, the proxy opens the connection, so it must re-resolve the target
 and refuse non-public addresses itself; the in-process checks still run first.
 A proxy URL with a missing or short secret fails closed: tenant requests error
-instead of leaving directly. Code: `crates/core/src/host/egress_proxy.rs`.
-Hosted Everruns runs the proxy in the SaaS repository.
+instead of leaving directly. `crates/core/src/host/egress_proxy.rs` owns the
+token on both sides (mint and verify), so the format cannot drift between them.
+
+The proxy is `everruns-egress-proxy` (`crates/server/src/egress_proxy/`), in
+the server image. It is OSS because nothing in forwarding, token checks, the
+SSRF floor, per-org caps or usage counting depends on who pays: a self-hosted
+operator needs the same separate address and caps. What a host builds on top
+plugs in through two traits: `LimitsSource` (per-org caps, suspension) and
+`UsageSink` (where counts go), both also spoken over HTTP to an optional
+control endpoint. Without one, caps come from env and are off unless set,
+because on a self-hosted deployment the operator owns the traffic; usage goes
+to the log. Hosted Everruns keeps only its commercial layer in the SaaS
+repository: trust tiers tied to payment, the operator kill switch, and booking
+usage into the org ledger.
 
 ## Relationship to other controls
 

@@ -93,6 +93,8 @@ export const settingsNavigationSections: NavigationSection[] = [
         href: "/settings/agent-experience",
         keywords: [
           "connections",
+          "credentials",
+          "secrets",
           "github",
           "gitlab",
           "virtual user",

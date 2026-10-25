@@ -1,5 +1,7 @@
 "use client";
 
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -23,7 +25,22 @@ export default function NewSandboxTemplatePage() {
   const [description, setDescription] = useState("");
   const [sandboxPolicy, setSandboxPolicy] = useState<SandboxPolicy | null>(null);
   const spec = sandboxPolicy?.templates?.[sandboxPolicy.default];
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "display_name", "description"],
+    values: { name, display_name: displayName, description },
+    entityType: "sandbox_template",
+    label: "New Sandbox Template",
+    baseline: "new",
+    dirty: !!(name || displayName || description),
+    writable: !mutation.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDisplayName(values.display_name);
+      setDescription(values.description);
+    },
+  });
   const submit = async () => {
+    if (chatDraft.blocked) return;
     if (!name || !displayName || !spec) return;
     const created = await mutation.mutateAsync({
       name,
@@ -48,6 +65,7 @@ export default function NewSandboxTemplatePage() {
         description="Create reusable Sandbox configuration. Saving later creates immutable revisions."
       />
       <PageMain className="max-w-3xl space-y-5">
+        {chatDraft.notice}
         <Card>
           <CardHeader>
             <CardTitle>Identity</CardTitle>

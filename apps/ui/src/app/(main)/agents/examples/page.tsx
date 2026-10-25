@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState, useCallback, useMemo } from "react";
 import { useAgentExamples, useImportAgentExample, useCapabilities, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
@@ -14,6 +16,7 @@ export default function AllExamplesPage() {
   usePageTitle("Examples", "Agents");
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
+  useChatPageFilters({ search: exampleSearch });
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading, error } = useAgentExamples();
   const importExample = useImportAgentExample();

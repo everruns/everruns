@@ -5,6 +5,8 @@ import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import type { SandboxPolicy } from "@/lib/api/types";
 
+jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
+
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
@@ -29,6 +31,38 @@ jest.mock("@/hooks/use-providers", () => ({
 
 jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: jest.fn(),
+}));
+
+// Request binding tests use native controls; the real searchable control has
+// keyboard, async-result, and focus coverage in combobox and browser tests.
+jest.mock("@/components/ui/combobox", () => ({
+  Combobox: ({
+    options,
+    value,
+    onValueChange,
+    ariaLabel,
+    disabled,
+  }: {
+    options: Array<{ value: string; label: string }>;
+    value: string;
+    onValueChange: (value: string) => void;
+    ariaLabel: string;
+    disabled?: boolean;
+  }) => (
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      <option value="">Pick an agent or harness</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
 }));
 
 // Render the design-system Select as a native select so the test can pick an
@@ -159,15 +193,14 @@ describe("NewPlaygroundChatForm", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/sess_new"));
   });
 
-  it("adds the dry_run capability for a test run and can run for real", async () => {
-    render(
-      <NewPlaygroundChatForm
-        endUserId="identity_customer"
-        initialAgentId="agent_1"
-        initialDryRun
-      />,
-    );
+  it("uses the existing checkbox to enable dry run from normal setup and switch back", async () => {
+    render(<NewPlaygroundChatForm endUserId="identity_customer" initialAgentId="agent_1" />);
 
+    expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Dry run/ }));
     expect(screen.getByRole("checkbox", { name: /Dry run/ })).toHaveAttribute(
       "aria-checked",
       "true",

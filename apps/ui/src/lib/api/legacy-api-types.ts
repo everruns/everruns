@@ -1,3 +1,9 @@
+export type {
+  Organization,
+  UpdateOrganizationRequest,
+  SystemDecisionsSource,
+} from "./organization-types";
+
 import type {
   Model,
   ModelWithProvider,
@@ -653,43 +659,10 @@ export interface OrganizationMembership {
   role: OrgRole;
 }
 
-/** Full organization details (from API) */
-export interface Organization {
-  id: string;
-  name: string;
-  default_model_id: string | null;
-  default_harness_id: string | null;
-  base_harness_id: string | null;
-  /** Default provider per service kind (EVE-569); empty object when none. */
-  default_provider_per_service: Record<string, string>;
-  /** Who answers guardrail jev checks and the Slack relevance check. */
-  system_decisions: SystemDecisionsSource;
-  created_at: string;
-  updated_at: string;
-  /**
-   * When the org's creator finished or skipped the setup wizard. `null` means
-   * onboarding is incomplete; the resume redirect sends the user to /setup.
-   */
-  onboarding_completed_at: string | null;
-}
-
 /** Request to create an organization */
 export interface CreateOrganizationRequest {
   name: string;
 }
-
-/** Request to update an organization */
-export interface UpdateOrganizationRequest {
-  name?: string;
-  default_model_id?: string | null;
-  default_harness_id?: string;
-  base_harness_id?: string;
-  /** Default provider per service kind (EVE-569); replaces the whole map. */
-  default_provider_per_service?: Record<string, string>;
-  system_decisions?: SystemDecisionsSource;
-}
-
-export type SystemDecisionsSource = "deployment" | "organization";
 
 export interface UserInfoResponse {
   id: string;
@@ -772,7 +745,6 @@ export type {
 } from "./connection-provider-types";
 
 // From legacy capability-types.ts; retained as UI compatibility over generated OpenAPI schemas.
-// NOTE: CapabilityId is defined in common-types for proper ordering
 export type CapabilityStatus =
   | "available"
   | "coming_soon"
@@ -809,10 +781,11 @@ export interface Capability {
   harness_count?: number;
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
+  /** Rollout flag that gates this capability, when one is required. */
+  feature_flag?: string;
   /**
    * Localized display strings keyed by lowercase language tag (e.g. "uk").
-   * The "en" entry carries only config_description, since the base
-   * name/description/config_schema strings are already English.
+   * The "en" entry carries only config_description; base strings are English.
    */
   localizations?: Record<string, CapabilityLocalization>;
 }

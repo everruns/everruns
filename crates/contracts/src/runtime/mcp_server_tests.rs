@@ -803,3 +803,64 @@ fn deferred_defaults_to_off_and_round_trips() {
     assert!(server.deferred);
     assert_eq!(serde_json::to_value(&server).unwrap()["deferred"], true);
 }
+
+#[test]
+fn searchable_server_description_round_trips_with_bounded_utf8_bytes() {
+    let server: ScopedMcpServer = serde_json::from_value(json!({
+        "url":"https://example.com/mcp", "description":"Warehouse fulfillment"
+    }))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&server).unwrap()["description"],
+        "Warehouse fulfillment"
+    );
+    for (description, accepted) in [("é".repeat(2048), true), ("é".repeat(2049), false)] {
+        assert_eq!(
+            serde_json::from_value::<ScopedMcpServer>(json!({
+                "url":"https://example.com/mcp", "description":description
+            }))
+            .is_ok(),
+            accepted
+        );
+    }
+}
+
+#[test]
+fn tool_timeout_is_optional_and_stays_out_of_serialized_config() {
+    let scoped: ScopedMcpServer =
+        serde_json::from_value(serde_json::json!({"type":"http","url":"https://example.com/mcp"}))
+            .unwrap();
+    assert_eq!(scoped.tool_timeout_ms, None);
+    let wire = serde_json::to_value(&scoped).unwrap();
+    assert!(wire.get("tool_timeout_ms").is_none(), "{wire}");
+}
+
+#[test]
+fn tool_timeout_accepts_the_mcp_servers_timeout_alias() {
+    for key in ["tool_timeout_ms", "timeout"] {
+        let scoped: ScopedMcpServer = serde_json::from_value(serde_json::json!({
+            "type":"http","url":"https://example.com/mcp", key: 300_000
+        }))
+        .unwrap();
+        assert_eq!(scoped.tool_timeout_ms, Some(300_000));
+        assert_eq!(
+            serde_json::to_value(&scoped).unwrap()["tool_timeout_ms"],
+            serde_json::json!(300_000)
+        );
+    }
+}
+
+#[test]
+fn tool_timeout_outside_the_accepted_range_is_rejected() {
+    for value in [0, 999, MCP_TOOL_TIMEOUT_MAX_MS + 1] {
+        let error = serde_json::from_value::<ScopedMcpServer>(serde_json::json!({
+            "type":"http","url":"https://example.com/mcp","tool_timeout_ms": value
+        }))
+        .unwrap_err();
+        assert!(error.to_string().contains("tool_timeout_ms"), "{error}");
+    }
+    for value in [MCP_TOOL_TIMEOUT_MIN_MS, MCP_TOOL_TIMEOUT_MAX_MS] {
+        assert!(validate_mcp_tool_timeout_ms(Some(value)).is_ok());
+    }
+    assert!(validate_mcp_tool_timeout_ms(None).is_ok());
+}

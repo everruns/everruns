@@ -88,8 +88,13 @@ impl EgressService for FakeMcpEgress {
         })
     }
 
-    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-        unimplemented!("not used by MCP transport")
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 

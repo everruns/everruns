@@ -150,8 +150,13 @@ impl EgressService for FakeEgress {
         })
     }
 
-    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-        unimplemented!("not used by MCP transport")
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
     }
 }
 
@@ -424,6 +429,152 @@ async fn discovers_tools_over_http_plain_json() {
     assert_eq!(tools[0].name, "search");
 }
 
+#[derive(Clone)]
+struct PaginatedEgress {
+    total: usize,
+    fail_after_page: Option<usize>,
+    requests: Arc<Mutex<Vec<Option<String>>>>,
+}
+
+#[async_trait]
+impl EgressService for PaginatedEgress {
+    async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        let request_json: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        let cursor = request_json["params"]["cursor"].as_str().map(str::to_owned);
+        let page = cursor
+            .as_deref()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(0);
+        self.requests.lock().unwrap().push(cursor);
+        if self.fail_after_page == Some(page) {
+            return Ok(EgressResponse {
+                status: 503,
+                headers: Default::default(),
+                body: b"page failed".to_vec(),
+            });
+        }
+        let start = page * 100;
+        let end = (start + 100).min(self.total);
+        let tools = (start..end)
+            .map(|index| {
+                json!({
+                    "name": format!("tool_{index}"), "description": "fixture tool",
+                    "inputSchema": {"type":"object"}
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut result = json!({"tools":tools});
+        if end < self.total {
+            result["nextCursor"] = json!((page + 1).to_string());
+        }
+        Ok(EgressResponse {
+            status: 200,
+            headers: Default::default(),
+            body: serde_json::to_vec(&json!({"jsonrpc":"2.0", "id":1, "result":result})).unwrap(),
+        })
+    }
+
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn discovers_all_pages_of_a_two_thousand_tool_catalog() {
+    let egress = Arc::new(PaginatedEgress {
+        total: 2_000,
+        fail_after_page: None,
+        requests: Arc::new(Mutex::new(Vec::new())),
+    });
+    let requests = egress.requests.clone();
+    let client = McpClient::new(egress, Arc::new(NoAuthProvider));
+    let tools = client
+        .discover(&McpConnection::http("large", FAKE_URL))
+        .await
+        .unwrap();
+    assert_eq!(tools.len(), 2_000);
+    assert_eq!(tools[0].name, "tool_0");
+    assert_eq!(tools[1_999].name, "tool_1999");
+    assert_eq!(requests.lock().unwrap().len(), 20);
+}
+
+#[tokio::test]
+async fn later_page_failure_fails_discovery_instead_of_returning_partial_tools() {
+    let egress = Arc::new(PaginatedEgress {
+        total: 250,
+        fail_after_page: Some(1),
+        requests: Arc::new(Mutex::new(Vec::new())),
+    });
+    let client = McpClient::new(egress, Arc::new(NoAuthProvider));
+    let error = client
+        .discover(&McpConnection::http("large", FAKE_URL))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("503"));
+}
+
+struct OversizedStreamEgress {
+    status: u16,
+}
+
+#[async_trait]
+impl EgressService for OversizedStreamEgress {
+    async fn send(&self, _request: EgressRequest) -> EgressResult<EgressResponse> {
+        Err(everruns_core::EgressError::Transport(
+            "discovery should use bounded streaming".into(),
+        ))
+    }
+
+    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let body = vec![b'x'; everruns_core::mcp::MCP_DISCOVERY_MAX_BYTES + 1];
+        Ok(EgressStreamResponse {
+            status: self.status,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter([Ok(body)])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn oversized_http_discovery_stream_fails_before_json_parsing() {
+    let client = McpClient::new(
+        Arc::new(OversizedStreamEgress { status: 200 }),
+        Arc::new(NoAuthProvider),
+    );
+    let error = client
+        .discover(&McpConnection::http("large", FAKE_URL))
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<everruns_core::mcp::McpDiscoveryError>(),
+        Some(everruns_core::mcp::McpDiscoveryError::LimitExceeded {
+            resource: "page bytes",
+            limit: everruns_core::mcp::MCP_DISCOVERY_MAX_BYTES,
+        })
+    ));
+}
+
+#[tokio::test]
+async fn oversized_auth_rejection_keeps_typed_status_for_cache_invalidation() {
+    let client = McpClient::new(
+        Arc::new(OversizedStreamEgress { status: 401 }),
+        Arc::new(NoAuthProvider),
+    );
+    let error = client
+        .discover(&McpConnection::http("large", FAKE_URL))
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<everruns_core::mcp::McpHttpStatusError>(),
+        Some(error) if error.status == 401
+    ));
+}
+
 #[tokio::test]
 async fn reads_resource_over_http_sse_with_method_and_uri() {
     let response = json!({
@@ -612,4 +763,92 @@ async fn resolver_excludes_ambiguous_names_and_routes_exact_valid_server_and_too
         assert_eq!(body["params"]["name"], tool);
         assert_eq!(body["params"]["arguments"], json!({"value":"original"}));
     }
+}
+
+/// Egress that answers every request with one tool result and records the
+/// deadline each `tools/call` was sent with.
+struct DeadlineRecordingEgress {
+    call_timeouts: Arc<Mutex<Vec<Option<u64>>>>,
+}
+
+#[async_trait]
+impl EgressService for DeadlineRecordingEgress {
+    async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap_or_default();
+        if body["method"] == "tools/call" {
+            self.call_timeouts.lock().unwrap().push(request.timeout_ms);
+        }
+        Ok(EgressResponse {
+            status: 200,
+            headers: Default::default(),
+            body: serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": body["id"].clone(),
+                "result": { "content": [{ "type": "text", "text": "done" }], "isError": false }
+            }))
+            .unwrap(),
+        })
+    }
+
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let response = self.send(request).await?;
+        Ok(EgressStreamResponse {
+            status: response.status,
+            headers: response.headers,
+            body: Box::pin(futures::stream::iter([Ok(response.body)])),
+        })
+    }
+}
+
+async fn tools_call_deadlines(connection: McpConnection) -> Vec<Option<u64>> {
+    let call_timeouts = Arc::new(Mutex::new(Vec::new()));
+    let client = Arc::new(McpClient::new(
+        Arc::new(DeadlineRecordingEgress {
+            call_timeouts: call_timeouts.clone(),
+        }),
+        Arc::new(NoAuthProvider),
+    ));
+    let executor = McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    );
+    let result = executor
+        .execute_mcp_tool(&ToolCall {
+            id: "call_deadline".into(),
+            name: "mcp_ci__run".into(),
+            arguments: json!({}),
+        })
+        .await
+        .unwrap();
+    assert!(result.error.is_none(), "call failed: {:?}", result.error);
+    call_timeouts.lock().unwrap().clone()
+}
+
+#[tokio::test]
+async fn tools_call_uses_the_default_deadline_when_unset() {
+    let deadlines = tools_call_deadlines(McpConnection::http("ci", FAKE_URL)).await;
+    assert!(!deadlines.is_empty());
+    assert!(deadlines.iter().all(|deadline| *deadline == Some(60_000)));
+}
+
+#[tokio::test]
+async fn tools_call_honors_the_servers_configured_deadline() {
+    let deadlines =
+        tools_call_deadlines(McpConnection::http("ci", FAKE_URL).with_tool_timeout_ms(300_000))
+            .await;
+    assert!(!deadlines.is_empty());
+    assert!(deadlines.iter().all(|deadline| *deadline == Some(300_000)));
+}
+
+#[tokio::test]
+async fn an_out_of_range_deadline_is_clamped_not_trusted() {
+    let deadlines = tools_call_deadlines(
+        McpConnection::http("ci", FAKE_URL).with_tool_timeout_ms(7 * 24 * 60 * 60 * 1000),
+    )
+    .await;
+    assert!(
+        deadlines
+            .iter()
+            .all(|deadline| *deadline == Some(30 * 60_000))
+    );
 }

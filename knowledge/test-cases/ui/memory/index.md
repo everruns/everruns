@@ -7,3 +7,5 @@
 * [TC005: Search Memory by Name](TC005_search_memory.md) - Verify that the search input on the Memory page filters the list by name and surfaces the empty state when no memory match.
 * [TC006: Memory Capability Mount Editor](TC006_memory_capability_config.md) - Verify that the **Memory** capability config editor (on an agent or harness) lets users add, configure, and remove memory mounts, and surfaces inline validation for invalid paths, duplicate paths, and overlapping paths.
 * [TC007: Scoped agent and user memory](TC007_scoped_agent_and_user_memory.md) - Verify that host-agent memory is mounted at `/memory/agent` and persists across two sessions of the same agent, while user memory is mounted only in sessions where that user participates.
+
+* [TC008: Memory - Background dreaming and Trace](TC008_dreaming_trace.md) - Verify source-linked consolidation, separate background Trace, cross-session recall, and proposal review.

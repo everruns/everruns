@@ -1,0 +1,194 @@
+---
+title: Pluggable session hosting
+description: Implement durable hosting beneath Engine without implementing an agent runtime.
+slug: framework/hosting
+sidebar:
+  order: 4
+---
+
+Everruns owns agent execution. A host supplies a coherent session authority
+through `everruns::hosting::SessionHosting` and a claimed write capability through
+`SessionEpoch`. Applications define ordinary `Agent` values and call the same
+`Engine` and `Session` API regardless of the hosting implementation.
+
+Without hosting configuration, `Engine::builder().build()` uses in-memory hosting.
+An embedded application needs no database, Durable Object or external hosting service.
+Its sessions live for the lifetime of that process. Durable hosting is an opt-in.
+
+The hosting SPI is experimental. Framework has no dependency on a Cloudflare or
+celld adapter. [Durable Object examples](/framework/durable-objects/) demonstrate
+how an external implementation can use this boundary; they are source-only
+references, outside the product publish set.
+
+## Responsibilities
+
+| Framework Engine | Hosting implementation | Application/deployment |
+| --- | --- | --- |
+| Planning, shared actor recovery and tool execution | Immutable session binding and transactional commands | Trusted Agent/build registry |
+| Lifecycle hooks and finalized outcomes | Deduplicated input receipts and canonical journal | Retained code and Environment factories |
+| Session command rules, approval/client wait interpretation and context projection | Exclusive epochs, fenced storage and bounded snapshot reads | Workspace, compute, secrets and provider transport |
+| Execution entry through `Engine::activate` | Independent wakeups, expiry discovery and activation retries | Authentication, authorization and operational recovery |
+
+A hosting implementation must commit input, receipt and wakeup obligation before
+acknowledging admission. Every execution mutation checks the same unexpired epoch
+inside the authority transaction. Frontend readers reject mutations. Durable
+hosts arrange activation independently of frontend connections and process-local
+queues. An alarm or supervisor calls `Engine::activate(session_id)`; it never
+implements a second planner or turn loop.
+
+Registered builds and Environment references are immutable. Missing retained code
+must produce visible suspension instead of falling back to the latest Agent.
+A durable journal does not make tools, workspace files or external effects durable;
+those services retain their own guarantees and idempotency requirements.
+
+## Waiting without keeping execution alive
+
+Engine stores safe provider retry deadlines and budgets in the session authority,
+then releases execution. The host wakes the same session when its deadline is due;
+an early wake sends no model request, and cancellation can interrupt the wait.
+Retry limits survive restarting Engine. An explicit provider policy that disables
+retries remains disabled.
+
+If a stream fails after answer text, a safe retry keeps the message ID and emits
+`output.message.started` again before parking. Clients replace that attempt's
+partial text. A trailing stream error keeps the partial answer when no retry
+fits the remaining budget.
+Tool calls and provider-executed effects retain their existing
+replay restrictions.
+
+`HostingStatus::wake()` reports whether compute is needed now, at a deadline, or
+only after an external event. Hosts deliver wakeups; Engine retains execution and
+recovery policy. Default memory hosting uses its local scheduler and needs no
+external backend. This does not suspend arbitrary running tools or make external
+effects safe to repeat.
+
+The reference Workers SSE transport uses hibernating WebSocket notifications to
+read committed events when they change. Its frontend heartbeat does not poll an
+idle session object. Clients that perform their own polling still generate object
+activity.
+
+## Implementing a host
+
+Depend on `everruns` with only the features the placement needs. The supported
+storage/ownership paths are under `everruns::hosting::spi`: canonical events and
+paging, actor leases/journal access, execution views, compaction checkpoints and
+session values. `SessionHosting` and `SessionEpoch` describe the semantic contract.
+Host implementations need no direct `everruns-core` or `everruns-contracts`
+dependency, and do not construct the Engine runtime.
+
+The host's required `command` method runs the shared Rust command implementation
+inside its authority transaction. Capture a bounded `spi::session_commands::CommandView`,
+call `spi::session_commands::prepare`, and apply its complete plan before releasing
+the transaction or revision guard. This keeps binding checks, command fingerprints,
+approval decisions, pending-call validation and partial-wait behavior in Everruns.
+The host translates the resulting journal, value, receipt and activation writes
+into its own storage operations. It does not reproduce those decisions.
+
+For a remote authority, send the semantic command to that authority. Run the Rust
+implementation there, against its locked canonical state and clock; preparing a
+plan in an executor and sending its effects creates a validation/commit race.
+The object reference compiles this same command implementation to Wasm and invokes
+it inside the object's storage transaction, including when Engine runs on a native
+executor. JavaScript supplies transaction and wakeup plumbing.
+
+`SessionEpoch::backends()` supplies the low-level storage ports that Engine uses
+internally. `HostBackends` is an implementation detail of writing a hosting
+adapter, not Agent configuration. Its in-memory defaults are appropriate for
+reconstructed definitions and explicitly volatile services. Replace every store
+whose state your durability claim covers with the authority's fenced version.
+Selecting individual stores through legacy Agent configuration is a separate,
+weaker embedding path and does not establish coherent durable execution.
+
+## Qualifying a host
+
+Enable `hosting-conformance` in the host crate's **dev-dependencies**. The native
+suite runs against a fresh test authority using the public Framework SPI:
+
+```rust
+async fn qualify(host: impl everruns::hosting::SessionHosting + Clone) {
+everruns::hosting::conformance::authority(&host).await;
+everruns::hosting::conformance::lease_expiry(&host).await;
+everruns::hosting::conformance::engine_wait_recovery(host).await;
+}
+```
+
+The scenarios check immutable bindings, admission retries/conflicts, bounded
+snapshot paging, read-only frontend ports, exclusive epochs, lease expiry, stale writes,
+Engine reconstruction, mixed approval/client waits and atomic retry handling.
+The same suite runs against built-in memory/SQLite hosts and the independently
+resolved DO reference. The feature is native test tooling; it does not add a
+simulated provider to Wasm deployments or certify storage durability.
+
+Also run deployment-specific failure tests: kill the executor or isolate after a
+committed effect, allow no frontend requests during recovery, and require the
+original admission to finish through an independent wakeup. Test lease expiry,
+platform owner loss and retained-build failure according to the claimed failure
+domain. The reference includes workerd, isolate and native-process harnesses;
+local emulators alone do not establish production platform guarantees.
+
+## Framework, serve and the platform server
+
+Framework applications and serve both enter `everruns::Engine`; selecting a host
+does not change their Agent definitions. A DO application is the same Engine and
+Agent compiled to Wasm, with an object host and host-compatible tools. The celld
+example supplies that hosting integration, or a native executor when tools need
+processes and files.
+
+The full Everruns platform server has its own control plane and PostgreSQL actor
+host. It consumes the same Core actor driver directly, shares the Rust command
+validation for client results and the approval/question policies, and retains its
+platform authorization and durable resolution claims. Supporting external hosts
+does not require routing the whole platform through the Framework facade.
+
+## Deployments and retained behavior
+
+Keep three identities separate:
+
+| Identity | Changes when | Persisted binding |
+| --- | --- | --- |
+| Deployment revision | Worker/container is rebuilt or redeployed | Deployment metadata only |
+| `AgentBuild` | Agent behavior or its immutable configuration changes | Exact Agent registration |
+| `SessionBinding.framework` | Persisted runtime format becomes incompatible | Runtime format version |
+
+A compatible Engine upgrade can serve several retained Agent definitions in one
+binary. Register the original definitions alongside the new one; an old key must
+still construct its original tools, hooks, Harness, Environment and model settings.
+Do not alias old keys to the current Agent. Retaining a frontend Worker revision
+alone does not retain the implementation running inside its Durable Objects.
+
+serve's default durable build identity conservatively includes its executable.
+It does not automatically declare rebuilt behavior compatible. Hosts can supply
+an application-owned Engine with retained registrations through
+`everruns_serve::ServerBuilder::engine`; each old registration still needs
+its original Agent, Harness and Environment reference. `Server::engine()` exposes
+that same Engine for authorized compatibility inspection and retry operations.
+
+```rust
+use everruns::{Agent, Engine};
+use everruns::hosting::AgentBuild;
+
+fn deployment(original: Agent, current: Agent) -> Engine {
+    Engine::builder()
+        .register(AgentBuild::new("assistant", "v1"), original)
+        .register(AgentBuild::new("assistant", "v2"), current)
+        .build()
+}
+```
+
+Use `engine.session_compatibility(id).await?` to inspect the required build,
+unsupported runtime version or missing immutable configuration without starting
+execution. History and accepted receipts remain readable when code is missing.
+Activation suspends before running an unsupported format or substituting behavior.
+
+After restoring the exact registration and a compatible Engine, an authorized
+host can call `engine.retry_session(id, stable_command_id).await?`. This checks
+compatibility, then atomically checks the unchanged binding and absence of an
+active epoch, retains the retry receipt and restores the activation obligation.
+Pending tools, approvals, waits, history and accepted inputs retain their identities.
+The command refuses suspensions caused by uncertain effects: those require their
+own reconciliation policy. This privileged method needs application authorization.
+
+The framework does not provide an in-place build migration. A migration would
+need a separate compatibility and fencing protocol covering active execution,
+accepted inputs and outstanding effects. Overwriting a build ID or copying only
+completed messages does not preserve interrupted execution.

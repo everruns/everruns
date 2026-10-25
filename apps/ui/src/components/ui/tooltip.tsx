@@ -3,8 +3,8 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 
 import { cn } from "@/lib/utils";
 
-function TooltipProvider({ children }: { children: React.ReactNode }) {
-  return <TooltipPrimitive.Provider>{children}</TooltipPrimitive.Provider>;
+function TooltipProvider(props: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider {...props} />;
 }
 
 function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
@@ -29,12 +29,16 @@ function TooltipTrigger({
 function TooltipContent({
   className,
   sideOffset = 4,
+  side,
   children,
   ...props
-}: TooltipPrimitive.Popup.Props & { sideOffset?: number }) {
+}: TooltipPrimitive.Popup.Props & {
+  sideOffset?: number;
+  side?: TooltipPrimitive.Positioner.Props["side"];
+}) {
   return (
     <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Positioner sideOffset={sideOffset}>
+      <TooltipPrimitive.Positioner sideOffset={sideOffset} side={side}>
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           className={cn(

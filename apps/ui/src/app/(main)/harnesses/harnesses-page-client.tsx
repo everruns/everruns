@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { HarnessDomainIcon } from "@/components/icons/facet-icons";
 import { useCallback, useState, useMemo } from "react";
 import {
@@ -47,6 +49,7 @@ export default function HarnessesPageClient() {
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [view, setView] = useState<"grid" | "list">("grid");
+  useChatPageFilters({ search: search, status: statusTab, tab: view });
 
   const handleImport = useCallback(
     async (name: string) => {

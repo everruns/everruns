@@ -11,8 +11,8 @@
 //! - Events are subscribed before the message is sent, so the first deltas of
 //!   a fast turn are never missed. A message that steers a running turn gets
 //!   no delivery of its own: the running turn's delivery carries the answer.
-//! - A pending delivery is saved at the turn's first durable event and cleared
-//!   when it ends; [`ChannelHost::recover`] replays the rest after a restart.
+//! - A pending delivery is saved before awaiting turn assignment and cleared
+//!   when it ends or its input steers an existing delivery; [`ChannelHost::recover`] replays the rest after a restart.
 //!   It is held under a lease the running delivery renews, so processes
 //!   sharing a store recover each delivery once.
 //! - Channels are built in or resolved per call. A host whose channels are
@@ -27,6 +27,9 @@
 //!   they have no driver: they share the binding store and the session port
 //!   through [`ChannelHost::conversation`] and [`ChannelHost::stream_turn`],
 //!   and encode the turn's events in their own protocol.
+
+mod admission;
+mod delivery_task;
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -256,10 +259,28 @@ pub struct NewChannelSession {
 /// What sending a message did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SendOutcome {
+    /// Input committed before its executor assigned a turn.
+    Pending { input_message_id: String },
     /// A turn started for this input message.
     Started { input_message_id: String },
     /// The message steered the turn already running.
     Steered,
+}
+
+/// Authoritative delivery progress after input admission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendResolution {
+    /// Input still awaits preparation or turn assignment.
+    Pending,
+    /// The input belongs to this turn; legacy ports may omit its identity.
+    Assigned {
+        turn_id: Option<String>,
+        steered: bool,
+    },
+    /// Preparation rejected this input without starting a turn.
+    Rejected,
+    /// Host intervention is required; retain the pending delivery.
+    Suspended,
 }
 
 /// The session side of channels, implemented by each host. Every call names
@@ -295,6 +316,20 @@ pub trait ChannelSessionPort: Send + Sync {
         session_id: &str,
         message: InputMessage,
     ) -> Result<SendOutcome, ChannelError>;
+
+    /// Resolve a committed input without activating execution. The default
+    /// preserves ports whose `send` already made the start/steer decision.
+    async fn resolve_send(
+        &self,
+        _channel: &ChannelConfig,
+        _session_id: &str,
+        _input_message_id: &str,
+    ) -> Result<SendResolution, ChannelError> {
+        Ok(SendResolution::Assigned {
+            turn_id: None,
+            steered: false,
+        })
+    }
 
     /// The session's events: live from now when `after` is `None`, else the
     /// durable events after that sequence followed by live ones.
@@ -669,6 +704,56 @@ impl ChannelHost {
             .await
     }
 
+    /// Send `message` in conversation `key` of messaging channel `channel`
+    /// and deliver that turn's replies to `target`: the session a platform
+    /// message under the same key would land in, created and bound on first
+    /// use. For a schedule that speaks in an existing conversation (a Slack
+    /// DM) rather than opening a new one, as [`start`](Self::start) does.
+    pub async fn send_in_conversation<'a>(
+        &self,
+        channel: impl Into<ChannelRef<'a>>,
+        key: &str,
+        message: InputMessage,
+        target: DeliveryTarget,
+    ) -> Result<(Conversation, SendOutcome), ChannelError> {
+        let channel = self.channel(channel.into()).await?;
+        let driver = channel.require_driver()?;
+        let conversation = match self.inner.store.session_for(channel.name(), key).await? {
+            Some(session_id) => Conversation {
+                session_id,
+                created: false,
+            },
+            None => {
+                let created = self
+                    .inner
+                    .port
+                    .create_session(NewChannelSession {
+                        channel: channel.config.clone(),
+                        binding_key: Some(key.to_string()),
+                        title: title_for(
+                            message
+                                .content
+                                .iter()
+                                .find_map(|part| part.as_text())
+                                .unwrap_or_default(),
+                        ),
+                        metadata: json!({
+                            "channel": channel.name(),
+                            "kind": channel.platform(),
+                            "binding_key": key,
+                        }),
+                    })
+                    .await?;
+                self.bind_created(&channel, key, created).await?
+            }
+        };
+        let message = with_channel(message, channel.name());
+        let outcome = self
+            .send_and_deliver(&channel, &driver, &conversation.session_id, message, target)
+            .await?;
+        Ok((conversation, outcome))
+    }
+
     /// The session behind conversation `key` of streaming channel `channel`,
     /// created and bound on first use. `title` names a new session.
     pub async fn conversation<'a>(
@@ -807,14 +892,20 @@ impl ChannelHost {
             .port
             .send(&channel.config, session_id, message)
             .await?;
-        let turn = match &outcome {
-            SendOutcome::Started { input_message_id } => Some(input_message_id.clone()),
-            SendOutcome::Steered => None,
+        let events = match &outcome {
+            SendOutcome::Pending { input_message_id } => admission::assigned_events(
+                self.inner.port.clone(),
+                channel.config.clone(),
+                session_id.to_string(),
+                input_message_id.clone(),
+                events,
+            ),
+            SendOutcome::Started { input_message_id } => {
+                turn_events(events, Some(input_message_id.clone()))
+            }
+            SendOutcome::Steered => turn_events(events, None),
         };
-        Ok(StreamTurn {
-            outcome,
-            events: turn_events(events, turn),
-        })
+        Ok(StreamTurn { outcome, events })
     }
 
     /// The events of whichever turn runs next on a session of streaming
@@ -1094,7 +1185,9 @@ impl ChannelHost {
         driver
             .decided(&decision, &driver.delivery_context(&decision.reply_to))
             .await;
-        if let SendOutcome::Started { input_message_id } = outcome {
+        if let SendOutcome::Started { input_message_id }
+        | SendOutcome::Pending { input_message_id } = outcome
+        {
             self.spawn_delivery(
                 channel.clone(),
                 driver.clone(),
@@ -1149,7 +1242,8 @@ impl ChannelHost {
             .port
             .send(&channel.config, session_id, message)
             .await?;
-        if let SendOutcome::Started { input_message_id } = &outcome
+        if let SendOutcome::Started { input_message_id } | SendOutcome::Pending { input_message_id } =
+            &outcome
             && channel.config.delivery.replies
         {
             self.spawn_delivery(
@@ -1178,7 +1272,7 @@ impl ChannelHost {
     ) {
         let inner = self.inner.clone();
         tokio::spawn(async move {
-            run_delivery(
+            delivery_task::run_delivery(
                 inner,
                 Delivery {
                     channel,
@@ -1202,97 +1296,6 @@ struct Delivery {
     session_id: String,
     input_message_id: String,
     target: DeliveryTarget,
-}
-
-async fn run_delivery(
-    inner: Arc<Inner>,
-    turn: Delivery,
-    mut events: ChannelEventStream,
-    mut pending_saved: bool,
-) {
-    let Delivery {
-        channel,
-        driver,
-        session_id,
-        input_message_id,
-        target,
-    } = turn;
-    let context = driver.delivery_context(&target);
-    let options = channel.config.delivery.clone();
-    let (adapter, options) = match &channel.planner {
-        Some(planner) => planner.plan(&session_id, &target, options).await,
-        None => (driver.clone() as Arc<dyn ChannelDeliveryAdapter>, options),
-    };
-    let typed_session = session_id
-        .parse::<SessionId>()
-        .unwrap_or_else(|_| SessionId::new());
-    let mut delivery = TurnDelivery::new(
-        adapter,
-        context,
-        typed_session,
-        input_message_id.clone(),
-        options,
-    );
-    let mut flush = tokio::time::interval(inner.flush_interval);
-    flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    // Renew well before the lease runs out, so a slow store round trip never
-    // lets another process take a delivery this one is running.
-    let mut renew = tokio::time::interval(inner.lease / 3);
-    renew.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    renew.tick().await;
-
-    loop {
-        tokio::select! {
-            event = events.next() => {
-                let Some(event) = event else {
-                    // The stream ended without a terminal event: the host is
-                    // shutting down. Leave the pending delivery for recovery.
-                    delivery.flush().await;
-                    return;
-                };
-                if !pending_saved
-                    && let Some(sequence) = event.sequence
-                {
-                    let pending = PendingDelivery {
-                        channel: channel.config.name.clone(),
-                        session_id: session_id.clone(),
-                        input_message_id: input_message_id.clone(),
-                        target: target.clone(),
-                        after_sequence: sequence - 1,
-                    };
-                    if let Err(error) = inner
-                        .store
-                        .save_pending(&pending, &inner.holder, inner.lease)
-                        .await
-                    {
-                        warn!(%session_id, %error, "channel: could not save a pending delivery");
-                    }
-                    pending_saved = true;
-                }
-                if let DeliveryStep::Finished(_) = delivery.observe(&event).await {
-                    break;
-                }
-            }
-            _ = flush.tick(), if delivery.has_pending_work() => delivery.flush().await,
-            _ = renew.tick(), if pending_saved => {
-                if let Err(error) = inner
-                    .store
-                    .renew_pending(&session_id, &input_message_id, &inner.holder, inner.lease)
-                    .await
-                {
-                    warn!(%session_id, %error, "channel: could not renew a delivery lease");
-                }
-            }
-        }
-    }
-
-    if let Err(error) = inner
-        .store
-        .clear_pending(&session_id, &input_message_id)
-        .await
-    {
-        warn!(%session_id, %error, "channel: could not clear a pending delivery");
-    }
 }
 
 /// `message`, tagged with the channel it came through unless it already is.

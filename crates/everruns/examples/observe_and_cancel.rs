@@ -27,8 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pending = session.send("hi").await?;
     let mut rendered = String::new();
     while let Some(event) = events.recv().await? {
-        let terminal =
-            event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal();
+        let terminal = event.kind.is_terminal();
         match event.kind {
             SessionEventKind::TurnStarted => println!("[turn started]"),
             SessionEventKind::TextDelta { delta } => {
@@ -44,6 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let turn = pending.wait().await?;
     println!("final response: {}", turn.response);
+    // A failed turn (bad key, exhausted quota) still returns `Ok`; report it
+    // so the live example run fails instead of printing an empty answer.
+    if !turn.success {
+        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
+    }
     assert_eq!(rendered, turn.response);
 
     // --- Cancel a turn ---------------------------------------------------

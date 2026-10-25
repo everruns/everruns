@@ -304,9 +304,14 @@ def main():
         # Actor checks only when the build actually leased sessions: main
         # also has an (unused, empty) session_actors table.
         if sampler and sampler.history:
-            sampler.check(rep, actor_releases(run_dir, args.workers))
+            journal = sampler.journal_releases()
+            if journal is None:
+                rep.notes.append("actor lease journal unreadable; releases read from worker logs only")
+            sampler.check(rep, actor_releases(run_dir, args.workers), journal)
             with open(os.path.join(run_dir, "actor_history.json"), "w") as f:
                 json.dump(sampler.history, f)
+            with open(os.path.join(run_dir, "actor_releases.json"), "w") as f:
+                json.dump(sorted(journal or []), f)
             actor_worker_overlap(run_dir, args.workers, rep)
         elif sampler:
             sampler = None

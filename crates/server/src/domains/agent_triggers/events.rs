@@ -75,6 +75,17 @@ pub struct TriggerEventRoute<'a> {
     pub webhook_compat: Option<&'a WebhookCompatibilityContext>,
     /// Saved script the event runs instead of asking the model.
     pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
+    /// A channel conversation the run speaks in instead of a session of the
+    /// trigger's own (schedule triggers with a target).
+    pub channel: Option<ChannelRun<'a>>,
+}
+
+/// A run in one of the agent's channel conversations, and what it needs.
+#[derive(Clone, Copy)]
+pub struct ChannelRun<'a> {
+    pub target: &'a super::record::ScheduleTriggerTarget,
+    pub channels: Option<&'a crate::channels::host::ServerChannels>,
+    pub encryption: Option<&'a Arc<crate::storage::EncryptionService>>,
 }
 
 /// Result of handing one event to one trigger.
@@ -216,6 +227,21 @@ async fn run(
         .map(|run| super::script_target::rendered(run, &event.context));
     let trigger = route.trigger;
     let agent = route.agent;
+    if let Some(channel) = &route.channel {
+        let (session_id, created_session) = super::channel_target::run(
+            db,
+            channel,
+            agent,
+            trigger.id,
+            rendered_message,
+            request_id,
+        )
+        .await?;
+        return Ok(AgentTriggerInvocationResult {
+            session_id,
+            created_session,
+        });
+    }
     let execution_context =
         resolve_trigger_execution_context(db, trigger.org_id, agent, trigger).await?;
     let (session_id, created_session) = find_or_create_trigger_session(

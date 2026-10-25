@@ -23,7 +23,7 @@ The assistant manages the platform through the `everruns` CLI in the same
 Bashkit shell it uses for files, pipes, filtering, loops, and redirection.
 Product documentation is read-only; scratch files belong to the conversation;
 shared and private notes outlive it. The executable composition and prompt
-live in [the Agent definition](../../crates/server/src/platform_chat_agent.rs).
+live in [the Agent definition](../../crates/server/src/platform_chat_agent/mod.rs).
 
 The earlier `discover` / `query` / `execute` split forced the model to reason
 about tool selection without providing a permission boundary. Authorization
@@ -37,6 +37,16 @@ The platform CLI is installed from the session's effective tool registry.
 Withholding platform capability from the effective Agent and harness composition also withholds the command.
 Arguments remain data across shell forwarding, and invocation bounds prevent
 one shell loop from amplifying a turn into unbounded control-plane calls.
+
+## Built-in operating skills
+
+The `platform` capability supplies `everruns` for product orientation,
+`everruns-cli` for command usage and examples, and `everruns-agent-authoring`
+for agent design. The standard skills loader discovers their read-only mounts
+and activates instructions on demand. Essential authorization, credential, and
+change-context rules remain in code and the managed prompt; optional skill
+activation does not establish those boundaries. MCP-oriented authoring examples
+use the active session shell under the capability's interface guidance.
 
 ## Memory and privacy
 

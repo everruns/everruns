@@ -14,7 +14,7 @@
 
   <rect x="45" y="25" width="300" height="65" fill="#F5F5F5" stroke="#0A0A0A"/>
   <text x="195" y="45" text-anchor="middle" class="header-text">REQUESTER</text>
-  <text x="195" y="71" text-anchor="middle" class="label">Authenticated application</text>
+  <text x="195" y="71" text-anchor="middle" class="label">Framework Engine / Session</text>
 
   <rect x="45" y="145" width="300" height="70" fill="#F5F5F5" stroke="#0A0A0A"/>
   <text x="195" y="164" text-anchor="middle" class="header-text">SESSION AUTHORITY</text>
@@ -23,7 +23,7 @@
 
   <rect x="45" y="295" width="300" height="70" fill="#F5F5F5" stroke="#0A0A0A"/>
   <text x="195" y="314" text-anchor="middle" class="header-text">EXECUTION HOST</text>
-  <text x="195" y="338" text-anchor="middle" class="label">Native executor or Wasm host</text>
+  <text x="195" y="338" text-anchor="middle" class="label">Engine: native or Wasm</text>
 
   <rect x="15" y="435" width="160" height="65" fill="#F5F5F5" stroke="#0A0A0A"/>
   <text x="95" y="454" text-anchor="middle" class="header-text">AGENT LOOP</text>

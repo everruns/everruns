@@ -115,6 +115,7 @@ impl WorkerServiceImpl {
             .capabilities
             .retain(|capability| feature_flags.is_capability_enabled(capability.capability_id()));
         if let Some(agent) = agent.as_mut() {
+            crate::platform_chat_agent::add_page_tools(agent, feature_flags.chat_mode);
             let is_platform_chat =
                 agent.is_built_in && agent.name == crate::platform_chat_agent::NAME;
             agent.capabilities.retain(|capability| {
@@ -284,9 +285,12 @@ impl WorkerServiceImpl {
         let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
             self.db.as_ref(),
             req.org_id,
-            session.agent_id,
-            // Loaded from `session.agent_id` above, so its public id is known.
-            agent.as_ref().map(|agent| agent.public_id.to_string()),
+            input_message.map(|i| {
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session.id,
+                    input_message_id: i,
+                }
+            }),
         )
         .await
         .map_err(|error| {

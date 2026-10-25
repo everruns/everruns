@@ -405,6 +405,35 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
+    async fn create_memory_artifact(
+        &self,
+        org: i64,
+        session: Uuid,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        crate::internal_commands::dreaming::create_artifact(
+            &GrpcAdapter::new_org_scoped(self.client.clone(), org),
+            SessionId::from_uuid(session),
+            path,
+            content,
+        )
+        .await
+    }
+    async fn dreaming_scope(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        mount: &str,
+    ) -> Result<Option<crate::core::dreaming::DreamMemoryScope>> {
+        crate::internal_commands::dreaming::memory_scope(
+            &GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            SessionId::from_uuid(session_id),
+            mount,
+        )
+        .await
+    }
+
     async fn delete_file(
         &self,
         org_id: i64,
@@ -603,6 +632,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .then(|| Arc::new(GrpcAdapter::new(self.client.clone())) as _)
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
+        let client = self.client.clone();
+        Some(Arc::new(
+            crate::internal_commands::dreaming::CommandDreamingStore {
+                transport: Arc::new(move |org| {
+                    Arc::new(GrpcAdapter::new_org_scoped(client.clone(), org))
+                }),
+            },
+        ))
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
@@ -728,6 +768,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn knowledge_runtime(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::knowledge::KnowledgeRuntime>> {
+        Some(Arc::new(
+            crate::internal_commands::knowledge::CommandKnowledgeRuntime::new(
+                GrpcAdapter::new_org_scoped(self.client.clone(), org_id),
+            ),
+        ))
+    }
     fn poppy_invoker(
         &self,
         org_id: i64,

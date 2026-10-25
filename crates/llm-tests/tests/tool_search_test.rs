@@ -75,9 +75,6 @@ async fn generation_called_tool(runner: &InMemoryAgenticLoop, name: &str) -> boo
         })
 }
 
-const TIME_SYSTEM_PROMPT: &str =
-    "You are a helpful assistant. When asked about time, use the get_current_time tool.";
-
 /// Attempts per live turn when the failure is a transient transport/overload
 /// error (e.g. `error decoding response body`), which failed main CI on a
 /// single Opus 5 hiccup. Separate from each test's own sampling-retry loop.
@@ -139,28 +136,27 @@ async fn test_openai_tool_search_with_many_capabilities(#[case] config: Provider
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let Some((runner, result)) =
-            live_turn(&config, "What time is it right now?", |model| async move {
-                InMemoryAgenticLoop::builder()
-                    .agent_name("Tool Search Agent")
-                    .system_prompt(TIME_SYSTEM_PROMPT)
-                    .model(model)
-                    .driver_registry(all_providers_registry())
-                    // Add multiple capabilities to exceed the 15-tool threshold (16 total)
-                    .capability(CurrentTimeCapability) // 1 tool
-                    .capability(TestMathCapability) // 4 tools
-                    .capability(TestWeatherCapability) // 2 tools
-                    .capability(FileSystemCapability) // 6 tools
-                    .capability(SessionCapability) // 2 tools
-                    .capability(StatelessTodoListCapability) // 1 tool
-                    // Enable tool_search
-                    .capability(OpenAiToolSearchCapability::new())
-                    .max_iterations(5)
-                    .build()
-                    .await
-                    .unwrap()
-            })
-            .await
+        let Some((runner, result)) = live_turn(&config, TIME_TOOL_QUESTION, |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Tool Search Agent")
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                // Add multiple capabilities to exceed the 15-tool threshold (16 total)
+                .capability(CurrentTimeCapability) // 1 tool
+                .capability(TestMathCapability) // 4 tools
+                .capability(TestWeatherCapability) // 2 tools
+                .capability(FileSystemCapability) // 6 tools
+                .capability(SessionCapability) // 2 tools
+                .capability(StatelessTodoListCapability) // 1 tool
+                // Enable tool_search
+                .capability(OpenAiToolSearchCapability::new())
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
         else {
             return;
         };
@@ -358,28 +354,27 @@ async fn test_openai_auto_tool_search_resolves_to_hosted(#[case] config: Provide
     let mut called_get_current_time = false;
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let Some((runner, result)) =
-            live_turn(&config, "What time is it right now?", |model| async move {
-                InMemoryAgenticLoop::builder()
-                    .agent_name("Auto Tool Search Agent")
-                    .system_prompt(TIME_SYSTEM_PROMPT)
-                    .model(model)
-                    .driver_registry(all_providers_registry())
-                    // Multiple capabilities to exceed the 15-tool threshold (16 total).
-                    .capability(CurrentTimeCapability) // 1 tool
-                    .capability(TestMathCapability) // 4 tools
-                    .capability(TestWeatherCapability) // 2 tools
-                    .capability(FileSystemCapability) // 6 tools
-                    .capability(SessionCapability) // 2 tools
-                    .capability(StatelessTodoListCapability) // 1 tool
-                    // Model-adaptive: on this OpenAI model this must resolve to hosted.
-                    .capability(AutoToolSearchCapability::new())
-                    .max_iterations(5)
-                    .build()
-                    .await
-                    .unwrap()
-            })
-            .await
+        let Some((runner, result)) = live_turn(&config, TIME_TOOL_QUESTION, |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Auto Tool Search Agent")
+                .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
+                .model(model)
+                .driver_registry(all_providers_registry())
+                // Multiple capabilities to exceed the 15-tool threshold (16 total).
+                .capability(CurrentTimeCapability) // 1 tool
+                .capability(TestMathCapability) // 4 tools
+                .capability(TestWeatherCapability) // 2 tools
+                .capability(FileSystemCapability) // 6 tools
+                .capability(SessionCapability) // 2 tools
+                .capability(StatelessTodoListCapability) // 1 tool
+                // Model-adaptive: on this OpenAI model this must resolve to hosted.
+                .capability(AutoToolSearchCapability::new())
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
         else {
             return;
         };
@@ -620,43 +615,60 @@ async fn test_anthropic_claude_tool_search_low_threshold() {
 #[case::anthropic_opus5_5(ANTHROPIC_OPUS55)]
 #[tokio::test]
 async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: ProviderModelConfig) {
-    let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
-        InMemoryAgenticLoop::builder()
-            .agent_name("Claude Auto Tool Search Agent")
-            .system_prompt("When asked to add numbers, use the add tool.")
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(TestMathCapability)
-            .capability(CurrentTimeCapability)
-            // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
-            .capability(AutoToolSearchCapability::with_threshold(3))
-            .max_iterations(6)
-            .build()
-            .await
-            .unwrap()
-    })
-    .await
-    else {
-        return;
-    };
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert!(
-        result.tool_calls_count > 0,
-        "Claude auto_tool_search should call add through hosted deferred loading"
-    );
-    assert_hosted_tool_search_was_enabled(&runner).await;
+    // Haiku sometimes answers "7 + 3" without the tool (nightly 2026-10-22), so a
+    // turn with no tool call is re-sampled in a fresh session, like
+    // `test_anthropic_claude_tool_search_low_threshold`. Hosted resolution is
+    // checked on every attempt, so a sampling miss never hides a fallback.
+    const MAX_ATTEMPTS: usize = 5;
+    let mut called_add = false;
 
-    let generations = runner.events_by_type(LLM_GENERATION).await;
-    for event in &generations {
-        let EventData::LlmGeneration(data) = &event.data else {
-            continue;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let Some((runner, result)) = live_turn(&config, "What is 7 + 3?", |model| async move {
+            InMemoryAgenticLoop::builder()
+                .agent_name("Claude Auto Tool Search Agent")
+                .system_prompt("When asked to add numbers, use the add tool.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(TestMathCapability)
+                .capability(CurrentTimeCapability)
+                // Model-adaptive: on native Claude this must resolve to the hosted mechanism.
+                .capability(AutoToolSearchCapability::with_threshold(3))
+                .max_iterations(6)
+                .build()
+                .await
+                .unwrap()
+        })
+        .await
+        else {
+            return;
         };
-        assert!(
-            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
-            "auto_tool_search on {config} must resolve to hosted: the client-side \
-             `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
-        );
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        let generations = runner.events_by_type(LLM_GENERATION).await;
+        for event in &generations {
+            let EventData::LlmGeneration(data) = &event.data else {
+                continue;
+            };
+            assert!(
+                !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+                "auto_tool_search on {config} must resolve to hosted: the client-side \
+                 `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
+            );
+        }
+
+        if result.tool_calls_count > 0 {
+            called_add = true;
+            break;
+        }
+        eprintln!("{config}: attempt {attempt}/{MAX_ATTEMPTS}: no tool call yet; retrying");
     }
+
+    assert!(
+        called_add,
+        "Claude auto_tool_search should call add through hosted deferred loading \
+         within {MAX_ATTEMPTS} attempts"
+    );
 }
 
 /// Reproduces the production surface where Opus 5 invented `bash_run` after
@@ -671,48 +683,65 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: Prov
 async fn test_anthropic_opus_hosted_search_calls_bash_contract(
     #[case] config: ProviderModelConfig,
 ) {
-    let Some((runner, result)) = live_turn(
-        &config,
-        "Use Bash to run `printf everruns-bash-contract`.",
-        |model| async move {
-            InMemoryAgenticLoop::builder()
-                .agent_name("Claude Bash Tool Search Agent")
-                .system_prompt("Use the bash tool for shell commands.")
-                .model(model)
-                .driver_registry(all_providers_registry())
-                .capability(BashkitShellCapability)
-                .capability(FileSystemCapability)
-                .capability(TestMathCapability)
-                .capability(AutoToolSearchCapability::with_threshold(3))
-                .max_iterations(6)
-                .build()
-                .await
-                .unwrap()
-        },
-    )
-    .await
-    else {
-        return;
-    };
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert_hosted_tool_search_was_enabled(&runner).await;
+    // A turn that calls no tool at all is model sampling (nightly 2026-10-06 saw
+    // Opus 5 answer without one), so it is re-sampled. A call to any other tool
+    // name is the regression this test exists for (`bash_run`) and never retries.
+    const MAX_ATTEMPTS: usize = 3;
+    let mut tool_names: Vec<String> = Vec::new();
+    let mut bash_calls = Vec::new();
 
-    let generations = runner.events_by_type(LLM_GENERATION).await;
-    let bash_calls: Vec<_> = generations
-        .iter()
-        .filter_map(|event| {
-            let EventData::LlmGeneration(data) = &event.data else {
-                return None;
-            };
-            Some(data.output.tool_calls.iter())
-        })
-        .flatten()
-        .filter(|call| call.name == "bash")
-        .collect();
+    for attempt in 1..=MAX_ATTEMPTS {
+        let Some((runner, result)) = live_turn(
+            &config,
+            "Use Bash to run `printf everruns-bash-contract`.",
+            |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("Claude Bash Tool Search Agent")
+                    .system_prompt("Use the bash tool for shell commands.")
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    .capability(BashkitShellCapability)
+                    .capability(FileSystemCapability)
+                    .capability(TestMathCapability)
+                    .capability(AutoToolSearchCapability::with_threshold(3))
+                    .max_iterations(6)
+                    .build()
+                    .await
+                    .unwrap()
+            },
+        )
+        .await
+        else {
+            return;
+        };
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        let calls: Vec<_> = runner
+            .events_by_type(LLM_GENERATION)
+            .await
+            .into_iter()
+            .filter_map(|event| match event.data {
+                EventData::LlmGeneration(data) => Some(data.output.tool_calls),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        tool_names = calls.iter().map(|call| call.name.clone()).collect();
+        bash_calls = calls
+            .into_iter()
+            .filter(|call| call.name == "bash")
+            .collect();
+        if !bash_calls.is_empty() || !tool_names.is_empty() {
+            break;
+        }
+        eprintln!("{config}: attempt {attempt}/{MAX_ATTEMPTS}: no tool call; re-sampling");
+    }
 
     assert!(
         !bash_calls.is_empty(),
-        "{config} should call the `bash` tool"
+        "{config} should call the `bash` tool within {MAX_ATTEMPTS} attempts; \
+         tool calls seen: {tool_names:?}"
     );
     assert!(bash_calls.iter().all(|call| {
         call.arguments.get("commands").is_some() && call.arguments.get("command").is_none()
@@ -723,10 +752,10 @@ async fn test_anthropic_opus_hosted_search_calls_bash_contract(
 /// (falls back to standard tool format — no namespaces, no defer_loading)
 #[tokio::test]
 async fn test_gpt54_tool_search_below_threshold_fallback() {
-    let Some((_, result)) = live_turn(&OPENAI_GPT54, "What time is it?", |model| async move {
+    let Some((_, result)) = live_turn(&OPENAI_GPT54, TIME_TOOL_QUESTION, |model| async move {
         InMemoryAgenticLoop::builder()
             .agent_name("Below Threshold Agent")
-            .system_prompt("When asked about time, use the get_current_time tool.")
+            .system_prompt(TIME_TOOL_SYSTEM_PROMPT)
             .model(model)
             .driver_registry(all_providers_registry())
             // Only 1 tool — well below default threshold of 15

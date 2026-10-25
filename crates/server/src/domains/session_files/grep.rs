@@ -9,6 +9,7 @@ use regex::{Regex, RegexBuilder};
 use uuid::Uuid;
 
 use super::service::WorkspaceFileService;
+use super::service::knowledge_mounts::collection_path;
 use super::virtual_mount_registry::VirtualMountRegistry;
 use crate::kernel_imports::{
     GrepMatch, GrepOptions, GrepResult, GrepSearchResult, session_file::build_grep_search_result,
@@ -25,15 +26,49 @@ impl WorkspaceFileService {
         options: &GrepOptions,
         excluded_path_prefix: Option<&str>,
     ) -> Result<GrepSearchResult> {
-        grep_session_files_with_options(
+        // Only an explicit Knowledge scope preserves the caller's session key
+        // through shared-workspace adapters. A workspace-wide scan must not use
+        // the workspace owner's collection attachments.
+        if !self.session_knowledge
+            || !options.path_pattern.as_deref().is_some_and(|path| {
+                crate::domains::knowledge::runtime::is_mount(
+                    &everruns_core::session_path::to_session_path(path),
+                )
+            })
+        {
+            return grep_session_files_with_options(
+                &self.db,
+                self.virtual_registry.as_deref(),
+                session_id,
+                pattern,
+                options,
+                excluded_path_prefix,
+            )
+            .await;
+        }
+        // Apply pagination and the return-byte budget once across both namespaces,
+        // as MountFs does for other composite mounts. Scan budgets remain bounded.
+        let mut backend = options.clone();
+        backend.offset = 0;
+        backend.limit = usize::MAX;
+        backend.max_bytes = usize::MAX;
+        let legacy_key = self.legacy_workspace_key(session_id).await?;
+        let legacy = grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
-            session_id,
+            legacy_key,
             pattern,
-            options,
+            &backend,
             excluded_path_prefix,
         )
-        .await
+        .await?;
+        let collections = crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+            .mount_grep_with_options(session_id, pattern, &backend, excluded_path_prefix)
+            .await?;
+        Ok(everruns_core::session_file::merge_grep_search_results(
+            vec![legacy, collections],
+            options,
+        ))
     }
 }
 
@@ -116,6 +151,9 @@ pub(super) async fn grep_session_files_excluding(
 
     // For each matching file, find the actual line matches
     for file_info in files {
+        if collection_path(&file_info.path) {
+            continue;
+        }
         if path_matcher
             .as_ref()
             .is_some_and(|matcher| !matcher.is_match(&file_info.path))
@@ -213,8 +251,10 @@ pub(crate) async fn grep_session_files_with_options(
     let mut text_files = Vec::new();
     let mut total_scanned = 0usize;
     for row in rows {
-        if excluded_path_prefix
-            .is_some_and(|prefix| row.path == prefix || row.path.starts_with(&format!("{prefix}/")))
+        if collection_path(&row.path)
+            || excluded_path_prefix.is_some_and(|prefix| {
+                row.path == prefix || row.path.starts_with(&format!("{prefix}/"))
+            })
             || path_matcher
                 .as_ref()
                 .is_some_and(|matcher| !matcher.is_match(&row.path))

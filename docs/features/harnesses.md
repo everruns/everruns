@@ -55,7 +55,7 @@ The built-in harnesses form a tree. Each layer answers one question about the ag
 |---|---|---|
 | [Base](/built-ins/harnesses/base/) | System essentials: compaction, error disclosure, tool-call repair, loop detection, approval guidance | Custom harnesses that compose their own tools |
 | [Conversation](/built-ins/harnesses/conversation/) | Base plus structured questions and message timestamps. No workspace, no shell | Chat assistants, support bots (the default) |
-| [Worker](/built-ins/harnesses/worker/) | Base plus files, AGENTS.md, skills, long context, budgeting, subagents and tasks. No compute | Agents that work through tools and MCP servers |
+| [Worker](/built-ins/harnesses/worker/) | Base plus files, AGENTS.md, skills, long context, budgeting, subagents, tasks and [Dreaming](/features/dreaming/) (organization Adoption opt-in). No compute | Agents that work through tools and MCP servers |
 | [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker plus the Bashkit virtual shell, fixed to the Bashkit Virtual Workspace | Platform Chat, light automation, agents that need bash without a sandbox provider |
 | [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) | Worker plus a full sandbox shell chosen by the Agent sandbox policy | Coding, installing packages, builds |
 | [Worker Base (deprecated)](/built-ins/harnesses/worker-base/) | Preserved legacy bundle | Existing custom harnesses that name it |

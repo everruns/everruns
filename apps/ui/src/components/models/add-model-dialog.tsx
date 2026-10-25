@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -30,10 +31,12 @@ export function AddModelDialog({
   providers,
   open,
   onOpenChange,
+  writable = false,
 }: {
   providers: Provider[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  writable?: boolean;
 }) {
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
@@ -65,8 +68,35 @@ export function AddModelDialog({
     setProfileKey(undefined);
   };
 
+  const chatDraft = useTextPageFormDraft({
+    fields: ["model_id", "display_name", "provider_id", "service", "profile_key", "enabled"],
+    values: {
+      model_id: modelId,
+      display_name: displayName,
+      provider_id: providerId,
+      service: modelType,
+      profile_key: profileKey ?? "",
+      enabled: String(enabled),
+    },
+    readonlyFields: ["provider_id", "service", "profile_key", "enabled"],
+    entityType: "model",
+    formId: "create",
+    label: "New model",
+    baseline: "new",
+    dirty:
+      !!(providerId || modelId || displayName || profileKey) || modelType !== "chat" || !enabled,
+    writable: writable && !createModel.isPending,
+    enabled: open,
+    priority: 30,
+    apply: (values) => {
+      setModelId(values.model_id);
+      setDisplayName(values.display_name);
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
     const data: CreateModelRequest = {
       model_id: modelId,
       display_name: displayName,
@@ -93,6 +123,7 @@ export function AddModelDialog({
           <DialogDescription>Add a new model to an existing provider.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
             <Label htmlFor="provider">Provider</Label>
             <Select value={providerId} onValueChange={handleProviderChange}>
@@ -190,7 +221,13 @@ export function AddModelDialog({
             </Button>
             <Button
               type="submit"
-              disabled={createModel.isPending || !providerId || !modelId || !displayName}
+              disabled={
+                chatDraft.blocked ||
+                createModel.isPending ||
+                !providerId ||
+                !modelId ||
+                !displayName
+              }
             >
               {createModel.isPending ? "Creating..." : "Create Model"}
             </Button>

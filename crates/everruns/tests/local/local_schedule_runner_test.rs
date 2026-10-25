@@ -547,8 +547,10 @@ async fn failed_delivery_is_recorded_and_retried() {
         .unwrap();
     let session_runner = Arc::new(RecordingRunner::failing(1));
     let handle = LocalScheduleRunner::new(store.clone(), session_runner.clone())
+        // The first poll is immediate. Hold the next poll beyond the test's
+        // timeout, so inspecting the recorded failure cannot race a retry.
         .with_config(config(
-            Duration::from_millis(10),
+            Duration::from_secs(60 * 60),
             Duration::from_millis(100),
         ))
         .start()
@@ -565,9 +567,17 @@ async fn failed_delivery_is_recorded_and_retried() {
     assert!(retryable.enabled);
     assert_eq!(retryable.trigger_count, 0);
     assert!(retryable.next_trigger_at.is_some());
-    tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(session_runner.attempts.load(Ordering::SeqCst), 1);
+    handle.shutdown().await.unwrap();
 
+    // A new runner recovers the retained failure and retries the occurrence.
+    let handle = LocalScheduleRunner::new(store.clone(), session_runner.clone())
+        .with_config(config(
+            Duration::from_millis(10),
+            Duration::from_millis(100),
+        ))
+        .start()
+        .unwrap();
     session_runner.wait_for_deliveries(1).await;
     handle.shutdown().await.unwrap();
     let completed = store.list_schedules(session_id).await.unwrap().remove(0);

@@ -25,9 +25,9 @@ type ScopedGitHubToken = (
 /// Which of the three GitHub identities (D1) a connection is. Derived from the
 /// row rather than stored in its own column: `connection_type` marks an agent
 /// App's installation (`github_app`) and a shared App installation an org
-/// admin linked (`everruns_app`, D3). Rows stored before D3 (`oauth` with an
-/// installation) are still the shared App's until 3b migrates them, and a row
-/// without an installation holds a person's own token.
+/// admin linked (`everruns_app`, D3); any other row holds a person's own
+/// token. Rows that held a shared App installation before D3 (`oauth` with an
+/// installation) were moved to org links by step 3b's migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GitHubIdentityKind {
     AgentApp,
@@ -39,9 +39,7 @@ impl GitHubIdentityKind {
     pub(crate) fn of(row: &VirtualUserConnectionRow) -> Self {
         if row.connection_type == GITHUB_APP_CONNECTION_TYPE {
             Self::AgentApp
-        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE
-            || row.installation_id.is_some()
-        {
+        } else if row.connection_type == EVERRUNS_APP_CONNECTION_TYPE {
             Self::EverrunsApp
         } else {
             Self::Person
@@ -175,7 +173,12 @@ impl DbConnectionResolver {
                 continue;
             };
             if let Some((token, github_installation_scope)) = self
-                .scoped_github_credential(OAuthScope::Session(session), row, &token_scope)
+                .scoped_github_credential(
+                    OAuthScope::Session(session),
+                    row,
+                    &token_scope,
+                    Some(access),
+                )
                 .await?
             {
                 return Ok(Some(McpResolvedCredential {
@@ -197,15 +200,44 @@ impl DbConnectionResolver {
         access: &GitHubAccess,
     ) -> Result<Option<String>> {
         let token_scope = token_scope(access)?;
-        let Some(row) = self
+        if let Some(row) = self
             .db
             .get_virtual_user_connection(VirtualUserId::from_uuid(owner), PROVIDER)
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))?
+            && let Some(token) = self
+                .scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+                .await?
+        {
+            return Ok(Some(token));
+        }
+        // A sync is a service use on the org identity (D3): without a
+        // connection of the owner's own, the org's link for the repository's
+        // account answers. Syncs that relied on a person's own installation
+        // keep working after step 3b moved it to the org.
+        let Some(account) = access
+            .repositories
+            .first()
+            .and_then(|repository| repository.split_once('/'))
+            .map(|(account, _)| account)
         else {
             return Ok(None);
         };
-        self.scoped_github_token(OAuthScope::Org(org_id), row, &token_scope)
+        let Some(link) = self
+            .db
+            .list_everruns_app_links(org_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .into_iter()
+            .find(|link| {
+                link.provider_username
+                    .as_deref()
+                    .is_some_and(|login| login.eq_ignore_ascii_case(account))
+            })
+        else {
+            return Ok(None);
+        };
+        self.scoped_github_token(OAuthScope::Org(org_id), link, &token_scope)
             .await
     }
 
@@ -218,7 +250,7 @@ impl DbConnectionResolver {
         token_scope: &TokenScope,
     ) -> Result<Option<String>> {
         Ok(self
-            .scoped_github_credential(scope, row, token_scope)
+            .scoped_github_credential(scope, row, token_scope, None)
             .await?
             .map(|(token, _)| token))
     }
@@ -228,19 +260,19 @@ impl DbConnectionResolver {
         scope: OAuthScope,
         row: VirtualUserConnectionRow,
         token_scope: &TokenScope,
+        request: Option<&GitHubAccess>,
     ) -> Result<Option<ScopedGitHubToken>> {
+        if !self.authorize_connection(scope, &row, request).await? {
+            return Ok(None);
+        }
         let installation_id = match (GitHubIdentityKind::of(&row), row.installation_id) {
             (GitHubIdentityKind::Person, _) => {
-                // A stored OAuth token (a person's own login) cannot be
-                // narrowed; it reaches what the person can.
-                return row
-                    .access_token_encrypted
-                    .as_deref()
-                    .map(|value| {
-                        self.decrypt(value, "connection token")
-                            .map(|token| (token, None))
-                    })
-                    .transpose();
+                // A person's own token cannot be narrowed; it reaches what
+                // the person can.
+                return Ok(self
+                    .person_github_token(row)
+                    .await?
+                    .map(|token| (token, None)));
             }
             (_, Some(installation_id)) => installation_id,
             (_, None) => return Ok(None),
@@ -253,6 +285,89 @@ impl DbConnectionResolver {
             .await
             .map(|credential| Some(credential.into_credential()))
             .map_err(|e| AgentLoopError::store(format!("Failed to mint GitHub token: {e}")))
+    }
+}
+
+impl DbConnectionResolver {
+    /// A person's own GitHub token (D1), refreshed when it is about to expire.
+    /// Refreshing is single-flight per connection, because GitHub rotates the
+    /// refresh token on use. A failed refresh reads as no token, so the use
+    /// asks the person to connect GitHub again.
+    async fn person_github_token(&self, row: VirtualUserConnectionRow) -> Result<Option<String>> {
+        let fresh = |row: &VirtualUserConnectionRow| {
+            row.expires_at
+                .is_none_or(|expiry| expiry > Utc::now() + OAUTH_REFRESH_SKEW)
+        };
+        let Some(access_token) = row.access_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        if fresh(&row) {
+            return self.decrypt(access_token, "GitHub token").map(Some);
+        }
+        let Some(client) = self
+            .github_app
+            .as_ref()
+            .and_then(|minter| minter.user_client.clone())
+        else {
+            return Ok(None);
+        };
+        let lock = self
+            .refresh_locks
+            .get_with(format!("github-person:{}", row.id), || {
+                Arc::new(Mutex::new(()))
+            });
+        let _guard = lock.lock().await;
+        // Another use may have refreshed it while this one waited.
+        let Some(row) = self
+            .db
+            .get_virtual_user_connection(row.virtual_user_id, PROVIDER)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))?
+            .filter(|current| current.id == row.id)
+        else {
+            return Ok(None);
+        };
+        if fresh(&row) {
+            return row
+                .access_token_encrypted
+                .as_deref()
+                .map(|value| self.decrypt(value, "GitHub token"))
+                .transpose();
+        }
+        let Some(refresh_token) = row.refresh_token_encrypted.as_deref() else {
+            return Ok(None);
+        };
+        let refresh_token = self.decrypt(refresh_token, "GitHub refresh token")?;
+        let token = match crate::github_user_token::GitHubUserTokens::new(
+            self.github_apps.endpoints().clone(),
+        )
+        .refresh(&client, &refresh_token)
+        .await
+        {
+            Ok(token) => token,
+            Err(e) => {
+                tracing::warn!(connection_id = %row.id, error = %e, "GitHub token refresh failed");
+                return Ok(None);
+            }
+        };
+        let encrypt = |value: &str| {
+            self.encryption
+                .encrypt_string(value)
+                .map_err(|e| AgentLoopError::store(format!("Failed to encrypt GitHub token: {e}")))
+        };
+        // Compare the encrypted snapshot after the exchange. A disconnect or
+        // reconnect during refresh must never recreate the old connection.
+        let fresh_access = encrypt(&token.access_token)?;
+        let fresh_refresh = match token.refresh_token.as_deref() {
+            Some(v) => Some(encrypt(v)?),
+            None => row.refresh_token_encrypted.clone(),
+        };
+        let updated=sqlx::query("UPDATE virtual_user_connections SET access_token_encrypted=$2,refresh_token_encrypted=$3,expires_at=$4,updated_at=now() WHERE id=$1 AND access_token_encrypted=$5 AND refresh_token_encrypted IS NOT DISTINCT FROM $6 AND EXISTS(SELECT 1 FROM resource_access r WHERE r.id=$1 AND r.revoked_at IS NULL)")
+        .bind(row.id).bind(fresh_access).bind(fresh_refresh).bind(token.expires_at).bind(row.access_token_encrypted).bind(row.refresh_token_encrypted).execute(self.db.pool()).await.map_err(|_|AgentLoopError::store("Failed to persist refreshed GitHub connection"))?;
+        if updated.rows_affected() != 1 {
+            return Ok(None);
+        }
+        Ok(Some(token.access_token))
     }
 }
 
@@ -324,7 +439,7 @@ mod tests {
         );
         assert_eq!(
             GitHubIdentityKind::of(&row("oauth", Some(1))),
-            GitHubIdentityKind::EverrunsApp
+            GitHubIdentityKind::Person
         );
         assert_eq!(
             GitHubIdentityKind::of(&row(EVERRUNS_APP_CONNECTION_TYPE, Some(1))),

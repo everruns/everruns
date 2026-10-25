@@ -15,7 +15,7 @@ FEATURES = {
     'everruns-drivers': ['all'], 'everruns-llmsim': ['all'],
     'everruns': ['all'], 'everruns-docs-snippets': ['all'],
     'everruns-test-support': ['all'],
-    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities'],
+    'everruns-capabilities': ['hosted-integration-catalog', 'environment-capabilities', 'portable-builtins'],
     'everruns-integrations': ['bashkit', 'brave-search', 'brave-search-hosted', 'browserless',
         'cursor', 'daytona', 'daytona-test-util', 'docker', 'duckduckgo', 'e2b', 'filesystem',
         'github', 'lua', 'openai-decisions', 'openai-image', 'openrouter', 'parallel',
@@ -48,6 +48,22 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith('crates/server/src/domains/knowledge/')
+           or p in ('crates/server/src/api/knowledge.rs',
+                    'crates/server/src/api/agent_api/work_chat.rs',
+                    'crates/server/tests/domain/work_chat_test.rs') for p in paths):
+        # Agent Knowledge mounts remain private to runtime views; a consumer's
+        # workspace must not expose them through normalized workspace aliases.
+        filters.add('work_chat_test::')
+    if any(p.startswith(('crates/server/src/domains/agents/credentials.rs',
+                         'crates/server/src/domains/credentials/',
+                         'crates/server/src/domains/resource_access/',
+                         'crates/server/src/domains/mcp_servers/',
+                         'crates/server/src/worker_link/'))
+           or p == 'crates/server/tests/domain/mcp_acts_as_grpc_test.rs' for p in paths):
+        # Credential parameter lookup must not preempt native OAuth's identity
+        # and connection-required behavior over the actual worker transport.
+        filters.add('mcp_acts_as_grpc_test::')
     if any(p.startswith(('crates/server/src/api/', 'crates/server/src/openapi/')) for p in paths):
         # Reuse the domain invocation: API shape and prose are public contracts.
         filters.update(['openapi_coverage_test::', 'openapi_descriptions_test::', 'pat_scope_coverage_test::'])

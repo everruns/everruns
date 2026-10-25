@@ -787,11 +787,6 @@ impl TestServer {
             None,
         );
         let models_state = api::models::AppState::new(db.clone(), auth_state.clone(), None);
-        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
-            db.clone(),
-            auth_state.clone(),
-            driver_registry.clone(),
-        );
         let virtual_registry = Arc::new(
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
@@ -997,7 +992,7 @@ impl TestServer {
             everruns_server::channels::a2a::signing::A2aReplayStore::in_memory(),
         );
         let poppy_documents = poppy_state.verifier.clone();
-        let channel_api_state = api::channel_api::ChannelApiState::new(
+        let mut channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1006,6 +1001,13 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
         )
         .with_runtime_auth(auth_state.clone());
+        channel_api_state.session_service = Arc::new(
+            everruns_server::domains::sessions::SessionService::with_registry(
+                db.clone(),
+                (*host_composition.capability_registry()).clone(),
+            )
+            .with_virtual_registry(virtual_registry.clone()),
+        );
         let ag_ui_state = everruns_server::channels::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -1078,6 +1080,7 @@ impl TestServer {
             .merge(api::budgets::routes(budgets_state))
             .merge(api::audit_logs::routes(api_state.clone()))
             .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::credentials::routes(api_state.clone()))
             .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
@@ -1092,8 +1095,7 @@ impl TestServer {
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
-            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
-            .merge(api::knowledge_bases::routes(api_state.clone()))
+            .merge(api::knowledge::routes(api_state.clone()))
             .merge(api::memory::routes(api_state.clone()))
             .merge(api::memory_files::routes(api_state.clone()))
             .merge(api::providers::routes(providers_state))

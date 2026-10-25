@@ -27,7 +27,7 @@ pub struct ModelMetadata {
 /// Tracks token consumption per LLM call including cache tokens for cost
 /// optimization.
 ///
-/// # Disjoint bucket convention
+/// ## Disjoint bucket convention
 ///
 /// Prompt token buckets are **disjoint** (non-overlapping). Drivers normalize
 /// provider wire formats at the boundary so this holds for every provider:

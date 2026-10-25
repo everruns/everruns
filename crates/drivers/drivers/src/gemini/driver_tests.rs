@@ -571,6 +571,49 @@ fn grounding_queries_become_hosted_calls_and_billed_searches() {
     assert!(metadata.hosted_tool_calls.is_empty());
 }
 
+#[test]
+fn grounding_search_accounting_is_scoped_to_each_request() {
+    for (model, billed) in [("gemini-4-argon", 4), ("gemini-2.5-flash", 2)] {
+        let mut state = GeminiStreamState {
+            model: model.into(),
+            grounded: true,
+            ..Default::default()
+        };
+        let grounding: GeminiGroundingMetadata = serde_json::from_value(json!({
+            "webSearchQueries": ["q", "r", "q", " "]
+        }))
+        .unwrap();
+        state.record_searches(&grounding);
+        state.record_searches(&grounding);
+        state.next_hop();
+        state.record_searches(&grounding);
+        state.record_searches(&grounding);
+        state.next_hop();
+        // An ungrounded final hop adds no search charge.
+        state.finish();
+        let calls: Vec<_> = state
+            .pending
+            .iter()
+            .filter_map(|event| match event {
+                LlmStreamEvent::HostedToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 4);
+        for (index, call) in calls.iter().enumerate() {
+            assert_eq!(call.id, format!("google_search_{}", index + 1));
+        }
+        let Some(LlmStreamEvent::Done(metadata)) = state.pending.back() else {
+            panic!("expected done");
+        };
+        assert_eq!(
+            metadata.hosted_tool_calls.get("web_search_call"),
+            Some(&billed),
+            "{model}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn native_search_request_sends_google_search_instead_of_the_function() {
     use everruns_contracts::native_web_search::NativeWebSearch;

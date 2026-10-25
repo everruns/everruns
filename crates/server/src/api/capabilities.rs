@@ -109,7 +109,7 @@ pub struct ListCapabilitiesQuery {
         ("search" = Option<String>, Query, description = "Search by name/description"),
         ("offset" = Option<u32>, Query, description = "Pagination offset (default: 0)"),
         ("limit" = Option<u32>, Query, description = "Page size (default: 20, max: 100)"),
-        ("include_retired" = Option<bool>, Query, description = "Include retired capabilities (default: false)"),
+        ("include_retired" = Option<bool>, Query, description = "Include retired capabilities and capabilities hidden by a rollout flag (default: false)"),
     ),
     responses(
         (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<WithUrls<CapabilityInfo>>),

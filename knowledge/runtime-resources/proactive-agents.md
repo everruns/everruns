@@ -121,9 +121,10 @@ Revisit with a delivery channel that is known to reach the person.
   [risk label](../integrations/mcp-servers.md#tool-risk-labels)) run for real. Every other tool
   returns a simulated result naming the call and its arguments, without
   executing. The session trace marks those calls.
-- **Test run button.** The agent page gets **Test run**, which opens a new
-  Playground chat with dry run ticked; unticking it runs for real. Dry run is
-  the `dry_run` session capability, so any client can ask for it.
+- **Playground setup.** The agent page has one **Test in Playground** entry.
+  Its existing **Dry run** checkbox selects simulation before starting a chat;
+  there is no separate dry-run header action. Dry run is the `dry_run` session
+  capability, so any client can ask for it.
 - **Deferred:** replaying a trigger's sample event (its latest real event, else
   a canned sample). Trigger deliveries do not keep their payloads, so this needs
   storage first; until then the tester types the prompt.
@@ -184,8 +185,7 @@ Each step is its own PR, in this order:
 4. Notify me email (D3): descoped.
 5. Catalog host test, `api.githubcopilot.com`, and the blocked-host message and
    action (D4).
-6. Unknown-outcome repair text (D5), then dry-run mode and the Test run button
-   (D5).
+6. Unknown-outcome repair text (D5), then dry-run mode in Playground setup (D5).
 7. Builder drafts triggers, MCP presets (including notification) and the model, then test-runs
    (D6).
 8. Rebuild the Main CI Watcher with the builder as the acceptance test, and

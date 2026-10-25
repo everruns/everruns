@@ -10,12 +10,19 @@ skills that load only when a task needs them:
 
 | Skill | Your agent can |
 |---|---|
-| `everruns` | Use Everruns at all: concepts, the `everruns <noun> <verb>` command language, organizations, change history, secrets |
-| `everruns-build-agent` | Create or change an agent from a description, preview it and test it |
-| `everruns-agents-as-files` | Keep agents as `agent.toml` folders in a repository and sync them with the CLI |
-| `everruns-debug-session` | Explain why a session failed or stalled from its events and history |
-| `everruns-ship-agent` | Publish an agent to Slack, web chat, A2A and other channels, or run it on a trigger |
-| `everruns-framework` | Write code with the `everruns` crate, serve, or the SDKs |
+| `everruns` | Understand product concepts, find documentation and Cloud, and choose the right workflow skill |
+| `everruns-cli` | Use the CLI and session shell, discover commands, script operations, and verify changes |
+| `everruns-mcp` | Use an external MCP connection, run sessions, handle questions and connections, and read resources |
+| `everruns-agent-authoring` | Design and revise agent behavior, harnesses, capabilities, identities, packages, and verification |
+| `everruns-run-agent` | Hand a task to an existing agent, follow it, exchange files, and bring back the result |
+| `everruns-build-agent` | Build or improve an agent from a plain-language brief, add knowledge and tools, and smoke-test it |
+| `everruns-debug-session` | Diagnose failed, stalled, or poor-quality sessions and verify fixes |
+| `everruns-evaluate-agent` | Build regression evals, compare models, and score live traffic |
+| `everruns-ship-agent` | Expose agents through channels and triggers, with budgets and controls for stopping them |
+| `everruns-operate` | Investigate organization spending, health, and change history |
+| `everruns-agents-as-files` | Keep agent packages in a repository and validate, compare, import, or export them |
+| `everruns-sdk` | Call hosted agents from Python, TypeScript, or Rust applications |
+| `everruns-framework` | Develop Rust applications that run agents themselves and compose advanced execution hosts |
 
 ## Install
 

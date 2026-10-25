@@ -7,6 +7,10 @@ export class SessionAuthority extends App {
     super(ctx, env);
     this.qualificationContext = ctx;
   }
+  failure(error) {
+    console.error("Synthetic qualification failure", error);
+    return super.failure(error);
+  }
   async fetch(request) {
     if (new URL(request.url).pathname.endsWith("/evict")) {
       const status = new URL(request.url);
@@ -86,4 +90,12 @@ export class SessionAuthority extends App {
     );
   }
 }
-export default worker;
+export default {
+  async fetch(request,env) {
+    // Test-only independent client credential. The temporary deployment uses a
+    // fresh authority token, so its public API credential is also fresh.
+    const hash = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(`${env.AUTHORITY_TOKEN}:api`));
+    const API_TOKEN = [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+    return worker.fetch(request,{...env,API_TOKEN});
+  },
+};

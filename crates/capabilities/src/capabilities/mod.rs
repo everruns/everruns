@@ -9,6 +9,7 @@ pub mod a2a_delegation;
 #[cfg(feature = "ag-ui")]
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
+pub mod automatic_session_titles;
 pub mod background_execution;
 pub mod citation_retrieval;
 pub mod citation_verification;
@@ -18,6 +19,7 @@ pub mod data_knowledge;
 pub mod delegation_result;
 mod environment_file_tools;
 mod environment_tools;
+pub mod knowledge;
 pub mod knowledge_base;
 pub mod knowledge_index;
 pub mod memory;
@@ -26,6 +28,7 @@ pub mod openai_agents_api_runtime;
 pub mod platform;
 mod platform_docs;
 pub mod platform_management;
+mod platform_skills;
 pub mod poppy_client;
 pub mod research;
 mod sandbox_workspace;
@@ -206,6 +209,7 @@ pub fn register_hosted_capabilities(
     // sandbox provider — so they are composed here rather than shipped by the
     // kernel.
     registry.register(SessionCapability);
+    registry.register(automatic_session_titles::AutomaticSessionTitlesCapability);
     registry.register(SessionStorageCapability);
     registry.register(SessionSqlDatabaseCapability);
     // The provider-neutral Environment profile selects this capability. Keep
@@ -247,8 +251,7 @@ pub fn register_hosted_capabilities(
     // and runs the protocol (knowledge/integrations/poppy-personal-agent.md).
     registry.register(PoppyClientCapability);
     registry.register(DataKnowledgeCapability);
-    registry.register(KnowledgeBaseCapability);
-    registry.register(KnowledgeIndexCapability);
+    registry.register(knowledge::KnowledgeCapability);
     registry.register(CitationRetrievalCapability);
     registry.register(CitationWebCapability);
     registry.register(CitationVerificationCapability);

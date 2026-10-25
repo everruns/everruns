@@ -21,6 +21,7 @@ fn fixture_connection() -> McpConnection {
         auth_mode: McpServerAuthMode::None,
         protocol_mode: McpProtocolMode::Auto,
         elicitation_policy: Default::default(),
+        tool_timeout_ms: None,
         oauth_provider_id: None,
         pending_oauth_provider: None,
         connect_in_chat: Default::default(),
@@ -36,8 +37,9 @@ async fn lists_tools_over_stdio() {
         .list_tools(&fixture_connection(), None)
         .await
         .unwrap();
-    assert_eq!(tools.len(), 1);
+    assert_eq!(tools.len(), 2);
     assert_eq!(tools[0].name, "echo");
+    assert_eq!(tools[1].name, "echo_length");
 }
 
 #[tokio::test]

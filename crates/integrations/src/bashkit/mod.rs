@@ -19,11 +19,14 @@
 //! ```
 
 pub mod cli;
+mod knowledge;
 
+mod credential_egress;
 mod egress_transport;
 pub mod hook_dispatch;
 mod http;
 pub mod tools_in_shell;
+mod workspace;
 
 use crate::bashkit::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
@@ -70,27 +73,6 @@ fn execution_limits() -> ExecutionLimits {
         .max_input_bytes(1_000_000) // 1MB max script size
         .max_ast_depth(100)
         .parser_timeout(std::time::Duration::from_secs(5))
-}
-
-/// Resolve the shell working directory and `WORKSPACE` env value from the file
-/// store's namespace (EVE-660).
-///
-/// The file store ([`MountFs`](crate::bashkit::mount_fs::MountFs)) is the single path
-/// authority: `working_dir` is resolved through it to an absolute path in the
-/// same namespace the file tools use, so a model that learns a path from
-/// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace` for the mounted stores used
-/// by agent execution). The tuple is `(cwd, workspace_env)`.
-fn resolve_shell_workspace(
-    store: &dyn SessionFileSystem,
-    working_dir_arg: Option<&str>,
-) -> (String, String) {
-    let workspace_env = store.display_root();
-    let cwd = match working_dir_arg {
-        Some(arg) => store.resolve_path(arg),
-        None => workspace_env.clone(),
-    };
-    (cwd, workspace_env)
 }
 
 /// Configured bashkit tool instance with everruns settings.
@@ -310,14 +292,14 @@ impl Tool for BashTool {
         tool_call: &crate::bashkit::tool_types::ToolCall,
         phase: crate::bashkit::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
+        ctx: crate::bashkit::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::bashkit::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
-            fallback,
+            self.display_name().unwrap_or("Bash"),
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -334,7 +316,9 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        TOOL_INPUT_SCHEMA.clone()
+        let mut schema = TOOL_INPUT_SCHEMA.clone();
+        schema["properties"]["credential_usage"] = json!({"type":"string","enum":["user","service"],"default":"service","description":"Use authorized service credentials, or the verified invoking user’s private credentials. No identity fallback."});
+        schema
     }
 
     fn hints(&self) -> ToolHints {
@@ -382,7 +366,7 @@ impl Tool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -426,7 +410,17 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, context).await;
+        let (builder, redactor) = match http::configure(
+            builder,
+            self.enable_http,
+            context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        {
+            Ok(configured) => configured,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.cpython().build();
         if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
@@ -615,7 +609,7 @@ impl BackgroundExecutableTool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = resolve_shell_workspace(
+        let (working_dir, workspace_env) = workspace::resolve_shell_workspace(
             file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
         );
@@ -652,7 +646,14 @@ impl BackgroundExecutableTool for BashTool {
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
         let builder = install_observability_hooks(builder, context.session_id);
-        let (builder, redactor) = http::configure(builder, self.enable_http, &context).await;
+        let (builder, redactor) = http::configure(
+            builder,
+            self.enable_http,
+            &context,
+            arguments.get("credential_usage"),
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
         let builder = install_cli_tree(builder, &context);
         let mut bash = builder.cpython().build();
 
@@ -784,41 +785,8 @@ impl BackgroundExecutableTool for BashTool {
     }
 }
 
-/// Register the `everruns` command tree, by whichever route this host can serve.
-///
-/// Two routes, because two hosts differ in what they can see:
-///
-///   * A host that links its commands in inserts a `CliCommandSourceHandle` and
-///     gets the local tree: parsing, help, and dispatch without leaving the
-///     process. This is the Framework application's route.
-///   * A hosted worker cannot rebuild that tree (`CliRoute` is `&'static`, and
-///     the commands live behind the control plane), so it forwards instead: a
-///     registered tool that declares a `CliSpelling` receives the rendered
-///     command line. This is the server's route.
-///
-/// Both are gated on something the session already has, never on a config flag:
-/// no source and no spelled tool means no builtin, so the shell can never
-/// promise a surface it cannot serve, nor one the harness withheld.
-fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> BashBuilder {
-    let builder = tools_in_shell::install(builder, context);
-    if let Some(handle) = context
-        .extensions
-        .get::<crate::bashkit::cli::CliCommandSourceHandle>()
-    {
-        // Registered under the source's own root token, not a fixed name: the
-        // commands belong to the host, so the word that introduces them does too.
-        let builtin = crate::bashkit::cli::EverrunsBuiltin::new(handle.0.clone());
-        let root = builtin.root().to_string();
-        return builder.builtin(root, Box::new(builtin));
-    }
-
-    if let Some(builtin) = crate::bashkit::cli::forwarding_builtin_for(context) {
-        let root = builtin.root().to_string();
-        return builder.builtin(root, Box::new(builtin));
-    }
-
-    builder
-}
+use installation::install_cli_tree;
+mod installation;
 
 // Observational-only. Emits `tracing` events for each bashkit builtin
 // invocation and interpreter error, tagged with the active `session_id` for
@@ -2990,41 +2958,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_execute_script_with_exit_code() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Create a script that exits with a specific code
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "cat > /workspace/fail.sh << 'EOF'\n#!/bin/bash\necho failing\nexit 42\nEOF"}),
-                &context,
-            )
-            .await;
-        assert!(matches!(result, ToolExecutionResult::Success(_)));
-
-        // Execute and check exit code propagation
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "/workspace/fail.sh; echo \"code: $?\""}),
-                &context,
-            )
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            let stdout = output["stdout"].as_str().unwrap_or("");
-            assert!(stdout.contains("failing"), "Script should have run");
-            assert!(
-                stdout.contains("code: 42"),
-                "Exit code should propagate, got: {}",
-                stdout
-            );
-        } else {
-            panic!("Expected success, got: {:?}", result);
-        }
-    }
-
     // ========================================================================
     // Overwrite / existing-file tests
     // ========================================================================
@@ -3516,4 +3449,5 @@ mod tests {
     // ========================================================================
 
     mod http_tests;
+    mod runtime;
 }

@@ -390,6 +390,87 @@ describe("McpCatalogPage", () => {
     );
   });
 
+  it("sends a tool call timeout in milliseconds when creating a server", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpCatalogPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "ci" } });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://ci.example.com/mcp" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Tool call timeout (seconds)"), {
+      target: { value: "600" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Server" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "ci", tool_timeout_ms: 600_000 }),
+      ),
+    );
+  });
+
+  it("rejects a tool call timeout outside 1 to 1800 seconds", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpCatalogPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "ci" } });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://ci.example.com/mcp" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Tool call timeout (seconds)"), {
+      target: { value: "7200" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Server" }));
+
+    expect(
+      await within(dialog).findByText("Enter whole seconds from 1 to 1800"),
+    ).toBeInTheDocument();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("clears a saved tool call timeout when its field is emptied", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+    const catalog = mockUseMcpServerCatalog();
+    mockUseMcpServerCatalog.mockReturnValue({
+      ...catalog,
+      data: [{ ...catalog.data[0], tool_timeout_ms: 300_000 }],
+    });
+
+    render(<McpCatalogPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    const field = within(dialog).getByLabelText("Tool call timeout (seconds)");
+    expect(field).toHaveValue(300);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ tool_timeout_ms: 0 })),
+    );
+  });
+
   it("keeps a preset's connection-backed agent credential when editing", async () => {
     const mockMutateAsync = jest.fn().mockResolvedValue({});
     mockUseUpdateMcpServer.mockReturnValue({

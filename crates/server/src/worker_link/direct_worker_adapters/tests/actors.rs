@@ -179,3 +179,65 @@ async fn direct_adapter_appends_only_under_the_live_lease() {
         .expect("the new holder writes");
     assert_eq!(log_types(&adapters, session_id).await.len(), 3);
 }
+
+#[tokio::test]
+async fn causal_turn_anchor_roundtrips_through_worker_and_authority() {
+    use everruns_contracts::typed_id::{MessageId, TurnId};
+    use everruns_core::event_emitter::EventEmitter;
+    use everruns_core::events::{EventContext, EventRequest, TurnStartedData};
+    use everruns_core::host::observability::{
+        InMemorySpanExporter, OtelEventListener, SdkTracerProvider, TraceConventions,
+    };
+    let mut adapters = test_adapters();
+    let exporter = InMemorySpanExporter::default();
+    let provider = SdkTracerProvider::builder()
+        .with_simple_exporter(exporter.clone())
+        .build();
+    adapters.event_service = Arc::new(crate::services::EventService::with_listeners(
+        adapters.db.clone(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
+        vec![Arc::new(OtelEventListener::with_tracer_provider(
+            provider,
+            false,
+            TraceConventions::ALL,
+        ))],
+    ));
+    let session = adapters.db.create_test_session().await;
+    let turn = TurnId::new();
+    let input = MessageId::new();
+    let context = EventContext::turn(turn, input);
+    let emitter = everruns_worker::SessionAdapter::new(adapters.clone());
+    let committed = emitter
+        .emit(EventRequest::new(
+            session,
+            context.clone(),
+            TurnStartedData {
+                turn_id: turn,
+                input_message_id: input,
+                input_content: None,
+                agent_id: None,
+                agent_name: None,
+                agent_description: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let causes = emitter.turn_causal_context(&context);
+    assert_eq!(causes.links().len(), 1);
+    let restored = everruns_worker::SessionAdapter::new(adapters);
+    restored.restore_turn_context(&context, committed.metadata.as_ref());
+    assert_eq!(restored.turn_causal_context(&context), causes);
+    let spans = exporter.get_finished_spans().unwrap();
+    let anchor = spans
+        .iter()
+        .find(|span| span.name == "durable.turn")
+        .unwrap();
+    assert_eq!(
+        anchor.span_context.trace_id().to_string(),
+        format!("{:032x}", causes.links()[0].trace_id())
+    );
+    assert_eq!(
+        anchor.span_context.span_id().to_string(),
+        format!("{:016x}", causes.links()[0].span_id())
+    );
+}

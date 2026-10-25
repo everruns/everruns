@@ -1,5 +1,8 @@
 "use client";
 
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { evalCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateEval, usePageTitle } from "@/hooks";
@@ -35,6 +38,53 @@ export default function NewEvalPage() {
   const [modelId, setModelId] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+
+  const chatDraft = usePageFormDraft({
+    schema: evalCreateDraftSchema,
+    values: {
+      ...formData,
+      target_type: targetType,
+      harness_id: harnessId,
+      agent_id: agentId,
+      app_id: appId,
+      system_prompt: systemPrompt,
+      model_id: modelId,
+      tags,
+    },
+    entityType: "eval",
+    label: "New Eval",
+    baseline: "new",
+    dirty: !!(
+      Object.values(formData).some(Boolean) ||
+      harnessId ||
+      agentId ||
+      appId ||
+      systemPrompt ||
+      modelId ||
+      tags.length ||
+      targetType !== "session"
+    ),
+    writable: !createEval.isPending,
+    apply: ({
+      target_type,
+      harness_id,
+      agent_id,
+      app_id,
+      system_prompt,
+      model_id,
+      tags: nextTags,
+      ...fields
+    }) => {
+      setFormData(fields);
+      setTargetType(target_type);
+      setHarnessId(harness_id);
+      setAgentId(agent_id);
+      setAppId(app_id);
+      setSystemPrompt(system_prompt);
+      setModelId(model_id);
+      setTags(nextTags);
+    },
+  });
 
   const handleAddTag = () => {
     const tag = tagInput.trim();
@@ -73,6 +123,7 @@ export default function NewEvalPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chatDraft.blocked) return;
 
     const target = buildTarget();
 
@@ -110,6 +161,7 @@ export default function NewEvalPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
+            {chatDraft.notice}
             <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
               <Input

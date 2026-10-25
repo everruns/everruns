@@ -66,21 +66,36 @@ The Framework owns value-first configuration for:
 
 The application execution boundary is the concrete `everruns::Engine`.
 `InMemoryEngine` remains a source-compatible alias, not a second
-implementation. `Agent` is immutable behavior; an Engine owns Agent snapshots,
-the session catalog, and the backend bundle needed to execute and resume those
-sessions. `Session` is engine-bound and does not expose its private execution
+implementation. `Agent` is immutable behavior; Engine retains executable builds
+and delegates session identity, commands, canonical state and activation to one
+coherent session hosting profile. Memory is the default; SQLite and Durable
+Object profiles share the same Framework lifecycle and core actor driver. See
+[Engine-owned durable sessions](engine-durable-sessions.md). `Session` is engine-bound and does not expose its private execution
 binding, concrete in-process runtime, stores, or platform DTOs. The `engine` feature of
 `everruns-core` owns shared Input/Reason/Act execution and turn
 planning; it is the lower-level host kernel, not an application-pluggable
 Engine implementation.
+
+Accepted hosted work outlives frontend handles. Interruption inspection reads
+canonical state and authority-clock ownership through the query runtime; a live
+epoch or durable client wait is not an interrupted executor. Explicit resumption
+reuses the original admission and existing activation obligation, without another
+turn loop or a forced ownership change. See the
+[session interruption adapter](../../crates/everruns/src/session/interrupted.rs).
+
+Neutral persisted turn outcomes and approval records live in `everruns-contracts`.
+Core algorithms and hosts import those owners directly; the Framework preserves
+its application-facing exports without adding compatibility owners to the kernel.
 
 There is no Agent-owned compatibility engine and no `Agent::session` or
 `Agent::resume` path in 0.18. Embedded applications retain an Engine and call
 `engine.create(agent)` or `engine.resume(session_id)`. Because Agent behavior
 may contain process-local provider drivers, function handlers, and hook
 closures, local persistence never serializes it. After a process restart, an
-application reconstructs that trusted behavior and explicitly attaches it to a
-new `Engine` before resuming the persisted session. Attachment verifies
+application reconstructs that trusted behavior. Coherent profiles register the
+exact retained Agent/Harness/Environment references before activation; missing
+code leaves history readable and suspends execution. Explicit legacy local
+profiles attach behavior to a new Engine before resume. Legacy attachment verifies
 the ID against the Agent-configured local session catalog; canonical events do
 not confer session identity. A session created with an explicit Harness also
 requires the application to deserialize its portable Harness definition and
@@ -130,7 +145,7 @@ records, which belong to `everruns-server`.
 
 The inventory covers the public [repository README](../../README.md),
 [core README](../../crates/core/README.md),
-[Everruns skill](../../skills/everruns/SKILL.md), and
+[Everruns Framework skill](../../skills/everruns-framework/SKILL.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
 under [the host examples](../../crates/everruns/examples/advanced/in_process_runtime.rs)
@@ -147,6 +162,117 @@ that examples do not: the offline
 The decision below is the durable decision for each family; individual
 implementation tests inside `crates/core/tests/consolidated/host` remain host coverage, not additional
 application entrypoints.
+
+## Host services in Engine applications
+
+An embedding host with its own curated capability implementations, provider
+resolution, recovery budgets, MCP credentials and observers must be able to
+adopt `Engine` without replacing that behavior by the default Framework
+catalog (EVE-1296). Yolop's foreground and child execution is the first such
+consumer. Exposing the runtime builder would also expose session authority,
+stores and the filesystem factory, and a callback or a separately driven
+runtime would bypass Engine's leases, admission and turn runner.
+
+The decision is a curated, value-first SPI,
+[`hosting::services`](../../crates/everruns/src/hosting/services.rs), attached
+to the immutable Agent. Agent build validates it; every runtime Engine
+constructs for that Agent applies it after the Framework has selected the
+Environment-backed composition, so frontend sessions, coherent activations,
+context queries and resumption all see the same services. Engine-level host
+observers use the existing listener dispatcher.
+
+- Host capabilities use the Core `Capability` contract directly, so pre-tool
+  hooks, model views, commands and instructions behave as they do in a
+  directly composed runtime. Their ids, aliases and tool names are checked
+  against the Framework registry and other inputs; collisions fail the build
+  rather than overriding a registration. This is what keeps the
+  Environment-selected filesystem and containment out of reach.
+- Host provider resolution replaces the Agent-owned provider, never
+  supplements it. A model names its provider key; an Agent provider beside
+  host providers, or a key that disagrees with the Agent provider, is a build
+  error. Credentials resolve per call under the session identity, and an
+  unknown key fails before execution instead of letting the runtime guess an
+  external driver of the same name.
+- Retry, stream-stall and MCP credential services are injected values, not a
+  second recovery or transport path. MCP credentials are requested per call.
+- Host observers receive the same committed envelopes as application
+  listeners, on independent bounded queues; they cannot fail a turn or write
+  history.
+- Host request metadata and OpenRouter attribution (EVE-1302) are a validated,
+  credential-free value on the services, not a harness or builder hook. Engine
+  seeds it into the execution configuration of every runtime it builds, the
+  same assembled turn context both turn model calls and session completions
+  read, so there is one place metadata enters execution and no lane or rebuild
+  can drop it. Session completions merge it through the contracts'
+  `completion_metadata` (host < request `purpose` < authority `session_id`).
+  Runtime correlation ids (`RESERVED_COMPLETION_METADATA_KEYS`: `session_id`,
+  `turn_id` and the rest) are reserved: the build rejects them and the runtime
+  stamps them last on every request. `SessionContext` exposes the
+  effective entries, and the external-consumer fixture records them on the
+  actual provider request across first run, reconstruction and resume.
+- Services do not replace egress, stores, session authority or leases. Those
+  remain profile or low-level host concerns below.
+
+The [external host-services fixture](../../crates/everruns/tests/fixtures/external-consumer/host-services/src/lib.rs)
+proves a downstream crate can author a guarded capability with a model view
+using only `everruns`, and the
+[parity test](../../crates/everruns/tests/host/host_services_parity.rs) checks
+the Engine path against direct Core composition.
+
+## Session commands and live controls
+
+A host that drives a Session (Yolop's terminal, print and ACP frontends are
+the first) also dispatches capability slash commands, hot-installs
+extensions and changes model, reasoning effort and MCP servers while a
+session is live (EVE-1297). Handing it the session runtime would let it drive
+a second turn loop beside Engine's, so these are curated
+[Session operations](../../crates/everruns/src/session/controls.rs) instead.
+
+- Commands, context queries and out-of-band review completions run on the
+  runtime the next model call uses (the legacy session's own runtime, or a
+  coherent session's query runtime), so they see the same provider, filters,
+  filesystem and capability chain. They append no canonical events and take
+  no execution ownership. The legacy actor answers them during an active
+  turn, so a tool of that turn can call them without deadlocking its mailbox.
+- Capability code is trusted and registered as an in-process value (Agent,
+  host services or `Engine::register_capability`), never deserialized.
+  Activation is separate and persists only the session overlay of id plus
+  validated configuration.
+- Host review policies own their envelope (EVE-1303). `Session::complete`
+  takes a curated request of host system prompts and bounded user or
+  assistant messages, and sends exactly that, tool-less, through the
+  session's command host: the session contributes only its effective
+  provider and model, call settings, attachment resolution and errors, never
+  its instructions, conversation, filters or model views. A host that wants
+  session context reduces `command_context` itself; the context-appending
+  `complete_out_of_band` stays as the convenience. Exposing the command host
+  or its `SessionCompletionRequest` instead would hand downstream the
+  model-override controls and unbounded metadata the curated request leaves
+  out.
+- Completion metadata has one assembly,
+  [`completion_metadata`](../../crates/contracts/src/runtime/command_host.rs):
+  host request metadata, then the request's (its `purpose` is more specific
+  than a host-wide default, so it wins), then authority keys nothing
+  overrides. Request metadata naming an authority key is rejected rather
+  than dropped, so a caller learns it cannot set it.
+- A live model selection is a credential-free provider key and model id the
+  Agent already serves; it never brings provider code, and unavailable
+  selections fail without fallback or state change.
+- Where state lives follows the hosting profile. Coherent hosting commits the
+  capability overlay, model and effort through its `configure` authority
+  operation (extending `SessionConfiguration`). The explicit legacy lane
+  states weaker semantics: its overlay persists in the session record, while
+  model and effort are Engine-held and re-applied by the host after a
+  restart. Live MCP definitions can carry credentials, so they are
+  Engine-held in both.
+
+The [facade tests](../../crates/everruns/tests/facade/session_controls.rs)
+cover dispatch from a running turn, hot install through deactivation,
+ordering against sends, cancellation and teardown, and coherent reconstruction;
+[completion tests](../../crates/everruns/tests/facade/session_completions.rs)
+check the exact curated envelope on both lanes through a recording driver,
+across reentrant turns, provider changes, timeouts and reconstruction. The
+external host-services fixture drives the same surface with only `everruns`.
 
 ## Deliberately low-level host concerns
 
@@ -329,9 +455,9 @@ it from the driver descriptor they were built from.
   writable message store.
 - A Framework session has at most one active turn. Sending while that turn still
   accepts input steers it; sending after its terminal boundary starts the next
-  turn. The acceptance receipt is authoritative for that timing-dependent
-  decision, and blocking request/response remains convenience over send plus
-  wait rather than a separate execution mode.
+  turn. Admission precedes that timing-dependent assignment, so its receipt may
+  report pending; an authoritative assignment records the eventual decision.
+  Blocking request/response remains convenience over send plus wait.
 - The host log owns coherent append and bounded snapshot replay. In-memory
   durability is process-lifetime only; JSONL acknowledges only a flushed and
   synchronized canonical envelope. Any projection index is rebuildable.
@@ -410,3 +536,7 @@ entrypoints.
 - `crates/core/src/host/events.rs`
 - `crates/core/src/host/mod.rs`
 - `crates/everruns/src/local/`
+- `crates/everruns/src/hosting/services.rs`
+- `crates/everruns/tests/facade/host_services.rs`
+- `crates/everruns/src/session/controls.rs`
+- `crates/everruns/tests/facade/session_controls.rs`

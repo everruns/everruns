@@ -57,6 +57,12 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // Browser-use bookkeeping: the action counter (THREAT[TM-TOOL-050]), the
     // element refs a click resolves, the active and known tabs.
     crate::browser_use::BROWSER_USE_KV_PREFIX,
+    // Framework Engine session metadata (EVE-1298): the workspace binding a
+    // restart reopens, the Harness requirement and the legacy cutover marker.
+    // THREAT[TM-FS-017]: a model that could rewrite the binding would choose
+    // which workspace head the session reopens; one that could delete the
+    // cutover marker would hand the session back to the legacy executor.
+    everruns_contracts::runtime::FRAMEWORK_SESSION_KV_PREFIX,
 ];
 // Capability-owned secret namespaces. Literals are repeated from the owning
 // crates (platform / integrations) because host must not import those crates
@@ -421,6 +427,7 @@ impl Tool for SecretStoreTool {
                     "enum": ["set", "delete", "list"],
                     "description": "The operation to perform"
                 },
+                "credential_usage": {"type":"string","enum":["service","user"],"default":"service","description":"For bound-credential listing: service identity or the verified user. Never falls back to another identity."},
                 "name": {
                     "type": "string",
                     "description": "The secret name (required for set and delete; max 255 chars)"
@@ -497,7 +504,14 @@ impl Tool for SecretStoreTool {
                         "Secret name is reserved for internal system use",
                     );
                 }
-                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                if let Some(refused) = refuse_bound(
+                    storage_store.as_ref(),
+                    context,
+                    name,
+                    arguments.get("credential_usage"),
+                )
+                .await
+                {
                     return refused;
                 }
                 match storage_store
@@ -530,7 +544,14 @@ impl Tool for SecretStoreTool {
                     .get("name")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                if let Some(refused) = refuse_bound(
+                    storage_store.as_ref(),
+                    context,
+                    name,
+                    arguments.get("credential_usage"),
+                )
+                .await
+                {
                     return refused;
                 }
                 ToolExecutionResult::tool_error(
@@ -554,7 +575,14 @@ impl Tool for SecretStoreTool {
                         "Secret name is reserved for internal system use",
                     );
                 }
-                if let Some(refused) = refuse_bound(storage_store.as_ref(), context, name).await {
+                if let Some(refused) = refuse_bound(
+                    storage_store.as_ref(),
+                    context,
+                    name,
+                    arguments.get("credential_usage"),
+                )
+                .await
+                {
                     return refused;
                 }
                 match storage_store.delete_secret(context.session_id, name).await {
@@ -568,15 +596,52 @@ impl Tool for SecretStoreTool {
             }
             "list" => match storage_store.list_secrets(context.session_id).await {
                 Ok(secrets) => {
-                    // A bound listing failure must not hide ordinary secrets.
-                    let bound = storage_store
-                        .list_bound_secrets(context.session_id)
-                        .await
-                        .unwrap_or_default();
+                    let bound: Vec<Value> = if let Some(service) =
+                        storage_store.credential_service()
+                    {
+                        use everruns_contracts::runtime::{
+                            credential_services::CredentialInvocation,
+                            resource_access::CredentialUsage,
+                        };
+                        let Some(invocation) = context.extension::<CredentialInvocation>() else {
+                            return ToolExecutionResult::tool_error(
+                                "Credential listing requires a verified invocation",
+                            );
+                        };
+                        let usage: CredentialUsage = match serde_json::from_value(
+                            arguments
+                                .get("credential_usage")
+                                .cloned()
+                                .unwrap_or(json!("service")),
+                        ) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                return ToolExecutionResult::tool_error(
+                                    "credential_usage must be user or service",
+                                );
+                            }
+                        };
+                        match service.list(*invocation,usage).await {
+                            Ok(rows)=>rows.into_iter().map(|r|json!({"name":r.name,"binding":r.binding,"scope":r.scope,"expires_at":r.expires_at,"write_only":true})).collect(),
+                            Err(_)=>return ToolExecutionResult::tool_error("Credential access unavailable; verify the acting identity or reconnect"),
+                        }
+                    } else {
+                        storage_store
+                            .list_bound_secrets(context.session_id)
+                            .await
+                            .unwrap_or_default()
+                            .iter()
+                            .map(bound_listing)
+                            .collect()
+                    };
                     let mut secret_list: Vec<Value> = secrets
                         .iter()
                         .filter(|s| !is_internal_session_secret_name(&s.name))
-                        .filter(|s| !bound.iter().any(|b| b.name == s.name))
+                        .filter(|s| {
+                            !bound
+                                .iter()
+                                .any(|b| b["name"].as_str() == Some(s.name.as_str()))
+                        })
                         .map(|s| {
                             json!({
                                 "name": s.name,
@@ -585,7 +650,7 @@ impl Tool for SecretStoreTool {
                             })
                         })
                         .collect();
-                    secret_list.extend(bound.iter().map(bound_listing));
+                    secret_list.extend(bound);
                     ToolExecutionResult::success(json!({
                         "operation": "list",
                         "secrets": secret_list,
@@ -621,6 +686,7 @@ fn bound_listing(secret: &everruns_contracts::runtime::BoundSecretInfo) -> Value
     let header = match &secret.binding.auth {
         SecretAuth::Bearer => format!("Authorization: Bearer ${}", secret.name),
         SecretAuth::Header { name } => format!("{name}: ${}", secret.name),
+        SecretAuth::FormField { name } => format!("form {name}=${}", secret.name),
     };
     json!({
         "name": secret.name,
@@ -644,7 +710,31 @@ async fn refuse_bound(
     store: &dyn crate::session_services::SessionStorageStore,
     context: &ToolContext,
     name: &str,
+    selected_usage: Option<&Value>,
 ) -> Option<ToolExecutionResult> {
+    if let Some(service) = store.credential_service() {
+        use everruns_contracts::runtime::{
+            credential_services::CredentialInvocation, resource_access::CredentialUsage,
+        };
+        let Some(invocation) = context.extension::<CredentialInvocation>() else {
+            return Some(ToolExecutionResult::tool_error(
+                "Credential access requires a verified invocation",
+            ));
+        };
+        let usage: CredentialUsage =
+            match serde_json::from_value(selected_usage.cloned().unwrap_or(json!("service"))) {
+                Ok(v) => v,
+                Err(_) => {
+                    return Some(ToolExecutionResult::tool_error(
+                        "credential_usage must be user or service",
+                    ));
+                }
+            };
+        return match service.list(*invocation,usage).await {
+            Ok(rows)=>rows.into_iter().find(|r|r.name==name).map(|r|ToolExecutionResult::tool_error(format!("'{name}' is a write-only credential managed in Credentials. Use ${name} in its approved header or form field for {}.",r.binding.url))),
+            Err(_)=>Some(ToolExecutionResult::tool_error("Credential access unavailable; verify the acting identity or reconnect")),
+        };
+    }
     let bound = store.list_bound_secrets(context.session_id).await.ok()?;
     let secret = bound.iter().find(|secret| secret.name == name)?;
     Some(ToolExecutionResult::tool_error(format!(
@@ -839,6 +929,10 @@ mod tests {
         assert!(is_internal_session_kv_key("computer_use.failed_batch"));
         assert!(is_internal_session_kv_key("browser_use.action_count"));
         assert!(is_internal_session_kv_key("browser_use.refs.T1"));
+        assert!(is_internal_session_kv_key(
+            "framework_session:environment_binding"
+        ));
+        assert!(is_internal_session_kv_key("framework_session:cutover"));
         assert!(!is_internal_session_kv_key("user:agent_run:abc"));
         assert!(!is_internal_session_kv_key("mcp/notes"));
         assert!(!is_internal_session_kv_key("computer_use.notes"));

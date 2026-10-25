@@ -1,5 +1,8 @@
 "use client";
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+
+import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -100,6 +103,20 @@ export default function OrganizationPage() {
   const [saveStates, setSaveStates] = useState(INITIAL_SAVE_STATES);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
+
+  usePageReadContext({
+    fields: ["name", "default_model_id", "default_harness_id", "base_harness_id"],
+    values: {
+      name,
+      default_model_id: defaultModelId,
+      default_harness_id: defaultHarnessId,
+      base_harness_id: baseHarnessId,
+    },
+    entityType: "organization",
+    entityId: organizationId,
+    label: "Organization settings",
+    enabled: !!organizationId,
+  });
 
   const draftRef = useRef<OrganizationDraft>({
     name: "",
@@ -439,6 +456,9 @@ export default function OrganizationPage() {
             <EgressAllowlistSettings />
 
             {canManage && <EverrunsGitHubAppSettings />}
+            {canManage && (
+              <ScopedCredentialsPanel owner={{ scope: "organization", usage: "service" }} />
+            )}
           </div>
         )}
       </section>

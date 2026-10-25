@@ -31,6 +31,59 @@ test("acknowledged input and its alarm commit together, including after lost ack
   assert.equal((await f.call("events")).events.length, 1);
 });
 
+test("configuration patches and empty-history seeds retain retry results without activation",async()=>{
+  const f=await fixture();const tools=[{type:"client_side",name:"render",description:"Show a result",parameters:{type:"object"}}];
+  await f.call("configure",{command_id:"tools",patch:{client_tools:tools}});
+  await f.call("configure",{command_id:"instructions",patch:{instructions:"Use the retained tools"}});
+  assert.deepEqual((await f.call("snapshot")).configuration,{client_tools:tools,instructions:"Use the retained tools"});
+  await f.call("configure",{command_id:"instructions",patch:{instructions:"Use the retained tools"}});
+  await assert.rejects(f.call("configure",{command_id:"instructions",patch:{instructions:null}}),/different input/);
+  await f.call("configure",{command_id:"clear",patch:{instructions:null}});
+  assert.deepEqual((await f.call("snapshot")).configuration,{client_tools:tools,instructions:null});
+  const events=[input()];
+  assert.equal(await f.call("seed",{command_id:"import",events}),true);
+  assert.equal(await f.call("seed",{command_id:"import",events}),true);
+  assert.equal(await f.call("seed",{command_id:"another",events}),false);
+  const snapshot=await f.call("snapshot");assert.equal(snapshot.high_watermark,1);
+  assert.equal((await f.call("status")).runnable,false);assert.equal(f.storage.alarm,null);
+});
+
+test("already-cancelled admission commits cancellation with the input receipt",async()=>{
+  const f=await fixture();const event=input();
+  const receipt=await f.call("input",{event,cancelled:true});
+  assert.equal((await f.call("status")).target_cancels[receipt.message_id],receipt.sequence);
+  assert.deepEqual(await f.call("input",{event,cancelled:true}),receipt);
+  await assert.rejects(f.call("input",{event,cancelled:false}),/different input/);
+  assert.equal((await f.call("events")).events.length,1);
+});
+
+test("mixed approval and client results validate atomically and retain their receipt", async () => {
+  const f = await fixture();
+  await f.call("input", { event: input() });
+  const owner = await claim(f);
+  const turn = await start(f, owner);
+  const approval = { id: "tool_approval_permission", name: "approve_tool_call", arguments: {code:"tool_approval_required",error:"waiting",tool_call_id:"permission",tool:"mutate",arguments:{n:1},fingerprint:"sha256:test",risk:"policy",mode:"normal",asked_at:new Date(1000000).toISOString(),expires_at:new Date(1010000).toISOString()} };
+  const client = { id: "render", name: "render", arguments: {} };
+  await f.call("append", { lease: owner, event: event("tool.call_requested", turn, { tool_calls: [approval, client] }) });
+  await f.call("release", { ...owner, consumed_seq: 3 });
+  const result = { tool_call_id: "render", tool_name: "render", success: true, status: "success", result: [] };
+  const command = {
+    command_id: "mixed", turn_id: turn,
+    approvals: [{ turn_id: turn, request_id: approval.id, decision: "allow" }],
+    results: [result],
+  };
+  const before = await f.call("events");
+  await assert.rejects(f.call("resolve_waits", { ...command, results: [{ ...result, tool_call_id: "unknown" }] }), /pending call/);
+  assert.deepEqual(await f.call("events"), before);
+  assert.equal((await f.call("status")).pending.length, 2);
+  await f.call("resolve_waits", command);
+  const after = await f.call("events");
+  assert.equal(after.events.length, before.events.length + 3);
+  assert.equal((await f.call("status")).runnable, true);
+  await f.call("resolve_waits", command);
+  assert.deepEqual(await f.call("events"), after);
+});
+
 test("another authority instance reconstructs pending input from storage", async () => {
   const f = await fixture();
   await f.call("input", { event: input() });
@@ -97,19 +150,23 @@ test("input arriving at release remains runnable", async () => {
 });
 
 test("cancellation retries cannot cancel the next generation", async () => {
-  const f = await fixture();
+  const f = await fixture({...binding,framework:1});
   await f.call("input", { event: input() });
   const owner = await claim(f);
-  await f.call("cancel", { command_id: "same-cancel" });
+  const turn=await start(f,owner);
+  await f.call("framework",{lease:owner,operation:"set",key:`assignment/${input().data.message.id}`,value:{turn_id:turn},absent:true});
+  await f.call("cancel", { command_id: "same-cancel", input_message_id: input().data.message.id });
   const renewal = await f.call("renew", {
     ...owner,
     ttl_ms: 10000,
     consumed_seq: 0,
   });
   assert.equal(renewal.cancel_inbox_seq, 1);
-  await f.call("release", { ...owner, consumed_seq: 1 });
+  const terminal=await f.call("append",{lease:owner,event:event("turn.cancelled",turn,{turn_id:turn})});
+  await f.call("framework", {lease:owner,operation:"set",key:`outcome/${turn}`,value:{success:false}});
+  await f.call("release", { ...owner, consumed_seq: terminal.event.sequence });
   await f.call("input", { event: input(2) });
-  await f.call("cancel", { command_id: "same-cancel" });
+  await f.call("cancel", { command_id: "same-cancel", input_message_id: input().data.message.id });
   const next = await f.call("claim", { holder: "worker-two", ttl_ms: 10000 });
   assert.equal(next.actor.cancel_inbox_seq, null);
 });
@@ -123,8 +180,8 @@ test("client waits survive restart and partial resolution does not reactivate", 
     lease: owner,
     event: event("tool.call_requested", turn, {
       tool_calls: [
-        { id: "a", name: "approve" },
-        { id: "b", name: "approve" },
+        { id: "a", name: "approve", arguments: {} },
+        { id: "b", name: "approve", arguments: {} },
       ],
     }),
   });
@@ -156,7 +213,7 @@ test("client waits survive restart and partial resolution does not reactivate", 
   );
   await assert.rejects(
     f.call("resolve", { resolution_id: "unknown", results: [result("c")] }),
-    /pending client tools/,
+    /pending call/,
   );
 });
 
@@ -230,7 +287,7 @@ test("agent bindings cannot change and tenant/session identities are isolated", 
   const f = await fixture();
   await assert.rejects(
     f.call("bind", { binding: { ...binding, build_id: "another-build" } }),
-    /another agent build/,
+    /binding conflict/,
   );
   await assert.rejects(
     f.authority.handle("status", {}, sessionId, "other-tenant"),
@@ -297,4 +354,28 @@ test("checkpoint lookup keeps formats separate and chooses the newest matching s
   assert.equal((await read(null)).source_sequence, 20);
   assert.equal((await read(1)).source_sequence, 10);
   assert.equal(await read(3), null);
+});
+
+test("dreaming metadata uses its own claim boundary without weakening turn epochs", async () => {
+  const f = await fixture();
+  const metadata = event("dreaming.activity", null, { operation_id: "maintenance-test", status: "queued", note_count: 0 });
+  await f.call("append", { event: metadata });
+  assert.equal((await f.call("events")).events.at(-1).type, "dreaming.activity");
+  const before = await f.call("events");
+  await assert.rejects(f.call("append", { event: event("turn.started", "turn_unowned", {}) }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...metadata, data: { reason: "x".repeat(4097) } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...metadata, data: { ...metadata.data, reason: "🌙".repeat(1200) } } }), /lease lost/);
+  assert.deepEqual(await f.call("events"), before);
+});
+
+test("background usage metering rejects captured prompts and generated output", async () => {
+  const f = await fixture();
+  const generation = event("llm.generation", null, { messages: [], tools: [], output: { text: null, tool_calls: [] }, metadata: { model: "model", success: true } });
+  generation.metadata = { dreaming_operation_id: "11111111-1111-4111-8111-111111111111" };
+  await f.call("append", { event: generation });
+  const before = await f.call("events");
+  await assert.rejects(f.call("append", { event: { ...generation, data: { ...generation.data, request_body: { evidence: "private" } } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...generation, data: { ...generation.data, output: { text: "private notes", tool_calls: [] } } } }), /lease lost/);
+  await assert.rejects(f.call("append", { event: { ...generation, metadata: { dreaming_operation_id: "-".repeat(36) } } }), /lease lost/);
+  assert.deepEqual(await f.call("events"), before);
 });

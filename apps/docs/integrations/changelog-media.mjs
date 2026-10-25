@@ -11,7 +11,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, createReadStream, sta
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MEDIA = /\.(mp4|webm)$|-poster\.(png|jpe?g|webp)$/i;
+const MEDIA = /\.(mp4|webm)$|-poster(?:@2x)?\.(png|jpe?g|webp)$/i;
 const TYPES = { ".mp4": "video/mp4", ".webm": "video/webm", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
 
 function mediaFiles(changelogDir) {

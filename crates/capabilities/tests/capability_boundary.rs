@@ -21,8 +21,7 @@ const HOSTED_IDS: &[&str] = &[
     "session_tasks",
     "user_hooks",
     "data_knowledge",
-    "knowledge_base",
-    "knowledge_index",
+    "knowledge",
     "citation_retrieval",
     "citation_web",
     "citation_verification",
@@ -54,6 +53,8 @@ fn product_registration_adds_the_hosted_catalog() {
     for id in HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
     }
+    assert!(!registry.has("knowledge_base"));
+    assert!(!registry.has("knowledge_index"));
     #[cfg(feature = "environment-capabilities")]
     for id in ENVIRONMENT_GATED_HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");
@@ -67,14 +68,10 @@ fn product_registration_adds_the_hosted_catalog() {
     }
 }
 
-// `memory`, `data_knowledge`, and `platform` declare an unconditional
-// dependency on `session_file_system`, which only registers when
-// `environment-capabilities` links the filesystem integration crate
-// (crates/platform/Cargo.toml). The full hosted catalog is only a coherent
-// dependency graph with that feature on — every hosted binary
-// (crates/server, crates/worker) enables it — so this check requires it too
-// rather than reporting a dangling dependency that is not actually a bug.
-#[cfg(feature = "environment-capabilities")]
+// Hosted dependencies span environment capabilities (session_file_system)
+// and portable builtins (skills). Server and worker enable both; validate
+// their composed graph only when both catalogs are registered.
+#[cfg(all(feature = "environment-capabilities", feature = "portable-builtins"))]
 #[test]
 fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let registry = everruns_capabilities::capabilities::hosted_capability_registry_for_grade(

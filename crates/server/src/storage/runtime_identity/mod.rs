@@ -159,7 +159,7 @@ impl StorageBackend {
         }
         {
             let db = self.database();
-            let mut tx = db.pool().begin().await?;
+            let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
             let row = sqlx::query_as::<_, UserConnectionRow>(
                 "SELECT * FROM pending_user_connections WHERE id=$1 AND user_id=$2 FOR UPDATE",
             )
@@ -182,7 +182,7 @@ impl StorageBackend {
                 .bind(user)
                 .execute(&mut *tx)
                 .await?;
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             Ok(true)
         }
     }
@@ -294,7 +294,7 @@ impl StorageBackend {
         ];
         {
             let db = self.database();
-            let mut tx = db.pool().begin().await?;
+            let mut tx = everruns_durable::begin_transaction(db.pool()).await?;
             let current: Option<SessionSecretRow> = sqlx::query_as(
                 "SELECT * FROM session_secrets WHERE session_id=$1 AND name=$2 FOR UPDATE",
             )
@@ -319,7 +319,7 @@ impl StorageBackend {
                         .await?;
                 }
             }
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             Ok(true)
         }
     }

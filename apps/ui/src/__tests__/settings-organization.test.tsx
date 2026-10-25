@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import OrganizationPage from "@/app/(main)/settings/organization/page";
 import { ApiError } from "@/lib/api/client";
 
+jest.mock("@/components/credentials/scoped-credentials-panel", () => ({
+  ScopedCredentialsPanel: ({ owner }: { owner: { scope: string; usage: string } }) => (
+    <div data-testid="scoped-credentials" data-scope={owner.scope} data-usage={owner.usage} />
+  ),
+}));
+
 const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
 const mockMutateAsync = jest.fn();
@@ -565,4 +571,14 @@ describe("OrganizationPage", () => {
       expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     });
   });
+});
+
+it("shows organization credential management only to organization managers", () => {
+  viewerRole = "owner";
+  const { rerender } = render(<OrganizationPage />);
+  expect(screen.getByTestId("scoped-credentials")).toHaveAttribute("data-scope", "organization");
+  expect(screen.getByTestId("scoped-credentials")).toHaveAttribute("data-usage", "service");
+  viewerRole = "member";
+  rerender(<OrganizationPage />);
+  expect(screen.queryByTestId("scoped-credentials")).not.toBeInTheDocument();
 });

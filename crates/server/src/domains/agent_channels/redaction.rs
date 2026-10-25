@@ -100,6 +100,11 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
         }
         // Agent keys live in their own table. The customer identity methods
         // may hold an introspection client secret, redacted like channel auth.
+        ChannelType::WorkChat => {
+            if let Some(execution) = map.get_mut("execution") {
+                redact_channel_config(&ChannelType::Api, execution);
+            }
+        }
         ChannelType::Api => {
             if let Some(methods) = map.get_mut("auth_methods").and_then(Value::as_array_mut) {
                 for method in methods.iter_mut() {

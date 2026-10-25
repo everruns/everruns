@@ -7,7 +7,7 @@
   ],
   "vars": {
     "TENANT_ID": "test",
-    "MODEL": "qualification-model"
+    "MODEL": "gpt-6-luna"
   },
   "durable_objects": {
     "bindings": [

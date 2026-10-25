@@ -447,7 +447,7 @@ pub(crate) async fn resolve_model_execution(
     resolve_model_execution_for_session(provider_store, driver_registry, spec, None).await
 }
 
-async fn resolve_model_execution_for_session(
+pub(crate) async fn resolve_model_execution_for_session(
     provider_store: &dyn ProviderStore,
     driver_registry: &DriverRegistry,
     spec: ModelSpec,

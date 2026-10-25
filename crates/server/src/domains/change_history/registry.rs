@@ -37,6 +37,8 @@ pub enum EntityKind {
     KnowledgeBase,
     KnowledgeEntry,
     KnowledgeIndex,
+    Knowledge,
+    KnowledgeIndexer,
     Memory,
     Provider,
     Model,
@@ -69,6 +71,8 @@ impl EntityKind {
         Self::KnowledgeBase,
         Self::KnowledgeEntry,
         Self::KnowledgeIndex,
+        Self::Knowledge,
+        Self::KnowledgeIndexer,
         Self::Memory,
         Self::Provider,
         Self::Model,
@@ -101,6 +105,8 @@ impl EntityKind {
             Self::KnowledgeBase => "knowledge_base",
             Self::KnowledgeEntry => "knowledge_entry",
             Self::KnowledgeIndex => "knowledge_index",
+            Self::Knowledge => "knowledge",
+            Self::KnowledgeIndexer => "knowledge_indexer",
             Self::Memory => "memory",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -142,6 +148,8 @@ impl EntityKind {
             Self::KnowledgeBase => "kb",
             Self::KnowledgeEntry => "kbe",
             Self::KnowledgeIndex => "kidx",
+            Self::Knowledge => "kn",
+            Self::KnowledgeIndexer => return None,
             Self::Memory => "mem",
             Self::Provider => "provider",
             Self::Model => "model",
@@ -186,6 +194,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_VIEW,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_VIEW,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_VIEW,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::VIEW,
             Self::Memory => &memory::MEMORY_VIEW,
             Self::Provider => &providers::LLM_PROVIDER_VIEW,
             Self::Model => &models::LLM_MODEL_VIEW,
@@ -220,6 +229,7 @@ impl EntityKind {
             Self::Schedule => &schedules::SCHEDULE_MANAGE,
             Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_MANAGE,
             Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_MANAGE,
+            Self::Knowledge | Self::KnowledgeIndexer => &knowledge::MANAGE,
             Self::Memory => &memory::MEMORY_MANAGE,
             Self::Provider => &providers::LLM_PROVIDER_MANAGE,
             Self::Model => &models::LLM_MODEL_MANAGE,
@@ -241,7 +251,10 @@ impl EntityKind {
     /// them belong on the parent. Sessions have their own lifecycle and are not
     /// managed in this sense.
     pub fn has_manager_context(self) -> bool {
-        !matches!(self, Self::KnowledgeEntry | Self::EvalCase | Self::Session)
+        !matches!(
+            self,
+            Self::KnowledgeEntry | Self::KnowledgeIndexer | Self::EvalCase | Self::Session
+        )
     }
 
     /// The read command that fetches one entity of this kind by its ref alone,
@@ -257,6 +270,7 @@ impl EntityKind {
             Self::Schedule => ("get_schedule", "schedule_id"),
             Self::KnowledgeBase => ("get_knowledge_base", "kb_id"),
             Self::KnowledgeIndex => ("get_knowledge_index", "index_id"),
+            Self::Knowledge => ("get_knowledge", "collection_id"),
             Self::Memory => ("get_memory", "memory_id"),
             Self::Provider => ("get_provider", "id"),
             Self::Model => ("get_model", "id"),
@@ -277,6 +291,7 @@ impl EntityKind {
             | Self::AgentTrigger
             | Self::AgentScript
             | Self::KnowledgeEntry
+            | Self::KnowledgeIndexer
             | Self::EvalCase => return None,
         })
     }
@@ -404,8 +419,13 @@ pub fn declared(name: &str) -> Change {
 
     match name {
         // Agents and what hangs off them.
-        "create_agent" | "copy_agent" => on(K::Agent, Created, ID),
+        "create_agent" | "copy_agent" | "adopt_agent_example" => on(K::Agent, Created, ID),
         "import_agent" => on(K::Agent, Imported, ID),
+        "connect_agent_source" => on(K::Agent, Attached, Param("agent_id")),
+        "disconnect_agent_source" => on(K::Agent, Detached, Param("agent_id")),
+        "sync_agent_source" => {
+            Change::Exempt("queues reconciliation; the import records the actual change")
+        }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
         "suspend_agent_exposures" => on(K::Agent, Suspended, ID),
@@ -490,6 +510,21 @@ pub fn declared(name: &str) -> Change {
         "update_knowledge_index" => on(K::KnowledgeIndex, Updated, ID),
         "delete_knowledge_index" => on(K::KnowledgeIndex, Deleted, Param("index_id")),
         "sync_knowledge_index" => Change::Exempt("a sync run refreshes content, not configuration"),
+
+        "create_knowledge" => on(K::Knowledge, Created, ID),
+        "update_knowledge" | "add_knowledge_source" => {
+            on(K::Knowledge, Updated, Param("collection_id"))
+        }
+        "archive_knowledge" => on(K::Knowledge, Deleted, Param("collection_id")),
+        "create_knowledge_indexer" => on(K::KnowledgeIndexer, Created, ID),
+        "sync_knowledge" => {
+            Change::Exempt("queues source refresh and derived indexing, not configuration")
+        }
+        "write_knowledge_file" | "delete_knowledge_file" | "update_knowledge_file_metadata" => {
+            Change::Exempt(
+                "file content and metadata use immutable versions; file lifecycle uses catalog state",
+            )
+        }
 
         "create_memory" => on(K::Memory, Created, ID),
         "update_memory" => on(K::Memory, Updated, ID),
@@ -645,6 +680,9 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
+        "worker_dreaming_state" => Change::Exempt(
+            "private runtime maintenance and reservations; payload-free activity is recorded separately",
+        ),
         "worker_create_session_task"
         | "worker_update_session_task"
         | "worker_request_cancel_session_task"
@@ -665,6 +703,15 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("session resources are the session's working state")
         }
 
+        "create_scoped_credential"
+        | "revoke_scoped_credential"
+        | "grant_resource_access"
+        | "revoke_resource_grant" => Change::Exempt(
+            "credential ownership and grants have atomic payload-free resource_access_audit entries",
+        ),
+        "worker_credentials" => Change::Exempt(
+            "runtime credential operations are write-only and use payload-free resource audit",
+        ),
         "mark_notification_viewed" => Change::Exempt("read state of the caller's own inbox"),
         "check_health_issue" | "snooze_health_issue" => {
             Change::Exempt("triage state of a health issue, not configuration")
@@ -705,6 +752,7 @@ pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
         | "disconnect_agent_github"
         // Composes channel and trigger creation from a package.
         | "import_agent"
+        | "connect_agent_source"
         // Decodes and resizes an image (CPU) before the write.
         | "set_agent_avatar"
     )

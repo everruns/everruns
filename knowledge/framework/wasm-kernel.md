@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "The Execution Kernel in a JavaScript Isolate"
-description: "Why core execution and its optional host build for Wasm, how time and tasks port, and how the original celld step-machine example differs."
+description: "Why core execution and its optional host build for Wasm, how time and tasks port, and how the Engine Worker stays within its upload budget."
 tags:
   - everruns
   - framework
@@ -15,19 +15,20 @@ tags:
 **Status: experimental.** The kernel crates build for
 `wasm32-unknown-unknown` with default features off, and
 `examples/durable-object-agent` runs the ordinary host and shared actor driver
-inside an object. The smaller `examples/celld-engine` remains a custom step-machine
-example. These surfaces remain experimental; the build guard
+inside an object. `examples/celld-engine` reuses the same Framework Agent and
+Engine application with celld hosting. These surfaces remain experimental; the build guard
 (`scripts/lib/check-wasm-portability.sh`) and workerd tests protect their boundaries.
 
 ## Problem
 
 A Durable Object platform (celld, Cloudflare) gives each object a single
 owner, replicated SQLite and durable alarms: a natural home for one agent
-session. Hosting `serve` next to the object in a container
-([serve](serve.md)) keeps durability at turn granularity, because the object
-can only replay whole requests into a process it cannot see inside. Running
-the engine in the object itself lets every engine event land in the object's
-own storage.
+session. A native Engine beside the object and a Wasm Engine inside it both
+write canonical events through the same fenced authority and recover through
+independent wakeups. Placement changes host services, transport overhead and
+failure domains; it does not select a different recovery protocol. See
+[serve](serve.md) for native hosting and
+[shared object execution](durable-object-native.md) for both placements.
 
 ## Decisions
 
@@ -49,8 +50,8 @@ own storage.
   `web_time::Instant` instead.
 - **`Send` contracts stay.** Engine traits require `Send` so native hosts can
   use the multi-thread runtime. JavaScript futures are `!Send`; on the
-  single-threaded wasm target, `rt::AssertSend` (and `worker::send` in the
-  example) marks them `Send` there and only there.
+  single-threaded wasm target, `rt::AssertSend` marks them `Send` there and only
+  there.
 - **Provider protocols use host-owned HTTP.** The shared Chat Completions and
   Responses protocols and OpenAI/OpenRouter chat drivers accept an injected
   transport on native and wasm32. Only the native default links sockets/TLS;
@@ -63,30 +64,35 @@ own storage.
   SSE and portable deadlines. Native non-chat services and WebSockets are
   outside this boundary.
 
-## Original celld-engine example
+## Artifact budget
 
-The following decisions describe the original custom step machine. The shared
-actor host instead uses the canonical event log and the ordinary tool recovery
-policies described in [Execution Backends](execution-backends.md).
+The maintained isolate example uses `default-features = false`, size-oriented
+release optimization and full LTO. Its ordinary Engine includes shared planning,
+recovery and command policy. The authority bootstrap installs reducer exports
+from that same Wasm module; uploading the standalone authority reducer too would
+duplicate Rust code and exceed the project budget. Native executor placement still
+uses the standalone reducer inside the authority transaction.
 
-- **The cell commits per engine step, not per event.** One step is one atom:
-  a Reason (one model call) or an Act (one tool batch). The events a step
-  emits are written uncommitted, and the step commits them, the next turn
-  position and the consumed inbox entry in one storage transaction. A lost
-  step is discarded and re-run; a committed one never repeats. That bounds
-  the cost of losing a node at one model call or one tool batch, against the
-  whole turn for the container shape.
-- **The alarm drives turns.** A request only queues a message and arms the
-  alarm, and each step re-arms it one lease ahead, so a turn resumes on
-  whichever node owns the object next with no client involvement.
-- **Messages wait in an inbox.** A message posted mid-turn enters the event
-  log only when its turn opens, so it never lands between a tool call and its
-  result.
+The [size guard](../../examples/durable-object-agent/check-size.mjs) measures the
+complete pinned Wrangler dry-run upload, including all JS/Wasm modules, against
+3,000,000 compressed bytes. The recovery CI enforces it on the built application;
+this is an application budget, not a guarantee for every feature/tool combination.
+Retained Agent definitions share one compatible Engine implementation. Extra
+behaviors, provider protocols and tools consume the remaining budget; their final
+bundle must pass the same measurement. Do not move recovery policy into JavaScript
+to meet size targets.
 
-## Open
+Cloudflare's [limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)
+checked on 2026-10-19 specify 64 MiB uncompressed with no compressed limit; the
+project's smaller compressed budget remains deliberate. Raw Engine Wasm is larger
+than 3 MB and does not claim to meet a 3 MB uncompressed deployment restriction.
+Runtime startup time and memory are separate platform constraints.
 
-- A tool with side effects outside the cell can run twice if the node is
-  lost after it ran and before its step committed. Idempotency keys per tool
-  call would close that.
-- Built-in tools that need a filesystem or processes have no isolate
-  equivalent; the example ships one pure tool.
+## Host requirements
+
+Native filesystem/process tools require explicit compatible host services, or
+native Engine placement over the same authority. The shared
+[Engine-owned architecture](engine-durable-sessions.md) and
+[qualification evidence](durable-object-native.md) own these guarantees. A journal
+alone never supplies exactly-once external effects, durable files or user access
+control.

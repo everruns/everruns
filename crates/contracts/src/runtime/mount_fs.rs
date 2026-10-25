@@ -119,6 +119,7 @@ struct ResolvedMount {
 /// Mount-based resolver. Implements `SessionFileSystem`, so it drops into
 /// `ToolContext` / `SystemPromptContext` wherever the file store is wired.
 pub struct MountFs {
+    memory_scopes: std::collections::HashMap<String, crate::runtime::dreaming::DreamMemoryScope>,
     /// Sorted by mount-point length descending so the first match is the
     /// longest (most specific) mount.
     mounts: Vec<Mount>,
@@ -156,6 +157,7 @@ impl MountFs {
             },
         ];
         let mut fs = Self {
+            memory_scopes: Default::default(),
             mounts,
             primary: workspace,
             cwd: WORKSPACE_MOUNT.to_string(),
@@ -230,6 +232,18 @@ impl MountFs {
         });
         self.sort_mounts();
         self
+    }
+
+    /// Register an explicitly writable durable Memory, distinct from a workspace mount.
+    pub fn with_memory_mount(
+        mut self,
+        point: impl Into<String>,
+        backend: Arc<dyn SessionFileSystem>,
+        scope: crate::runtime::dreaming::DreamMemoryScope,
+    ) -> Self {
+        let point = normalize_virtual(&point.into(), "/");
+        self.memory_scopes.insert(point.clone(), scope);
+        self.with_mount(point, backend, "/")
     }
 
     /// The current working directory (normalized virtual path).
@@ -469,6 +483,33 @@ fn display_backend_path(display_root: &str, path: &str) -> String {
 
 #[async_trait]
 impl SessionFileSystem for MountFs {
+    async fn create_file_if_absent(
+        &self,
+        session: SessionId,
+        path: &str,
+        content: &str,
+    ) -> Result<bool> {
+        let r = self.resolve(path)?;
+        r.backend
+            .create_file_if_absent(session, &r.backend_path, content)
+            .await
+    }
+
+    async fn dreaming_scope(
+        &self,
+        session: SessionId,
+        mount: &str,
+    ) -> Result<Option<crate::runtime::dreaming::DreamMemoryScope>> {
+        if let Some(scope) = self.memory_scopes.get(mount) {
+            return Ok(Some(scope.clone()));
+        }
+        let resolved = self.resolve(mount)?;
+        resolved
+            .backend
+            .dreaming_scope(session, &resolved.backend_path)
+            .await
+    }
+
     fn display_root(&self) -> String {
         // Routing always defaults cwd to /workspace, but the *displayed* root is
         // policy: the alias for host-agnostic presentation, or the backend's own
@@ -478,6 +519,12 @@ impl SessionFileSystem for MountFs {
             DisplayPolicy::WorkspaceAlias => WORKSPACE_MOUNT.to_string(),
             DisplayPolicy::BackendNative => self.primary.display_root(),
         }
+    }
+
+    fn session_scoped_path(&self, path: &str) -> bool {
+        self.resolve(path)
+            .map(|resolved| resolved.backend.session_scoped_path(&resolved.backend_path))
+            .unwrap_or(false)
     }
 
     fn is_mount_resolver(&self) -> bool {

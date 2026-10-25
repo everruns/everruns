@@ -26,3 +26,7 @@ it back.
 secure page.
 
 See [Bashkit Shell](/capabilities/bashkit-shell/#api-keys-the-agent-never-sees).
+
+## Update 2026-10-19
+
+[Scoped credentials](/changelog/2026-10-19-scoped-credentials-secure-capture/) add virtual-user and organization ownership, explicit agent grants, form-field bindings and Web Fetch response capture. Hosted Bashkit resolves authorization again for each credential-bearing send. Secure value updates now require the observed resource revision; ordinary unbound session secrets retain their existing lifecycle.

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
+import { previewShowsFiles } from "@/components/agents/agent-files-visibility";
 import { PreviewFeatures } from "@/components/agents/preview-features";
 import type {
   AgentCapabilityConfig,
@@ -162,10 +163,15 @@ export function AgentPreview({
         </CardContent>
       </Card>
 
-      <InitialFilesPreview
-        files={preview.initial_files ?? initialFiles}
-        description="Files from the harness and agent. Agent files override inherited files with the same path."
-      />
+      {previewShowsFiles({
+        features: preview.features,
+        files: preview.initial_files ?? initialFiles,
+      }) && (
+        <InitialFilesPreview
+          files={preview.initial_files ?? initialFiles}
+          description="Files from the harness and agent. Agent files override inherited files with the same path."
+        />
+      )}
     </div>
   );
 }

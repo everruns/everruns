@@ -243,10 +243,20 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     assert!(binding.get("value").is_none());
     let binding_id = binding["id"].as_str().unwrap();
 
+    let scoped: Value = server
+        .get(&format!(
+            "/v1/credential-bindings?scope=agent&owner_id={}&usage=service",
+            agent.public_id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let revision = scoped[0]["revision"].as_i64().unwrap();
+
     let rotated: Value = server
         .put(
             &format!("/v1/agents/{}/credentials/{binding_id}", agent.public_id),
-            json!({ "value": sentinel }),
+            json!({ "value": sentinel, "revision": revision }),
         )
         .await
         .assert_status(StatusCode::OK)
@@ -268,12 +278,39 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .await
         .unwrap()
         .unwrap();
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({"agent_id":agent.public_id,"title":"MCP credential runtime"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let input_message_id = uuid::Uuid::now_v7();
+    server
+        .db
+        .record_runtime_invocation(
+            DEFAULT_ORG_ID,
+            session.id,
+            input_message_id,
+            None,
+            None,
+            Some(stored_agent.id.uuid()),
+        )
+        .await
+        .unwrap();
     let runtime_bindings =
         everruns_server::domains::agents::credentials::resolve_runtime_secret_bindings(
             server.db.as_ref(),
             server.encryption.as_deref(),
             DEFAULT_ORG_ID,
-            Some(stored_agent.id),
+            Some(
+                everruns_contracts::runtime::credential_services::CredentialInvocation {
+                    session_id: session.id,
+                    input_message_id,
+                },
+            ),
+            everruns_core::McpServerActsAs::Service,
             "visti-test",
             "https://example.com/mcp",
         )
@@ -315,7 +352,7 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     server
         .put(
             &format!("/v1/agents/{}/credentials/{binding_id}", other.public_id),
-            json!({ "value": "attempted-cross-agent-replacement" }),
+            json!({ "value": "attempted-cross-agent-replacement", "revision": revision }),
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);

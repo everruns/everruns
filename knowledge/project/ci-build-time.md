@@ -24,13 +24,23 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+The durable isolation job provisions its own source scanner. Missing or failed
+scans are incomplete checks, never evidence of a clean architecture boundary;
+the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both
+failure paths alongside matching and clean source fixtures.
+MCP credential and worker-transport changes also exercise the gRPC identity and
+connection-required contract before merge.
+Hosted capability graph validation selects both portable builtins and environment
+capabilities, matching server/worker composition; either catalog alone can omit
+dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
 Ordinary Rust changes do not build the server/worker/CLI binaries, full PostgreSQL
 shards, SDK cohorts, or Docker images. Public API and packaging inputs retain their
 specific consumers. Chaos functional coverage uses the existing shared CI binaries
-in broad batches and harness-specific PRs; its separate release-profile build is a
-manual benchmark. See [selection](../../.github/scripts/ci/focused.py) and
+in broad batches and PRs touching the harness or cancellation controls; its
+separate release-profile build is a manual benchmark. See
+[selection](../../.github/scripts/ci/focused.py) and
 [workflow routing](../../.github/workflows/ci.yml).
 
 Main uses push-triggered coalescing: one batch runs to completion while only the
@@ -100,6 +110,11 @@ durable 9.1m to 2-3m.
 
 ## Constraints
 
+- **Generated descriptors are outputs.** The [E2B build](../../crates/integrations/build.rs)
+  generates a descriptor before calling ConnectRPC codegen. Registering that same
+  descriptor as a Cargo input invalidated warm integration and downstream builds.
+  Track the source proto and decoder environment setting instead; cache-hit claims
+  require a second unchanged invocation, not just a successful compile.
 - **Invocation count drives build time.** Each `cargo test` invocation pays its own
   codegen and link pass, so CI keeps the count per shard to a minimum: the domain shard
   runs one invocation. The server shard builds library, contracts and repository
@@ -184,7 +199,8 @@ SDK cleanup plus linker package setup exhausted its five-minute startup budget i
 [main run 38663303410](https://github.com/everruns/everruns/actions/runs/38663303410).
 Rust jobs now reuse the image's existing linker, exposing its versioned executable
 under the standard command name in runner-local temporary storage when needed.
-Package installation remains a bounded fallback, and shared Cargo linker flags
+Any installed LLVM major qualifies (the newest wins), so a runner-image LLVM bump does
+not route every job through apt. Package installation remains a bounded fallback, and shared Cargo linker flags
 stay identical. See [linker preparation](../../scripts/ci-prepare-linker.sh).
 
 ## CI-only optimization measurements

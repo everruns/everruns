@@ -8,8 +8,8 @@
  * identity, and Sandbox selection.
  *
  * Dry run (proactive agents D5) adds the `dry_run` session capability: tools
- * that only read run for real, every other call is simulated. The agent page's
- * Test run button opens this form with it ticked; unticking runs for real.
+ * that only read run for real, every other call is simulated. The existing
+ * checkbox selects this mode before starting a chat.
  *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
@@ -21,13 +21,14 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
   SelectGroup,
-  SelectItem,
   SelectLabel,
+  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -136,14 +137,28 @@ export function NewPlaygroundChatForm({
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3">
-        <Select value={selection} onValueChange={selectCounterpart} disabled={optionsLoading}>
-          <SelectTrigger className="w-full" aria-label="Chat counterpart">
-            <SelectValue
-              placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {availableHarnesses.some(isHarnessDeprecated) && (
+        <Combobox
+          value={selection}
+          onValueChange={selectCounterpart}
+          ariaLabel="Chat counterpart"
+          placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
+          searchPlaceholder="Search agents and harnesses"
+          clearable={false}
+          disabled={optionsLoading}
+          options={[
+            ...harnesses.map((harness) => ({
+              value: `${HARNESS_VALUE_PREFIX}${harness.name}`,
+              label: getDisplayName(harness),
+              group: "Harnesses",
+            })),
+            ...agents.map((agent) => ({
+              value: `${AGENT_VALUE_PREFIX}${agent.id}`,
+              label: getDisplayName(agent),
+              group: "Agents",
+            })),
+          ]}
+          footer={
+            availableHarnesses.some(isHarnessDeprecated) ? (
               <button
                 type="button"
                 className="w-full px-2 py-1.5 text-left text-sm text-muted-foreground"
@@ -152,29 +167,9 @@ export function NewPlaygroundChatForm({
               >
                 {showDeprecated ? "Hide deprecated" : "Show deprecated"}
               </button>
-            )}
-            {harnesses.length > 0 && (
-              <SelectGroup>
-                <SelectLabel>Harnesses</SelectLabel>
-                {harnesses.map((harness) => (
-                  <SelectItem key={harness.id} value={`${HARNESS_VALUE_PREFIX}${harness.name}`}>
-                    {getDisplayName(harness)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-            {agents.length > 0 && (
-              <SelectGroup>
-                <SelectLabel>Agents</SelectLabel>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={`${AGENT_VALUE_PREFIX}${agent.id}`}>
-                    {getDisplayName(agent)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            )}
-          </SelectContent>
-        </Select>
+            ) : undefined
+          }
+        />
         {selectedAgent?.sandbox_policy && sandboxNames.length > 0 && sandboxMode !== "fixed" ? (
           <Select value={selectedSandbox} onValueChange={setSandbox}>
             <SelectTrigger className="w-full" aria-label="Sandbox">

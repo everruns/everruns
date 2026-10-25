@@ -43,9 +43,11 @@ use crate::engine::{
     image_services::ImageResolver,
     image_services::ResolvedImage,
 };
+use everruns_contracts::durable_retry;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod background_call;
+mod causal;
 mod compaction;
 mod error_policy;
 mod facts;
@@ -57,6 +59,7 @@ mod hosted_tools;
 mod observability;
 mod output_hooks;
 mod partial_recovery;
+mod phase;
 mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
@@ -107,6 +110,7 @@ fn default_max_iterations() -> usize {
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
 pub struct ReasonAtom {
+    causal_context: crate::causal::CausalContext,
     native_async:
         Option<Arc<tokio::sync::Mutex<crate::engine::native_async::NativeAsyncCoordinator>>>,
     context_resolver: Arc<dyn TurnContextResolver>,
@@ -152,14 +156,6 @@ pub struct ReasonAtom {
 }
 
 impl ReasonAtom {
-    pub fn with_native_async(
-        mut self,
-        coordinator: Arc<tokio::sync::Mutex<crate::engine::native_async::NativeAsyncCoordinator>>,
-    ) -> Self {
-        self.native_async = Some(coordinator);
-        self
-    }
-
     /// Create a new ReasonAtom
     pub fn new(
         context_resolver: impl TurnContextResolver + 'static,
@@ -168,6 +164,7 @@ impl ReasonAtom {
         event_emitter: impl PhaseEffectSink + 'static,
     ) -> Self {
         Self {
+            causal_context: Default::default(),
             native_async: None,
             context_resolver: Arc::new(context_resolver),
             message_retriever: Arc::new(message_retriever),
@@ -310,309 +307,6 @@ impl ReasonAtom {
         assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
         self.execute_inner(input, Some(assembled)).await
-    }
-
-    async fn execute_inner(
-        &self,
-        input: ReasonInput,
-        assembled: Option<AssembledTurnContext>,
-    ) -> Result<ReasonResult> {
-        let ReasonInput {
-            context,
-            harness_id,
-            agent_id,
-            org_id,
-            mcp_tool_definitions,
-            previous_response_id,
-            iteration,
-        } = input;
-
-        tracing::info!(
-            session_id = %context.session_id,
-            turn_id = %context.turn_id,
-            exec_id = %context.exec_id,
-            harness_id = %harness_id,
-            agent_id = ?agent_id,
-            mcp_tools_count = %mcp_tool_definitions.len(),
-            "ReasonAtom: starting LLM call"
-        );
-
-        // Generate OTel-style span IDs for hierarchical tracing
-        // trace_id: groups all events in this turn
-        // span_id: unique identifier for this reason span (shared by started/completed)
-        // parent_span_id: links to turn as parent
-        //
-        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
-        // matching the format used by turn.started/completed events in Braintrust.
-        let trace_id = context.turn_id.to_string();
-        let reason_span_id = Uuid::now_v7().to_string();
-        let parent_span_id = trace_id.clone(); // Parent is the turn
-
-        // Create event context from atom context with span info
-        let event_context = EventContext::from_execution_context(&context).with_span(
-            trace_id.clone(),
-            reason_span_id.clone(),
-            Some(parent_span_id.clone()),
-        );
-
-        let reason_start = Instant::now();
-
-        // A lost attempt of this step already announced it (EVE-532).
-        let prior = self.prior_stream(&context).await;
-        if prior.announces_step()
-            && let Err(e) = self
-                .event_emitter
-                .emit(EventRequest::new(
-                    context.session_id,
-                    event_context.clone(),
-                    ReasonStartedData {
-                        harness_id,
-                        agent_id,
-                        metadata: None, // Will be populated after model resolution
-                    },
-                ))
-                .await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                error = %e,
-                "ReasonAtom: failed to emit reason.started event"
-            );
-        }
-
-        // Assemble the turn context up-front so the error path below knows
-        // the resolved provider/model and the error-disclosure mode even when
-        // the LLM call (or the assembly itself) fails.
-        let assembled = match assembled {
-            Some(assembled) => Ok(assembled),
-            None => {
-                self.context_resolver
-                    .resolve_turn_context(TurnContextRequest {
-                        session_id: context.session_id,
-                        harness_id,
-                        agent_id,
-                        mcp_tool_definitions: mcp_tool_definitions.clone(),
-                        allow_provider_managed_reduction: true,
-                    })
-                    .await
-            }
-        };
-        let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
-            Ok(assembled) => {
-                // Heap-allocate the large fallback future so nested foreground
-                // child turns fit Tokio's default worker stack.
-                let outcome = Box::pin(provider_managed_compaction::execute_with_fallback(
-                    provider_managed_compaction::Call {
-                        atom: self,
-                        session_id: context.session_id,
-                        harness_id,
-                        agent_id,
-                        org_id,
-                        context: &context,
-                        trace_id: &trace_id,
-                        reason_span_id: &reason_span_id,
-                        previous_response_id,
-                        iteration,
-                        mcp_tool_definitions: &mcp_tool_definitions,
-                        assembled,
-                        prior,
-                    },
-                ))
-                .await;
-                (
-                    outcome.disclosure,
-                    outcome.error_context,
-                    outcome.error_hooks,
-                    outcome.result,
-                )
-            }
-            Err(error) => (
-                ErrorDisclosure::default(),
-                UserFacingErrorContext::default(),
-                Vec::new(),
-                Err(error),
-            ),
-        };
-
-        // Handle LLM call errors gracefully
-        let result = match call_result {
-            Ok(result) => {
-                // Calculate reason phase duration
-                let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
-
-                // Emit reason.completed event (same span as reason.started, parent is turn)
-                let completed_context = EventContext::from_execution_context(&context).with_span(
-                    trace_id.clone(),
-                    reason_span_id.clone(), // Same span_id as started
-                    Some(parent_span_id.clone()),
-                );
-                if let Err(e) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        completed_context,
-                        ReasonCompletedData::success(
-                            &result.text,
-                            result.has_tool_calls,
-                            result.tool_calls.len() as u32,
-                            Some(reason_duration_ms),
-                            result.usage.clone(),
-                        ),
-                    ))
-                    .await
-                {
-                    tracing::warn!(
-                        session_id = %context.session_id,
-                        error = %e,
-                        "ReasonAtom: failed to emit reason.completed event"
-                    );
-                }
-                result
-            }
-            // Not the model's failure: see `error_policy::returned_to_turn_driver`.
-            Err(e) if error_policy::returned_to_turn_driver(&e, &context) => return Err(e),
-            Err(e) => {
-                let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
-                // LLM call failure is a "normal" result per the spec: report it.
-                tracing::warn!(
-                    session_id = %context.session_id,
-                    turn_id = %context.turn_id,
-                    error = %e,
-                    "ReasonAtom: LLM call failed"
-                );
-
-                let error_msg = e.to_string();
-                let mut source_error = e.user_facing_error(error_context);
-
-                // Transient errors reach here only after in-call retries gave up (no
-                // durable retry follows); they surface through `turn.failed` only.
-                let is_transient = e.is_transient_llm_error()
-                    || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
-
-                // Capability error-hook seam: on the terminal (non-retried)
-                // error path, let active capabilities react — perform a side
-                // effect and/or augment the user-facing error fields — before the
-                // message is built. The atom stays behavior-agnostic; each hook
-                // (e.g. `usage_limit_auto_continue`) owns its own logic.
-                if !error_hooks.is_empty() {
-                    let services = crate::engine::llm_error_hook::LlmErrorHookServices {
-                        schedule_store: self.schedule_store.clone(),
-                    };
-                    for (hook, config) in &error_hooks {
-                        let outcome = {
-                            let ctx = crate::engine::llm_error_hook::LlmErrorContext {
-                                session_id: context.session_id,
-                                error_code: &source_error.code,
-                                error_fields: &source_error.fields,
-                                config,
-                                services: &services,
-                            };
-                            hook.on_llm_error(&ctx).await
-                        };
-                        for (key, value) in outcome.extra_error_fields {
-                            source_error = source_error.with_field(key, value);
-                        }
-                    }
-                }
-
-                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
-                let user_error_text = user_error.fallback_message();
-
-                let mut output_message_id = None;
-
-                if !is_transient {
-                    // Create error message for the user to see
-                    let mut error_message = RuntimeMessage::assistant(&user_error_text);
-                    let mut metadata = std::collections::HashMap::new();
-                    user_error.apply_to_message_metadata(&mut metadata);
-                    UserFacingError::apply_disclosure_to_message_metadata(
-                        &mut metadata,
-                        error_disclosure,
-                        &source_error.code,
-                    );
-                    error_message.metadata = Some(metadata);
-
-                    output_message_id = Some(error_message.id);
-
-                    // Emit output.message.completed event (stores message as event with proper turn context)
-                    // output.message.completed is child of reason span
-                    let error_msg_context = EventContext::from_execution_context(&context)
-                        .with_span(
-                            trace_id.clone(),
-                            Uuid::now_v7().to_string(),   // Own span_id
-                            Some(reason_span_id.clone()), // Parent is reason span
-                        );
-                    if let Err(emit_err) = self
-                        .event_emitter
-                        .emit(EventRequest::new(
-                            context.session_id,
-                            error_msg_context,
-                            OutputMessageCompletedData::new(error_message)
-                                .with_user_facing_error(&user_error)
-                                .with_error_disclosure(error_disclosure),
-                        ))
-                        .await
-                    {
-                        tracing::warn!(
-                            session_id = %context.session_id,
-                            error = %emit_err,
-                            "ReasonAtom: failed to emit output.message.completed event for error"
-                        );
-                    }
-                } else {
-                    tracing::info!(
-                        session_id = %context.session_id,
-                        "ReasonAtom: skipping error event for transient LLM error (will be retried)"
-                    );
-                }
-
-                // Emit reason.completed event for failure (same span as started, parent is turn)
-                let completed_context = EventContext::from_execution_context(&context).with_span(
-                    trace_id.clone(),
-                    reason_span_id.clone(), // Same span_id as started
-                    Some(parent_span_id.clone()),
-                );
-                if let Err(emit_err) = self
-                    .event_emitter
-                    .emit(EventRequest::new(
-                        context.session_id,
-                        completed_context,
-                        ReasonCompletedData::failure(error_msg.clone(), Some(reason_duration_ms)),
-                    ))
-                    .await
-                {
-                    tracing::warn!(
-                        session_id = %context.session_id,
-                        error = %emit_err,
-                        "ReasonAtom: failed to emit reason.completed event"
-                    );
-                }
-
-                ReasonResult {
-                    native_counts: None,
-                    success: false,
-                    text: user_error_text,
-                    tool_calls: vec![],
-                    has_tool_calls: false,
-                    tool_definitions: vec![],
-                    max_iterations: default_max_iterations(),
-                    error: Some(error_msg.clone()),
-                    user_facing_error: Some(user_error),
-                    error_disclosure: Some(error_disclosure),
-                    usage: None,
-                    output_message_id,
-                    time_to_first_token_ms: None,
-                    response_id: None,
-                    finish_reason: error_msg
-                        .to_ascii_lowercase()
-                        .contains("model refused")
-                        .then(|| "refusal".to_string()),
-                    ..ReasonResult::default()
-                }
-            }
-        };
-
-        Ok(result)
     }
 
     /// Execute the actual LLM call
@@ -936,7 +630,7 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
-        // These IDs help correlate API requests with Everruns entities
+        // Correlation ids, stamped after embedder metadata (RESERVED_COMPLETION_METADATA_KEYS)
         // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", session_id.to_string())
@@ -1156,18 +850,22 @@ impl ReasonAtom {
                 &mut llm_messages_for_call,
                 &mut llm_config,
             )
-            .await?;
+            .await
+            .map_err(durable_retry::retryable_start)?;
         }
 
         // 14. Process stream, batching output.message.delta every 100ms. The
         // host's execution slot is free while we wait on the model (model_wait).
         let model_wait = super::model_wait::begin();
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
-        let retry_config = self.provider_retry_config.clone();
         let has_provider_executed_tools =
             hosted_tools::has_provider_executed_tools(&llm_config.driver_options);
-        let mut stream_retry_metadata = RetryMetadata::default();
-        let mut retry_started_at = None;
+        let (retry_config, mut stream_retry_metadata, mut retry_started_at) =
+            durable_retry::restore(
+                &format!("{}/{}", context.turn_id, iteration),
+                &self.provider_retry_config,
+            )
+            .await?;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
@@ -1225,6 +923,13 @@ impl ReasonAtom {
                     )
                     .await
             };
+            let stream_result = stream_result.map_err(|error| {
+                if has_provider_executed_tools {
+                    durable_retry::without_retry(error)
+                } else {
+                    error
+                }
+            });
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
@@ -1263,7 +968,8 @@ impl ReasonAtom {
                     .await;
                     let outcome = failed_generation
                         .result(outcome, &stream_retry_metadata)
-                        .await?;
+                        .await
+                        .map_err(durable_retry::retryable_start)?;
                     let Some(outcome) = outcome else {
                         return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
@@ -1280,7 +986,22 @@ impl ReasonAtom {
                         .await;
                     failed_generation
                         .result(stream, &stream_retry_metadata)
-                        .await?
+                        .await
+                        .map_err(|error| {
+                            if has_provider_executed_tools {
+                                durable_retry::without_retry(error)
+                            } else {
+                                durable_retry::retryable_start(error)
+                            }
+                        })?
+                }
+                Err(error)
+                    if durable_retry::single_attempt()
+                        && error.is_transient_llm_error()
+                        && !error.llm_retry_handled()
+                        && !has_provider_executed_tools =>
+                {
+                    return Err(durable_retry::retryable_start(error));
                 }
                 Err(e)
                     if e.is_transient_llm_error()
@@ -1415,6 +1136,19 @@ impl ReasonAtom {
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
                         ) {
+                            if durable_retry::single_attempt() {
+                                return Err(durable_retry::retry_with_boundary(
+                                    &format!("{}/{}", context.turn_id, iteration),
+                                    &retry_config,
+                                    AgentLoopError::llm_kind(
+                                        crate::engine::error::LlmErrorKind::Unavailable,
+                                        stall_error.message,
+                                    ),
+                                    stream_state::restart_before_parking(
+                                        &self.event_emitter, &started, &text,
+                                    ),
+                                ).await);
+                            }
                             let proposed_wait = retry_config
                                 .calculate_backoff(stream_retry_metadata.attempts);
                             let Some(wait_duration) = reserve_retry_wait(
@@ -1762,13 +1496,43 @@ impl ReasonAtom {
                         break;
                     }
                     LlmStreamEvent::Error(err) => {
+                        if durable_retry::single_attempt()
+                            && replay_state.should_retry(
+                                &err,
+                                stream_retry_metadata.attempts,
+                                retry_config.max_retries,
+                            )
+                        {
+                            let error = AgentLoopError::llm_kind(err.kind(), err.to_string());
+                            if text.is_empty() {
+                                return Err(durable_retry::retryable_start(error));
+                            }
+                            let error = durable_retry::retry_with_boundary(
+                                &format!("{}/{}", context.turn_id, iteration),
+                                &retry_config,
+                                error,
+                                stream_state::restart_before_parking(
+                                    &self.event_emitter,
+                                    &started,
+                                    &text,
+                                ),
+                            )
+                            .await;
+                            if matches!(error, AgentLoopError::Llm(_)) {
+                                // No retry fits: retain the answer, as in local recovery.
+                                termination = StreamTermination::PartialSuccess;
+                                break;
+                            }
+                            return Err(error);
+                        }
                         // Keep tool calls (a trailing server_error can follow them) as
                         // a partial success, and text once no retry is left.
-                        let can_retry = replay_state.should_retry(
-                            &err,
-                            stream_retry_metadata.attempts,
-                            retry_config.max_retries,
-                        );
+                        let can_retry = !durable_retry::single_attempt()
+                            && replay_state.should_retry(
+                                &err,
+                                stream_retry_metadata.attempts,
+                                retry_config.max_retries,
+                            );
                         let retry_wait = can_retry.then(|| {
                             let proposed =
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
@@ -2295,7 +2059,7 @@ impl ReasonAtom {
             commentary: explicit_communication,
             tool_calls,
             has_tool_calls,
-            tool_definitions: runtime_agent.tools.clone(),
+            tool_definitions: runtime_agent.execution_tools(),
             max_iterations: runtime_agent.max_iterations,
             usage,
             output_message_id: Some(output_message_id),

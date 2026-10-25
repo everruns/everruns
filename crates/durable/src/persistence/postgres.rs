@@ -15,6 +15,7 @@ use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
 
 mod admin;
+mod begin;
 mod circuit_breakers;
 mod dlq;
 mod event_log;
@@ -22,6 +23,8 @@ mod schedules;
 mod schema;
 mod task_queue;
 mod workers;
+
+pub use begin::{begin_transaction, commit_transaction};
 
 use super::db_failure::store_failure;
 use super::store::{
@@ -135,9 +138,7 @@ impl PostgresWorkflowEventStore {
         input: serde_json::Value,
         task: TaskDefinition,
     ) -> Result<Uuid, StoreError> {
-        let mut tx = self
-            .pool
-            .begin()
+        let mut tx = begin_transaction(&self.pool)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
@@ -154,7 +155,7 @@ impl PostgresWorkflowEventStore {
 
         let task_id = insert_workflow_task(&mut tx, workflow_id, &task).await?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!("Failed to commit initial workflow start: {}", e);
             StoreError::Database(e.to_string())
         })?;

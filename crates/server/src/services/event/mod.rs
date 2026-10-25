@@ -255,7 +255,7 @@ impl EventService {
             // Once committed, as in `emit_durable`.
             let service = self.clone();
             let published = event.clone();
-            crate::storage::transaction::after_commit(async move {
+            crate::storage::transaction::after_commit_detached(async move {
                 service.publish_durable(&published).await;
             })
             .await;
@@ -268,6 +268,16 @@ impl EventService {
         self.attach_session_participant_metadata(request).await;
         self.attach_service_mcp_provenance(request).await?;
         Self::validate_event_type_consistency(request)?;
+        for listener in self.listeners.iter() {
+            if let Ok(Some(carrier)) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    listener.prepare_causal_context(request)
+                }))
+            {
+                everruns_core::causal::attach_turn_trace(request, &carrier);
+                break;
+            }
+        }
         Ok(())
     }
 
@@ -370,15 +380,21 @@ impl EventService {
         // resolver reads `agents.virtual_user_id`), so that identity is the
         // actor. Sessions a person starts carry no resident virtual user;
         // requiring one dropped the events of calls that had already run.
-        let identity_id = agent_identity
-            .or(session.virtual_user_id)
-            .context("service MCP event session has no agent identity")?;
-        let acting = self
-            .db
-            .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
-            .await
-            .context("failed to load acting principal for service MCP event")?
-            .context("acting principal missing for service MCP event")?;
+        let acting = match agent_identity.or(session.virtual_user_id) {
+            Some(identity_id) => Some(
+                self.db
+                    .get_principal_by_subject(session.org_id, "virtual_user", identity_id.uuid())
+                    .await
+                    .context("failed to load acting principal for service MCP event")?
+                    .context("acting principal missing for service MCP event")?,
+            ),
+            // An agent gets its identity when an admin authorizes its first
+            // service grant (or on its first unattended run); until then the
+            // resolver has no service login to use and the call ends in
+            // `connection_required`. Nothing acted as the service, so the
+            // event records no actor rather than being refused (EVE-1251).
+            None => None,
+        };
         let mut metadata = request
             .metadata
             .take()
@@ -389,10 +405,13 @@ impl EventService {
             .or_insert_with(|| serde_json::Value::String(session.owner_principal_id.to_string()));
         // THREAT[TM-OBS-012]: service-tool events derive their actor from the
         // session identity and never accept a caller-supplied acting principal.
-        metadata.insert(
-            "acting_principal_id".to_string(),
-            serde_json::Value::String(acting.id.to_string()),
-        );
+        match acting {
+            Some(acting) => metadata.insert(
+                "acting_principal_id".to_string(),
+                serde_json::Value::String(acting.id.to_string()),
+            ),
+            None => metadata.remove("acting_principal_id"),
+        };
         request.metadata = Some(serde_json::Value::Object(metadata));
         Ok(())
     }
@@ -546,7 +565,7 @@ impl EventService {
         // Publish to EventDelivery for SSE subscribers
         if let Err(e) = self.event_delivery.publish(&event).await {
             tracing::warn!(
-                error = %e,
+                error = %crate::live_updates::nats::error_chain(&e),
                 event_type = %event.event_type,
                 "Failed to publish ephemeral event to delivery backend"
             );
@@ -612,10 +631,12 @@ impl EventService {
 
     /// Subscribers hear of events only once their rows are visible: inside a
     /// command transaction that is after it commits, and never if it rolls
-    /// back (`storage::transaction`). Outside one, right away.
+    /// back (`storage::transaction`). Outside one, right away. Once stored, an
+    /// event is published even if the caller is dropped meanwhile (a worker
+    /// killed mid-RPC); see `after_commit_detached`.
     async fn publish_after_commit(&self, events: Vec<Event>) {
         let service = self.clone();
-        crate::storage::transaction::after_commit(async move {
+        crate::storage::transaction::after_commit_detached(async move {
             for event in &events {
                 service.publish_durable(event).await;
             }
@@ -628,7 +649,7 @@ impl EventService {
         // Publish to EventDelivery for SSE subscribers
         if let Err(e) = self.event_delivery.publish(event).await {
             tracing::warn!(
-                error = %e,
+                error = %crate::live_updates::nats::error_chain(&e),
                 event_type = %event.event_type,
                 "Failed to publish durable event to delivery backend"
             );
@@ -717,7 +738,7 @@ impl EventService {
         // Notify listeners once the row is committed (see `emit_durable`).
         let service = self.clone();
         let notified = event.clone();
-        crate::storage::transaction::after_commit(async move {
+        crate::storage::transaction::after_commit_detached(async move {
             service.notify_listeners(&notified).await;
         })
         .await;
@@ -849,6 +870,32 @@ impl EventService {
 /// emit through the same persistence + delivery path as the worker.
 #[async_trait::async_trait]
 impl everruns_core::event_emitter::EventEmitter for EventService {
+    fn turn_causal_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+    ) -> everruns_core::causal::CausalContext {
+        let mut causes = everruns_core::causal::CausalContext::default();
+        for listener in self.listeners.iter() {
+            if let Ok(value) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.turn_causal_context(context)
+            })) {
+                causes.merge(&value);
+            }
+        }
+        causes
+    }
+    fn restore_turn_context(
+        &self,
+        context: &everruns_core::events::EventContext,
+        metadata: Option<&serde_json::Value>,
+    ) {
+        for listener in self.listeners.iter() {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                listener.restore_turn_context(context, metadata)
+            }));
+        }
+    }
+
     async fn emit(
         &self,
         request: EventRequest,
@@ -876,6 +923,7 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, RuntimeMessage};
     use std::sync::Arc;
 
+    mod cancelled_caller;
     mod emit_conditional;
     mod service_mcp_responder;
 
@@ -1253,6 +1301,40 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(acting.subject_id, Some(identity_id.uuid()));
+    }
+
+    /// EVERRUNS-2K/2J: a person chats with an agent whose service grant was
+    /// never authorized, so the agent has no identity yet and the call returns
+    /// `connection_required`. Its events must still persist, with no actor.
+    #[tokio::test]
+    async fn service_mcp_event_without_agent_identity_records_no_actor() {
+        let db = Arc::new(StorageBackend::test_database());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let agent_id = db
+            .create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+            .await;
+        let mut input = service_session_input(None);
+        input.agent_id = Some(AgentId::from_uuid(agent_id));
+        let session = db.create_session(input).await.unwrap();
+        let forged_actor = PrincipalId::new();
+
+        let event = event_service
+            .emit(
+                service_tool_event(session.id).with_metadata(serde_json::json!({
+                    "acting_principal_id": forged_actor.to_string()
+                })),
+            )
+            .await
+            .unwrap();
+
+        let metadata = event.metadata.as_ref().unwrap();
+        assert_eq!(metadata.get("acting_principal_id"), None);
+        assert_eq!(
+            metadata
+                .get("initiator_principal_id")
+                .and_then(|value| value.as_str()),
+            Some(session.owner_principal_id.to_string().as_str())
+        );
     }
 
     #[tokio::test]

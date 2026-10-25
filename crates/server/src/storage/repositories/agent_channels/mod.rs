@@ -154,6 +154,20 @@ impl Database {
         .map_err(Into::into)
     }
 
+    /// Serialize exposure/config mutations in an org, including inherited harness changes.
+    pub async fn lock_chat_configuration(&self, org_id: i64) -> anyhow::Result<()> {
+        sqlx::query("SELECT pg_advisory_xact_lock(1307, hashint8($1))")
+            .bind(org_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn live_work_chat_agents(&self, org_id: i64) -> anyhow::Result<Vec<Uuid>> {
+        Ok(sqlx::query_scalar("SELECT DISTINCT c.agent_id FROM agent_channels c JOIN agents a ON a.id = c.agent_id WHERE a.org_id = $1 AND c.channel_type = 'work_chat' AND c.status = 'live' AND c.enabled AND a.status = 'active' AND NOT a.exposures_suspended")
+            .bind(org_id).fetch_all(&self.pool).await?)
+    }
+
     pub async fn list_agent_channels(
         &self,
         org_id: i64,
@@ -358,7 +372,7 @@ impl Database {
         )
         .bind(org_id).bind(agent_id).bind(public_id).bind(config).bind(encrypted)
         .execute(&mut *tx).await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(result.rows_affected() > 0)
     }
 

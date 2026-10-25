@@ -34,6 +34,7 @@ use crate::host::runtime_context::{inspect_turn_context_for_session, resolve_mod
 /// One instance is built per command dispatch. Its assembled context is
 /// memoized so `turn_context()` and completion share one store resolution.
 pub struct StoreCommandHost {
+    dreaming: Option<Arc<dyn super::dreaming::DreamingCommand>>,
     session_id: SessionId,
     harness_store: Arc<dyn HarnessStore>,
     agent_store: Arc<dyn AgentStore>,
@@ -62,6 +63,7 @@ impl StoreCommandHost {
         driver_registry: DriverRegistry,
     ) -> Self {
         Self {
+            dreaming: None,
             session_id,
             harness_store,
             agent_store,
@@ -75,6 +77,11 @@ impl StoreCommandHost {
             file_store: None,
             assembled: tokio::sync::OnceCell::new(),
         }
+    }
+
+    pub fn with_dreaming(mut self, command: Arc<dyn super::dreaming::DreamingCommand>) -> Self {
+        self.dreaming = Some(command);
+        self
     }
 
     /// Resolve `image_file` references for provider conversion.
@@ -194,6 +201,11 @@ impl StoreCommandHost {
         &self,
         request: SessionCompletionRequest,
     ) -> std::result::Result<PreparedCompletion, SessionCompletionError> {
+        // THREAT[TM-LLM-053]: caller metadata is bounded and can never
+        // stand in for the authority-owned correlation keys.
+        request
+            .validate_metadata()
+            .map_err(SessionCompletionError::InvalidRequest)?;
         let assembled = self
             .assembled()
             .await
@@ -235,7 +247,11 @@ impl StoreCommandHost {
                     threshold: usize::MAX,
                 })
                 .previous_response_id(None)
-                .with_metadata("session_id", self.session_id.to_string());
+                .metadata(crate::command_host::completion_metadata(
+                    &assembled.embedder_metadata,
+                    &request.metadata,
+                    self.session_id,
+                ));
         if let Some(effort) = request
             .controls
             .as_ref()
@@ -243,9 +259,6 @@ impl StoreCommandHost {
             .and_then(|reasoning| reasoning.effort)
         {
             builder = builder.reasoning_effort(effort);
-        }
-        for (key, value) in &request.metadata {
-            builder = builder.with_metadata(key, value);
         }
         Ok(PreparedCompletion {
             llm_messages,
@@ -265,6 +278,23 @@ struct PreparedCompletion {
 
 #[async_trait]
 impl CommandHost for StoreCommandHost {
+    async fn dreaming_proposals(&self, accept: bool, discard: bool) -> Result<String> {
+        self.dreaming
+            .as_ref()
+            .ok_or_else(|| AgentLoopError::config("dreaming review unavailable"))?
+            .proposals(accept, discard)
+            .await
+    }
+
+    async fn dream(&self) -> Result<bool> {
+        match &self.dreaming {
+            Some(c) => c.enqueue().await,
+            None => Err(AgentLoopError::config(
+                "dreaming is unavailable on this host",
+            )),
+        }
+    }
+
     async fn turn_context(&self) -> Result<CommandTurnContext> {
         let assembled = self.assembled().await?;
         Ok(CommandTurnContext {

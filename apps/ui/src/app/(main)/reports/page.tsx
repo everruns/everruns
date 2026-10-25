@@ -1,5 +1,9 @@
 "use client";
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -145,6 +149,12 @@ export default function ReportsPage() {
   const [selectedDimension, setSelectedDimension] = useState<string>("day");
   const [selectedMeasure, setSelectedMeasure] = useState<string>("");
   const [selectedRange, setSelectedRange] = useState("7");
+  useChatPageFilters({
+    range: selectedRange,
+    dataset: selectedDataset,
+    dimension: selectedDimension,
+    measure: selectedMeasure,
+  });
   const [saveName, setSaveName] = useState("");
   const [manualResult, setManualResult] = useState<ReportResult>();
   const [savedQuery, setSavedQuery] = useState<ReportQuery>();
@@ -189,6 +199,18 @@ export default function ReportsPage() {
         0,
       )
     : activeRows.length;
+
+  usePageReadContext({
+    fields: ["query", "row_count", "measure", "measure_total"],
+    values: {
+      query: JSON.stringify(query ?? null),
+      row_count: String(activeRows.length),
+      measure: measureColumn ?? "",
+      measure_total: String(measureTotal),
+    },
+    entityType: "report",
+    label: "Report results",
+  });
 
   const handleDatasetChange = (value: string) => {
     const next = datasets.find((entry) => entry.name === value);

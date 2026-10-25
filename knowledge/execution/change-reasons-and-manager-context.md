@@ -74,7 +74,7 @@ the tool and what it was asked to do. The delegate contract
 (`PlatformCreateSessionRequest`, `SubagentSessionDelegate`) requires one, so a
 new tool cannot forget it and get refused once the flag is on.
 
-Platform Chat's prompt (`crates/server/src/platform_chat_agent.rs`), the
+Platform Chat's prompt (`crates/server/src/platform_chat_agent/mod.rs`), the
 Platform capability and the `/mcp` server instructions carry one rule: read an
 entity's context first, pass `--context-revision` and a `--reason` saying what
 the user asked for, ask when the request conflicts with recorded context, and
@@ -90,6 +90,9 @@ state). A guard test fails on any mutating command missing from the table, so
 "applies to everything editable" is enforced by CI. Knowledge entries, eval
 cases and sessions have history but no context (notes belong on the parent;
 sessions change by conversation and keep no snapshots).
+Private background maintenance is operational state, so it uses the exemption
+path rather than copying evidence or reservations into entity history; payload-free
+activity remains in the session's background trace.
 
 ### Write semantics: recording is atomic with the change
 
@@ -133,6 +136,13 @@ command run through `Command::run`, so permission, validation, context
 acknowledgement and the reason apply as for a hand-written update, and it
 records as `restored` with the revision it brought back. A field the update
 cannot set back is named in a warning.
+
+Agent [Chat mode](../ui/chat-mode.md) also uses guarded, selected-field restores.
+These require an expected revision and lock the Agent before checking it;
+Agent definition updates take the same row lock. The inverse and its nested
+update/history run in one transaction. A stale revision or selected field the
+update cannot restore fails without committing any of the inverse. The ordinary
+full-history restore retains its existing warning behavior.
 
 Secrets enter history only as markers under `$secrets`: set or not, plus an
 HMAC fingerprint keyed from the primary encryption key, so a leaked row reveals

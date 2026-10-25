@@ -206,6 +206,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             auth_mode: info.auth_mode,
             protocol_mode: info.protocol_mode,
             elicitation_policy: info.elicitation_policy,
+            tool_timeout_ms: info.tool_timeout_ms,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
             // `never` turns a missing grant into a plain tool error with the
@@ -302,6 +303,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// ```
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
+    causal_trace: crate::worker_adapters::CausalTurnTrace,
     adapters: A,
     cancellation: Option<tokio::sync::watch::Receiver<bool>>,
     /// Explicit turn cancel only; `cancellation` also fires on ownership loss.
@@ -377,6 +379,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             adapters,
             cancellation: None,
             cancel_requested: None,
+            causal_trace: Default::default(),
             event_metadata: metadata,
             reads: PhaseReads::new(),
             write_behind: WriteBehind::new(),
@@ -462,9 +465,40 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             self.reads
                 .prefetch_model(&self.adapters, org_id, model_id.uuid(), session_id);
         }
+        let mut messages = context.messages;
+        let configs = crate::core::runtime_context::resolve_snapshot_capabilities(
+            &snapshot,
+            &self.adapters.capability_registry(),
+        );
+        if configs.resolved_capability_configs.iter().any(|c| {
+            c.capability_id() == "knowledge"
+                && c.config_value()
+                    .get("automatic")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+        }) && let Some(service) = self.adapters.knowledge_runtime(org_id)
+        {
+            let query = messages
+                .iter()
+                .rev()
+                .find(|m| m.role == crate::core::RuntimeMessageRole::User)
+                .and_then(|m| m.text())
+                .unwrap_or("")
+                .to_string();
+            match service
+                .automatic_context(session_id, input_message_id, query)
+                .await
+            {
+                Ok(Some(evidence)) => messages.push(crate::core::RuntimeMessage::user(evidence)),
+                Ok(None) => {}
+                Err(_) => {
+                    tracing::warn!(session_id=%session_id,"Automatic Knowledge retrieval unavailable; file access remains available")
+                }
+            }
+        }
         Ok(ResolvedTurnInputs {
             snapshot,
-            messages: context.messages,
+            messages,
             mcp_tool_definitions: context.mcp_tool_definitions,
         })
     }
@@ -511,15 +545,24 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.agents_api_store()
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::core::dreaming::DreamingStore>> {
+        self.adapters.dreaming_store()
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
         self.adapters.compaction_checkpoint_store()
     }
 
+    fn dreaming_event_emitter(&self) -> Arc<dyn EventEmitter> {
+        Arc::new(SessionAdapter::new(self.adapters.clone()))
+    }
+
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
         Arc::new(
             SessionAdapter::new(self.adapters.clone())
+                .with_causal_trace(self.causal_trace.clone())
                 .with_event_metadata(self.event_metadata.clone())
                 .with_reads(self.reads.clone())
                 .with_write_behind(self.write_behind.clone())
@@ -539,6 +582,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn file_store(&self, org_id: i64) -> Arc<dyn SessionFileSystem> {
+        if let Some(files) = self.adapters.session_file_system(org_id) {
+            return files;
+        }
         // Org-scoped like `provider_store` and `sqldb_store`: the file surface
         // reaches the server through the org's command transport, so it needs
         // the org the turn is running for.
@@ -675,6 +721,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             }),
         )));
         extensions.insert(Arc::new(PlatformStoreExt(platform_store)));
+        if let Some(service) = self.adapters.knowledge_runtime(org_id) {
+            extensions.insert(Arc::new(
+                everruns_contracts::knowledge::KnowledgeRuntimeExt(service),
+            ));
+        }
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
         }

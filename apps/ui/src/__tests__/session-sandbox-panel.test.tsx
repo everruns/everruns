@@ -49,6 +49,7 @@ describe("SessionSandboxPanel", () => {
     renderPanel();
 
     expect(await screen.findByText("Virtual filesystem")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sandbox" })).toBeInTheDocument();
     expect(screen.getByText("bashkit")).toBeInTheDocument();
   });
 

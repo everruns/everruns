@@ -211,6 +211,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
       </PageFooter>
 
       <MemoryFormDialog
+        writable={canManage && !isReadOnlyStatus(memory.status)}
         mode="edit"
         open={editOpen}
         memory={memory}

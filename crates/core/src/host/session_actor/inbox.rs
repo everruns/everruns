@@ -6,13 +6,14 @@
 //!   only reads: `take` and a finishing `after_reason` renew the lease (which
 //!   reports the inbox's newest sequence and commits the cursor) and, when
 //!   input arrived past the cursor, hand its message ids to the next reason.
-//! - `close` and `park` keep nothing: input after the turn's last check
-//!   stays past the cursor, the release leaves the actor runnable, and the
-//!   next lease starts the turn it asks for. A parked turn stays open in the
-//!   log, and its resolution marks the actor runnable again.
+//! - A parked drive must keep its last consumed cursor: a resolution can
+//!   arrive during its final flush, before it releases the lease. Scanning
+//!   past that resolution would acknowledge work the parked drive never ran.
 //! - Phase boundaries are also where the turn's host stores what it queued
 //!   (so the next reason reads every event of the act before it) and starts
 //!   the next phase's setup reads.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -29,9 +30,14 @@ pub(crate) struct ActorInbox<'a, H: ActorHosts> {
     pub(crate) hosts: &'a H,
     pub(crate) host: &'a H::Host,
     pub(crate) drive: &'a TurnDrive,
+    pub(crate) parked: AtomicBool,
 }
 
 impl<H: ActorHosts> ActorInbox<'_, H> {
+    pub(crate) fn parked(&self) -> bool {
+        self.parked.load(Ordering::SeqCst)
+    }
+
     /// Renew to learn the inbox's newest input; a failed renew is the
     /// renewer's to judge, and the turn goes on with what it knows.
     async fn refresh(&self) {
@@ -54,6 +60,13 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
+        self.hosts.inputs_consumed(self.drive, &inputs).await?;
+        if !inputs.is_empty() {
+            self.refresh().await;
+        }
+        if self.lease.cancel_requested() {
+            return Err(AgentLoopError::store("turn cancellation accepted"));
+        }
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);
         Ok(inputs)
     }
@@ -76,6 +89,13 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         self.lease.turn_stored();
         self.refresh().await;
         let inputs = self.lease.take_inputs().await?;
+        self.hosts.inputs_consumed(self.drive, &inputs).await?;
+        if !inputs.is_empty() {
+            self.refresh().await;
+        }
+        if self.lease.cancel_requested() {
+            return Err(AgentLoopError::store("turn cancellation accepted"));
+        }
         Ok(PendingInput::new(inputs.len(), inputs))
     }
 
@@ -90,6 +110,7 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
         _client_tool_calls: Vec<ToolCall>,
         _resume: TurnState,
     ) -> Result<()> {
+        self.parked.store(true, Ordering::SeqCst);
         Ok(())
     }
 }

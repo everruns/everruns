@@ -158,9 +158,12 @@ where
     // Held as `Arc` so individual `cpu_bound` tool calls can be offloaded to
     // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
     tool_executor: Arc<T>,
+    thread_cpu_clock: Option<Arc<dyn super::cpu_time::ThreadCpuClock>>,
     event_emitter: PhaseEffectEmitter<E>,
     /// Runtime-owned service snapshot cloned into every per-call ToolContext.
     context_services: crate::engine::tool_context::ToolContextServices,
+    /// Surface routes assembled for this execution turn.
+    tool_surface_plan: everruns_contracts::runtime::tool_surface::ToolSurfacePlan,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
@@ -200,8 +203,10 @@ where
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
+            thread_cpu_clock: None,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::engine::tool_context::ToolContextServices::default(),
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -220,11 +225,13 @@ where
     ) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
+            thread_cpu_clock: None,
             event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::engine::tool_context::ToolContextServices {
                 file_store: Some(file_store),
                 ..Default::default()
             },
+            tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -233,17 +240,6 @@ where
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
-    }
-
-    /// Replace the complete runtime-owned service snapshot used for every
-    /// per-call [`ToolContext`](crate::ToolContext). Production hosts should prefer this over
-    /// assembling individual services on the atom.
-    pub fn with_context_services(
-        mut self,
-        services: crate::engine::tool_context::ToolContextServices,
-    ) -> Self {
-        self.context_services = services;
-        self
     }
 
     /// Add a custom post-act hook.
@@ -733,7 +729,10 @@ where
             tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
                 let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
-                self.execute_single_tool(
+                // Boxed: a tool that runs a child turn (handoff, subagent)
+                // re-enters this act inline, and an inline per-call future made
+                // each nesting level's debug-build stack frame overflow 2 MiB.
+                Box::pin(self.execute_single_tool(
                     &context,
                     tool_call.clone(),
                     tool_def,
@@ -742,7 +741,7 @@ where
                     locale.as_deref(),
                     network_access.as_ref(),
                     visible_tool_names.clone(),
-                )
+                ))
             })
             .await;
         results.extend(over_cap);
@@ -1471,31 +1470,10 @@ where
             Some(_) => &execution_tool_call.arguments,
         };
 
-        let result = if let Some(pre_hook_result) = pre_hook_result {
-            Ok(pre_hook_result)
-        } else if tool_def.is_cpu_bound() {
-            // CPU-bound / non-yielding in-process tools (e.g. the bash
-            // interpreter) get their own task so a long synchronous burst
-            // cannot starve the cooperative polling of I/O-bound tools running
-            // alongside them in this act batch. On the multi-thread runtime the
-            // spawned task can also progress on another worker thread.
-            let executor = self.tool_executor.clone();
-            let call = execution_tool_call.clone();
-            let def = tool_def.clone();
-            let ctx = tool_context.clone();
-            match AbortOnDropJoinHandle::new(everruns_contracts::rt::spawn(async move {
-                executor.execute_with_context(&call, &def, &ctx).await
-            }))
-            .await
-            {
-                Ok(result) => result,
-                Err(join_err) => Err(crate::engine::error::AgentLoopError::tool(format!(
-                    "tool task failed to complete: {join_err}"
-                ))),
-            }
+        let (result, worker_thread_cpu_ns) = if let Some(pre_hook_result) = pre_hook_result {
+            (Ok(pre_hook_result), None)
         } else {
-            self.tool_executor
-                .execute_with_context(&execution_tool_call, tool_def, &tool_context)
+            self.invoke_observed(&execution_tool_call, tool_def, &tool_context)
                 .await
         };
 
@@ -1606,7 +1584,8 @@ where
                         ToolNarrationPhase::Failed,
                         locale,
                     )))
-                };
+                }
+                .with_worker_thread_cpu_ns(worker_thread_cpu_ns);
 
                 if let Err(e) = self
                     .event_emitter
@@ -1693,6 +1672,7 @@ where
                             error_msg.clone(),
                             Some(tool_duration_ms),
                         )
+                        .with_worker_thread_cpu_ns(worker_thread_cpu_ns)
                         .with_fingerprints(
                             tool_call_fingerprint.clone(),
                             tool_error_fingerprint(&tool_call.name, "error", &error_msg),
@@ -1762,7 +1742,8 @@ mod start_record;
 
 #[path = "act_abort_on_drop.rs"]
 mod abort_on_drop;
-use abort_on_drop::AbortOnDropJoinHandle;
+#[path = "act_cpu_execution.rs"]
+mod cpu_execution;
 
 #[cfg(test)]
 #[path = "act_tests.rs"]
@@ -1779,3 +1760,10 @@ mod client_policy_tests;
 #[cfg(test)]
 #[path = "act_executed_arguments_tests.rs"]
 mod executed_arguments_tests;
+
+#[cfg(test)]
+#[path = "act_cpu_tests.rs"]
+mod cpu_tests;
+
+#[path = "act_surface.rs"]
+mod surface;

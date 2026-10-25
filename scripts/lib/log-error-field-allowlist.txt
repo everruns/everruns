@@ -35,7 +35,6 @@ crates/server/src/live_updates/task_notifications.rs
 crates/server/src/storage/runtime/message.rs
 crates/server/src/worker_link/direct_worker_adapters/mod.rs
 crates/server/src/worker_link/grpc_service/mod.rs
-crates/server/src/worker_link/grpc_service/worker/durable.rs
 crates/server/src/worker_link/grpc_service/worker/events.rs
 crates/server/src/worker_link/grpc_service/worker/leases.rs
 crates/server/src/worker_link/grpc_service/worker/messages.rs

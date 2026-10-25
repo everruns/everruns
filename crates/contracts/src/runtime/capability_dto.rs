@@ -128,6 +128,12 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
+    /// Rollout flag that gates this capability, when one is required.
+    /// Present whether or not the flag is on, so a management screen can name
+    /// an attached capability and avoid offering it for new selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "skills"))]
+    pub feature_flag: Option<String>,
     /// Localized display strings keyed by lowercase language tag (e.g. "uk").
     /// The "en" entry carries only `config_description`, since the base
     /// name/description/config_schema strings are already English.
@@ -203,6 +209,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_schedule" => Some("session-schedules"),
         "session_storage" => Some("session-storage"),
         "session" => Some("session"),
+        "automatic_session_titles" => Some("automatic-session-titles"),
         "session_sql_database" => Some("sql-database"),
         "slack" => Some("slack"),
         "subagents" => Some("sub-agents"),
@@ -234,6 +241,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "user_mcp" => Some("user-mcp-servers"),
         "poppy_client" => Some("poppy-personal-agent"),
         "memory" => Some("memory"),
+        "knowledge" => Some("knowledge"),
         "knowledge_base" => Some("knowledge-base"),
         "knowledge_index" => Some("knowledge-index"),
         "data_knowledge" => Some("data-knowledge"),
@@ -290,6 +298,7 @@ impl CapabilityInfo {
             agent_count: 0,
             harness_count: 0,
             docs_slug: builtin_capability_docs_slug(id_str).map(|s| s.to_string()),
+            feature_flag: None,
             localizations: cap
                 .localizations()
                 .into_iter()
@@ -346,6 +355,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            feature_flag: None,
             localizations: Default::default(),
         }
     }

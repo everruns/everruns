@@ -364,6 +364,7 @@ impl Command for UpdateAgentCmd {
             .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))?;
 
         // Covers archive too: archiving is `status: archived` through here.
+        ctx.db.lock_agent_for_change(ctx.org_id(), &self.id).await?;
         q::ensure_not_built_in(&ctx.db, ctx.org_id(), &self.id, "modify").await?;
 
         let req = self.req;
@@ -401,6 +402,19 @@ impl Command for UpdateAgentCmd {
         }
 
         let internal_id = existing.id;
+        // Service account assignment is a destination binding, outside portable source.
+        let mut authored = req.clone();
+        authored.service_virtual_user_id = StorageUpdate::Unchanged;
+        if serde_json::to_value(authored).map_err(|e| CommandError::internal(e.into()))?
+            != serde_json::to_value(UpdateAgentRequest::default())
+                .map_err(|e| CommandError::internal(e.into()))?
+        {
+            super::source::ensure_writable(ctx, internal_id).await?;
+        } else {
+            ctx.db
+                .lock_agent_definition(ctx.org_id(), internal_id.uuid())
+                .await?;
+        }
         if let Some(ref name) = req.name {
             q::ensure_name_available(&ctx.db, ctx.org_id(), name, Some(internal_id)).await?;
         }
@@ -585,6 +599,10 @@ impl Command for DeleteAgent {
             .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
+        // Match source application: Agent row first, then Slack install locks.
+        ctx.db
+            .lock_agent_definition(ctx.org_id(), row.id.uuid())
+            .await?;
         super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.delete_agent(ctx.org_id(), row.id).await?;
         super::credentials::revoke_agent_grants(ctx, &row).await?;
@@ -637,6 +655,13 @@ impl Command for UpsertAgent {
         // built-in the same way update does. An id that resolves to nothing
         // falls through to the create path, which cannot mint a built-in.
         q::ensure_not_built_in(&ctx.db, ctx.org_id(), &public_id, "modify").await?;
+        if let Some(existing) = ctx
+            .db
+            .get_agent_by_public_id(ctx.org_id(), &public_id)
+            .await?
+        {
+            super::source::ensure_writable(ctx, existing.id).await?;
+        }
 
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
@@ -1108,6 +1133,9 @@ impl Command for DestroyAgent {
             ));
         }
 
+        ctx.db
+            .lock_agent_definition(ctx.org_id(), row.id.uuid())
+            .await?;
         super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.destroy_agent(ctx.org_id(), row.id).await?;
 

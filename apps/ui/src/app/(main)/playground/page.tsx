@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { PlaygroundIcon } from "@/components/icons/facet-icons";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { useState } from "react";
@@ -47,6 +49,7 @@ function PlaygroundLibrary() {
   const { currentOrg } = useOrg();
   const { data: agents = [] } = useAgents();
   const [search, setSearch] = useState("");
+  useChatPageFilters({ search: search });
   const [agentId, setAgentId] = useState<string | null>(null);
   const [archived, setArchived] = useState(false);
   const [groupBy, setGroupBy] = useState<PlaygroundGroupBy>("day");

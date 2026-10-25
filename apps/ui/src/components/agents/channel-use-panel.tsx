@@ -1,5 +1,7 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api/client";
 import { useMemo } from "react";
 import { CodeBlock, type CodeBlockSample } from "@/components/ui/code-block";
 import type { AgentChannel, ChannelType } from "@/lib/api/types";
@@ -104,6 +106,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     ];
   }, [channel.channel_type, path]);
 
+  if (channel.channel_type === "work_chat") return <WorkChatUsePanel channel={channel} />;
   if (!path) {
     return (
       <div>
@@ -122,6 +125,33 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
         <p className="mt-1 text-sm text-muted-foreground">{describe(channel.channel_type)}</p>
       </div>
       <CodeBlock samples={samples} />
+    </div>
+  );
+}
+
+function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
+  const hosted = useQuery({
+    queryKey: ["hosted-chat-url", channel.id],
+    enabled: channel.channel_type === "work_chat" && channel.status === "live",
+    queryFn: async () =>
+      (await api.get<{ public_url?: string }>(`/v1/channels/${channel.id}/chat/config`)).data,
+  });
+  const url = hosted.data?.public_url;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-medium uppercase text-muted-foreground">Use it</p>
+      {url ? (
+        <>
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline">
+            Open Work Chat
+          </a>
+          <CodeBlock samples={[{ label: "URL", language: "text", code: url }]} />
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Publish this channel and configure your deployment’s hosted chat domain to open Work Chat.
+        </p>
+      )}
     </div>
   );
 }

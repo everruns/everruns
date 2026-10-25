@@ -349,6 +349,8 @@ export default defineConfig({
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Portable vs Hosted", slug: "framework/capability-boundaries" },
                     { label: "Agent Blueprints", slug: "framework/agent-blueprints" },
+                    { label: "Host Services", slug: "framework/host-services" },
+                    { label: "Session Controls", slug: "framework/session-controls" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
                   ],
@@ -367,8 +369,9 @@ export default defineConfig({
                     { label: "A2A", slug: "framework/a2a" },
                     { label: "Build a Voice Agent", slug: "framework/voice" },
                     { label: "Serve on AgentCore (experimental)", slug: "framework/serve-agentcore" },
-                    { label: "Serve on celld (experimental)", slug: "framework/serve-celld" },
-                    { label: "Durable Object authority (experimental)", slug: "framework/durable-objects" },
+                    { label: "Serve on celld Reference", slug: "framework/serve-celld" },
+                    { label: "Pluggable Session Hosting", slug: "framework/hosting" },
+                    { label: "Durable Object Reference", slug: "framework/durable-objects" },
                   ],
                 },
                 {
@@ -487,6 +490,7 @@ export default defineConfig({
                         { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
+                        { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Web Search", slug: "capabilities/web-search" },
@@ -528,8 +532,7 @@ export default defineConfig({
                         { label: "Citation Verification", slug: "capabilities/citation-verification" },
                         { label: "Web Citations", slug: "capabilities/citation-web" },
                         { label: "Memory", slug: "capabilities/memory" },
-                        { label: "Knowledge Base", slug: "capabilities/knowledge-base" },
-                        { label: "Knowledge Index", slug: "capabilities/knowledge-index" },
+                        { label: "Knowledge", slug: "capabilities/knowledge" },
                         { label: "Data Knowledge", slug: "capabilities/data-knowledge" },
                       ],
                     },
@@ -694,10 +697,14 @@ export default defineConfig({
           ],
           {
             exclude: ["/", "/api/**"],
-            // Retired capability page kept for inbound links, unlisted in the
+            // Retired capability pages kept for inbound links, unlisted in the
             // sidebar but still shown under the Reference tab.
             topics: {
-              reference: ["/capabilities/platform-management"],
+              reference: [
+                "/capabilities/platform-management",
+                "/capabilities/knowledge-base",
+                "/capabilities/knowledge-index",
+              ],
               changelog: ["/changelog/**"],
             },
           },

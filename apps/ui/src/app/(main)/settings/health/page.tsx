@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -13,6 +15,7 @@ import { Button } from "@/components/ui/button";
 export default function HealthPage() {
   usePageTitle("Health", "Settings");
   const [offset, setOffset] = useState(0);
+  useChatPageFilters({ offset: offset });
   const policies = usePolicies("agents");
   const canView = policies.can("agent.view");
   const issues = useHealthIssues(undefined, offset, canView);

@@ -33,6 +33,7 @@
 pub mod auth;
 pub mod capability;
 pub mod client;
+pub mod discovery;
 pub mod elicitation;
 pub mod executor;
 pub mod form_elicitation;
@@ -40,6 +41,7 @@ pub mod http;
 pub mod oauth;
 pub mod protocol;
 pub mod result;
+pub mod tasks;
 pub mod transport;
 pub mod user_store;
 
@@ -54,6 +56,11 @@ pub use capability::{
     mcp_capability_id, parse_mcp_capability_id,
 };
 pub use client::McpClient;
+pub use discovery::{
+    MCP_DISCOVERY_DEADLINE, MCP_DISCOVERY_MAX_BYTES, MCP_DISCOVERY_MAX_PAGES,
+    MCP_DISCOVERY_MAX_TOOLS, MCP_SESSION_DISCOVERY_MAX_BYTES, MCP_SESSION_DISCOVERY_MAX_TOOLS,
+    McpDiscoveryError,
+};
 pub use elicitation::{
     CONSENT_TTL, ConsentingUrlElicitations, DeclineUrlElicitations, ElicitationAction,
     ElicitationConsentStore, GrantedConsent, RelayUrlElicitations, StoredConsent, UrlElicitation,

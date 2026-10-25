@@ -2,7 +2,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use everruns::{Agent, FunctionTool, LlmSimConfig, Model, ToolCall};
-use everruns_core::host::AcceptedTurnInput;
 use everruns_durable_object::{AuthorityClient, Executor, SessionBinding};
 use serde_json::json;
 use std::process::{Child, Command, Stdio};
@@ -90,11 +89,15 @@ async fn fixture_server() {
         .tool(tool)
         .build()
         .unwrap();
-    let factory = move |id, backends| {
-        let agent = agent.clone();
-        async move { agent.execution_host(id, backends).await }
-    };
-    let executor = Executor::new(client(), binding(), EXECUTOR_TOKEN, factory, 4).unwrap();
+    let binding = binding();
+    let engine = everruns::Engine::builder()
+        .hosting(everruns_durable_object::ObjectHosting::new(client()))
+        .register(
+            everruns::hosting::AgentBuild::new(&binding.agent, &binding.build_id),
+            agent,
+        )
+        .build();
+    let executor = Executor::new(client(), binding, EXECUTOR_TOKEN, engine, 4).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8790")
         .await
         .unwrap();
@@ -104,19 +107,38 @@ async fn fixture_server() {
 #[tokio::test]
 #[ignore = "requires the local workerd authority on port 8789"]
 async fn a_killed_native_executor_recovers_from_do_without_resending_input() {
-    let session = client().session(everruns::SessionId::new());
     let build = SessionBinding {
         agent: "recovery-test".into(),
         build_id: uuid::Uuid::new_v4().to_string(),
     };
-    session.bind(&build).await.unwrap();
+    let reference = everruns::hosting::AgentBuild::new(&build.agent, &build.build_id);
+    let frontend = everruns::Engine::builder()
+        .hosting(everruns_durable_object::ObjectHosting::new(client()))
+        .register(
+            reference.clone(),
+            Agent::builder()
+                .instructions("Test the shared durable runtime.")
+                .name("recovery-test")
+                .model(Model::simulated("Recovered."))
+                .build()
+                .unwrap(),
+        )
+        .build();
+    let session = frontend
+        .create_registered(everruns::SessionId::new(), &reference)
+        .await
+        .unwrap();
     let effect = std::env::temp_dir().join(format!("everruns-do-effect-{}", uuid::Uuid::new_v4()));
     let mut initial = spawn("crash", &effect, &build.build_id);
-    let input = AcceptedTurnInput::new("mutate once");
-    let message = session.send(input.clone()).await.unwrap();
+    let message = everruns::MessageId::new();
+    let accepted = session.send_with_id(message, "mutate once").await.unwrap();
     assert_eq!(
-        session.send(input).await.unwrap(),
-        message,
+        session
+            .send_with_id(message, "mutate once")
+            .await
+            .unwrap()
+            .message_id,
+        accepted.message_id,
         "lost admission reply is safe to retry"
     );
     tokio::time::timeout(Duration::from_secs(40), async {
@@ -137,10 +159,10 @@ async fn a_killed_native_executor_recovers_from_do_without_resending_input() {
     // has to pick the session up after its owner's lease expires.
     let events = tokio::time::timeout(Duration::from_secs(45), async {
         loop {
-            let events = session.events(0, None, 256).await.unwrap().events;
+            let events = session.events_after(0).await.unwrap();
             if events
                 .iter()
-                .any(|event| event.event_type == "turn.completed")
+                .any(|event| event.event_type() == "turn.completed")
             {
                 break events;
             }
@@ -157,31 +179,32 @@ async fn a_killed_native_executor_recovers_from_do_without_resending_input() {
     assert_eq!(
         events
             .iter()
-            .filter(|event| event.event_type == "input.message" && event.context.turn_id.is_none())
+            .filter(|event| event.event_type() == "input.message" && event.turn_id.is_none())
             .count(),
         1
     );
     assert_eq!(
         events
             .iter()
-            .filter(|event| event.event_type == "turn.started")
+            .filter(|event| event.event_type() == "turn.started")
             .count(),
         1
     );
     assert_eq!(
         events
             .iter()
-            .filter(|event| event.event_type == "turn.completed")
+            .filter(|event| event.event_type() == "turn.completed")
             .count(),
         1
     );
     let interrupted = events
         .iter()
-        .find(|event| event.event_type == "tool.completed")
+        .find(|event| event.event_type() == "tool.completed")
         .expect("unknown tool result is explicit");
     assert_eq!(
-        serde_json::to_value(&interrupted.data).unwrap()["status"],
+        interrupted.canonical_json()["data"]["status"],
         "interrupted"
     );
+    assert!(accepted.wait().await.unwrap().success);
     std::fs::remove_file(effect).unwrap();
 }

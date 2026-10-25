@@ -12,6 +12,7 @@
 * [Execution Phases Specification](execution-phases.md) - Execution phases (Commentary/FinalAnswer) for multi-step tool flows.
 * [Tool Execution Specification](tool-execution.md) - Tool types and execution flow.
 * [Tool narration](tool-narration.md) - Backend-authored, argument-aware narration for common tool families.
+* [Work reports](work-reports.md) - One runtime-built record of what a piece of work is doing now and what it got done, read by every surface.
 * [Tool Output Distillation](tool-output-distillation.md) - Content-aware distillation of large non-exec tool results at capture time.
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
@@ -23,10 +24,13 @@
 * [Background Execution Capability](background-execution.md) - `background_execution` capability and cross-cutting / auto-activation contract.
 * [Client-Side Tools](client-side-tools.md) - Client-side tools for API/SDK consumers.
 * [Tool Search Specification](tool-search.md) - OpenAI tool_search deferred tool loading capability.
-* [Cache-Stable Tool Changes](cache-stable-tool-changes.md) - Proposed: a fixed tool list per session, with later tool changes recorded in the conversation and sent in each provider's cache-safe form.
+* [Large MCP Catalogs](large-mcp-catalogs.md) - Complete bounded MCP discovery and opt-in schema search, with the Rust/Mira study and future Yolop adoption.
+* [Native and CLI Tool Surfaces](tool-surfaces.md) - Implemented surface planning over one operation registry, capability context, and provider-aware tool changes.
+* [Cache-Stable Tool Changes](cache-stable-tool-changes.md) - Stable tool and prompt baselines, recorded incremental changes, and provider-specific cache handling.
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
+* [Secure web_fetch Credentials Implementation Request](web-fetch-credentials-request.md) - Handoff for shared bound credentials, response capture, and durable consent in web_fetch.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
-* [Tools in Shell](tools-in-shell.md) - Proposed `tools_in_shell` capability: an agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
+* [Tools in Shell](tools-in-shell.md) - An agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
 * [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Change Reasons and Manager Context](change-reasons-and-manager-context.md) - Every entity change records who, through what and why in a generic history with revisions and restore, which replaced agent versions, and each managed entity carries manager-only notes its own runtime never sees.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.

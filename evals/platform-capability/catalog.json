@@ -1,5 +1,65 @@
 [
   {
+    "category": "knowledge",
+    "cli": "knowledge sources add",
+    "description": "Connect an existing GitHub identity or public Git source to knowledge.",
+    "input_schema": {
+      "$defs": {
+        "SourceInput": {
+          "additionalProperties": false,
+          "description": "A connected repository mounted beneath a non-overlapping collection path.",
+          "properties": {
+            "config": {
+              "description": "Adapter-specific repository, revision and root-folder configuration, without credentials."
+            },
+            "connection_owner": {
+              "description": "Optional GitHub connection owner; existing connection authorization still applies.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "description": "Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository.",
+              "type": "string"
+            },
+            "root_path": {
+              "description": "Collection-relative root under which the source hierarchy is preserved.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "add_knowledge_source",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/sources",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions participants add",
     "description": "Add a member participant to a session.",
@@ -82,6 +142,30 @@
   },
   {
     "category": "agents",
+    "cli": "agents examples adopt",
+    "description": "Create an agent from an agent example by name (see list_agent_examples). The agent is named after the example, with a short suffix when that name is taken, and tagged example:<name>. A template's guided setup (GitHub App, connections, trigger) is not run: do those steps next.",
+    "input_schema": {
+      "description": "Create an agent from an agent example.",
+      "properties": {
+        "name": {
+          "description": "Example name from list_agent_examples, such as `pr-reviewer`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "adopt_agent_example",
+    "output_shape": "unknown",
+    "path": "/v1/agents/import",
+    "positional_arg": "name",
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents analyze",
     "description": "Run advisory checks (built-in rules plus LLM analysis) against an agent configuration.",
     "input_schema": {
@@ -136,6 +220,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -184,6 +275,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -698,6 +798,28 @@
     "read_only": false
   },
   {
+    "category": "knowledge",
+    "cli": "knowledge delete",
+    "description": "Archive a knowledge collection.",
+    "input_schema": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "archive_knowledge",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions archive",
     "description": "Archive a session so it drops out of default lists.",
@@ -755,7 +877,7 @@
     "input_schema": {
       "$defs": {
         "SecretAuth": {
-          "description": "How a bound secret is put on an outbound request.\n\nHeader-only by design: a value\nis never placed in a URL or a body.",
+          "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
           "oneOf": [
             {
               "description": "`Authorization: Bearer <value>`.",
@@ -782,6 +904,25 @@
                 "type": {
                   "enum": [
                     "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "One application/x-www-form-urlencoded field, never a body template.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "form_field"
                   ],
                   "type": "string"
                 }
@@ -1349,6 +1490,99 @@
   },
   {
     "category": "agents",
+    "cli": "agents source connect",
+    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "input_schema": {
+      "$defs": {
+        "ConnectSourceRequest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SourceLocation",
+              "description": "Repository, branch and package path that were previewed."
+            },
+            {
+              "properties": {
+                "agent_digest": {
+                  "description": "Agent package digest returned by preview, protecting concurrent local edits.",
+                  "example": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "type": "string"
+                },
+                "commit": {
+                  "description": "Exact source commit returned by preview; a changed branch requires another preview.",
+                  "example": "0123456789abcdef0123456789abcdef01234567",
+                  "type": "string"
+                },
+                "expected_generation": {
+                  "description": "Current binding generation when replacing a source; omit for an unbound Agent.",
+                  "example": "018f30c8-c970-7cb5-a8c9-9348aa71ba8c",
+                  "format": "uuid",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "commit",
+                "agent_digest"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Reviewed package location and concurrency tokens required to enable source sync."
+        },
+        "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
+          "properties": {
+            "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ConnectSourceRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "connect_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
     "cli": "agents copy",
     "description": "Copy an agent. Generates a unique name.",
     "input_schema": {
@@ -1503,6 +1737,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -1551,6 +1792,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -2615,7 +2865,8 @@
             "public_chat",
             "voice",
             "api",
-            "poppy"
+            "poppy",
+            "work_chat"
           ],
           "example": "webhook",
           "type": "string"
@@ -3022,6 +3273,22 @@
             "subject_template": {
               "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
               "example": "{{webhook.json.action}}",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_binding_key": {
+              "description": "Schedule only: the conversation on `target_channel_id`, keyed the way\nthe channel binds sessions: `slack:user:{user_id}` (a direct message)\nor `slack:channel:{channel_id}` (top-level posts).",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Schedule only: the agent's channel whose conversation each run speaks\nin, instead of a session of the trigger's own. Needs\n`target_binding_key`.",
+              "example": "appchan_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -4373,6 +4640,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -4421,6 +4695,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -4747,140 +5030,116 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases create",
-    "description": "Create a knowledge base in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge create",
+    "description": "Create a knowledge collection; indexing is optional.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Optional embedding model for hybrid retrieval.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "create_knowledge_base",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries create",
-    "description": "Create an entry inside a knowledge base.",
-    "input_schema": {
-      "properties": {
-        "body": {
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "resource": {
-          "description": "Optional OKF resource URI identifying the underlying asset.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "tags": {
-          "description": "Free-form tags attached to this resource.",
-          "items": {
-            "type": "string"
+      "$defs": {
+        "CollectionInput": {
+          "additionalProperties": false,
+          "description": "A file collection with optional indexing, provider selection and path exclusions.",
+          "properties": {
+            "description": {
+              "description": "Human-readable purpose of the collection, available during progressive disclosure.",
+              "type": "string"
+            },
+            "embedding_model_id": {
+              "description": "Organization embedding model; required when hybrid indexing is enabled.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexer_id": {
+              "description": "Optional organization search account. Omit to use the local index backend.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode",
+              "description": "Whether files remain unindexed, use keyword search, or also use embedding retrieval."
+            },
+            "name": {
+              "description": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot.",
+              "type": "string"
+            },
+            "rules": {
+              "description": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
+            }
           },
-          "type": [
-            "array",
-            "null"
-          ]
+          "required": [
+            "name"
+          ],
+          "type": "object"
         },
-        "title": {
-          "description": "Human-readable title. Safe to render in user-facing messages.",
+        "IndexMode": {
+          "description": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
           "type": "string"
         }
       },
-      "required": [
-        "kb_id",
-        "title",
-        "body"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/CollectionInput"
+        }
+      ]
     },
     "method": "POST",
-    "name": "create_knowledge_entry",
+    "name": "create_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries",
+    "path": "/v1/knowledge",
     "positional_arg": null,
     "read_only": false
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes create",
-    "description": "Create a knowledge index in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge indexers create",
+    "description": "Configure an organization Turbopuffer account using an existing write-only credential binding.",
     "input_schema": {
-      "properties": {
-        "description": {
-          "description": "Human-readable description. Safe to render in user-facing messages.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "embedding_model_id": {
-          "description": "Embedding model used to embed chunks. Required.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Human-readable name. Safe to render in user-facing messages.",
-          "type": "string"
-        },
-        "source_config": {
-          "description": "Non-secret source coordinates."
-        },
-        "source_type": {
-          "description": "External source type. One of `github`, `git`. Defaults to `github`.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "IndexerInput": {
+          "additionalProperties": false,
+          "description": "An organization Turbopuffer account referencing an existing service credential.",
+          "properties": {
+            "credential_binding_id": {
+              "description": "Active organization-service credential binding; never a plaintext API key.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "endpoint": {
+              "description": "HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden.",
+              "type": "string"
+            },
+            "name": {
+              "description": "Display name for the organization search account.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "endpoint",
+            "credential_binding_id"
+          ],
+          "type": "object"
         }
       },
-      "required": [
-        "name",
-        "embedding_model_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/IndexerInput"
+        }
+      ]
     },
     "method": "POST",
-    "name": "create_knowledge_index",
+    "name": "create_knowledge_indexer",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes",
+    "path": "/v1/knowledge-indexers",
     "positional_arg": null,
     "read_only": false
   },
@@ -5008,6 +5267,16 @@
           "example": "github",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "tool_timeout_ms": {
+          "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\nDefaults to 60000.",
+          "example": 300000,
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
             "null"
           ]
         },
@@ -5215,7 +5484,7 @@
   {
     "category": "messages",
     "cli": "sessions messages create",
-    "description": "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    "description": "Create a user message in a session and start the next run. Pass the message as one JSON object whose `content` is an array of content parts (there is no separate --content flag), e.g. --message '{\"content\":[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]}'.",
     "input_schema": {
       "$defs": {
         "AnnotationSource": {
@@ -5733,7 +6002,7 @@
         },
         "message": {
           "$ref": "#/$defs/InputMessage",
-          "description": "The user message: `{\"content\": [{\"type\": \"text\", \"text\": ...}]}`."
+          "description": "The user message as one JSON object whose `content` is an array of\ncontent parts, e.g. `{\"content\": [{\"type\": \"text\", \"text\": \"Hi\"}]}`."
         },
         "metadata": {
           "additionalProperties": {},
@@ -7080,6 +7349,290 @@
     "read_only": false
   },
   {
+    "category": "credentials",
+    "cli": "credential-bindings create",
+    "description": "Declare an HTTP or MCP write-only credential binding. The owner provisions its value in the secure Credentials UI.",
+    "input_schema": {
+      "$defs": {
+        "ConnectionCredentialSource": {
+          "additionalProperties": false,
+          "description": "Reference an eligible native GitHub App connection while preserving its installation selection.",
+          "properties": {
+            "connection_id": {
+              "description": "Native connection identifier; ownership and use authorization remain enforced.",
+              "format": "uuid",
+              "type": "string"
+            },
+            "github_access": {
+              "$ref": "#/$defs/GitHubAccess",
+              "description": "Explicit repository and permission bounds for each minted installation token."
+            }
+          },
+          "required": [
+            "connection_id",
+            "github_access"
+          ],
+          "type": "object"
+        },
+        "CredentialOwnerInput": {
+          "description": "Authorized owner and usage of a credential. Ownership does not grant access to other consumers.",
+          "properties": {
+            "owner_id": {
+              "description": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Ownership and lifetime scope within the current organization."
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Required invocation identity; agent and organization owners require service usage."
+            }
+          },
+          "required": [
+            "scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "GitHubAccess": {
+          "description": "What one GitHub use asks for: who it acts as, and the least access it needs.\n\nThe resolver mints an installation token limited to `repositories` and\n`permissions`, so a tool that only reads a diff never holds write access.\nEmpty `repositories` means every repository the installation covers; empty\n`permissions` means everything the installation was granted. A person's own\nlogin cannot be narrowed by GitHub and answers with its full reach.",
+          "properties": {
+            "acts_as": {
+              "$ref": "#/$defs/McpServerActsAs",
+              "description": "Whose GitHub identity answers. `none` resolves nothing."
+            },
+            "permissions": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "GitHub App permission name to level (`read` or `write`).",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "repositories": {
+              "description": "Repositories as `owner/repo`, all under one owner.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "acts_as"
+          ],
+          "type": "object"
+        },
+        "McpCredentialTarget": {
+          "additionalProperties": false,
+          "description": "Exact MCP endpoint and top-level tool parameter receiving a credential at execution time.",
+          "properties": {
+            "parameter_name": {
+              "description": "Top-level parameter name; dotted nested paths are rejected.",
+              "type": "string"
+            },
+            "server_name": {
+              "description": "Attached MCP server name used to identify the target.",
+              "type": "string"
+            },
+            "tool_name": {
+              "description": "Exact tool name within the attached server.",
+              "type": "string"
+            },
+            "url": {
+              "description": "Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server_name",
+            "url",
+            "tool_name",
+            "parameter_name"
+          ],
+          "type": "object"
+        },
+        "McpServerActsAs": {
+          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+          "enum": [
+            "none",
+            "service",
+            "user",
+            "user_or_service"
+          ],
+          "example": "service",
+          "type": "string"
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        },
+        "SecretAuth": {
+          "description": "How a bound secret is put on an outbound request.\n\nOnly the declared header or named, structured form field may carry a value.",
+          "oneOf": [
+            {
+              "description": "`Authorization: Bearer <value>`.",
+              "properties": {
+                "type": {
+                  "enum": [
+                    "bearer"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "`<name>: <value>`, e.g. `X-Api-Key`.",
+              "properties": {
+                "name": {
+                  "description": "Header name.",
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "header"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "One application/x-www-form-urlencoded field, never a body template.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "form_field"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SecretBinding": {
+          "description": "Where a bound secret may be sent, and how.",
+          "properties": {
+            "auth": {
+              "$ref": "#/$defs/SecretAuth",
+              "description": "How the value is attached."
+            },
+            "url": {
+              "description": "`https://host[:port][/path-prefix]` the value may be sent to.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "url",
+            "auth"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CredentialOwnerInput",
+          "description": "Authorized owner and required invocation identity."
+        },
+        {
+          "properties": {
+            "binding": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SecretBinding",
+                  "description": "Exact HTTPS destination and injection placement; supply this or `mcp`, exclusively."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "label": {
+              "description": "Human-readable label, between 1 and 128 bytes.",
+              "type": "string"
+            },
+            "mcp": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/McpCredentialTarget",
+                  "description": "Exact MCP endpoint, tool, and parameter; supply this or `binding`, exclusively."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "description": "HTTP reference name; required for HTTP bindings.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ConnectionCredentialSource",
+                  "description": "Optional native GitHub connection and bounded access request instead of a stored value."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Declare binding metadata. Provision its value separately through secure entry or approved capture."
+    },
+    "method": "POST",
+    "name": "create_scoped_credential",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions create",
     "description": "Create a new session. Optionally assign an agent and harness. Assign the agent with --agent_id or --agent_name (the everruns CLI spelling of this flag is --agent).",
@@ -7135,6 +7688,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -7183,6 +7743,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -8685,76 +9254,28 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases delete",
-    "description": "Archive a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge files delete",
+    "description": "Delete a managed knowledge file and stop serving its search results.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_knowledge_base",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries delete",
-    "description": "Delete a knowledge entry.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "path": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id",
-        "entry_id"
+        "collection_id",
+        "path"
       ],
       "type": "object"
     },
     "method": "DELETE",
-    "name": "delete_knowledge_entry",
+    "name": "delete_knowledge_file",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes delete",
-    "description": "Archive a knowledge index.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -9462,6 +9983,28 @@
     "name": "disconnect_agent_github",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/github",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents source disconnect",
+    "description": "Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "disconnect_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
     "positional_arg": null,
     "read_only": false
   },
@@ -10469,6 +11012,86 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents source get",
+    "description": "Show the Agent's continuous GitHub source binding and sync status.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents source options get",
+    "description": "Browse GitHub branches and Agent package paths.",
+    "input_schema": {
+      "$defs": {
+        "SourceOptionsRequest": {
+          "description": "Repository location to browse before selecting an Agent source package.",
+          "properties": {
+            "branch": {
+              "description": "Branch to browse; omitted uses the repository's default branch.",
+              "example": "main",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "description": "Repository-relative directory to browse; empty selects the root.",
+              "example": "agents",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceOptionsRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "get_agent_source_options",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/options",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "agent_triggers",
     "cli": "agents triggers get",
     "description": "Get a single agent trigger by id.",
@@ -10836,77 +11459,25 @@
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases get",
-    "description": "Get a knowledge base by ID.",
+    "category": "knowledge",
+    "cli": "knowledge get",
+    "description": "Inspect a knowledge collection, sources and processing status.",
     "input_schema": {
       "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
+        "collection_id": {
           "type": "string"
         }
       },
       "required": [
-        "kb_id"
+        "collection_id"
       ],
       "type": "object"
     },
     "method": "GET",
-    "name": "get_knowledge_base",
+    "name": "get_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
-    "positional_arg": "kb_id",
-    "read_only": true
-  },
-  {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries get",
-    "description": "Get a knowledge entry by ID.",
-    "input_schema": {
-      "properties": {
-        "entry_id": {
-          "description": "Knowledge base entry's prefixed public identifier.",
-          "type": "string"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "kb_id",
-        "entry_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_knowledge_entry",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
+    "path": "/v1/knowledge/{collection_id}",
     "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes get",
-    "description": "Get a knowledge index by ID.",
-    "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
-    "positional_arg": "index_id",
     "read_only": true
   },
   {
@@ -11900,6 +12471,37 @@
     "read_only": true
   },
   {
+    "category": "events",
+    "cli": "sessions work get",
+    "description": "Show what a session's turn is doing or got done.",
+    "input_schema": {
+      "description": "Work report of one turn, or of the session's latest turn.",
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn_id": {
+          "description": "Turn to report on. Defaults to the session's latest turn.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_work",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/work",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "skills",
     "cli": "skills get",
     "description": "Get a single skill by ID.",
@@ -12025,6 +12627,139 @@
     "path": "/v1/sessions/{session_id}/fs/{path}",
     "positional_arg": null,
     "read_only": true
+  },
+  {
+    "category": "credentials",
+    "cli": "resources grants grant",
+    "description": "Explicitly grant bounded resource use to a consumer. Use does not grant management or resharing.",
+    "input_schema": {
+      "$defs": {
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "GrantCredential": {
+          "description": "Explicit bounded use grant. It does not confer management permission or permission to reshare.",
+          "properties": {
+            "constraints": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ResourceConstraints",
+                  "description": "Optional access bounds; GitHub grants cannot widen native repository or permission limits."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "consumer_id": {
+              "description": "Consumer agent, session, or virtual-user ID; omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "consumer_scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Consumer scope; organization grants explicitly opt eligible service agents in."
+            },
+            "expires_at": {
+              "description": "Absolute grant expiry in UTC; omit for a grant that lasts until revoked.",
+              "format": "date-time",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Invocation identity that must match at every use."
+            }
+          },
+          "required": [
+            "consumer_scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "ResourceConstraints": {
+          "description": "Provider limits must be enforced by the adapter before a token is exposed.",
+          "oneOf": [
+            {
+              "properties": {
+                "permissions": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "provider": {
+                  "enum": [
+                    "github"
+                  ],
+                  "type": "string"
+                },
+                "repositories": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "repositories",
+                "permissions",
+                "provider"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/GrantCredential",
+          "description": "Consumer, required usage, expiry, and optional access bounds."
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Credential binding or native connection resource identifier.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Grant bounded resource use through an explicit owner action."
+    },
+    "method": "POST",
+    "name": "grant_resource_access",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants",
+    "positional_arg": null,
+    "read_only": false
   },
   {
     "category": "files",
@@ -12463,68 +13198,6 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases okf-import import",
-    "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base.",
-    "input_schema": {
-      "$defs": {
-        "OkfFileInput": {
-          "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
-          "properties": {
-            "content": {
-              "description": "Raw markdown file content (frontmatter + body).",
-              "type": "string"
-            },
-            "path": {
-              "description": "Bundle-relative path, e.g. `tables/orders.md`.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "path",
-            "content"
-          ],
-          "type": "object"
-        }
-      },
-      "description": "Import an OKF bundle into a knowledge base.",
-      "properties": {
-        "bundle_base64": {
-          "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "files": {
-          "description": "Inline bundle files. Mutually exclusive with `bundle_base64`.",
-          "items": {
-            "$ref": "#/$defs/OkfFileInput"
-          },
-          "type": "array"
-        },
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "prune": {
-          "description": "When true, delete previously-imported entries absent from this bundle.",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
-    },
-    "method": "POST",
-    "name": "import_okf_bundle",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/okf_import",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
     "category": "plugins",
     "cli": "plugins install",
     "description": "Install a plugin from a marketplace catalog entry.",
@@ -12618,6 +13291,21 @@
     "name": "list_agent_check_rules",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents examples list",
+    "description": "List adoptable agent examples (blueprints such as pr-reviewer): name, description, harness, capabilities, and the guided setup a template needs after adoption (GitHub App, connections, trigger). Adopt one by name with adopt_agent_example.",
+    "input_schema": {
+      "description": "List the agent examples (blueprints) this deployment offers.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_examples",
+    "output_shape": "array",
+    "path": "/v1/agent-examples",
     "positional_arg": null,
     "read_only": true
   },
@@ -13038,7 +13726,7 @@
       "description": "List available capabilities with optional search and pagination.",
       "properties": {
         "include_retired": {
-          "description": "Include capabilities that have been retired (removed but still\nreferenceable). Off by default so catalogs and discovery surfaces do not\nadvertise a capability that no longer does anything; management UIs turn\nit on to explain existing attachments.",
+          "description": "Include capabilities that have been retired (removed but still\nreferenceable). Off by default so catalogs and discovery surfaces do not\nadvertise a capability that no longer does anything; management UIs turn\nit on to explain existing attachments. The same switch keeps a capability\nwhose rollout flag is off, so those screens can still show its name,\ndescription, and icon.",
           "type": "boolean"
         },
         "limit": {
@@ -13539,22 +14227,22 @@
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases list",
-    "description": "List knowledge bases in the current organization.",
+    "category": "knowledge",
+    "cli": "knowledge list",
+    "description": "List versioned knowledge collections.",
     "input_schema": {
       "properties": {
-        "include_archived": {
-          "description": "Include archived knowledge bases.",
+        "after": {
           "type": [
-            "boolean",
+            "string",
             "null"
           ]
         },
-        "search": {
-          "description": "Case-insensitive name filter.",
+        "limit": {
+          "format": "int32",
+          "minimum": 0,
           "type": [
-            "string",
+            "integer",
             "null"
           ]
         }
@@ -13562,99 +14250,108 @@
       "type": "object"
     },
     "method": "GET",
-    "name": "list_knowledge_bases",
+    "name": "list_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases",
+    "path": "/v1/knowledge",
     "positional_arg": null,
     "read_only": true
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries list",
-    "description": "List entries inside a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge files list",
+    "description": "List knowledge files with bounded cursor pagination.",
     "input_schema": {
-      "properties": {
-        "kb_id": {
-          "description": "Knowledge base's prefixed public identifier.",
-          "type": "string"
-        },
-        "kind": {
-          "description": "Discriminator selecting the variant of this resource.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive title or body filter.",
-          "type": [
-            "string",
-            "null"
-          ]
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
         }
       },
-      "required": [
-        "kb_id"
-      ],
-      "type": "object"
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "method": "GET",
-    "name": "list_knowledge_entries",
+    "name": "list_knowledge_files",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": true
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes documents list",
-    "description": "List documents inside a knowledge index.",
+    "category": "knowledge",
+    "cli": "knowledge indexers list",
+    "description": "List organization search-provider accounts without credential values.",
     "input_schema": {
-      "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "index_id"
-      ],
       "type": "object"
     },
     "method": "GET",
-    "name": "list_knowledge_index_documents",
+    "name": "list_knowledge_indexers",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}/documents",
-    "positional_arg": "index_id",
-    "read_only": true
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes list",
-    "description": "List knowledge indexes in the current organization.",
-    "input_schema": {
-      "properties": {
-        "include_archived": {
-          "description": "Also return archived items.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "search": {
-          "description": "Case-insensitive substring match on name or description.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_knowledge_indexes",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes",
+    "path": "/v1/knowledge-indexers",
     "positional_arg": null,
     "read_only": true
   },
@@ -14075,6 +14772,29 @@
   },
   {
     "category": "organizations",
+    "cli": "orgs provider-accounts list",
+    "description": "List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. Metadata only, never credentials. Use an id as a Sandbox Template's connection or a web search account. Organization admins only.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization public ID.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_organization_connections",
+    "output_shape": "array",
+    "path": "/v1/orgs/{org}/organization-connections",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "organizations",
     "cli": "orgs list",
     "description": "List organizations for the current user.",
     "input_schema": {
@@ -14267,6 +14987,31 @@
     "name": "list_providers",
     "output_shape": "unknown",
     "path": "/v1/providers",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "credentials",
+    "cli": "resources grants list",
+    "description": "List explicit use grants for an authorized resource owner.",
+    "input_schema": {
+      "description": "Select a credential or connection whose explicit use grants should be listed.",
+      "properties": {
+        "id": {
+          "description": "Credential binding or native connection resource identifier.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_resource_grants",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants",
     "positional_arg": null,
     "read_only": true
   },
@@ -14477,6 +15222,71 @@
     "name": "list_schedules",
     "output_shape": "unknown",
     "path": "/v1/durable/schedules",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "credentials",
+    "cli": "credential-bindings list",
+    "description": "List credential metadata for an authorized owner. Values are never returned.",
+    "input_schema": {
+      "$defs": {
+        "CredentialOwnerInput": {
+          "description": "Authorized owner and usage of a credential. Ownership does not grant access to other consumers.",
+          "properties": {
+            "owner_id": {
+              "description": "Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/$defs/ResourceScope",
+              "description": "Ownership and lifetime scope within the current organization."
+            },
+            "usage": {
+              "$ref": "#/$defs/CredentialUsage",
+              "description": "Required invocation identity; agent and organization owners require service usage."
+            }
+          },
+          "required": [
+            "scope",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "CredentialUsage": {
+          "description": "Invocation identity under which a credential may be used; identities never fall back to each other.",
+          "enum": [
+            "user",
+            "service"
+          ],
+          "type": "string"
+        },
+        "ResourceScope": {
+          "description": "Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.",
+          "enum": [
+            "session",
+            "agent",
+            "virtual_user",
+            "organization"
+          ],
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CredentialOwnerInput",
+          "description": "Owner and required invocation usage."
+        }
+      ],
+      "description": "Select an authorized owner whose credential metadata should be listed."
+    },
+    "method": "GET",
+    "name": "list_scoped_credentials",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings",
     "positional_arg": null,
     "read_only": true
   },
@@ -15697,6 +16507,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -15745,6 +16562,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -16224,6 +17050,62 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents source preview",
+    "description": "Validate and compare a GitHub Agent package without changing the Agent.",
+    "input_schema": {
+      "$defs": {
+        "SourceLocation": {
+          "description": "Repository, branch and package path that define an Agent's GitHub source.",
+          "properties": {
+            "branch": {
+              "description": "Branch whose future commits the Agent follows.",
+              "example": "main",
+              "type": "string"
+            },
+            "path": {
+              "description": "Repository-relative package folder or manifest; empty selects the repository root.",
+              "example": "agents/support",
+              "type": "string"
+            },
+            "repository": {
+              "description": "GitHub repository in owner/name form.",
+              "example": "acme/agents",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "branch"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/SourceLocation"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "preview_agent_source",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/source/preview",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "harnesses",
     "cli": "harnesses preview",
     "description": "Preview the final harness shape with capabilities applied.",
@@ -16279,6 +17161,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -16327,6 +17216,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -16569,6 +17467,24 @@
           "description": "The entity's public id.",
           "type": "string"
         },
+        "expected_revision": {
+          "description": "Refuse if the Agent changed after this revision. Guarded restores are atomic.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "fields": {
+          "description": "Restore only these top-level Agent fields; omit to restore the full definition.\nRequires expected_revision. Secrets and fields the update cannot restore are refused.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "kind": {
           "description": "Entity kind, for ids without a prefix.",
           "type": [
@@ -16744,6 +17660,68 @@
     "name": "revoke_eval_run_share",
     "output_shape": "unknown",
     "path": "/v1/evals/{eval_id}/runs/{run_id}/share",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "credentials",
+    "cli": "resources grants revoke",
+    "description": "Revoke an explicit resource use grant.",
+    "input_schema": {
+      "description": "Revoke one consumer's explicit grant without revoking the resource itself.",
+      "properties": {
+        "grant_id": {
+          "description": "Explicit use grant identifier.",
+          "format": "uuid",
+          "type": "string"
+        },
+        "id": {
+          "description": "Credential binding or native connection resource identifier.",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "grant_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "revoke_resource_grant",
+    "output_shape": "unknown",
+    "path": "/v1/resources/{id}/grants/{grant_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "credentials",
+    "cli": "credential-bindings revoke",
+    "description": "Revoke a credential at the observed revision; future sends fail closed.",
+    "input_schema": {
+      "description": "Revoke a credential using an optimistic concurrency precondition.",
+      "properties": {
+        "id": {
+          "description": "Credential binding identifier.",
+          "format": "uuid",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Last observed resource revision; stale revocations are rejected.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "revoke_scoped_credential",
+    "output_shape": "unknown",
+    "path": "/v1/credential-bindings/{id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -16997,6 +17975,71 @@
     "name": "run_saved_report",
     "output_shape": "unknown",
     "path": "/v1/reports/saved/{report_id}/run",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge search",
+    "description": "Search selected knowledge collections with immutable citations.",
+    "input_schema": {
+      "$defs": {
+        "KnowledgeQuery": {
+          "additionalProperties": false,
+          "description": "A bounded retrieval query; runtime hosts intersect collections with live session bindings.",
+          "properties": {
+            "collections": {
+              "description": "Optional collection identifiers. Runtime access remains limited to attached collections.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "lexical_only": {
+              "description": "Use keyword retrieval without creating a query embedding.",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Requested maximum passages; hosts enforce the configured retrieval budget.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "metadata": {
+              "additionalProperties": {},
+              "description": "Exact user-annotation predicates applied without granting additional file access.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "path": {
+              "description": "Optional source-relative path prefix that narrows retrieval.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "query": {
+              "description": "Search text used for keyword retrieval and, when enabled, query embeddings.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/KnowledgeQuery"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "search_knowledge_collections",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/search",
     "positional_arg": null,
     "read_only": true
   },
@@ -17630,26 +18673,47 @@
     "read_only": false
   },
   {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes sync",
-    "description": "Enqueue a manual sync of a knowledge index.",
+    "category": "agents",
+    "cli": "agents source sync",
+    "description": "Queue an immediate check of this Agent's GitHub source.",
     "input_schema": {
       "properties": {
-        "index_id": {
-          "description": "Knowledge index's prefixed public identifier.",
+        "agent_id": {
           "type": "string"
         }
       },
       "required": [
-        "index_id"
+        "agent_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "sync_knowledge_index",
+    "name": "sync_agent_source",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}/sync",
-    "positional_arg": "index_id",
+    "path": "/v1/agents/{agent_id}/source/sync",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge sync",
+    "description": "Queue source refresh and retry failed indexing jobs.",
+    "input_schema": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "sync_knowledge",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/sync",
+    "positional_arg": null,
     "read_only": false
   },
   {
@@ -18049,6 +19113,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -18097,6 +19168,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -19557,6 +20637,22 @@
                 "null"
               ]
             },
+            "target_binding_key": {
+              "description": "Replacement target conversation; given with `target_channel_id`.",
+              "example": "slack:user:U0123ABCD",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "target_channel_id": {
+              "description": "Replacement target channel. An empty string removes the target, so\nruns use a session of the trigger's own again.",
+              "example": "appchan_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "timezone": {
               "description": "Replacement IANA timezone identifier.",
               "example": "UTC",
@@ -20697,6 +21793,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -20745,6 +21848,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -21139,214 +22251,144 @@
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases update",
-    "description": "Update a knowledge base.",
+    "category": "knowledge",
+    "cli": "knowledge update",
+    "description": "Configure knowledge indexing and exclusion rules.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeBaseRequest": {
-          "description": "Request body for the `update_knowledge_base` operation.",
+        "CollectionInput": {
+          "additionalProperties": false,
+          "description": "A file collection with optional indexing, provider selection and path exclusions.",
           "properties": {
             "description": {
-              "description": "Human-readable description. Safe to render in user-facing messages.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "description": "Human-readable purpose of the collection, available during progressive disclosure.",
+              "type": "string"
             },
             "embedding_model_id": {
-              "description": "Optional embedding model for hybrid retrieval. Set to null to clear.",
+              "description": "Organization embedding model; required when hybrid indexing is enabled.",
               "type": [
                 "string",
                 "null"
               ]
             },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "support-runbooks-archive",
+            "indexer_id": {
+              "description": "Optional organization search account. Omit to use the local index backend.",
+              "format": "uuid",
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "indexing": {
+              "$ref": "#/$defs/IndexMode",
+              "description": "Whether files remain unindexed, use keyword search, or also use embedding retrieval."
+            },
+            "name": {
+              "description": "Collection name; `everruns-docs` is reserved for the predefined documentation snapshot.",
+              "type": "string"
+            },
+            "rules": {
+              "description": "Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`."
             }
           },
+          "required": [
+            "name"
+          ],
           "type": "object"
+        },
+        "IndexMode": {
+          "description": "Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.",
+          "enum": [
+            "off",
+            "lexical",
+            "hybrid"
+          ],
+          "type": "string"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeBaseRequest"
+          "$ref": "#/$defs/CollectionInput"
         },
         {
           "properties": {
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_knowledge_base",
+    "name": "update_knowledge",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}",
+    "path": "/v1/knowledge/{collection_id}",
     "positional_arg": null,
     "read_only": false
   },
   {
-    "category": "knowledge_bases",
-    "cli": "knowledge-bases entries update",
-    "description": "Update a knowledge entry.",
+    "category": "knowledge",
+    "cli": "knowledge files update",
+    "description": "Update annotations or file read/index policy without extracting content again.",
     "input_schema": {
       "$defs": {
-        "UpdateKnowledgeEntryRequest": {
-          "description": "Request body for the `update_knowledge_entry` operation.",
+        "FileMetadataInput": {
+          "additionalProperties": false,
+          "description": "Update managed-file annotations and agent visibility without extracting bytes again.",
           "properties": {
-            "body": {
-              "description": "Updated entry body. Markdown is rendered when displayed.",
-              "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval.",
+            "indexable": {
+              "description": "Optional indexing override. Omit to preserve the current policy.",
               "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             },
-            "kind": {
-              "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
-              "example": "runbook",
-              "type": [
-                "string",
-                "null"
-              ]
+            "metadata": {
+              "description": "Replace user annotations while preserving metadata parsed from the original file."
             },
-            "resource": {
-              "description": "Optional OKF resource URI. Set to null to clear.",
-              "type": [
-                "string",
-                "null"
-              ]
+            "path": {
+              "description": "Existing collection-relative file path.",
+              "type": "string"
             },
-            "tags": {
-              "description": "Free-form tags attached to this resource.",
-              "example": [
-                "billing",
-                "refunds",
-                "vp-approval"
-              ],
-              "items": {
-                "type": "string"
-              },
+            "readable": {
+              "description": "Optional agent-read override. Omit to preserve the current policy.",
               "type": [
-                "array",
-                "null"
-              ]
-            },
-            "title": {
-              "description": "Human-readable title. Safe to render in user-facing messages.",
-              "example": "Refund a payment past 60 days",
-              "type": [
-                "string",
+                "boolean",
                 "null"
               ]
             }
           },
+          "required": [
+            "path"
+          ],
           "type": "object"
         }
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateKnowledgeEntryRequest"
+          "$ref": "#/$defs/FileMetadataInput"
         },
         {
           "properties": {
-            "entry_id": {
-              "description": "Knowledge base entry's prefixed public identifier.",
-              "type": "string"
-            },
-            "kb_id": {
-              "description": "Knowledge base's prefixed public identifier.",
+            "collection_id": {
               "type": "string"
             }
           },
           "required": [
-            "kb_id",
-            "entry_id"
+            "collection_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_knowledge_entry",
+    "name": "update_knowledge_file_metadata",
     "output_shape": "unknown",
-    "path": "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "knowledge_indexes",
-    "cli": "knowledge-indexes update",
-    "description": "Update a knowledge index.",
-    "input_schema": {
-      "$defs": {
-        "UpdateKnowledgeIndexRequest": {
-          "description": "Request body for the `update_knowledge_index` operation.",
-          "properties": {
-            "description": {
-              "description": "Human-readable description. Set to null to clear.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "embedding_model_id": {
-              "description": "Embedding model used to embed chunks. Required; cannot be cleared.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "name": {
-              "description": "Human-readable name. Safe to render in user-facing messages.",
-              "example": "product-docs-v2",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "source_config": {
-              "description": "Non-secret source coordinates. Never include credentials."
-            }
-          },
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/UpdateKnowledgeIndexRequest"
-        },
-        {
-          "properties": {
-            "index_id": {
-              "description": "Knowledge index's prefixed public identifier.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "index_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "PATCH",
-    "name": "update_knowledge_index",
-    "output_shape": "unknown",
-    "path": "/v1/knowledge-indexes/{index_id}",
+    "path": "/v1/knowledge/{collection_id}/files",
     "positional_arg": null,
     "read_only": false
   },
@@ -21500,6 +22542,16 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "tool_timeout_ms": {
+              "description": "How long one tool call may take, in milliseconds (1000 to 1800000).\n`0` clears it back to the 60000 default.",
+              "example": 300000,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
               ]
             },
             "transport_type": {
@@ -23647,6 +24699,13 @@
                 "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
                 "type": "boolean"
               },
+              "description": {
+                "description": "Searchable server context supplied by its attachment or catalog. It is\nmetadata, not an instruction or a credential.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -23695,6 +24754,15 @@
                   "type": "string"
                 },
                 "type": "object"
+              },
+              "tool_timeout_ms": {
+                "description": "How long one `tools/call` to this server may take, in milliseconds.\nUnset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is\n[`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`\nis accepted as an alias, matching common `mcpServers` config files.",
+                "format": "int64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "type": {
                 "$ref": "#/$defs/McpServerTransportType",
@@ -24943,5 +26011,173 @@
     "path": "/v1/agents/validate",
     "positional_arg": "file",
     "read_only": true
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge okf validate",
+    "description": "Validate a page of OKF v0.2 metadata and reserved navigation files without converting originals.",
+    "input_schema": {
+      "$defs": {
+        "PageQuery": {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "extracted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "length": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "limit": {
+              "format": "int32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "offset": {
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/PageQuery"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "GET",
+    "name": "validate_knowledge_okf",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/okf",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "knowledge",
+    "cli": "knowledge files write",
+    "description": "Add or update an original file in managed knowledge.",
+    "input_schema": {
+      "$defs": {
+        "FileInput": {
+          "additionalProperties": false,
+          "description": "An inline managed file; use the streaming upload endpoint for files over 8 MiB.",
+          "properties": {
+            "content": {
+              "description": "UTF-8 original content. Supply exactly one of `content` or `content_base64`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content_base64": {
+              "description": "Base64 original bytes for binary files; mutually exclusive with `content`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "indexable": {
+              "description": "Optional per-file indexing policy; false retains the original without indexing it.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "metadata": {
+              "description": "User annotations retained separately from parsed source/frontmatter metadata."
+            },
+            "mime_type": {
+              "description": "Optional media type used for representation extraction; inferred when omitted.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "description": "Normalized absolute path within the collection, preserving its directory hierarchy.",
+              "type": "string"
+            },
+            "readable": {
+              "description": "Optional agent-read policy. Managers can still download retained originals.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/FileInput"
+        },
+        {
+          "properties": {
+            "collection_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "collection_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "write_knowledge_file",
+    "output_shape": "unknown",
+    "path": "/v1/knowledge/{collection_id}/files",
+    "positional_arg": null,
+    "read_only": false
   }
 ]

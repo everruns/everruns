@@ -77,3 +77,8 @@ pub use vector_store::{
 pub use sandbox_state::{
     SandboxPersistenceStore, SandboxStateError, SandboxStateStore, SandboxStateStoreExt,
 };
+
+/// Public product-documentation snapshot for offline Knowledge mounts.
+pub mod knowledge_docs {
+    pub const FILES: &[(&str, &str)] = include!(concat!(env!("OUT_DIR"), "/knowledge_docs.rs"));
+}

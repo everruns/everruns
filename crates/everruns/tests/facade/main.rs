@@ -25,11 +25,16 @@ mod explicit_communication;
 mod facade_smoke;
 mod function_tools;
 mod harness;
+mod host_services;
 mod lifecycle_hooks;
 mod model_catalog;
+mod request_metadata;
+mod session_completions;
+mod session_controls;
 mod session_events;
 mod session_history;
 mod session_identity;
+mod session_overlays;
 mod session_work;
 
 #[cfg(feature = "agent-package-fs")]

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { EvalsIcon } from "@/components/icons/facet-icons";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
@@ -93,6 +95,7 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
 export default function EvalsPage() {
   usePageTitle("Evals");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  useChatPageFilters({ status: statusTab });
   const { data: evals, isLoading, error } = useEvals({ includeArchived: true });
   const { data: agents } = useAgents({ includeArchived: false });
 

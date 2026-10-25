@@ -34,7 +34,7 @@ captures the full design intent, with per-surface status noted below.
 
 ## Event → ATIF mapping
 
-The fold lives in `crates/server/src/atif.rs` (one implementation shared by
+The fold lives in `crates/server/src/atif/mod.rs` (one implementation shared by
 every export surface). Field-level detail is readable there; the mapping:
 
 | everruns events | ATIF |
@@ -130,7 +130,7 @@ events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
 ## Limits
 - **Session export size cap.** Plain `?format=atif` returns one synchronous
   JSON document and enforces `ATIF_EXPORT_MAX_BYTES` (50 MiB, defined in
-  `crates/server/src/atif.rs`); larger documents are rejected with HTTP 413
+  `crates/server/src/atif/mod.rs`); larger documents are rejected with HTTP 413
   (standard error JSON, code `atif_export_too_large`, with `detail` pointing at
   `&segmented=true`). The default JSONL export is not affected.
 - **Segmented export (recoverable path for large sessions).**
@@ -187,7 +187,7 @@ events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
 Each item is an independently reviewable change (committed PR-sized). Status
 reflects what has shipped on `main`.
 
-1. ✅ **Serializer + session export**: `crates/server/src/atif.rs` fold,
+1. ✅ **Serializer + session export**: `crates/server/src/atif/mod.rs` fold,
    `?format=atif` on session export, this spec, index/cross-link updates.
 2. ✅ **Dataset export + import**: `format: "atif"` on the eval dataset
    export, `POST /v1/evals/{eval_id}/atif_import`, and the related spec

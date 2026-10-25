@@ -1,0 +1,90 @@
+.chat-mode-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: clip;
+  grid-template-columns: 240px 0px minmax(0, 1fr) 0px;
+  transition: grid-template-columns 280ms ease-out;
+}
+.chat-mode-shell[data-chat-mode="open"] {
+  grid-template-columns: 0px min(600px, 44vw) minmax(0, 1fr) 48px;
+}
+.chat-mode-sidebar {
+  grid-column: 1;
+  grid-row: 1;
+}
+.chat-mode-conversation {
+  grid-column: 2;
+  grid-row: 1;
+}
+.chat-mode-page {
+  grid-column: 3;
+  grid-row: 1;
+}
+.chat-mode-rail {
+  grid-column: 4;
+  grid-row: 1;
+}
+.chat-mode-conversation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chat-mode-conversation[hidden] {
+  display: none;
+}
+.chat-mode-rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chat-mode-page {
+  container-type: inline-size;
+}
+/* Page editors respond to their pane, not to the browser viewport. */
+@container (max-width: 850px) {
+  .chat-mode-page .page-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agent-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agent-workspace > aside {
+    border-top: 1px solid hsl(var(--border));
+  }
+  .agent-workspace > div > section {
+    border-right: 0;
+  }
+}
+@media (max-width: 767px) {
+  .chat-mode-shell {
+    grid-template-columns: 0px 0px minmax(0, 1fr) 0px;
+    grid-template-rows: 48px minmax(0, 1fr);
+  }
+  .chat-mode-sidebar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .chat-mode-page {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .chat-mode-shell[data-chat-mode="open"] {
+    grid-template-columns: 0px minmax(0, 1fr) 0px 48px;
+  }
+  .chat-mode-conversation {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .chat-mode-rail {
+    grid-column: 4;
+    grid-row: 2;
+  }
+  .chat-mode-shell[data-chat-mode="open"] .chat-mode-page {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-mode-shell {
+    transition: none;
+  }
+}

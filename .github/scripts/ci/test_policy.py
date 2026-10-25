@@ -143,12 +143,20 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_knowledge_mount_changes_cover_consumer_workspace_isolation(self):
+        for path in ['crates/server/src/domains/knowledge/runtime.rs',
+                     'crates/server/src/api/knowledge.rs',
+                     'crates/server/src/api/agent_api/work_chat.rs',
+                     'crates/server/tests/domain/work_chat_test.rs']:
+            self.assertIn('work_chat_test::', focused.risk_filters([path]))
+
     def test_database_backend_changes_run_real_router_fixtures(self):
         targets=['background_sweep_wiring_test','pat_scope_sweep_test']
         for path in ['crates/server/src/storage/test_database.rs',
                      'crates/server/src/storage/embedded_postgres/mod.rs',
                      'crates/server/tests/test_harness/database.rs']:
             self.assertEqual(focused.real_server_targets([path]),targets)
+
         server=dict(id='server',name='everruns-server',manifest_path='/repo/crates/server/Cargo.toml',dependencies=[],targets=[{'kind':['lib']}])
         selection=focused.select({'packages':[server],'workspace_members':['server']},
                                  ['crates/server/src/storage/test_database.rs'],Path('/repo'))['include'][0]
@@ -157,6 +165,19 @@ class Policy(unittest.TestCase):
         for target in targets:self.assertIn(target,command)
         self.assertEqual(focused.real_server_targets(['crates/server/tests/pat_scope_sweep_test.rs']),['pat_scope_sweep_test'])
         self.assertEqual(focused.real_server_targets(['crates/server/src/domains/models/service.rs']),[])
+
+    def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
+        for path in [
+            'crates/server/src/domains/agents/credentials.rs',
+            'crates/server/src/domains/credentials/service.rs',
+            'crates/server/src/domains/resource_access/mod.rs',
+            'crates/server/src/domains/mcp_servers/worker_lookup.rs',
+            'crates/server/src/worker_link/grpc_service/worker/credentials.rs',
+            'crates/server/src/worker_link/direct_worker_adapters/mod.rs',
+            'crates/server/tests/domain/mcp_acts_as_grpc_test.rs',
+        ]:
+            with self.subTest(path=path):
+                self.assertIn('mcp_acts_as_grpc_test::', focused.risk_filters([path]))
 
     def test_selected_server_artifacts_run_with_filters_and_cargo_context(self):
         selection = dict(packages=['everruns-server'], risk_targets=['router'], risk_filters=['picked::'])
@@ -585,6 +606,17 @@ fn case(name: &str) {
             directory = Path((root/'path').read_text().strip())
             self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-18').resolve())
             self.assertIn('LLD 18 fixture', subprocess.check_output(['ld.lld', '--version'], env=dict(env, PATH=str(directory)), text=True))
+            # Any LLVM major works, and the newest wins (ubuntu-26.04 ships 21).
+            (root/'path').unlink()
+            for major in ('9', '21'):
+                (root/f'ld.lld-{major}').write_text(f'#!/bin/sh\necho "LLD {major} fixture"\n')
+                (root/f'ld.lld-{major}').chmod(0o755)
+            result = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('LLD 21 fixture', result.stdout)
+            directory = Path((root/'path').read_text().strip())
+            self.assertEqual((directory/'ld.lld').resolve(), (root/'ld.lld-21').resolve())
+            (root/'ld.lld-9').unlink(); (root/'ld.lld-21').unlink()
             # A pre-existing unversioned linker requires neither an alias nor apt.
             (root/'path').unlink()
             (root/'ld.lld').symlink_to(root/'ld.lld-18')

@@ -1,7 +1,11 @@
 "use client";
 
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
+
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +36,7 @@ interface MemoryFormDialogProps {
   open: boolean;
   memory?: Memory | null;
   isPending?: boolean;
+  writable?: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (request: CreateMemoryRequest | UpdateMemoryRequest) => Promise<void>;
 }
@@ -41,6 +46,7 @@ export function MemoryFormDialog({
   open,
   memory,
   isPending = false,
+  writable = false,
   onOpenChange,
   onSubmit,
 }: MemoryFormDialogProps) {
@@ -57,10 +63,53 @@ export function MemoryFormDialog({
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
 
+  const source = mode === "edit" ? memory?.source : undefined;
+  const initial = [
+    mode === "edit" ? (memory?.name ?? "") : "",
+    mode === "edit" ? (memory?.description ?? "") : "",
+    source?.provider === "git" || source?.provider === "github" ? source.provider : "manual",
+    source?.provider === "github" ? source.repository : "",
+    source?.provider === "git" ? source.url : "",
+    source?.provider === "git" || source?.provider === "github" ? source.branch : "",
+    source?.provider === "git" || source?.provider === "github" ? (source.root_folder ?? "") : "",
+    String(
+      source?.provider === "git" || source?.provider === "github"
+        ? (source.sync_interval_secs ?? 0)
+        : 0,
+    ),
+  ];
+  const initialState = JSON.stringify(initial);
+  const formState = JSON.stringify([
+    name,
+    description,
+    sourceKind,
+    repository,
+    gitUrl,
+    branch,
+    rootFolder,
+    syncIntervalSecs,
+  ]);
+  const currentFormState = useRef(formState);
+  const seededState = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    currentFormState.current = formState;
+  });
+  const dirty = seededState.current !== null && formState !== seededState.current;
+  const adopted = !!usePageChatMode();
+  const seededForm = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
+      seededForm.current = null;
+      seededState.current = null;
       return;
     }
+    const seed = `${mode}:${memory?.id ?? "new"}`;
+    // Preserve every manual field, including controls excluded from Chat. A
+    // clean form can follow a refetch; a dirty form keeps its original baseline.
+    if (adopted && seededForm.current === seed && seededState.current !== currentFormState.current)
+      return;
+    seededState.current = initialState;
+    seededForm.current = seed;
     setName(mode === "edit" ? (memory?.name ?? "") : "");
     setDescription(mode === "edit" ? (memory?.description ?? "") : "");
     setSourceKind(
@@ -89,10 +138,29 @@ export function MemoryFormDialog({
     }
     setFieldError(null);
     setFormError(null);
-  }, [mode, open, memory]);
+  }, [mode, open, memory, adopted, initialState]);
+
+  const chatDraft = useTextPageFormDraft({
+    fields: ["name", "description"],
+    values: { name, description },
+    entityId: memory?.id,
+    entityType: "memory",
+    formId: "details",
+    label: mode === "create" ? "New memory" : (memory?.name ?? "Edit memory"),
+    baseline: JSON.stringify([mode, memory?.name, memory?.description, memory?.source]),
+    dirty,
+    writable: writable && !isPending,
+    enabled: open && (mode === "create" || !!memory),
+    priority: 30,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+    },
+  });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (chatDraft.blocked) return;
     setFieldError(null);
     setFormError(null);
 
@@ -156,6 +224,7 @@ export function MemoryFormDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chatDraft.notice}
           <div className="space-y-2">
             <Label htmlFor="memory-name">Name</Label>
             <Input
@@ -304,7 +373,7 @@ export function MemoryFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" variant="accent" disabled={isPending}>
+            <Button type="submit" variant="accent" disabled={chatDraft.blocked || isPending}>
               {submitLabel}
             </Button>
           </DialogFooter>

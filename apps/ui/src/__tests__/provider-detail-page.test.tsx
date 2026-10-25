@@ -1,3 +1,6 @@
+import { PageChatProvider } from "@/test-utils/page-chat-provider";
+import { type ChatModeState } from "@/components/chat-mode/chat-mode-context";
+import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
@@ -178,5 +181,60 @@ describe("ProviderDetailPage", () => {
     });
 
     expect(screen.getByDisplayValue("Draft Name")).toBeInTheDocument();
+  });
+  it("stages only the requested independent form and never reads or changes credential inputs", async () => {
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    const adapters = new Map<string, PageDraftAdapter>();
+    const mode: ChatModeState = {
+      page: { route: "/models/providers/provider-1", label: "Provider" },
+      pageContainer: { current: null },
+      open: true,
+      setOpen: () => {},
+      actions: [],
+      recordAction: () => {},
+      registerPage: (page, adapter) => {
+        if (adapter) adapters.set(page.form_name!, adapter);
+        return () => {};
+      },
+    };
+    await act(async () => {
+      render(
+        <PageChatProvider value={mode}>
+          <ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />
+        </PageChatProvider>,
+        { wrapper },
+      );
+    });
+    expect([...adapters.keys()].sort()).toEqual(["advanced", "details", "tracing"]);
+    fireEvent.click(screen.getByRole("button", { name: "Add header" }));
+    fireEvent.change(screen.getByLabelText("Header 1 name"), { target: { value: "x-fixture" } });
+    fireEvent.change(screen.getByLabelText("Header 1 value"), {
+      target: { value: "fixture-secret" },
+    });
+    const adapter = adapters.get("advanced")!;
+    const before = adapter.read(adapter.binding!);
+    expect(JSON.stringify(before)).not.toContain("fixture-secret");
+    expect(() => adapter.patch(before.binding, before.revision, { headers: [] })).toThrow(
+      /unsupported/,
+    );
+    act(() => {
+      adapter.patch(before.binding, before.revision, { cache_diagnostics: true });
+    });
+    expect(screen.getByLabelText("Prompt cache diagnostics")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByLabelText("Header 1 value")).toHaveValue("fixture-secret");
+    expect(screen.getByLabelText("Name")).toHaveValue(mockProvider.name);
+    expect(updateProvider).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save Advanced Settings" }));
+    await waitFor(() =>
+      expect(updateProvider).toHaveBeenCalledWith({
+        request_options: {
+          cache_diagnostics: true,
+          headers: [{ name: "x-fixture", value: "fixture-secret" }],
+        },
+      }),
+    );
   });
 });

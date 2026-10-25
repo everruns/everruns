@@ -175,6 +175,33 @@ explicitly-linked identity is never overridden, and subsequent fires reuse the
 same identity. That identity principal is the stable key the `shared_session`
 reuse lookup matches on. See `knowledge/runtime-resources/agent-identities.md` for the identity model.
 
+## Channel conversation targets
+
+A schedule trigger may carry a target: one of the agent's own Slack channels
+and a binding key on it (`slack:user:{U}` or `slack:channel:{C}`). Such a run
+skips the tag-keyed session above and goes through the channel host
+(`ChannelHost::send_in_conversation`): the session is the one a message from
+that conversation binds, created and bound on the first run, and the turn's
+replies are delivered and recovered like an inbound message's. The session is
+owned and attributed as the channel's, not the agent identity's, because it is
+the channel's conversation.
+
+Why the host and not a trigger-side lookup: a person who talks to the agent in
+a Slack DM and gets a 07:00 briefing must see one history, and only the
+channel's binding table can say which session that is. Rejected alternative: a
+trigger that keeps its own session and posts into Slack, which splits the
+conversation and cannot see what the person said.
+
+Who may target what is checked on write (only the agent's own live Slack
+channel, a key the channel's binding produces, `agent:manage`) and again on
+every run. A run whose channel can no longer post fails and records a
+`failed` delivery; it never falls back to a tag session, so a retired channel
+is visible instead of silently moving the conversation elsewhere. Design
+record: the "Schedules that run in a Slack conversation" decision (D2/D3),
+with D1 in `channels/slack/actions/post_message.rs` (`scheduled_target`).
+Source: `crates/server/src/domains/agent_triggers/channel_target.rs`,
+`crates/server/src/channels/slack/scheduled.rs`.
+
 ## Relationship to App schedule channels
 
 Agent triggers are now the only home for proactive cron execution. Migration

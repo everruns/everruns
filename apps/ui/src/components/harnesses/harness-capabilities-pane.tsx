@@ -7,6 +7,7 @@
 // configure happen where the list was.
 
 import { Pencil, Shield } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
@@ -14,6 +15,7 @@ import type { HarnessDraft } from "@/components/harnesses/use-harness-draft";
 import type { Capability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  capabilitySummary,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
@@ -84,7 +86,11 @@ export function HarnessCapabilitiesPane({
             <ol className="flex flex-col gap-2" aria-label="Enabled capabilities">
               {selected.map((config) => {
                 const cap = capabilityById.get(config.ref);
-                const description = cap ? localizedCapabilityDescription(cap, locale) : "";
+                const description = cap
+                  ? capabilitySummary(localizedCapabilityDescription(cap, locale))
+                  : "";
+                const name = cap ? localizedCapabilityName(cap, locale) : config.ref;
+                const detailsHref = cap ? `/capabilities/${cap.id}` : null;
                 return (
                   <li
                     key={config.ref}
@@ -93,9 +99,16 @@ export function HarnessCapabilitiesPane({
                     {cap && <CapabilityIcon icon={cap.icon} className="mt-0.5 size-4 shrink-0" />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="min-w-0 truncate text-sm font-medium">
-                          {cap ? localizedCapabilityName(cap, locale) : config.ref}
-                        </p>
+                        {detailsHref ? (
+                          <Link
+                            href={detailsHref}
+                            className="min-w-0 truncate text-sm font-medium hover:underline"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          <p className="min-w-0 truncate text-sm font-medium">{name}</p>
+                        )}
                         {cap?.is_guardrail && (
                           <Badge variant="outline" className="gap-0.5">
                             <Shield />
@@ -105,6 +118,15 @@ export function HarnessCapabilitiesPane({
                       </div>
                       {description && (
                         <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>
+                      )}
+                      {detailsHref && (
+                        <Link
+                          href={detailsHref}
+                          className="mt-1 inline-block text-xs text-primary hover:underline"
+                        >
+                          More details
+                          <span className="sr-only"> about {name}</span>
+                        </Link>
                       )}
                     </div>
                   </li>

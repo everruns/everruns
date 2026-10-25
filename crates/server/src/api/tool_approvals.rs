@@ -32,9 +32,6 @@ use chrono::{DateTime, Utc};
 use everruns_contracts::tool_types::{APPROVE_TOOL_CALL_TOOL, ToolApprovalRequired};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Caller;
-use everruns_core::builtins::{
-    StoredToolApproval, always_decision_storage_key, one_off_decision_storage_key,
-};
 use everruns_core::events::{EventRequest, InputMessageData, ToolCompletedData};
 use everruns_core::message::{ContentPart, RuntimeMessage};
 
@@ -130,90 +127,7 @@ pub(crate) async fn pending_tool_approvals(
     Ok(pending_approvals_from_events(&requested))
 }
 
-/// How a pending request ends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApprovalOutcome {
-    Decided(ToolApprovalDecision),
-    /// Left out of a submission that answered its siblings.
-    NotApproved,
-    /// Nobody answered before the deadline.
-    Expired,
-}
-
-impl ApprovalOutcome {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => "allow",
-            Self::Decided(ToolApprovalDecision::AllowAlways) => "allow_always",
-            Self::Decided(ToolApprovalDecision::Reject) => "reject",
-            Self::Decided(ToolApprovalDecision::RejectAlways) => "reject_always",
-            Self::NotApproved => "not_approved",
-            Self::Expired => "expired",
-        }
-    }
-
-    fn allows(self) -> bool {
-        matches!(
-            self,
-            Self::Decided(ToolApprovalDecision::Allow | ToolApprovalDecision::AllowAlways)
-        )
-    }
-
-    /// What is recorded for the retried call to find. Silence records nothing:
-    /// a retry asks again rather than inheriting a decision nobody made.
-    fn stored_record(
-        self,
-        request: &ToolApprovalRequired,
-        now: DateTime<Utc>,
-    ) -> Option<(String, StoredToolApproval)> {
-        let tool = request.tool.as_str();
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => Some((
-                one_off_decision_storage_key(&request.fingerprint),
-                StoredToolApproval::one_off(tool, &request.fingerprint, true, now),
-            )),
-            Self::Decided(ToolApprovalDecision::Reject) => Some((
-                one_off_decision_storage_key(&request.fingerprint),
-                StoredToolApproval::one_off(tool, &request.fingerprint, false, now),
-            )),
-            Self::Decided(ToolApprovalDecision::AllowAlways) => Some((
-                always_decision_storage_key(tool),
-                StoredToolApproval::always(tool, true, now),
-            )),
-            Self::Decided(ToolApprovalDecision::RejectAlways) => Some((
-                always_decision_storage_key(tool),
-                StoredToolApproval::always(tool, false, now),
-            )),
-            Self::NotApproved | Self::Expired => None,
-        }
-    }
-
-    /// The decision as the person would say it. The request is engine-authored,
-    /// so nothing in the transcript claims the synthetic call and its result
-    /// never reaches the model; this line is what does.
-    fn spoken(self, tool: &str) -> String {
-        match self {
-            Self::Decided(ToolApprovalDecision::Allow) => format!(
-                "I approved `{tool}` this once. Call it again now with exactly the same arguments."
-            ),
-            Self::Decided(ToolApprovalDecision::AllowAlways) => format!(
-                "I approved `{tool}` for the rest of this session. Call it again now with the same arguments."
-            ),
-            Self::Decided(ToolApprovalDecision::Reject) => format!(
-                "I rejected `{tool}`. Don't run it, and don't try to get the same result another way."
-            ),
-            Self::Decided(ToolApprovalDecision::RejectAlways) => {
-                format!("I rejected `{tool}` for the rest of this session. Don't call it again.")
-            }
-            Self::NotApproved => {
-                format!("I didn't approve `{tool}`, so it must not run.")
-            }
-            Self::Expired => format!(
-                "I didn't answer the approval request for `{tool}` in time, so it is not approved. Don't run it."
-            ),
-        }
-    }
-}
+pub(crate) use everruns_core::session_commands::ApprovalOutcome;
 
 /// Why a resolution did not happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -238,6 +152,7 @@ pub(crate) struct ApprovalServices<'a> {
     pub(crate) db: &'a std::sync::Arc<StorageBackend>,
     pub(crate) event_service: &'a EventService,
     pub(crate) runner: &'a std::sync::Arc<dyn everruns_core::host::TurnBackend>,
+    pub(crate) credential_authorizer: Option<&'a crate::domains::common::Ctx>,
 }
 
 /// Settle every pending approval request on a parked session and resume it.
@@ -259,6 +174,7 @@ pub(crate) async fn resolve_tool_approvals(
         db,
         event_service,
         runner,
+        credential_authorizer,
     } = services;
     if pending.is_empty() {
         return Err(ApprovalResolveError::NotFound(
@@ -282,7 +198,47 @@ pub(crate) async fn resolve_tool_approvals(
             .copied()
             .unwrap_or(fallback);
         let request = &approval.request;
-        if let Some((key, record)) = outcome.stored_record(request, now) {
+        if let Some(ticket) = request.risk.strip_prefix("credential:") {
+            use everruns_contracts::execution_api::ToolApprovalDecision;
+            if matches!(
+                outcome,
+                ApprovalOutcome::Decided(
+                    ToolApprovalDecision::AllowAlways | ToolApprovalDecision::RejectAlways
+                )
+            ) {
+                return Err(ApprovalResolveError::Invalid(
+                    "Credential capture requires a decision for this exact request".into(),
+                ));
+            }
+            if outcome.allows() {
+                let authorizer = credential_authorizer.ok_or_else(|| {
+                    ApprovalResolveError::Invalid(
+                        "Approve credential storage from the authenticated session UI".into(),
+                    )
+                })?;
+                let ticket = ticket.parse().map_err(|_| {
+                    ApprovalResolveError::Invalid("Invalid credential request".into())
+                })?;
+                if request.fingerprint != request.risk || request.tool != "web_fetch" {
+                    return Err(ApprovalResolveError::Invalid(
+                        "Invalid credential approval".into(),
+                    ));
+                }
+                crate::domains::credentials::service::authorize_capture_answer(
+                    authorizer, session_id, ticket,
+                )
+                .await
+                .map_err(|_| {
+                    ApprovalResolveError::Invalid(
+                        "You cannot authorize this credential owner or the request expired".into(),
+                    )
+                })?;
+            }
+        }
+        if let Some((key, mut record)) = outcome.stored_record(request, now) {
+            if request.risk.starts_with("credential:") {
+                record.authorizer_user_id = credential_authorizer.and_then(|c| c.caller.user_id);
+            }
             session_values.push(WaitingTurnSessionValue {
                 key,
                 value: serde_json::to_string(&record)
@@ -528,11 +484,18 @@ pub async fn submit_tool_approvals(
         .log_internal_error_json("read session events")?;
     let outcomes = validate_decisions(&pending, &req.decisions, Utc::now())
         .map_err(approval_error_response)?;
+    let credential_ctx = crate::domains::common::Ctx::minimal(
+        caller.clone(),
+        state.db.clone(),
+        None,
+        state.auth.permission_resolver.clone(),
+    );
     let resolved = resolve_tool_approvals(
         &ApprovalServices {
             db: &state.db,
             event_service: &state.event_service,
             runner: &state.runner,
+            credential_authorizer: Some(&credential_ctx),
         },
         org.org_id,
         session_id,
@@ -585,6 +548,9 @@ pub(crate) fn approval_error_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::tool_approval_types::{
+        always_decision_storage_key, one_off_decision_storage_key,
+    };
     use serde_json::json;
 
     fn pending(id: &str, expires_at: &str) -> PendingApproval {

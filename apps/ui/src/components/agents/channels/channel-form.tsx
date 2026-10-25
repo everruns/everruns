@@ -88,9 +88,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
+import { WorkChatFields } from "./work-chat-fields";
+
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
   "schedule",
   "api",
+  "work_chat",
   "webhook",
   "ag_ui",
   "public_chat",
@@ -108,6 +111,7 @@ export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" |
 
 export type ChannelFormState = {
   kind: ChannelType;
+  chatInterface: "single_with_threads" | "multi_chat";
   enabled: boolean;
   slackSigningSecret: string;
   slackBotToken: string;
@@ -228,6 +232,7 @@ export function getDefaultChannelFormState(
     publicChatAgentIdClientId: "",
     voice: voiceFormStateFromConfig(),
     api: apiFormStateFromConfig(),
+    chatInterface: "multi_chat",
   };
 
   if (!channel) return base;
@@ -333,6 +338,18 @@ export function getDefaultChannelFormState(
           : "",
       publicChatAgentIdEnabled: isAgentIdChannelAuth(auth),
       publicChatAgentIdClientId: agentIdClientId(auth),
+    };
+  }
+  if (channel.channel_type === "work_chat") {
+    const config = channel.channel_config as {
+      interface_mode?: "single_with_threads" | "multi_chat";
+      execution?: ApiChannelConfig;
+    };
+    return {
+      ...base,
+      kind: "work_chat",
+      chatInterface: config.interface_mode ?? "multi_chat",
+      api: apiFormStateFromConfig(config.execution),
     };
   }
   if (channel.channel_type === "api") {
@@ -475,6 +492,11 @@ export function buildChannelConfig(state: ChannelFormState) {
     }
     case "voice":
       return buildVoiceChannelConfig(state.voice);
+    case "work_chat":
+      return {
+        interface_mode: state.chatInterface,
+        execution: { ...buildApiChannelConfig(state.api), errors: "public", visibility: "full" },
+      };
     case "api":
       return buildApiChannelConfig(state.api);
     case "slack":
@@ -534,7 +556,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     return true;
   }
   if (state.kind === "voice") return isVoiceFormValid(state.voice);
-  if (state.kind === "api") return isApiFormValid(state.api);
+  if (state.kind === "api" || state.kind === "work_chat") return isApiFormValid(state.api);
   if (state.kind === "slack") return true;
   return false;
 }
@@ -551,6 +573,8 @@ function channelIcon(kind: ChannelType) {
       return Globe;
     case "voice":
       return Mic;
+    case "work_chat":
+      return Monitor;
     case "api":
       return Code;
     case "fcp":
@@ -574,6 +598,8 @@ function channelDescription(kind: ChannelType): string {
       return "Hosted, branded chat website for this one agent. Anonymous or sign-in; optional Turnstile.";
     case "voice":
       return "Talk to this agent by voice. A speech model listens and speaks; the agent answers.";
+    case "work_chat":
+      return "A separate work app with conversations, threads, files and approvals.";
     case "api":
       return "Call this agent from your code with an agent key: sessions, messages, and live events.";
     case "fcp":
@@ -1139,6 +1165,14 @@ export function ChannelForm({
         </div>
       )}
 
+      {state.kind === "work_chat" && (section === "all" || section === "invocation") && (
+        <WorkChatFields
+          mode={state.chatInterface}
+          onModeChange={(mode) => update("chatInterface", mode)}
+          value={state.api}
+          onChange={(api) => update("api", api)}
+        />
+      )}
       {state.kind === "api" && (section === "all" || section === "invocation") && (
         <ApiFields value={state.api} onChange={(api) => update("api", api)} />
       )}

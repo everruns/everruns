@@ -102,3 +102,45 @@ describe("ToolApprovalRequests", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+it("shows credential destination and owner with only exact-request consent", async () => {
+  render(
+    <ToolApprovalRequests
+      sessionId="session_1"
+      requests={[
+        {
+          id: "tool_approval_capture",
+          arguments: {
+            tool: "web_fetch",
+            risk: "credential:ticket",
+            expires_at: "2099-01-01T00:15:00Z",
+            arguments: {
+              source: "https://auth.example/token",
+              credentials: [
+                {
+                  name: "MAIL_TOKEN",
+                  scope: "virtual_user",
+                  owner_label: "Alice",
+                  binding: { url: "https://mail.example/api", auth: { type: "bearer" } },
+                  replacing: true,
+                },
+              ],
+            },
+          },
+        },
+      ]}
+      toolResultsMap={new Map()}
+    />,
+  );
+  expect(screen.getByText("https://auth.example/token")).toBeInTheDocument();
+  expect(screen.getByText("https://mail.example/api")).toBeInTheDocument();
+  expect(screen.getByText("Alice")).toBeInTheDocument();
+  expect(screen.getByText("Replaces existing value")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /always/i })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Approve capture" }));
+  await waitFor(() =>
+    expect(submitToolApprovals).toHaveBeenCalledWith("session_1", [
+      { tool_call_id: "tool_approval_capture", decision: "allow" },
+    ]),
+  );
+});

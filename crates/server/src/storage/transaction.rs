@@ -108,6 +108,62 @@ fn closed() -> sqlx::Error {
     sqlx::Error::Protocol("the command transaction has already finished".into())
 }
 
+/// A connection with an open transaction, rolled back if dropped before it is
+/// taken.
+struct BegunConnection(Option<PoolConnection<Postgres>>);
+
+impl Drop for BegunConnection {
+    fn drop(&mut self) {
+        if let Some(connection) = self.0.as_mut() {
+            while PgTransactionManager::get_transaction_depth(connection) > 0 {
+                PgTransactionManager::start_rollback(connection);
+            }
+        }
+    }
+}
+
+/// Acquire a connection and open a transaction on it, on a task of its own so
+/// a cancelled caller cannot leave the transaction open on a pooled
+/// connection; see `everruns_durable::begin_transaction` (EVERRUNS-4H). A
+/// caller gone by the time `BEGIN` returns drops the `BegunConnection` on that
+/// task, which queues the rollback.
+async fn begin_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sqlx::Error> {
+    let pool = pool.clone();
+    let begun = tokio::spawn(async move {
+        let mut connection = pool.acquire().await?;
+        PgTransactionManager::begin(&mut connection, None).await?;
+        Ok::<_, sqlx::Error>(BegunConnection(Some(connection)))
+    })
+    .await;
+    match begun {
+        Ok(Ok(mut begun)) => Ok(begun.0.take().expect("set on the task")),
+        Ok(Err(error)) => Err(error),
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        // Only a runtime shutting down cancels the task.
+        Err(_) => Err(sqlx::Error::PoolClosed),
+    }
+}
+
+/// Commit the transaction open on `connection` on a task of its own, so a
+/// caller cancelled while `COMMIT` is in flight cannot queue a rollback behind
+/// it; see `everruns_durable::commit_transaction` (EVERRUNS-35).
+async fn commit_connection(mut connection: PoolConnection<Postgres>) -> Result<(), sqlx::Error> {
+    let commit = tokio::spawn(async move {
+        let result = PgTransactionManager::commit(&mut connection).await;
+        if result.is_err() {
+            PgTransactionManager::start_rollback(&mut connection);
+        }
+        result
+    })
+    .await;
+    match commit {
+        Ok(result) => result,
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        // Only a runtime shutting down cancels the task.
+        Err(_) => Err(sqlx::Error::PoolClosed),
+    }
+}
+
 /// Identity of a pool and its clones. `connect_options` is one `Arc` shared by
 /// every clone of a pool and distinct between pools.
 fn pool_identity(pool: &PgPool) -> usize {
@@ -132,6 +188,34 @@ where
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push(Box::pin(effect)),
         Err(_) => effect.await,
+    }
+}
+
+/// [`after_commit`] for an effect that must not be lost once its rows are
+/// committed: the effect runs on its own task, and the caller still waits for
+/// it (so consecutive effects keep their order), but dropping the caller no
+/// longer drops the effect.
+///
+/// Decision: a request future is dropped whenever its client goes away (a
+/// worker SIGKILLed mid-RPC resets its gRPC stream; hyper then drops the
+/// handler). Run inline, an event publish queued behind its committed insert
+/// died with it: the row was stored but never reached live subscribers, and an
+/// SSE client resuming from a later event's sequence skipped it for good
+/// (chaos harness: a turn's `turn.started` / `turn.completed` never arrived).
+pub async fn after_commit_detached<F>(effect: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    after_commit(run_detached(effect)).await;
+}
+
+async fn run_detached<F>(effect: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    use tracing::Instrument;
+    if let Err(error) = tokio::spawn(effect.in_current_span()).await {
+        tracing::error!(error = %error, "post-commit effect panicked");
     }
 }
 
@@ -174,12 +258,7 @@ where
         return body.await;
     }
     let pool = database.tx_pool().pool.clone();
-    let begin = async {
-        let mut connection = pool.acquire().await?;
-        PgTransactionManager::begin(&mut connection, None).await?;
-        Ok::<_, sqlx::Error>(connection)
-    };
-    let connection = match begin.await {
+    let connection = match begin_connection(&pool).await {
         Ok(connection) => connection,
         Err(error) => return Err(internal(error.into())),
     };
@@ -202,13 +281,11 @@ where
     };
     match result {
         Ok(value) => {
-            if let Err(error) = PgTransactionManager::commit(&mut connection).await {
-                PgTransactionManager::start_rollback(&mut connection);
+            // Effects may wait (a cancel waits for the turn's holder): the
+            // connection goes back to the pool when the commit task ends.
+            if let Err(error) = commit_connection(connection).await {
                 return Err(internal(error.into()));
             }
-            // Effects may wait (a cancel waits for the turn's holder): give
-            // the connection back first.
-            drop(connection);
             for effect in effects {
                 effect.await;
             }
@@ -262,7 +339,7 @@ impl TxPool {
     pub async fn begin_detached(
         &self,
     ) -> Result<sqlx::Transaction<'static, Postgres>, sqlx::Error> {
-        self.pool.begin().await
+        everruns_durable::begin_transaction(&self.pool).await
     }
 
     /// Begin a transaction: a savepoint inside the current task's transaction
@@ -282,7 +359,9 @@ impl TxPool {
                 open: true,
             }));
         }
-        Ok(DbTx(Inner::Own(Some(self.pool.begin().await?))))
+        Ok(DbTx(Inner::Own(Some(
+            everruns_durable::begin_transaction(&self.pool).await?,
+        ))))
     }
 }
 
@@ -303,7 +382,12 @@ impl DbTx {
     /// Commit this transaction, or release its savepoint.
     pub async fn commit(mut self) -> Result<(), sqlx::Error> {
         match &mut self.0 {
-            Inner::Own(tx) => tx.take().ok_or_else(closed)?.commit().await,
+            Inner::Own(tx) => {
+                everruns_durable::commit_transaction(tx.take().ok_or_else(closed)?).await
+            }
+            // A savepoint stays on this task: its connection belongs to the
+            // enclosing `scope`, whose cancellation rolls the whole
+            // transaction back.
             Inner::Savepoint { guard, open, .. } => {
                 let connection = guard.as_mut().ok_or_else(closed)?;
                 PgTransactionManager::commit(connection).await?;
@@ -449,5 +533,27 @@ mod tests {
         after_commit(async move { flag.store(true, Ordering::SeqCst) }).await;
         assert!(ran.load(Ordering::SeqCst));
         assert!(!in_transaction());
+    }
+
+    /// A detached effect that has started finishes even when its caller is
+    /// dropped mid-way, as a gRPC handler is when its worker dies.
+    #[tokio::test]
+    async fn detached_effects_survive_a_dropped_caller() {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
+        let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+        let caller = tokio::spawn(after_commit_detached(async move {
+            let _ = entered_tx.send(());
+            let _ = gate_rx.await;
+            let _ = done_tx.send(());
+        }));
+        entered_rx.await.unwrap();
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        gate_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), done_rx)
+            .await
+            .expect("the effect must finish after its caller was dropped")
+            .expect("the effect was dropped with its caller");
     }
 }

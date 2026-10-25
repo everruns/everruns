@@ -187,13 +187,17 @@ impl WorkerServiceImpl {
         let server = match resolved {
             Some(found) => {
                 let secret_bindings =
-                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    crate::domains::agents::credentials::resolve_runtime_server_secret_bindings(
                         self.db.as_ref(),
                         self.encryption.as_deref(),
                         req.org_id,
-                        found.runtime_agent_id,
-                        &found.server.name,
-                        &found.server.url,
+                        session_id.zip(input_message).map(|(s, i)| {
+                            everruns_contracts::runtime::credential_services::CredentialInvocation {
+                                session_id: s.into(),
+                                input_message_id: i,
+                            }
+                        }),
+                        &found.server,
                     )
                     .await
                     .map_err(|error| {

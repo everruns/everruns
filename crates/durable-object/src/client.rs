@@ -1,15 +1,27 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{MessageId, SessionId};
-use everruns_core::events::{
+use everruns::hosting::spi::AcceptedTurnInput;
+use everruns::hosting::spi::actor::{ActorFence, LeasedActor, actor_lease_lost};
+use everruns::hosting::spi::error::{AgentLoopError, Result};
+use everruns::hosting::spi::events::{
     Event, EventContext, EventRequest, InputMessageData, ToolCompletedData,
 };
-use everruns_core::host::AcceptedTurnInput;
-use everruns_core::host::session_actor::store::{ActorFence, LeasedActor, actor_lease_lost};
+use everruns::hosting::spi::ids::{MessageId, SessionId};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+
+#[derive(Debug)]
+pub(crate) struct AuthorityRejection(pub u16);
+impl std::fmt::Display for AuthorityRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "authority rejected operation ({})", self.0)
+    }
+}
+impl std::error::Error for AuthorityRejection {}
+pub(crate) fn rejected(status: u16) -> AgentLoopError {
+    AgentLoopError::Internal(anyhow::Error::new(AuthorityRejection(status)))
+}
 
 /// Authority RPC supplied by a native HTTP client or an isolate-local object bridge.
 #[async_trait::async_trait]
@@ -32,6 +44,7 @@ pub trait AuthorityTransport: Send + Sync + 'static {
 pub struct AuthorityClient {
     tenant: String,
     transport: Arc<dyn AuthorityTransport>,
+    pub(crate) dreaming_store: Arc<dyn everruns::hosting::spi::dreaming::DreamingStore>,
 }
 
 impl AuthorityClient {
@@ -59,7 +72,19 @@ impl AuthorityClient {
         Ok(Self {
             tenant: tenant.to_owned(),
             transport,
+            dreaming_store: Arc::new(everruns::hosting::spi::dreaming::UnsupportedDreamingStore),
         })
+    }
+
+    /// Supply background state scoped to this client's tenant, shared by every executor and session
+    /// that can write the same Memory scope. The host must arrange durable alarms
+    /// to call Engine::maintain_dreaming; no resident process is required.
+    pub fn with_dreaming_store(
+        mut self,
+        store: Arc<dyn everruns::hosting::spi::dreaming::DreamingStore>,
+    ) -> Self {
+        self.dreaming_store = store;
+        self
     }
 
     /// Bind requests to one typed session identity.
@@ -106,7 +131,10 @@ pub struct Authority {
     fence: Arc<RwLock<Option<ActorFence>>>,
     pub(crate) proactive: Arc<
         tokio::sync::Mutex<
-            std::collections::HashMap<(String, String), everruns_core::ProactiveCompactionAttempt>,
+            std::collections::HashMap<
+                (String, String),
+                everruns::hosting::spi::ProactiveCompactionAttempt,
+            >,
         >,
     >,
 }
@@ -127,7 +155,10 @@ impl Authority {
 
     /// Submit a caller-retained message identity, including retries after the
     /// caller restarts. Persist the message before sending when that is needed.
-    pub async fn submit(&self, message: everruns_core::RuntimeMessage) -> Result<MessageId> {
+    pub async fn submit(
+        &self,
+        message: everruns::hosting::spi::RuntimeMessage,
+    ) -> Result<MessageId> {
         let id = message.id;
         let event = EventRequest::new(
             self.session_id,
@@ -160,7 +191,8 @@ impl Authority {
         Ok(())
     }
 
-    /// Retry an explicitly suspended activation after repairing its host/build.
+    /// Legacy low-level activation retry. Framework sessions refuse this
+    /// operation; use `Engine::retry_session` after restoring their exact build.
     pub async fn resume(&self) -> Result<()> {
         self.call::<Value>("resume", json!({})).await?;
         Ok(())

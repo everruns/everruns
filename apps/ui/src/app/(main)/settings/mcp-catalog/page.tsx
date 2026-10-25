@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 // Settings > Organization > MCP catalog: the admin registry of MCP presets.
 // It moved here from the main navigation (knowledge/integrations/user-mcp-servers.md,
 // step 8). People who cannot manage it do not see the Settings entry; personal MCP
@@ -310,6 +312,7 @@ export default function McpCatalogPage() {
 
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  useChatPageFilters({ search: search, status: statusTab });
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [editServer, setEditServer] = useState<McpServer | null>(null);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);

@@ -81,3 +81,22 @@ run an A/B comparison per session.
 - Resolution is **fail-closed**: each organization resolves its own configured
   credentials. A turn with no configured provider fails with a clear error
   rather than running on another organization's credentials.
+
+
+## Organization small-model default
+
+Under **Models → Defaults**, admins can select a **Small model** for lightweight
+work. This is a shared chat model on a specific provider, independent of the main
+chat and Decisions defaults. Personal providers and Decisions models cannot be
+selected here.
+
+[Automatic session titles](/capabilities/automatic-session-titles/) use this
+setting by default. Individual capabilities can select another model or always
+inherit the session model. Leaving or clearing Small model means title generation
+inherits the session model. Setting a default does not enable any capability.
+
+Use `PATCH /v1/orgs/{org_id}` to set `small_model_id` to a model's public ID, or
+`null` to clear it. Omitted fields remain unchanged. A disabled or unavailable
+selection stays selected and skips generation without electing a replacement;
+deleting its model clears the selection. Requests use the selected provider's
+organization credentials and count toward session usage and budgets.

@@ -125,7 +125,11 @@ async fn member_token(server: &TestServer, member: bool) -> String {
 
 /// Like `member_token`, with the token's stored `scopes`. Creation accepts
 /// only `*` until rollout step 4, so a narrow token is inserted directly.
-async fn member_token_with_scopes(server: &TestServer, member: bool, scopes: &[&str]) -> String {
+pub(crate) async fn member_token_with_scopes(
+    server: &TestServer,
+    member: bool,
+    scopes: &[&str],
+) -> String {
     let user = server
         .db
         .create_user(CreateUserRow {

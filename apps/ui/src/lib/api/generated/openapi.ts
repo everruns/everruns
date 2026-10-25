@@ -522,6 +522,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/chat-features": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get eligible chat interfaces */
+    get: operations["get_agent_chat_features"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/copy": {
     parameters: {
       query?: never;
@@ -1009,6 +1026,94 @@ export interface paths {
      * @description Update a saved script's description, input schema or body. Omitted fields stay unchanged.
      */
     patch: operations["update_agent_script"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Agent source status
+     * @description Show the Agent's continuous GitHub source binding and sync status.
+     */
+    get: operations["get_agent_source"];
+    /**
+     * Connect continuous GitHub source sync
+     * @description Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+     */
+    put: operations["connect_agent_source"];
+    post?: never;
+    /**
+     * Disconnect Agent source sync
+     * @description Disconnect GitHub source sync and restore local editing. Keeps the last applied Agent definition.
+     */
+    delete: operations["disconnect_agent_source"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/options": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Browse GitHub source locations
+     * @description Browse GitHub branches and Agent package paths.
+     */
+    post: operations["get_agent_source_options"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Agent source changes
+     * @description Validate and compare a GitHub Agent package without changing the Agent.
+     */
+    post: operations["preview_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/source/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Request an Agent source check
+     * @description Queue an immediate check of this Agent's GitHub source.
+     */
+    post: operations["sync_agent_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/v1/agents/{agent_id}/stats": {
@@ -1620,6 +1725,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/chat/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat config
+     * @description Public bootstrap for one live Work Chat channel.
+     */
+    get: operations["get_work_chat_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/main": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve work chat main
+     * @description Resolve the consumer’s permanent main conversation.
+     */
+    post: operations["resolve_work_chat_main"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -1741,6 +1886,34 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/channels/{channel_id}/sessions/{session_id}/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat files
+     * @description Browse or read authorized workspace files.
+     */
+    get: operations["get_work_chat_files"];
+    put?: never;
+    /**
+     * Write work chat file
+     * @description Create or update a writable workspace file.
+     */
+    post: operations["write_work_chat_file"];
+    /**
+     * Delete work chat file
+     * @description Delete a writable workspace file.
+     */
+    delete: operations["delete_work_chat_file"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/channels/{channel_id}/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -1815,6 +1988,26 @@ export interface paths {
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
     post: operations["agent_api_submit_tool_approvals"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat tasks
+     * @description Background work and threads in this consumer conversation.
+     */
+    get: operations["list_work_chat_tasks"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1926,6 +2119,42 @@ export interface paths {
     /** Add a paragraph to an entity's manager context */
     post: operations["append_manager_context"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/credential-bindings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List */
+    get: operations["list"];
+    put?: never;
+    /** Create */
+    post: operations["create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/credential-bindings/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set value */
+    put: operations["set_value"];
+    post?: never;
+    /** Revoke */
+    delete: operations["revoke"];
     options?: never;
     head?: never;
     patch?: never;
@@ -2535,6 +2764,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/chat/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat config legacy
+     * @deprecated
+     * @description Public bootstrap for one live Work Chat channel.
+     */
+    get: operations["get_work_chat_config_legacy"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/main": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Resolve work chat main legacy
+     * @deprecated
+     * @description Resolve the consumer’s permanent main conversation.
+     */
+    post: operations["resolve_work_chat_main_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/fcp": {
     parameters: {
       query?: never;
@@ -2619,6 +2890,37 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/e/{channel_id}/sessions/{session_id}/files": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat files legacy
+     * @deprecated
+     * @description Browse or read authorized workspace files.
+     */
+    get: operations["get_work_chat_files_legacy"];
+    put?: never;
+    /**
+     * Write work chat file legacy
+     * @deprecated
+     * @description Create or update a writable workspace file.
+     */
+    post: operations["write_work_chat_file_legacy"];
+    /**
+     * Delete work chat file legacy
+     * @deprecated
+     * @description Delete a writable workspace file.
+     */
+    delete: operations["delete_work_chat_file_legacy"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/e/{channel_id}/sessions/{session_id}/messages": {
     parameters: {
       query?: never;
@@ -2697,6 +2999,27 @@ export interface paths {
      * @description Allow or reject tool calls the agent's approval gate held back, and resume the turn. Only on channels whose `tool_approvals` is `caller`.
      */
     post: operations["agent_api_submit_tool_approvals_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List work chat tasks legacy
+     * @deprecated
+     * @description Background work and threads in this consumer conversation.
+     */
+    get: operations["list_work_chat_tasks_legacy"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -3489,131 +3812,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases": {
+  "/v1/knowledge": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List kbs
-     * @description List knowledge bases.
-     */
-    get: operations["list_kbs"];
+    /** List knowledge */
+    get: operations["list_knowledge"];
     put?: never;
-    /**
-     * Create kb
-     * @description Create a new knowledge base.
-     */
-    post: operations["create_kb"];
+    /** Create knowledge */
+    post: operations["create_knowledge"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases/{kb_id}": {
+  "/v1/knowledge-indexers": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * Get kb
-     * @description Get a knowledge base by ID.
-     */
-    get: operations["get_kb"];
+    /** List knowledge indexers */
+    get: operations["list_knowledge_indexers"];
     put?: never;
-    post?: never;
-    /**
-     * Delete kb
-     * @description Delete a knowledge base.
-     */
-    delete: operations["delete_kb"];
-    options?: never;
-    head?: never;
-    /**
-     * Update kb
-     * @description Update a knowledge base. Only provided fields are modified.
-     */
-    patch: operations["update_kb"];
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/entries": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List entries
-     * @description List knowledge base entries.
-     */
-    get: operations["list_entries"];
-    put?: never;
-    /**
-     * Create entry
-     * @description Create a new knowledge base entry.
-     */
-    post: operations["create_entry"];
+    /** Create knowledge indexer */
+    post: operations["create_knowledge_indexer"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-bases/{kb_id}/entries/{entry_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get entry
-     * @description Get a knowledge base entry by ID.
-     */
-    get: operations["get_entry"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete entry
-     * @description Delete a knowledge base entry.
-     */
-    delete: operations["delete_entry"];
-    options?: never;
-    head?: never;
-    /**
-     * Update entry
-     * @description Update a knowledge base entry. Only provided fields are modified.
-     */
-    patch: operations["update_entry"];
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/okf_export": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Export okf
-     * @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter).
-     */
-    get: operations["export_okf"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/knowledge-bases/{kb_id}/okf_import": {
+  "/v1/knowledge/search": {
     parameters: {
       query?: never;
       header?: never;
@@ -3622,81 +3857,62 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /**
-     * Import okf
-     * @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates.
-     */
-    post: operations["import_okf"];
+    /** Search knowledge collections */
+    post: operations["search_knowledge_collections"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-indexes": {
+  "/v1/knowledge/{collection_id}": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List indexes
-     * @description List knowledge indexes.
-     */
-    get: operations["list_indexes"];
-    put?: never;
-    /**
-     * Create index
-     * @description Create a new knowledge index.
-     */
-    post: operations["create_index"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/knowledge-indexes/{index_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get index
-     * @description Get a knowledge index by ID.
-     */
-    get: operations["get_index"];
+    /** Get knowledge */
+    get: operations["get_knowledge"];
     put?: never;
     post?: never;
-    /**
-     * Delete index
-     * @description Delete a knowledge index.
-     */
-    delete: operations["delete_index"];
+    /** Archive knowledge */
+    delete: operations["archive_knowledge"];
     options?: never;
     head?: never;
-    /**
-     * Update index
-     * @description Update a knowledge index. Only provided fields are modified.
-     */
-    patch: operations["update_index"];
+    /** Update knowledge */
+    patch: operations["update_knowledge"];
     trace?: never;
   };
-  "/v1/knowledge-indexes/{index_id}/documents": {
+  "/v1/knowledge/{collection_id}/files": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List documents
-     * @description List documents inside a knowledge index.
-     */
-    get: operations["list_documents"];
+    /** List knowledge files */
+    get: operations["list_knowledge_files"];
+    /** Write knowledge file */
+    put: operations["write_knowledge_file"];
+    post?: never;
+    /** Delete knowledge file */
+    delete: operations["delete_knowledge_file"];
+    options?: never;
+    head?: never;
+    /** Update knowledge file metadata */
+    patch: operations["update_knowledge_file_metadata"];
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/files/content": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get knowledge file content */
+    get: operations["get_knowledge_file_content"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3705,7 +3921,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/knowledge-indexes/{index_id}/sync": {
+  "/v1/knowledge/{collection_id}/okf": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Validate knowledge okf */
+    get: operations["validate_knowledge_okf"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/sources": {
     parameters: {
       query?: never;
       header?: never;
@@ -3714,11 +3947,42 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /**
-     * Sync index
-     * @description Enqueue a manual sync of a knowledge index.
-     */
-    post: operations["sync_index"];
+    /** Add knowledge source */
+    post: operations["add_knowledge_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Sync knowledge */
+    post: operations["sync_knowledge"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/knowledge/{collection_id}/upload": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Upload knowledge file */
+    put: operations["upload_knowledge_file"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5469,6 +5733,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/resources/{id}/grants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Grants */
+    get: operations["grants"];
+    put?: never;
+    /** Grant */
+    post: operations["grant"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/resources/{id}/grants/{grant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke grant */
+    delete: operations["revoke_grant"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sandbox-targets": {
     parameters: {
       query?: never;
@@ -6790,6 +7089,23 @@ export interface paths {
      * @description End a voice call.
      */
     post: operations["end_call"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/work": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show what a session's turn is doing or got done */
+    get: operations["get_session_work"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -8735,6 +9051,7 @@ export interface components {
       id: string;
       /** @description Outcome of the last finished turn: `completed`, `failed` or `cancelled`. */
       last_turn_status?: string | null;
+      parent_session_id?: string | null;
       /**
        * @description Held-back tool calls the session waits on. Same rule as
        *     `pending_questions`.
@@ -8753,6 +9070,65 @@ export interface components {
       title?: string | null;
       /** Format: date-time */
       updated_at: string;
+      work?: components["schemas"]["WorkReport"] | null;
+    };
+    /** @description Continuous GitHub source binding, applied revision and reconciliation status. */
+    AgentSourceStatus: {
+      /**
+       * @description Last successfully applied commit; retained when a later revision fails.
+       * @example 0123456789abcdef0123456789abcdef01234567
+       */
+      applied_commit?: string | null;
+      /**
+       * @description Branch monitored for source updates.
+       * @example main
+       */
+      branch: string;
+      /**
+       * @description Safe diagnostic for the latest failed check, without upstream credentials.
+       * @example Source package validation failed: missing capability
+       */
+      error?: string | null;
+      /**
+       * Format: uuid
+       * @description Binding generation used to detect a concurrent reconnect or disconnect.
+       * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
+       */
+      generation: string;
+      /**
+       * Format: date-time
+       * @description UTC time when the source was last checked.
+       * @example 2026-10-23T12:00:00Z
+       */
+      last_checked_at?: string | null;
+      /**
+       * Format: date-time
+       * @description UTC time when a source revision was last applied successfully.
+       * @example 2026-10-23T12:00:00Z
+       */
+      last_synced_at?: string | null;
+      /**
+       * @description Package channel names whose configuration is managed by the source.
+       * @example [
+       *       "chat"
+       *     ]
+       */
+      managed_channels: string[];
+      /**
+       * @description Repository-relative package folder or manifest; empty means the root.
+       * @example agents/support
+       */
+      path: string;
+      /**
+       * @description Selected GitHub repository in owner/name form.
+       * @example acme/agents
+       */
+      repository: string;
+      /**
+       * @description Current reconciliation state: pending, syncing, synced or error.
+       * @example synced
+       */
+      status: string;
     };
     /**
      * @description Agent lifecycle status.
@@ -9314,6 +9690,11 @@ export interface components {
          *     start).
          */
         deferred?: boolean;
+        /**
+         * @description Searchable server context supplied by its attachment or catalog. It is
+         *     metadata, not an instruction or a credential.
+         */
+        description?: string | null;
         /** @description Which elicitation modes this server may use (`url` by default). */
         elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /** @description Environment variables set for the stdio `command`. */
@@ -9340,6 +9721,14 @@ export interface components {
         tool_labels?: {
           [key: string]: components["schemas"]["McpToolLabel"];
         };
+        /**
+         * Format: int64
+         * @description How long one `tools/call` to this server may take, in milliseconds.
+         *     Unset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is
+         *     [`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`
+         *     is accepted as an alias, matching common `mcpServers` config files.
+         */
+        tool_timeout_ms?: number | null;
         /** @description MCP transport type. Only remote HTTP is supported today. */
         type?: components["schemas"]["McpServerTransportType"];
         /**
@@ -9662,6 +10051,13 @@ export interface components {
        * @example session_file_system
        */
       docs_slug?: string | null;
+      /**
+       * @description Rollout flag that gates this capability, when one is required.
+       *     Present whether or not the flag is on, so a management screen can name
+       *     an attached capability and avoid offering it for new selection.
+       * @example skills
+       */
+      feature_flag?: string | null;
       /**
        * @description UI feature strings this capability contributes to.
        *     Multiple capabilities can contribute the same feature.
@@ -9986,7 +10382,8 @@ export interface components {
       | "public_chat"
       | "voice"
       | "api"
-      | "poppy";
+      | "poppy"
+      | "work_chat";
     /** @description Request body for a call to an agent's voice channel. */
     ChannelVoiceCallRequest: {
       /** @description Realtime provider binding, as in `VoiceCallRequest`. */
@@ -9998,6 +10395,22 @@ export interface components {
        *     conversation). When omitted, the call starts a new session.
        */
       session_id?: string | null;
+    };
+    /**
+     * @description This contract is shared by publication and runtime bootstrap. A worker-role
+     *     coordination capability has no thread tools and must never qualify.
+     */
+    ChatFeatures: {
+      /**
+       * @description Effective Agent exposes a session filesystem.
+       * @example true
+       */
+      files: boolean;
+      /**
+       * @description Effective coordinator tools support child work threads.
+       * @example true
+       */
+      threads: boolean;
     };
     /** @description An MCP server added to one chat only. */
     ChatMcpServer: {
@@ -10141,6 +10554,24 @@ export interface components {
        * @example toolu_01933b5a00007000800000000000001
        */
       tool_call_id: string;
+    };
+    /** @description A file collection with optional indexing, provider selection and path exclusions. */
+    CollectionInput: {
+      /** @description Human-readable purpose of the collection, available during progressive disclosure. */
+      description?: string;
+      /** @description Organization embedding model; required when hybrid indexing is enabled. */
+      embedding_model_id?: string | null;
+      /**
+       * Format: uuid
+       * @description Optional organization search account. Omit to use the local index backend.
+       */
+      indexer_id?: string | null;
+      /** @description Whether files remain unindexed, use keyword search, or also use embedding retrieval. */
+      indexing?: components["schemas"]["IndexMode"];
+      /** @description Collection name; `everruns-docs` is reserved for the predefined documentation snapshot. */
+      name: string;
+      /** @description Path-glob arrays named `ingest_exclude`, `index_exclude` and `read_exclude`. */
+      rules?: unknown;
     };
     /** @description The command contract available to the caller. */
     CommandCatalog: {
@@ -10302,6 +10733,25 @@ export interface components {
      * @enum {string}
      */
     CompactionTrigger: "context_budget" | "cost_pressure";
+    /** @description Reviewed package location and concurrency tokens required to enable source sync. */
+    ConnectSourceRequest: components["schemas"]["SourceLocation"] & {
+      /**
+       * @description Agent package digest returned by preview, protecting concurrent local edits.
+       * @example 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+       */
+      agent_digest: string;
+      /**
+       * @description Exact source commit returned by preview; a changed branch requires another preview.
+       * @example 0123456789abcdef0123456789abcdef01234567
+       */
+      commit: string;
+      /**
+       * Format: uuid
+       * @description Current binding generation when replacing a source; omit for an unbound Agent.
+       * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
+       */
+      expected_generation?: string | null;
+    };
     /** @description An external MCP client the person approved. */
     ConnectedClient: {
       access: components["schemas"]["ConnectedClientAccess"];
@@ -10368,6 +10818,16 @@ export interface components {
        * @example read:user
        */
       scopes?: string | null;
+    };
+    /** @description Reference an eligible native GitHub App connection while preserving its installation selection. */
+    ConnectionCredentialSource: {
+      /**
+       * Format: uuid
+       * @description Native connection identifier; ownership and use authorization remain enforced.
+       */
+      connection_id: string;
+      /** @description Explicit repository and permission bounds for each minted installation token. */
+      github_access: components["schemas"]["GitHubAccess"];
     };
     /** @description Browser URL returned to a bearer-authenticated consumer before navigation. */
     ConnectionSetupResponse: {
@@ -11258,6 +11718,20 @@ export interface components {
        */
       subject_template?: string | null;
       /**
+       * @description Schedule only: the conversation on `target_channel_id`, keyed the way
+       *     the channel binds sessions: `slack:user:{user_id}` (a direct message)
+       *     or `slack:channel:{channel_id}` (top-level posts).
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Schedule only: the agent's channel whose conversation each run speaks
+       *     in, instead of a session of the trigger's own. Needs
+       *     `target_binding_key`.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
+      /**
        * @description IANA timezone identifier for cron evaluation (default `UTC`).
        * @example UTC
        */
@@ -11562,78 +12036,6 @@ export interface components {
        */
       tags?: string[];
     };
-    /** @description Request body for the `create_knowledge_base` operation. */
-    CreateKnowledgeBaseRequest: {
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Runbooks for the support team
-       */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. Omit or null for keyword search only. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example support-runbooks
-       */
-      name: string;
-    };
-    /** @description Request body for the `create_knowledge_entry` operation. */
-    CreateKnowledgeEntryRequest: {
-      /**
-       * @description Entry body. Markdown is rendered when displayed.
-       * @example Use the `/v1/payments/{id}/refund` endpoint with `reason: "past_window"`. Only the on-call billing engineer can authorize this.
-       */
-      body: string;
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /**
-       * @description Optional OKF resource URI identifying the underlying asset.
-       * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-       */
-      resource?: string | null;
-      /**
-       * @description Free-form tags attached to this resource.
-       * @example [
-       *       "billing",
-       *       "refunds"
-       *     ]
-       */
-      tags?: string[] | null;
-      /**
-       * @description Human-readable title. Safe to render in user-facing messages.
-       * @example Refund a payment past 30 days
-       */
-      title: string;
-    };
-    /** @description Request body for the `create_knowledge_index` operation. */
-    CreateKnowledgeIndexRequest: {
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Synced product documentation
-       */
-      description?: string | null;
-      /** @description Embedding model used to embed chunks. Required. */
-      embedding_model_id: string;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example product-docs
-       */
-      name: string;
-      /**
-       * @description Non-secret source coordinates. GitHub repositories accept `owner/repo`
-       *     or canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials.
-       */
-      source_config?: unknown;
-      /**
-       * @description External source type. One of `github`, `git`. Defaults to `github`.
-       * @example github
-       */
-      source_type?: string | null;
-    };
     /** @description Request to create a new MCP server */
     CreateMcpServerRequest: {
       /**
@@ -11671,6 +12073,13 @@ export interface components {
        * @example github
        */
       service_connection_provider?: string | null;
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds (1000 to 1800000).
+       *     Defaults to 60000.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /**
        * @description Transport type. Currently only "http" is supported.
        *     Example shape is defined on `McpServerTransportType`.
@@ -12114,6 +12523,16 @@ export interface components {
        */
       timezone?: string;
     };
+    /** @description Declare binding metadata. Provision its value separately through secure entry or approved capture. */
+    CreateScopedCredential: components["schemas"]["CredentialOwnerInput"] & {
+      binding?: components["schemas"]["SecretBinding"] | null;
+      /** @description Human-readable label, between 1 and 128 bytes. */
+      label: string;
+      mcp?: components["schemas"]["McpCredentialTarget"] | null;
+      /** @description HTTP reference name; required for HTTP bindings. */
+      name?: string | null;
+      source?: components["schemas"]["ConnectionCredentialSource"] | null;
+    };
     /** @description Request to create a session */
     CreateSessionRequest: {
       /**
@@ -12334,6 +12753,14 @@ export interface components {
       /** @description Runtime purpose; service accounts may be attached to agents. */
       usage?: components["schemas"]["VirtualUserUsage"];
     };
+    /** @description Identifier of the newly declared binding or explicit access grant. */
+    CreatedResource: {
+      /**
+       * Format: uuid
+       * @description Stable identifier used by subsequent metadata and management requests.
+       */
+      id: string;
+    };
     /** @description Outcome of checking a candidate provider credential. */
     CredentialCheckResult:
       | {
@@ -12374,6 +12801,20 @@ export interface components {
       /** @description Markdown instructions shown above the form (how to get the key, etc.). */
       instructions_markdown: string;
     };
+    /** @description Authorized owner and usage of a credential. Ownership does not grant access to other consumers. */
+    CredentialOwnerInput: {
+      /** @description Agent or session ID, or virtual-user ID (`me` by default); omit for organization scope. */
+      owner_id?: string | null;
+      /** @description Ownership and lifetime scope within the current organization. */
+      scope: components["schemas"]["ResourceScope"];
+      /** @description Required invocation identity; agent and organization owners require service usage. */
+      usage: components["schemas"]["CredentialUsage"];
+    };
+    /**
+     * @description Invocation identity under which a credential may be used; identities never fall back to each other.
+     * @enum {string}
+     */
+    CredentialUsage: "user" | "service";
     /** @description Database info response. */
     DatabaseInfoResponse: {
       /** @description Timestamp when this resource was created (RFC 3339). */
@@ -12678,6 +13119,16 @@ export interface components {
       /** @description Message the agent receives on each scheduled run. */
       message: string;
       timezone?: string;
+    };
+    DreamingActivityData: {
+      /** Format: double */
+      cost_usd?: number | null;
+      model?: string | null;
+      note_count: number;
+      operation_id: string;
+      reason?: string | null;
+      status: string;
+      usage?: components["schemas"]["TokenUsage"] | null;
     };
     /**
      * @description A driver's declared credential schema, so the Settings UI can render
@@ -13492,6 +13943,7 @@ export interface components {
       | components["schemas"]["OutputMessageCompletedData"]
       | components["schemas"]["TurnStartedData"]
       | components["schemas"]["TurnCompletedData"]
+      | components["schemas"]["DreamingActivityData"]
       | components["schemas"]["TurnFailedData"]
       | components["schemas"]["ReasonStartedData"]
       | components["schemas"]["ReasonCompletedData"]
@@ -13957,6 +14409,34 @@ export interface components {
        */
       size_bytes: number;
     };
+    /** @description An inline managed file; use the streaming upload endpoint for files over 8 MiB. */
+    FileInput: {
+      /** @description UTF-8 original content. Supply exactly one of `content` or `content_base64`. */
+      content?: string | null;
+      /** @description Base64 original bytes for binary files; mutually exclusive with `content`. */
+      content_base64?: string | null;
+      /** @description Optional per-file indexing policy; false retains the original without indexing it. */
+      indexable?: boolean | null;
+      /** @description User annotations retained separately from parsed source/frontmatter metadata. */
+      metadata?: unknown;
+      /** @description Optional media type used for representation extraction; inferred when omitted. */
+      mime_type?: string | null;
+      /** @description Normalized absolute path within the collection, preserving its directory hierarchy. */
+      path: string;
+      /** @description Optional agent-read policy. Managers can still download retained originals. */
+      readable?: boolean | null;
+    };
+    /** @description Update managed-file annotations and agent visibility without extracting bytes again. */
+    FileMetadataInput: {
+      /** @description Optional indexing override. Omit to preserve the current policy. */
+      indexable?: boolean | null;
+      /** @description Replace user annotations while preserving metadata parsed from the original file. */
+      metadata?: unknown;
+      /** @description Existing collection-relative file path. */
+      path: string;
+      /** @description Optional agent-read override. Omit to preserve the current policy. */
+      readable?: boolean | null;
+    };
     /** @description A package-relative file or glob and its working-directory destination. */
     FileSource: {
       /** @description Whether the initial workspace file is read-only. Defaults to true. */
@@ -14018,6 +14498,29 @@ export interface components {
        * @example 1048576
        */
       size_bytes: number;
+    };
+    /** @description Revision-checked creation or update of one consumer workspace file. */
+    FileWrite: {
+      /**
+       * @description UTF-8 text or base64-encoded bytes.
+       * @example Meeting notes
+       */
+      content: string;
+      /**
+       * @description Content encoding, either text or base64.
+       * @example text
+       */
+      encoding?: string | null;
+      /**
+       * @description Revision returned by the previous read; required when replacing a file.
+       * @example f6d4cf68d1e6c37f7d24a5a85db31ba4
+       */
+      expected_revision?: string | null;
+      /**
+       * @description Absolute path within the consumer workspace.
+       * @example /workspace/notes.md
+       */
+      path: string;
     };
     /** @description Data for file.written events emitted when files are written to the session filesystem. */
     FileWrittenData: {
@@ -14285,6 +14788,25 @@ export interface components {
       insertions: number;
     };
     /**
+     * @description What one GitHub use asks for: who it acts as, and the least access it needs.
+     *
+     *     The resolver mints an installation token limited to `repositories` and
+     *     `permissions`, so a tool that only reads a diff never holds write access.
+     *     Empty `repositories` means every repository the installation covers; empty
+     *     `permissions` means everything the installation was granted. A person's own
+     *     login cannot be narrowed by GitHub and answers with its full reach.
+     */
+    GitHubAccess: {
+      /** @description Whose GitHub identity answers. `none` resolves nothing. */
+      acts_as: components["schemas"]["McpServerActsAs"];
+      /** @description GitHub App permission name to level (`read` or `write`). */
+      permissions?: {
+        [key: string]: string;
+      };
+      /** @description Repositories as `owner/repo`, all under one owner. */
+      repositories?: string[];
+    };
+    /**
      * @description What kind of GitHub account a login is.
      * @enum {string}
      */
@@ -14375,6 +14897,21 @@ export interface components {
       /** @description Human-readable name. Safe to render in user-facing messages. */
       name: string;
       target: string;
+    };
+    /** @description Explicit bounded use grant. It does not confer management permission or permission to reshare. */
+    GrantCredential: {
+      constraints?: components["schemas"]["ResourceConstraints"] | null;
+      /** @description Consumer agent, session, or virtual-user ID; omit for organization scope. */
+      consumer_id?: string | null;
+      /** @description Consumer scope; organization grants explicitly opt eligible service agents in. */
+      consumer_scope: components["schemas"]["ResourceScope"];
+      /**
+       * Format: date-time
+       * @description Absolute grant expiry in UTC; omit for a grant that lasts until revoked.
+       */
+      expires_at?: string | null;
+      /** @description Invocation identity that must match at every use. */
+      usage: components["schemas"]["CredentialUsage"];
     };
     /** @description Grep match result */
     GrepMatch: {
@@ -15192,15 +15729,6 @@ export interface components {
        */
       provider: string;
     };
-    /** @description Request body for `okf_import`. */
-    ImportOkfBundleRequest: {
-      /** @description A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`. */
-      bundle_base64?: string | null;
-      /** @description Inline bundle files. Mutually exclusive with `bundle_base64`. */
-      files?: components["schemas"]["OkfFileInput"][];
-      /** @description When true, delete previously-imported entries absent from this bundle. */
-      prune?: boolean;
-    };
     /** @description A single named score from an external scorer. */
     ImportScore: {
       /**
@@ -15244,6 +15772,23 @@ export interface components {
        * @example nonce-from-the-local-helper
        */
       nonce: string;
+    };
+    /**
+     * @description Optional collection indexing: no index, keyword retrieval, or keyword plus embeddings.
+     * @enum {string}
+     */
+    IndexMode: "off" | "lexical" | "hybrid";
+    /** @description An organization Turbopuffer account referencing an existing service credential. */
+    IndexerInput: {
+      /**
+       * Format: uuid
+       * @description Active organization-service credential binding; never a plaintext API key.
+       */
+      credential_binding_id: string;
+      /** @description HTTPS regional Turbopuffer API endpoint; embedded credentials are forbidden. */
+      endpoint: string;
+      /** @description Display name for the organization search account. */
+      name: string;
     };
     /** @description Starter file copied into a new session from an agent or harness. */
     InitialFile: {
@@ -15329,178 +15874,22 @@ export interface components {
       /** @description The stored value */
       value: string;
     };
-    /** @description Response body for knowledge base. */
-    KnowledgeBaseResponse: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was archived, if any (RFC 3339).
-       */
-      archived_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kb_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Human-readable name. Safe to render in user-facing messages. */
-      name: string;
-      /** @description Current lifecycle status. */
-      status: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for knowledge entry. */
-    KnowledgeEntryResponse: {
-      body: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kbe_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Knowledge base's prefixed public identifier.
-       * @example kb_01933b5a000070008000000000000001
-       */
-      kb_id: string;
-      /** @description Discriminator selecting the variant of this resource. */
-      kind: string;
-      /**
-       * @description Optional OKF resource URI identifying the underlying asset.
-       * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-       */
-      resource?: string | null;
-      /** @description Free-form tags attached to this resource. */
-      tags: string[];
-      /** @description Human-readable title. Safe to render in user-facing messages. */
-      title: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for a knowledge index document. */
-    KnowledgeIndexDocumentResponse: {
-      /**
-       * Format: int32
-       * @description Denormalized chunk count for this document.
-       */
-      chunk_count: number;
-      /** @description Content hash driving incremental re-embedding. */
-      content_hash?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kidoc_01933b5a000070008000000000000001
-       */
-      id: string;
-      /**
-       * @description Parent index's prefixed public identifier.
-       * @example kidx_01933b5a000070008000000000000001
-       */
-      index_id: string;
-      /**
-       * Format: date-time
-       * @description Timestamp this document was last seen during a sync pass (RFC 3339).
-       */
-      last_seen_at?: string | null;
-      /** @description Document MIME type, if known. */
-      mime_type?: string | null;
-      /**
-       * Format: int64
-       * @description Document size in bytes, if known.
-       */
-      size_bytes?: number | null;
-      /** @description Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`). */
-      source_uri: string;
-      /** @description Document title, if known. */
-      title?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /** @description Response body for a knowledge index. */
-    KnowledgeIndexResponse: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was archived, if any (RFC 3339).
-       */
-      archived_at?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-       */
-      deleted_at?: string | null;
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Number of documents currently retained by this index. */
-      document_count: number;
-      /** @description Embedding model used to embed chunks. Required. */
-      embedding_model_id: string;
-      /**
-       * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-       * @example kidx_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Sanitized failure reason from the last failed sync, if any. */
-      last_sync_error?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp of the last successful sync, if any (RFC 3339).
-       */
-      last_synced_at?: string | null;
-      /** @description Human-readable name. Safe to render in user-facing messages. */
-      name: string;
-      /** @description Non-secret source coordinates. Never holds credentials. */
-      source_config: unknown;
-      /** @description External source type. One of `github`, `git`. */
-      source_type: string;
-      /** @description Current lifecycle status. */
-      status: string;
-      /** @description Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`. */
-      sync_status: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-      /**
-       * Format: int32
-       * @description Embedding dimension, recorded on first successful sync.
-       */
-      vector_dim?: number | null;
+    /** @description A bounded retrieval query; runtime hosts intersect collections with live session bindings. */
+    KnowledgeQuery: {
+      /** @description Optional collection identifiers. Runtime access remains limited to attached collections. */
+      collections?: string[];
+      /** @description Use keyword retrieval without creating a query embedding. */
+      lexical_only?: boolean;
+      /** @description Requested maximum passages; hosts enforce the configured retrieval budget. */
+      limit?: number;
+      /** @description Exact user-annotation predicates applied without granting additional file access. */
+      metadata?: {
+        [key: string]: unknown;
+      };
+      /** @description Optional source-relative path prefix that narrows retrieval. */
+      path?: string | null;
+      /** @description Search text used for keyword retrieval and, when enabled, query embeddings. */
+      query: string;
     };
     /**
      * @description The most recent health-check run for an agent, paired with whether the
@@ -15673,55 +16062,6 @@ export interface components {
        * @example completed
        */
       status?: string | null;
-    };
-    /**
-     * @description Query parameters for `GET /v1/knowledge-bases` — optional name/desc
-     *     search plus a flag to include archived knowledge bases.
-     */
-    ListKnowledgeBasesQuery: {
-      /**
-       * @description When `true`, also returns archived knowledge bases.
-       * @example false
-       */
-      include_archived?: boolean | null;
-      /**
-       * @description Substring filter applied to knowledge-base name and description.
-       * @example runbook
-       */
-      search?: string | null;
-    };
-    /**
-     * @description Query parameters for listing entries inside a knowledge base — optional
-     *     text search and tag filter.
-     */
-    ListKnowledgeEntriesQuery: {
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /**
-       * @description Substring filter applied to entry title and body.
-       * @example refund
-       */
-      search?: string | null;
-    };
-    /**
-     * @description Query parameters for `GET /v1/knowledge-indexes` — optional name/desc
-     *     search plus a flag to include archived indexes.
-     */
-    ListKnowledgeIndexesQuery: {
-      /**
-       * @description When `true`, also returns archived knowledge indexes.
-       * @example false
-       */
-      include_archived?: boolean | null;
-      /**
-       * @description Substring filter applied to index name and description.
-       * @example docs
-       */
-      search?: string | null;
     };
     /**
      * @description Query parameters for `GET /v1/memories` — optional name search and a
@@ -16086,6 +16426,13 @@ export interface components {
          * @example session_file_system
          */
         docs_slug?: string | null;
+        /**
+         * @description Rollout flag that gates this capability, when one is required.
+         *     Present whether or not the flag is on, so a management screen can name
+         *     an attached capability and avoid offering it for new selection.
+         * @example skills
+         */
+        feature_flag?: string | null;
         /**
          * @description UI feature strings this capability contributes to.
          *     Multiple capabilities can contribute the same feature.
@@ -16786,203 +17133,6 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
-    ListResponse_KnowledgeBaseResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was archived, if any (RFC 3339).
-         */
-        archived_at?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-         */
-        deleted_at?: string | null;
-        /** @description Human-readable description. Safe to render in user-facing messages. */
-        description?: string | null;
-        /** @description Optional embedding model for hybrid retrieval. `null` = keyword search only. */
-        embedding_model_id?: string | null;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kb_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Human-readable name. Safe to render in user-facing messages. */
-        name: string;
-        /** @description Current lifecycle status. */
-        status: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeEntryResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        body: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kbe_01933b5a000070008000000000000001
-         */
-        id: string;
-        /**
-         * @description Knowledge base's prefixed public identifier.
-         * @example kb_01933b5a000070008000000000000001
-         */
-        kb_id: string;
-        /** @description Discriminator selecting the variant of this resource. */
-        kind: string;
-        /**
-         * @description Optional OKF resource URI identifying the underlying asset.
-         * @example https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders
-         */
-        resource?: string | null;
-        /** @description Free-form tags attached to this resource. */
-        tags: string[];
-        /** @description Human-readable title. Safe to render in user-facing messages. */
-        title: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeIndexDocumentResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: int32
-         * @description Denormalized chunk count for this document.
-         */
-        chunk_count: number;
-        /** @description Content hash driving incremental re-embedding. */
-        content_hash?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kidoc_01933b5a000070008000000000000001
-         */
-        id: string;
-        /**
-         * @description Parent index's prefixed public identifier.
-         * @example kidx_01933b5a000070008000000000000001
-         */
-        index_id: string;
-        /**
-         * Format: date-time
-         * @description Timestamp this document was last seen during a sync pass (RFC 3339).
-         */
-        last_seen_at?: string | null;
-        /** @description Document MIME type, if known. */
-        mime_type?: string | null;
-        /**
-         * Format: int64
-         * @description Document size in bytes, if known.
-         */
-        size_bytes?: number | null;
-        /** @description Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`). */
-        source_uri: string;
-        /** @description Document title, if known. */
-        title?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_KnowledgeIndexResponse: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was archived, if any (RFC 3339).
-         */
-        archived_at?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was soft-deleted, if any (RFC 3339).
-         */
-        deleted_at?: string | null;
-        /** @description Human-readable description. Safe to render in user-facing messages. */
-        description?: string | null;
-        /** @description Number of documents currently retained by this index. */
-        document_count: number;
-        /** @description Embedding model used to embed chunks. Required. */
-        embedding_model_id: string;
-        /**
-         * @description Prefixed public identifier. See [ID Schema](https://everruns.com/docs/advanced/id-schema/).
-         * @example kidx_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Sanitized failure reason from the last failed sync, if any. */
-        last_sync_error?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp of the last successful sync, if any (RFC 3339).
-         */
-        last_synced_at?: string | null;
-        /** @description Human-readable name. Safe to render in user-facing messages. */
-        name: string;
-        /** @description Non-secret source coordinates. Never holds credentials. */
-        source_config: unknown;
-        /** @description External source type. One of `github`, `git`. */
-        source_type: string;
-        /** @description Current lifecycle status. */
-        status: string;
-        /** @description Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`. */
-        sync_status: string;
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
-        /**
-         * Format: int32
-         * @description Embedding dimension, recorded on first successful sync.
-         */
-        vector_dim?: number | null;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
     ListResponse_McpServer: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -17043,6 +17193,13 @@ export interface components {
         service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
+        /**
+         * Format: int64
+         * @description How long one tool call may take, in milliseconds. Absent means the
+         *     60000 default.
+         * @example 300000
+         */
+        tool_timeout_ms?: number | null;
         /** @description Transport type (currently only HTTP supported). */
         transport_type: components["schemas"]["McpServerTransportType"];
         /**
@@ -17341,6 +17498,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Optional small chat model, independent of the main chat and decision defaults. */
+        small_model_id?: string | null;
         /**
          * @description Who answers deployment-owned decision checks: `deployment` (default)
          *     or `organization` (the org's default decision model).
@@ -17828,6 +17987,13 @@ export interface components {
         service_connection_provider?: string | null;
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
+        /**
+         * Format: int64
+         * @description How long one tool call may take, in milliseconds. Absent means the
+         *     60000 default.
+         * @example 300000
+         */
+        tool_timeout_ms?: number | null;
         /** @description Transport type (currently only HTTP supported). */
         transport_type: components["schemas"]["McpServerTransportType"];
         /**
@@ -18746,6 +18912,84 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    /** @description Credential metadata for an authorized owner. Secret values are never included. */
+    ManagedCredential: {
+      /** @description HTTP destination and injection metadata, without the credential value. */
+      binding?: unknown;
+      /** @description Whether a stored value or connection reference is provisioned; does not imply current access. */
+      configured: boolean;
+      /**
+       * Format: date-time
+       * @description Absolute credential expiry in UTC, if configured.
+       */
+      expires_at?: string | null;
+      /**
+       * Format: uuid
+       * @description Stable credential binding identifier.
+       */
+      id: string;
+      /** @description Binding kind identifying HTTP or MCP parameter injection. */
+      kind: string;
+      /** @description Human-readable label shown in Credentials settings and consent requests. */
+      label: string;
+      /**
+       * Format: uuid
+       * @description Actual responding agent at the most recent use, if recorded.
+       */
+      last_used_agent_id?: string | null;
+      /** @description Display name of the most recently recorded responding agent. */
+      last_used_agent_name?: string | null;
+      /**
+       * Format: date-time
+       * @description Most recent authorized use, if any.
+       */
+      last_used_at?: string | null;
+      /** @description Exact MCP endpoint for an MCP parameter binding. */
+      mcp_server_url?: string | null;
+      /** @description HTTP reference name, used as `$NAME`; absent for MCP-only bindings. */
+      name?: string | null;
+      /** @description Top-level MCP parameter receiving the injected value. */
+      parameter_name?: string | null;
+      /**
+       * Format: int64
+       * @description Current revision required for value replacement or credential revocation.
+       */
+      revision: number;
+      /** @description Ownership scope; runtime authorization is evaluated separately. */
+      scope: string;
+      /**
+       * Format: uuid
+       * @description Native connection supplying credentials without copying its tokens into this binding.
+       */
+      source_connection_id?: string | null;
+      /** @description Exact MCP tool receiving the injected parameter. */
+      tool_name?: string | null;
+    };
+    /** @description Metadata for an explicit resource use grant, without credential values. */
+    ManagedResourceGrant: {
+      constraints?: components["schemas"]["ResourceConstraints"] | null;
+      /**
+       * Format: uuid
+       * @description Consumer identifier; absent for an organization-wide service grant.
+       */
+      consumer_id?: string | null;
+      /** @description Human-readable consumer name, when available. */
+      consumer_label?: string | null;
+      /** @description Scope of the consumer authorized by this grant. */
+      consumer_scope: components["schemas"]["ResourceScope"];
+      /**
+       * Format: date-time
+       * @description Absolute grant expiry in UTC, if configured.
+       */
+      expires_at?: string | null;
+      /**
+       * Format: uuid
+       * @description Stable grant identifier used for revocation.
+       */
+      id: string;
+      /** @description Required invocation identity for use through this grant. */
+      usage: components["schemas"]["CredentialUsage"];
+    };
     /** @description An entity's manager context. */
     ManagerContext: {
       /** @description Markdown, at most 16 KiB. Empty when none was written or it was cleared. */
@@ -18876,6 +19120,17 @@ export interface components {
       | "unreachable"
       | "failed"
       | "not_checked";
+    /** @description Exact MCP endpoint and top-level tool parameter receiving a credential at execution time. */
+    McpCredentialTarget: {
+      /** @description Top-level parameter name; dotted nested paths are rejected. */
+      parameter_name: string;
+      /** @description Attached MCP server name used to identify the target. */
+      server_name: string;
+      /** @description Exact tool name within the attached server. */
+      tool_name: string;
+      /** @description Exact HTTPS MCP endpoint; arbitrary destinations cannot receive the value. */
+      url: string;
+    };
     /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
@@ -19040,6 +19295,13 @@ export interface components {
       service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds. Absent means the
+       *     60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /** @description Transport type (currently only HTTP supported). */
       transport_type: components["schemas"]["McpServerTransportType"];
       /**
@@ -20531,27 +20793,6 @@ export interface components {
      * @enum {string}
      */
     ObserverStatus: "active" | "paused" | "archived" | "deleted";
-    /**
-     * @description A single inline bundle file, for callers that send files as JSON rather
-     *     than a tarball.
-     */
-    OkfFileInput: {
-      /** @description Raw markdown file content (frontmatter + body). */
-      content: string;
-      /** @description Bundle-relative path, e.g. `tables/orders.md`. */
-      path: string;
-    };
-    /** @description Outcome of an import run. */
-    OkfImportSummary: {
-      created: number;
-      /** @description Entries removed because `prune` was set and they were absent from the bundle. */
-      pruned: number;
-      /** @description Documents skipped (e.g. oversized body); see `warnings`. */
-      skipped: number;
-      updated: number;
-      /** @description Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully. */
-      warnings: string[];
-    };
     /** @description An organization's egress allowlist extension. */
     OrgEgressAllowlistResponse: {
       /**
@@ -20675,6 +20916,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Optional small chat model, independent of the main chat and decision defaults. */
+      small_model_id?: string | null;
       /**
        * @description Who answers deployment-owned decision checks: `deployment` (default)
        *     or `organization` (the org's default decision model).
@@ -21309,6 +21552,13 @@ export interface components {
          * @example session_file_system
          */
         docs_slug?: string | null;
+        /**
+         * @description Rollout flag that gates this capability, when one is required.
+         *     Present whether or not the flag is on, so a management screen can name
+         *     an attached capability and avoid offering it for new selection.
+         * @example skills
+         */
+        feature_flag?: string | null;
         /**
          * @description UI feature strings this capability contributes to.
          *     Multiple capabilities can contribute the same feature.
@@ -22965,6 +23215,20 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description Provider limits must be enforced by the adapter before a token is exposed. */
+    ResourceConstraints: {
+      permissions: {
+        [key: string]: string;
+      };
+      /** @enum {string} */
+      provider: "github";
+      repositories: string[];
+    };
+    /**
+     * @description Ownership or consumer scope. Ownership determines lifetime, not permission to use a resource.
+     * @enum {string}
+     */
+    ResourceScope: "session" | "agent" | "virtual_user" | "organization";
     /** @description Response body for resource stats. */
     ResourceStats: {
       /**
@@ -23081,6 +23345,13 @@ export interface components {
     };
     /** @description The revision to bring back. */
     RestoreRequest: {
+      /**
+       * Format: int64
+       * @description Agent revision the user saw; refuses concurrent changes.
+       */
+      expected_revision?: number | null;
+      /** @description Restore only these top-level Agent fields. Requires expected_revision. */
+      fields?: string[] | null;
       /** @description Entity kind, needed only for kinds whose ids have no prefix. */
       kind?: string | null;
       /** Format: int64 */
@@ -24098,8 +24369,24 @@ export interface components {
       script?: components["schemas"]["ScriptRun"] | null;
       /** @description Whether invocations reuse a stable session or create a new one. */
       session_mode?: components["schemas"]["SessionBinding"];
+      target?: components["schemas"]["ScheduleTriggerTarget"] | null;
       /** @description IANA timezone identifier for cron evaluation. */
       timezone?: string;
+    };
+    /**
+     * @description A conversation a schedule trigger runs in: the session a message from that
+     *     conversation would land in, created and bound on the first run.
+     *
+     *     Slack only. `binding_key` names the conversation the way the channel binds
+     *     it: `slack:user:{user_id}` (a direct message with that person) on a
+     *     `per_user` channel, `slack:channel:{channel_id}` (a top-level post) on a
+     *     `per_channel` one.
+     */
+    ScheduleTriggerTarget: {
+      /** @description The conversation's binding key on that channel. */
+      binding_key: string;
+      /** @description The agent's channel the conversation belongs to. */
+      channel_id: string;
     };
     /** @description Schedules list response */
     SchedulesListResponse: {
@@ -24145,6 +24432,11 @@ export interface components {
        *     start).
        */
       deferred?: boolean;
+      /**
+       * @description Searchable server context supplied by its attachment or catalog. It is
+       *     metadata, not an instruction or a credential.
+       */
+      description?: string | null;
       /** @description Which elicitation modes this server may use (`url` by default). */
       elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /** @description Environment variables set for the stdio `command`. */
@@ -24171,6 +24463,14 @@ export interface components {
       tool_labels?: {
         [key: string]: components["schemas"]["McpToolLabel"];
       };
+      /**
+       * Format: int64
+       * @description How long one `tools/call` to this server may take, in milliseconds.
+       *     Unset means [`MCP_TOOL_TIMEOUT_DEFAULT_MS`] (60 s); accepted range is
+       *     [`MCP_TOOL_TIMEOUT_MIN_MS`]..=[`MCP_TOOL_TIMEOUT_MAX_MS`]. `timeout`
+       *     is accepted as an alias, matching common `mcpServers` config files.
+       */
+      tool_timeout_ms?: number | null;
       /** @description MCP transport type. Only remote HTTP is supported today. */
       type?: components["schemas"]["McpServerTransportType"];
       /**
@@ -24465,8 +24765,7 @@ export interface components {
     /**
      * @description How a bound secret is put on an outbound request.
      *
-     *     Header-only by design: a value
-     *     is never placed in a URL or a body.
+     *     Only the declared header or named, structured form field may carry a value.
      */
     SecretAuth:
       | {
@@ -24478,6 +24777,11 @@ export interface components {
           name: string;
           /** @enum {string} */
           type: "header";
+        }
+      | {
+          name: string;
+          /** @enum {string} */
+          type: "form_field";
         };
     /** @description Where a bound secret may be sent, and how. */
     SecretBinding: {
@@ -25320,6 +25624,10 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    /** @description Response of `GET /v1/sessions/{session_id}/work`. */
+    SessionWorkResult: {
+      report?: components["schemas"]["WorkReport"] | null;
+    };
     /** @description The avatar source: exactly one of `preset_id` or `image_base64`. */
     SetAgentAvatarRequest: {
       /**
@@ -25341,9 +25649,29 @@ export interface components {
     /** @description Request to replace a credential binding's encrypted value. */
     SetAgentCredentialValueRequest: {
       /**
+       * Format: int64
+       * @description Revision observed in scoped credential metadata.
+       */
+      revision: number;
+      /**
        * @description Write-only credential value. It is encrypted and never returned.
        * @example vsk_disposable_example
        */
+      value: string;
+    };
+    /** @description Secure write-only credential provisioning. The value is encrypted and never returned. */
+    SetCredentialValue: {
+      /**
+       * Format: date-time
+       * @description Absolute expiry in UTC; omit for a value that remains valid until revoked.
+       */
+      expires_at?: string | null;
+      /**
+       * Format: int64
+       * @description Last observed resource revision; stale updates are rejected.
+       */
+      revision: number;
+      /** @description Secret value to store through this secure entry endpoint only. */
       value: string;
     };
     /** @description Select or clear the organization decision default. */
@@ -25486,6 +25814,56 @@ export interface components {
       valid: boolean;
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
+    };
+    /** @description A connected repository mounted beneath a non-overlapping collection path. */
+    SourceInput: {
+      /** @description Adapter-specific repository, revision and root-folder configuration, without credentials. */
+      config?: unknown;
+      /**
+       * Format: uuid
+       * @description Optional GitHub connection owner; existing connection authorization still applies.
+       */
+      connection_owner?: string | null;
+      /** @description Source adapter: `github` reuses a connection; `git` reads a public HTTPS repository. */
+      kind: string;
+      /** @description Collection-relative root under which the source hierarchy is preserved. */
+      root_path?: string;
+    };
+    /** @description Repository, branch and package path that define an Agent's GitHub source. */
+    SourceLocation: {
+      /**
+       * @description Branch whose future commits the Agent follows.
+       * @example main
+       */
+      branch: string;
+      /**
+       * @description Repository-relative package folder or manifest; empty selects the repository root.
+       * @example agents/support
+       */
+      path?: string;
+      /**
+       * @description GitHub repository in owner/name form.
+       * @example acme/agents
+       */
+      repository: string;
+    };
+    /** @description Repository location to browse before selecting an Agent source package. */
+    SourceOptionsRequest: {
+      /**
+       * @description Branch to browse; omitted uses the repository's default branch.
+       * @example main
+       */
+      branch?: string | null;
+      /**
+       * @description Repository-relative directory to browse; empty selects the root.
+       * @example agents
+       */
+      path?: string;
+      /**
+       * @description GitHub repository in owner/name form.
+       * @example acme/agents
+       */
+      repository: string;
     };
     /**
      * @description Speed level for models that expose a latency/price service tier.
@@ -25941,7 +26319,7 @@ export interface components {
      *     Tracks token consumption per LLM call including cache tokens for cost
      *     optimization.
      *
-     *     # Disjoint bucket convention
+     *     ## Disjoint bucket convention
      *
      *     Prompt token buckets are **disjoint** (non-overlapping). Drivers normalize
      *     provider wire formats at the boundary so this holds for every provider:
@@ -26120,7 +26498,7 @@ export interface components {
       display_name?: string | null;
       /**
        * Format: int64
-       * @description Duration of the tool call in milliseconds
+       * @description Wall-clock duration of the tool call in milliseconds
        */
       duration_ms?: number | null;
       /** @description Error message if failed */
@@ -26153,6 +26531,14 @@ export interface components {
       tool_name: string;
       /** @description Stable fingerprint of tool name + normalized result/error. */
       tool_result_fingerprint?: string | null;
+      /**
+       * Format: int64
+       * @description Actual worker-thread CPU nanoseconds consumed while polling the invoked
+       *     tool executor future, including clock-bracketing overhead. Excludes async
+       *     waiting, child processes, separately spawned/blocking tasks and remote
+       *     compute. Missing means unobserved/unsupported, not zero or total tool CPU.
+       */
+      worker_thread_cpu_ns?: number | null;
     };
     /** @description Tool definition in agent configuration */
     ToolDefinition:
@@ -26366,6 +26752,12 @@ export interface components {
      *     to stream progress feedback between tool.started and tool.completed.
      */
     ToolProgressData: {
+      /**
+       * Format: int64
+       * @description Items done so far, when the tool knows a count ("3" of "12 files").
+       *     Set together with `total`; the message stays readable on its own.
+       */
+      current?: number | null;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       /** @description Human-readable status message (e.g., "Connecting to browser…") */
@@ -26374,6 +26766,11 @@ export interface components {
       tool_call_id: string;
       /** @description Tool name */
       tool_name: string;
+      /**
+       * Format: int64
+       * @description Items in total, when the tool knows a count.
+       */
+      total?: number | null;
     };
     /** @description Tool result content part (result of tool execution) */
     ToolResultContentPart: {
@@ -27334,6 +27731,7 @@ export interface components {
        * @example stop
        */
       stop_reason?: string | null;
+      termination_reason?: components["schemas"]["TurnStopReason"] | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.
@@ -27430,6 +27828,17 @@ export interface components {
        */
       turn_id: string;
     };
+    /**
+     * @description Stable reason a turn stopped, independent of provider-specific strings.
+     * @enum {string}
+     */
+    TurnStopReason:
+      | "end_turn"
+      | "max_tokens"
+      | "max_turn_requests"
+      | "refusal"
+      | "error"
+      | "cancelled";
     /** @description Waited result for `POST /v1/sessions/{session_id}/messages?wait=true`. */
     TurnWaitResponse: {
       /**
@@ -27687,6 +28096,17 @@ export interface components {
        * @example {{webhook.json.action}}
        */
       subject_template?: string | null;
+      /**
+       * @description Replacement target conversation; given with `target_channel_id`.
+       * @example slack:user:U0123ABCD
+       */
+      target_binding_key?: string | null;
+      /**
+       * @description Replacement target channel. An empty string removes the target, so
+       *     runs use a session of the trigger's own again.
+       * @example appchan_01933b5a000070008000000000000001
+       */
+      target_channel_id?: string | null;
       /**
        * @description Replacement IANA timezone identifier.
        * @example UTC
@@ -27964,62 +28384,6 @@ export interface components {
       /** @description New lifecycle status: `active` or `disabled`. */
       status?: string | null;
     };
-    /** @description Request body for the `update_knowledge_base` operation. */
-    UpdateKnowledgeBaseRequest: {
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /** @description Optional embedding model for hybrid retrieval. Set to null to clear. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example support-runbooks-archive
-       */
-      name?: string | null;
-    };
-    /** @description Request body for the `update_knowledge_entry` operation. */
-    UpdateKnowledgeEntryRequest: {
-      /**
-       * @description Updated entry body. Markdown is rendered when displayed.
-       * @example Use the `/v1/payments/{id}/refund` endpoint with `reason: "past_window"`. Now requires VP approval.
-       */
-      body?: string | null;
-      /**
-       * @description Discriminator selecting the variant of this resource. One of `note`,
-       *     `table`, `business`, `query`, `runbook`.
-       * @example runbook
-       */
-      kind?: string | null;
-      /** @description Optional OKF resource URI. Set to null to clear. */
-      resource?: string | null;
-      /**
-       * @description Free-form tags attached to this resource.
-       * @example [
-       *       "billing",
-       *       "refunds",
-       *       "vp-approval"
-       *     ]
-       */
-      tags?: string[] | null;
-      /**
-       * @description Human-readable title. Safe to render in user-facing messages.
-       * @example Refund a payment past 60 days
-       */
-      title?: string | null;
-    };
-    /** @description Request body for the `update_knowledge_index` operation. */
-    UpdateKnowledgeIndexRequest: {
-      /** @description Human-readable description. Set to null to clear. */
-      description?: string | null;
-      /** @description Embedding model used to embed chunks. Required; cannot be cleared. */
-      embedding_model_id?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example product-docs-v2
-       */
-      name?: string | null;
-      /** @description Non-secret source coordinates. Never include credentials. */
-      source_config?: unknown;
-    };
     /** @description Request to update an MCP server. Only provided fields will be updated. */
     UpdateMcpServerRequest: {
       /**
@@ -28056,6 +28420,13 @@ export interface components {
        */
       service_connection_provider?: string | null;
       status?: components["schemas"]["McpServerStatus"] | null;
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds (1000 to 1800000).
+       *     `0` clears it back to the 60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       transport_type?: components["schemas"]["McpServerTransportType"] | null;
       /**
        * @description The URL of the MCP server endpoint.
@@ -28216,6 +28587,11 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      /**
+       * @description Shared small chat model for lightweight work. Omit to preserve the selection;
+       *     pass null to clear it. Does not change the main chat or decision default.
+       */
+      small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
@@ -29424,6 +29800,13 @@ export interface components {
        */
       docs_slug?: string | null;
       /**
+       * @description Rollout flag that gates this capability, when one is required.
+       *     Present whether or not the flag is on, so a management screen can name
+       *     an attached capability and avoid offering it for new selection.
+       * @example skills
+       */
+      feature_flag?: string | null;
+      /**
        * @description UI feature strings this capability contributes to.
        *     Multiple capabilities can contribute the same feature.
        * @example [
@@ -29821,6 +30204,13 @@ export interface components {
       service_connection_provider?: string | null;
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
+      /**
+       * Format: int64
+       * @description How long one tool call may take, in milliseconds. Absent means the
+       *     60000 default.
+       * @example 300000
+       */
+      tool_timeout_ms?: number | null;
       /** @description Transport type (currently only HTTP supported). */
       transport_type: components["schemas"]["McpServerTransportType"];
       /**
@@ -30627,6 +31017,213 @@ export interface components {
       /** @description Full UI URL for viewing this resource. */
       view_url: string;
     };
+    /**
+     * @description The open request a person has to answer. Answering still goes through the
+     *     endpoint that owns the request; the report only points at it.
+     */
+    WorkAttention: {
+      /** @description What kind of answer is needed. */
+      kind: components["schemas"]["WorkAttentionKind"];
+      /**
+       * @description One line naming what is asked ("Run git push").
+       * @example Deploy to staging
+       */
+      prompt: string;
+      /** @description Open client-side call ids that carry the request. */
+      tool_call_ids: string[];
+    };
+    /**
+     * @description What the work waits on a person for.
+     * @enum {string}
+     */
+    WorkAttentionKind: "approval" | "question" | "action";
+    /** @description One measured fact. */
+    WorkFact: {
+      /** @description Which fact. */
+      kind: components["schemas"]["WorkFactKind"];
+      /**
+       * Format: int64
+       * @description Its value.
+       * @example 3
+       */
+      value: number;
+    };
+    /**
+     * @description A measured fact about finished work.
+     * @enum {string}
+     */
+    WorkFactKind: "files_changed" | "issues" | "tasks_started" | "steps";
+    /**
+     * @description How the agent itself judged the work, when it reported.
+     * @enum {string}
+     */
+    WorkOutcome: "done" | "failed";
+    /** @description The plan the agent shared, from its latest plan tool call. */
+    WorkPlan: {
+      /**
+       * @description The item in progress, in its "doing" form when the tool has one.
+       * @example Run the tests
+       */
+      current?: string | null;
+      /**
+       * Format: int32
+       * @description Items done or skipped.
+       * @example 2
+       */
+      done: number;
+      /** @description Plan items in order. */
+      items: components["schemas"]["ProgressStep"][];
+      /**
+       * Format: int32
+       * @description Items in total.
+       * @example 4
+       */
+      total: number;
+    };
+    /** @description Live progress inside one step, reported by the tool while it runs. */
+    WorkProgress: {
+      /**
+       * Format: int64
+       * @description Items done so far, when the tool knows a count.
+       * @example 7
+       */
+      current?: number | null;
+      /**
+       * @description The tool's latest status line.
+       * @example Rendering image 7 of 12
+       */
+      label?: string | null;
+      /**
+       * Format: int64
+       * @description Items in total, when the tool knows a count.
+       * @example 12
+       */
+      total?: number | null;
+    };
+    /** @description One piece of work, as every surface shows it. */
+    WorkReport: {
+      /**
+       * @description Agent name snapshot at turn start.
+       * @example Billing fixer
+       */
+      agent_name?: string | null;
+      attention?: components["schemas"]["WorkAttention"] | null;
+      /**
+       * Format: int64
+       * @description Elapsed time: to the end when finished, to the read time while running.
+       * @example 133000
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: date-time
+       * @description When the work ended.
+       * @example 2026-10-23T12:02:13Z
+       */
+      ended_at?: string | null;
+      /**
+       * @description One line, always present: the current step while working, the request
+       *     while waiting, the result when finished.
+       * @example Step 3 of 4 · Running `cargo test`
+       */
+      headline: string;
+      /**
+       * @description Model of the latest generation.
+       * @example gpt-6.1-sol
+       */
+      model?: string | null;
+      /**
+       * Format: int32
+       * @description Steps run but no longer listed.
+       * @example 0
+       */
+      omitted_steps?: number;
+      plan?: components["schemas"]["WorkPlan"] | null;
+      result?: components["schemas"]["WorkResult"] | null;
+      /**
+       * Format: date-time
+       * @description When the work started.
+       * @example 2026-10-23T12:00:00Z
+       */
+      started_at?: string | null;
+      /** @description Where the work stands. */
+      state: components["schemas"]["WorkState"];
+      /** @description Steps in order, newest last, bounded by [`MAX_REPORT_STEPS`]. */
+      steps: components["schemas"]["WorkStep"][];
+      /**
+       * @description The turn the report describes.
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id: string;
+    };
+    /** @description What finished work produced. */
+    WorkResult: {
+      /** @description Files, links, pull requests and sessions the work produced. */
+      artifacts?: components["schemas"]["TaskArtifact"][];
+      /**
+       * @description How the agent checked the work ("ran the 12 billing tests"), when it
+       *     reported.
+       * @example Ran the 12 billing tests
+       */
+      checks?: string | null;
+      /** @description Measured facts, in display order. */
+      facts?: components["schemas"]["WorkFact"][];
+      outcome?: components["schemas"]["WorkOutcome"] | null;
+      /**
+       * @description One or two sentences on what changed.
+       * @example Fixed the proration rounding and added a test.
+       */
+      summary?: string | null;
+      summary_source?: components["schemas"]["WorkSummarySource"] | null;
+    };
+    /**
+     * @description Where a piece of work stands.
+     * @enum {string}
+     */
+    WorkState: "working" | "needs_you" | "done" | "failed" | "stopped";
+    /** @description One step of the work: a tool call, labelled by its narration. */
+    WorkStep: {
+      /**
+       * Format: int64
+       * @description How long the step took, once finished.
+       * @example 4200
+       */
+      duration_ms?: number | null;
+      /**
+       * @description The tool call id.
+       * @example call_01
+       */
+      id: string;
+      /**
+       * @description What the step is doing ("Running tests") or what came out of it
+       *     ("Read AGENTS.md").
+       * @example Ran `cargo test`, 12 tests passed
+       */
+      label: string;
+      progress?: components["schemas"]["WorkProgress"] | null;
+      /**
+       * Format: date-time
+       * @description When the step started.
+       * @example 2026-10-23T12:00:00Z
+       */
+      started_at?: string | null;
+      /** @description Where the step stands. */
+      state: components["schemas"]["WorkStepState"];
+      /**
+       * @description Tool name.
+       * @example bash
+       */
+      tool_name: string;
+    };
+    /**
+     * @description Where one step stands.
+     * @enum {string}
+     */
+    WorkStepState: "running" | "done" | "issue";
+    /**
+     * @description Where [`WorkResult::summary`] came from.
+     * @enum {string}
+     */
+    WorkSummarySource: "agent" | "reply";
     /** @description Worker response */
     WorkerResponse: {
       /**
@@ -32261,6 +32858,28 @@ export interface operations {
       };
     };
   };
+  get_agent_chat_features: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Effective hosted interface features */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatFeatures"];
+        };
+      };
+    };
+  };
   copy_agent: {
     parameters: {
       query?: never;
@@ -33474,6 +34093,156 @@ export interface operations {
       };
     };
   };
+  get_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"] | null;
+        };
+      };
+    };
+  };
+  connect_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConnectSourceRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"];
+        };
+      };
+    };
+  };
+  disconnect_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  get_agent_source_options: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SourceOptionsRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  preview_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SourceLocation"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  sync_agent_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentSourceStatus"];
+        };
+      };
+    };
+  };
   get_agent_stats: {
     parameters: {
       query?: never;
@@ -34505,7 +35274,7 @@ export interface operations {
         offset?: number;
         /** @description Page size (default: 20, max: 100) */
         limit?: number;
-        /** @description Include retired capabilities (default: false) */
+        /** @description Include retired capabilities and capabilities hidden by a rollout flag (default: false) */
         include_retired?: boolean;
       };
       header?: never;
@@ -35000,6 +35769,78 @@ export interface operations {
       };
     };
   };
+  get_work_chat_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_channel: {
     parameters: {
       query?: never;
@@ -35428,6 +36269,127 @@ export interface operations {
       };
     };
   };
+  get_work_chat_files: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   agent_api_send_message: {
     parameters: {
       query?: never;
@@ -35696,6 +36658,43 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_work_chat_tasks: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -36134,6 +37133,106 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list: {
+    parameters: {
+      query: {
+        /** @description session, agent, virtual_user, organization */
+        scope: string;
+        /** @description Owner ID, or me for the current virtual user */
+        owner_id?: string;
+        /** @description user or service */
+        usage: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Write-only credential metadata */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagedCredential"][];
+        };
+      };
+    };
+  };
+  create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateScopedCredential"];
+      };
+    };
+    responses: {
+      /** @description Binding declared; value is provisioned separately */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedResource"];
+        };
+      };
+    };
+  };
+  set_value: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Binding ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetCredentialValue"];
+      };
+    };
+    responses: {
+      /** @description Credential securely stored; no value is returned */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  revoke: {
+    parameters: {
+      query: {
+        /** @description Last observed resource revision */
+        revision: number;
+      };
+      header?: never;
+      path: {
+        /** @description Binding ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Credential revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -37592,6 +38691,78 @@ export interface operations {
       };
     };
   };
+  get_work_chat_config_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  resolve_work_chat_main_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   message_endpoint: {
     parameters: {
       query?: never;
@@ -37865,6 +39036,127 @@ export interface operations {
       };
     };
   };
+  get_work_chat_files_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  write_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FileWrite"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_work_chat_file_legacy: {
+    parameters: {
+      query?: {
+        path?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   agent_api_send_message_legacy: {
     parameters: {
       query?: never;
@@ -38133,6 +39425,43 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_work_chat_tasks_legacy: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        channel_id: string;
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Consumer sign-in required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Channel or resource unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -40181,13 +41510,16 @@ export interface operations {
       };
     };
   };
-  list_kbs: {
+  list_knowledge: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to knowledge-base name and description. */
-        search?: string | null;
-        /** @description When `true`, also returns archived knowledge bases. */
-        include_archived?: boolean | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
       path?: never;
@@ -40195,18 +41527,18 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List knowledge bases */
+      /** @description Knowledge collections */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeBaseResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  create_kb: {
+  create_knowledge: {
     parameters: {
       query?: never;
       header?: never;
@@ -40215,682 +41547,411 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CreateKnowledgeBaseRequest"];
+        "application/json": components["schemas"]["CollectionInput"];
       };
     };
     responses: {
-      /** @description Knowledge base created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge base name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_kb: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Knowledge base found */
+      /** @description Created collection */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_kb: {
+  list_knowledge_indexers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization search accounts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  create_knowledge_indexer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["IndexerInput"];
+      };
+    };
+    responses: {
+      /** @description Configured search account */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  search_knowledge_collections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["KnowledgeQuery"];
+      };
+    };
+    responses: {
+      /** @description Versioned search results */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  get_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Knowledge base archived */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Knowledge base not found */
-      404: {
+      /** @description Collection and processing status */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  update_kb: {
+  archive_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Archived collection */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  update_knowledge: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeBaseRequest"];
+        "application/json": components["schemas"]["CollectionInput"];
       };
     };
     responses: {
-      /** @description Knowledge base updated */
+      /** @description Updated collection */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeBaseResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge base name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  list_entries: {
+  list_knowledge_files: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to entry title and body. */
-        search?: string | null;
-        /**
-         * @description Discriminator selecting the variant of this resource. One of `note`,
-         *     `table`, `business`, `query`, `runbook`.
-         */
-        kind?: string | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List entries */
+      /** @description File catalog page */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  create_entry: {
+  write_knowledge_file: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CreateKnowledgeEntryRequest"];
+        "application/json": components["schemas"]["FileInput"];
       };
     };
     responses: {
-      /** @description Entry created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_entry: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Entry found */
+      /** @description Stored immutable file version */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Entry not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_entry: {
+  delete_knowledge_file: {
     parameters: {
-      query?: never;
+      query: {
+        /** @description File path */
+        path: string;
+      };
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Entry deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Entry not found */
-      404: {
+      /** @description Deleted file */
+      200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  update_entry: {
+  update_knowledge_file_metadata: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-        /** @description Entry ID */
-        entry_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeEntryRequest"];
+        "application/json": components["schemas"]["FileMetadataInput"];
       };
     };
     responses: {
-      /** @description Entry updated */
+      /** @description Updated file metadata and policy */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeEntryResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Entry not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  export_okf: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OKF bundle (.tar.gz) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/gzip": unknown;
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  import_okf: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge base ID */
-        kb_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ImportOkfBundleRequest"];
-      };
-    };
-    responses: {
-      /** @description Import summary */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["OkfImportSummary"];
-        };
-      };
-      /** @description Invalid bundle or input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge base not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_indexes: {
+  get_knowledge_file_content: {
     parameters: {
       query?: {
-        /** @description Substring filter applied to index name and description. */
-        search?: string | null;
-        /** @description When `true`, also returns archived knowledge indexes. */
-        include_archived?: boolean | null;
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
       header?: never;
-      path?: never;
+      path: {
+        /** @description Knowledge collection */
+        collection_id: string;
+      };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List knowledge indexes */
+      /** @description Bounded original or extracted bytes */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeIndexResponse"];
+          "text/plain": string;
         };
       };
     };
   };
-  create_index: {
+  validate_knowledge_okf: {
     parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateKnowledgeIndexRequest"];
+      query?: {
+        after?: string | null;
+        path?: string | null;
+        limit?: number | null;
+        extracted?: boolean | null;
+        version?: string | null;
+        offset?: number | null;
+        length?: number | null;
       };
-    };
-    responses: {
-      /** @description Knowledge index created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge index name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_index: {
-    parameters: {
-      query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Knowledge index found */
+      /** @description OKF metadata validation page */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  delete_index: {
+  add_knowledge_source: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Knowledge index archived */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_index: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["UpdateKnowledgeIndexRequest"];
+        "application/json": components["schemas"]["SourceInput"];
       };
     };
     responses: {
-      /** @description Knowledge index updated */
+      /** @description Connected source */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Invalid input */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Duplicate knowledge index name */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  list_documents: {
+  sync_knowledge: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List documents */
+      /** @description Refresh queued */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_KnowledgeIndexDocumentResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
   };
-  sync_index: {
+  upload_knowledge_file: {
     parameters: {
-      query?: never;
+      query: {
+        path: string;
+        mime_type?: string | null;
+      };
       header?: never;
       path: {
-        /** @description Knowledge index ID */
-        index_id: string;
+        /** @description Knowledge collection */
+        collection_id: string;
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/octet-stream": string;
+      };
+    };
     responses: {
-      /** @description Sync enqueued */
+      /** @description Stored streamed original */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["KnowledgeIndexResponse"];
-        };
-      };
-      /** @description Knowledge index is archived */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Knowledge index not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
+          "application/json": unknown;
         };
       };
     };
@@ -45474,6 +46535,79 @@ export interface operations {
       };
     };
   };
+  grants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Explicit access grants */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagedResourceGrant"][];
+        };
+      };
+    };
+  };
+  grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GrantCredential"];
+      };
+    };
+    responses: {
+      /** @description Access granted */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CreatedResource"];
+        };
+      };
+    };
+  };
+  revoke_grant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource ID */
+        id: string;
+        /** @description Grant ID */
+        grant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Grant revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_sandbox_targets: {
     parameters: {
       query?: never;
@@ -48718,6 +49852,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["VoiceEndResponse"];
         };
+      };
+    };
+  };
+  get_session_work: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionWorkResult"];
+        };
+      };
+      /** @description Session or turn not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

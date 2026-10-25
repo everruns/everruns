@@ -41,6 +41,7 @@ pub mod channel_context;
 pub mod claude_tool_search;
 pub mod compaction;
 pub mod current_time;
+pub mod dreaming;
 pub mod dry_run;
 pub mod error_disclosure;
 mod framework_config;
@@ -60,6 +61,7 @@ pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
+pub mod report_done;
 pub mod self_budget;
 pub mod skills;
 pub mod skills_scoped;
@@ -184,6 +186,7 @@ pub use prompt_canary_guardrail::{
     PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
+pub use report_done::ReportDoneTool;
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, Skills, SkillsCapability};
 pub use skills_scoped::{
@@ -200,9 +203,8 @@ pub use stateless_todo_list::{
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, DEFAULT_APPROVAL_TIMEOUT_SECONDS, DurableToolApprover,
-    ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_CAPABILITY_ID,
-    TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability, ToolApprovalPolicy, ToolApprover,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    TOOL_APPROVAL_CAPABILITY_ID, TOOL_APPROVAL_KV_PREFIX, ToolApprovalCapability,
+    ToolApprovalPolicy, ToolApprover, approval_fingerprint,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
@@ -322,6 +324,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(MessageMetadataCapability),
         Arc::new(StatelessTodoListCapability),
         Arc::new(BtwCapability),
+        Arc::new(dreaming::DreamingCapability),
         Arc::new(BudgetingCapability),
         Arc::new(SelfBudgetCapability),
         Arc::new(CompactionCapability),
@@ -351,7 +354,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 32] = [
+    const RUNTIME_IDS: [&str; 33] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -362,6 +365,7 @@ mod bundle_tests {
         "message_metadata",
         "stateless_todo_list",
         "btw",
+        "dreaming",
         "budgeting",
         "self_budget",
         "compaction",

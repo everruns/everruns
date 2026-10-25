@@ -91,6 +91,79 @@ async fn test_list_capabilities() {
 }
 
 #[tokio::test]
+async fn test_gated_capability_metadata_stays_readable() {
+    let server = TestServer::in_memory().await;
+    server
+        .db
+        .replace_org_feature_flags(
+            everruns_core::DEFAULT_ORG_ID,
+            &std::collections::HashMap::from([
+                ("skills".to_string(), false),
+                ("memory".to_string(), false),
+                ("knowledge".to_string(), false),
+            ]),
+        )
+        .await
+        .expect("disable rollout flags");
+
+    let hidden: Value = server
+        .get("/v1/capabilities")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    for id in ["skills", "memory", "knowledge"] {
+        assert!(
+            capability_by_id(&hidden, id).is_none(),
+            "{id} should stay out of discovery while its flag is off"
+        );
+    }
+
+    let named: Value = server
+        .get("/v1/capabilities?include_retired=true")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let skills = capability_by_id(&named, "skills").expect("skills metadata");
+    assert_eq!(skills["name"], "Agent Skills");
+    assert!(
+        skills["description"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Discover and activate skills")
+    );
+    assert_eq!(skills["icon"], "wand");
+    assert_eq!(skills["feature_flag"], "skills");
+
+    for (id, flag) in [("memory", "memory"), ("knowledge", "knowledge")] {
+        let capability = capability_by_id(&named, id).unwrap_or_else(|| panic!("{id} metadata"));
+        assert!(
+            !capability["name"].as_str().unwrap_or("").is_empty(),
+            "{id} name"
+        );
+        assert!(
+            !capability["description"].as_str().unwrap_or("").is_empty(),
+            "{id} description"
+        );
+        assert_eq!(capability["feature_flag"], flag, "{id}");
+    }
+
+    let detail: Value = server
+        .get("/v1/capabilities/skills")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(detail["name"], "Agent Skills");
+    assert_eq!(detail["feature_flag"], "skills");
+}
+
+fn capability_by_id<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
+    body["data"]
+        .as_array()?
+        .iter()
+        .find(|capability| capability["id"].as_str() == Some(id))
+}
+
+#[tokio::test]
 async fn test_capability_info_includes_features() {
     let server = TestServer::new().await;
 

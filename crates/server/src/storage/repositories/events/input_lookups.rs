@@ -4,6 +4,7 @@
 use super::rows::EventRow;
 use crate::storage::repositories::Database;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_server_macros::sql;
 
@@ -123,5 +124,49 @@ impl Database {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?)
+    }
+
+    /// Where the turn answering the input at `message_sequence` stands: the
+    /// first terminal turn event after it, and the newest event time up to that
+    /// end (or up to now while the turn is open).
+    ///
+    /// A session runs one turn at a time and a message sent mid-turn steers the
+    /// running turn (`latest_input_message_event_since`), so the first terminal
+    /// event after the input is the end of the turn that answered it. This is
+    /// the same rule the waited message API and fork cuts use.
+    pub async fn input_turn_progress(
+        &self,
+        session_id: SessionId,
+        message_sequence: i32,
+    ) -> Result<(Option<EventRow>, Option<DateTime<Utc>>)> {
+        let terminal = sqlx::query_as::<_, EventRow>(sql!(
+            r#"
+            SELECT {EventRow}
+            FROM events
+            WHERE session_id = $1
+              AND sequence > $2
+              AND event_type IN ('turn.completed', 'turn.failed', 'turn.cancelled', 'turn.sealed')
+            ORDER BY sequence
+            LIMIT 1
+            "#
+        ))
+        .bind(session_id.uuid())
+        .bind(message_sequence)
+        .fetch_optional(&self.pool)
+        .await?;
+        let last_updated: Option<DateTime<Utc>> = sqlx::query_scalar(
+            r#"
+            SELECT MAX(ts) FROM events
+            WHERE session_id = $1
+              AND sequence >= $2
+              AND ($3::int IS NULL OR sequence <= $3)
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(message_sequence)
+        .bind(terminal.as_ref().map(|event| event.sequence))
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((terminal, last_updated))
     }
 }

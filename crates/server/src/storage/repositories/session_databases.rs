@@ -171,7 +171,7 @@ impl Database {
         page_count: i32,
         size_bytes: i64,
     ) -> Result<Option<i64>> {
-        let mut tx = self.pool().begin().await?;
+        let mut tx = everruns_durable::begin_transaction(self.pool()).await?;
         // The UPDATE takes the row lock first, so a concurrent committer waits
         // here and then sees the bumped generation and matches nothing.
         let generation: Option<i64> = sqlx::query_scalar(
@@ -217,7 +217,7 @@ impl Database {
         .execute(&mut *tx)
         .await?;
 
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(Some(generation))
     }
 

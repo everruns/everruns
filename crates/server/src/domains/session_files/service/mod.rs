@@ -7,7 +7,6 @@
 
 use crate::domains::session_files::grep::{
     MAX_GREP_FILE_BYTES, build_grep_regex, grep_session_files_excluding,
-    grep_session_files_with_options,
 };
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
 use crate::domains::session_files::memory_mounts::{MemoryMount, MemoryMountRouter};
@@ -25,7 +24,11 @@ use everruns_core::host::{SessionFileSystemFactory, SessionFileSystemFactoryCont
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod filesystem;
+pub(super) mod knowledge_mounts;
+use knowledge_mounts::KnowledgeRoute;
 mod mounts;
+mod search;
 
 /// Input for creating a file
 pub struct CreateFileInput {
@@ -112,6 +115,7 @@ pub struct WorkspaceFileService {
     memory_mounts: Arc<MemoryMountRouter>,
     restored_virtual_mounts: parking_lot::RwLock<std::collections::HashSet<Uuid>>,
     quota: QuotaLimits,
+    pub(super) session_knowledge: bool,
 }
 
 impl WorkspaceFileService {
@@ -382,6 +386,9 @@ impl WorkspaceFileService {
     pub async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if let KnowledgeRoute::Resolved(file) = self.knowledge_read(session_id, &path).await? {
+            return Ok(file);
+        }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             let Some(info) = self.memory_mounts.stat(&mount, &inner).await? else {
@@ -449,6 +456,9 @@ impl WorkspaceFileService {
     pub async fn stat(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if let KnowledgeRoute::Resolved(stat) = self.knowledge_stat(session_id, &path).await? {
+            return Ok(stat);
+        }
 
         // Handle root directory specially
         if path == "/" {
@@ -527,6 +537,9 @@ impl WorkspaceFileService {
     pub async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        if let KnowledgeRoute::Resolved(entries) = self.knowledge_list(session_id, &path).await? {
+            return Ok(entries);
+        }
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             let entries = self.memory_mounts.list_directory(&mount, &inner).await?;
@@ -601,6 +614,20 @@ impl WorkspaceFileService {
             }
         }
 
+        if path == "/"
+            && self.session_knowledge
+            && !crate::domains::knowledge::KnowledgeService::files(self.db.clone())
+                .mounted(session_id)
+                .await?
+                .1
+                .is_empty()
+        {
+            for mount in ["/knowledge", "/knowledge-text"] {
+                entries.retain(|e| e.path != mount);
+                entries.push(Self::synthetic_directory(session_id, mount));
+            }
+        }
+        entries.retain(|entry| !knowledge_mounts::collection_path(&entry.path));
         // Sort to match DB ordering: directories first, then by path
         entries.sort_by(|a, b| {
             b.is_directory
@@ -633,6 +660,7 @@ impl WorkspaceFileService {
             }
         }
 
+        entries.retain(|entry| !knowledge_mounts::collection_path(&entry.path));
         Ok(entries)
     }
 
@@ -645,6 +673,7 @@ impl WorkspaceFileService {
     ) -> Result<Option<SessionFile>> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         // Virtual files cannot be modified
         if let Some(registry) = &self.virtual_registry
@@ -777,6 +806,7 @@ impl WorkspaceFileService {
     pub async fn delete(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         self.restore_virtual_mounts(session_id).await?;
         let path = Self::normalize_path(path);
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         if let Some((mount, inner)) = self.route_memory(session_id, &path).await {
             // Deleting a mount root would empty the shared Memory for every
@@ -952,125 +982,6 @@ impl WorkspaceFileService {
         Ok(row.map(Self::row_to_session_file))
     }
 
-    /// Search files using grep-like pattern matching (delegates to shared helper).
-    pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        self.restore_virtual_mounts(session_id).await?;
-        let mut results = grep_session_files_excluding(
-            &self.db,
-            session_id,
-            &req.pattern,
-            req.path_pattern.as_deref(),
-            req.excluded_path_prefix.as_deref(),
-        )
-        .await?;
-
-        // Also search virtual mounts (same per-file and NFA caps, TM-DOS-008)
-        if let Some(registry) = &self.virtual_registry {
-            let regex = build_grep_regex(&req.pattern)?;
-            let path_matcher = req
-                .path_pattern
-                .as_deref()
-                .map(everruns_core::session_path::GrepPathPattern::new)
-                .transpose()?;
-            // Apply the shared path matcher after reading virtual entries.
-            let virtual_matches = registry.grep(
-                &session_id,
-                &regex,
-                None,
-                req.excluded_path_prefix.as_deref(),
-                MAX_GREP_FILE_BYTES as usize,
-            );
-            for vm in virtual_matches.into_iter().filter(|vm| {
-                path_matcher
-                    .as_ref()
-                    .is_none_or(|matcher| matcher.is_match(&vm.path))
-            }) {
-                // Group by file path into GrepResult entries
-                if let Some(existing) = results.iter_mut().find(|r| r.path == vm.path) {
-                    existing.matches.push(GrepMatch {
-                        path: vm.path,
-                        line_number: vm.line_number,
-                        line: vm.line,
-                    });
-                } else {
-                    results.push(GrepResult {
-                        path: vm.path.clone(),
-                        matches: vec![GrepMatch {
-                            path: vm.path,
-                            line_number: vm.line_number,
-                            line: vm.line,
-                        }],
-                    });
-                }
-            }
-        }
-
-        // Mounted Memory content is part of the namespace the agent greps, and
-        // `/memory/user` privacy is enforced by the caller's path-prefix
-        // exclusion, which is applied to these paths too.
-        {
-            let router = &self.memory_mounts;
-            let regex = build_grep_regex(&req.pattern)?;
-            let path_matcher = req
-                .path_pattern
-                .as_deref()
-                .map(everruns_core::session_path::GrepPathPattern::new)
-                .transpose()?;
-            for mount in router.all_mounts(session_id).await.iter() {
-                if req
-                    .excluded_path_prefix
-                    .as_deref()
-                    .is_some_and(|prefix| mount.mount_path.starts_with(prefix))
-                {
-                    continue;
-                }
-                for row in router.list_all(mount).await? {
-                    if row.is_directory || row.size_bytes > MAX_GREP_FILE_BYTES {
-                        continue;
-                    }
-                    let display = Self::memory_session_path(mount, &row.path);
-                    if path_matcher
-                        .as_ref()
-                        .is_some_and(|matcher| !matcher.is_match(&display))
-                    {
-                        continue;
-                    }
-                    if req
-                        .excluded_path_prefix
-                        .as_deref()
-                        .is_some_and(|prefix| display.starts_with(prefix))
-                    {
-                        continue;
-                    }
-                    let Some(bytes) = router.read_file(mount, &row.path).await? else {
-                        continue;
-                    };
-                    let Ok(text) = String::from_utf8(bytes) else {
-                        continue;
-                    };
-                    let matches: Vec<GrepMatch> = text
-                        .lines()
-                        .enumerate()
-                        .filter(|(_, line)| regex.is_match(line))
-                        .map(|(index, line)| GrepMatch {
-                            path: display.clone(),
-                            line_number: index + 1,
-                            line: line.to_string(),
-                        })
-                        .collect();
-                    if !matches.is_empty() {
-                        results.push(GrepResult {
-                            path: display,
-                            matches,
-                        });
-                    }
-                }
-            }
-        }
-
-        Ok(results)
-    }
-
     /// True when either end of a move or copy sits inside a Memory mount.
     async fn crosses_memory_mount(&self, session_id: Uuid, src: &str, dst: &str) -> bool {
         self.route_memory(session_id, src).await.is_some()
@@ -1138,6 +1049,10 @@ impl WorkspaceFileService {
 
     /// Reject writes under virtual mounts.
     fn ensure_path_not_virtual(&self, session_id: Uuid, path: &str) -> Result<()> {
+        anyhow::ensure!(
+            !crate::domains::knowledge::runtime::is_mount(path),
+            "Cannot modify readonly Knowledge mounts"
+        );
         if let Some(registry) = &self.virtual_registry
             && registry.is_virtual_path(&session_id, path)
         {
@@ -1309,79 +1224,6 @@ impl WorkspaceFileService {
                 .await
         })
     }
-
-    /// Create a file from a mount source.
-    async fn create_mounted_file(
-        &self,
-        session_id: Uuid,
-        path: &str,
-        content: &str,
-        encoding: &str,
-        is_readonly: bool,
-    ) -> Result<()> {
-        // Check if file already exists
-        if self.db.session_file_exists(session_id, path).await? {
-            return Err(anyhow!("Mount conflict: file already exists at {}", path));
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = FileInfo::parent_path(path) {
-            self.ensure_directory_exists(session_id, &parent).await?;
-        }
-
-        // Decode content
-        let content_bytes = SessionFile::decode_content(content, encoding)?;
-
-        let input = CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session_id),
-            path: path.to_string(),
-            content: Some(content_bytes),
-            is_directory: false,
-            is_readonly,
-        };
-
-        self.db.create_session_file(input).await?;
-        Ok(())
-    }
-
-    /// Create a directory for a mount (if it doesn't exist).
-    ///
-    /// When is_readonly is true, the directory is marked readonly, preventing
-    /// creation of new files within it (only mount-time creation is allowed).
-    async fn create_mounted_directory(
-        &self,
-        session_id: Uuid,
-        path: &str,
-        is_readonly: bool,
-    ) -> Result<()> {
-        // Check if path exists
-        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
-            if existing.is_directory {
-                return Ok(()); // Directory already exists, that's fine
-            } else {
-                return Err(anyhow!(
-                    "Mount conflict: file exists at directory path {}",
-                    path
-                ));
-            }
-        }
-
-        // Ensure parent directory exists
-        if let Some(parent) = FileInfo::parent_path(path) {
-            self.ensure_directory_exists(session_id, &parent).await?;
-        }
-
-        let input = CreateSessionFileRow {
-            session_id: SessionId::from_uuid(session_id),
-            path: path.to_string(),
-            content: None,
-            is_directory: true,
-            is_readonly,
-        };
-
-        self.db.create_session_file(input).await?;
-        Ok(())
-    }
 }
 
 fn file_system_error(error: anyhow::Error) -> AgentLoopError {
@@ -1398,250 +1240,6 @@ fn is_already_exists_error(error: &anyhow::Error) -> bool {
 
 fn file_system_display_error(error: impl std::fmt::Display) -> AgentLoopError {
     AgentLoopError::store(error.to_string())
-}
-
-#[async_trait]
-impl SessionFileSystem for WorkspaceFileService {
-    fn is_mount_resolver(&self) -> bool {
-        false
-    }
-
-    async fn seed_initial_file(
-        &self,
-        session_id: SessionId,
-        file: &everruns_core::InitialFile,
-    ) -> everruns_contracts::error::Result<()> {
-        let session_id_uuid = session_id.uuid();
-        let path = Self::normalize_path(&file.path);
-        Self::validate_path(&path).map_err(file_system_error)?;
-        self.ensure_path_not_virtual(session_id_uuid, &path)
-            .map_err(file_system_error)?;
-        self.ensure_parent_path_writable(session_id_uuid, &path)
-            .await
-            .map_err(file_system_error)?;
-
-        if let Some(parent) = FileInfo::parent_path(&path) {
-            self.ensure_directory_exists(session_id_uuid, &parent)
-                .await
-                .map_err(file_system_error)?;
-        }
-
-        let content = SessionFile::decode_content(&file.content, &file.encoding)
-            .map_err(file_system_display_error)?;
-
-        if self
-            .db
-            .session_file_exists(session_id_uuid, &path)
-            .await
-            .map_err(file_system_error)?
-        {
-            self.db
-                .update_session_file(
-                    session_id_uuid,
-                    &path,
-                    UpdateSessionFile {
-                        content: Some(content),
-                        is_readonly: Some(file.is_readonly),
-                    },
-                )
-                .await
-                .map_err(file_system_error)?
-                .ok_or_else(|| AgentLoopError::store("File not found after update"))?;
-        } else {
-            self.db
-                .create_session_file(CreateSessionFileRow {
-                    session_id,
-                    path,
-                    content: Some(content),
-                    is_directory: false,
-                    is_readonly: file.is_readonly,
-                })
-                .await
-                .map_err(file_system_error)?;
-        }
-
-        Ok(())
-    }
-
-    async fn read_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> everruns_contracts::error::Result<Option<SessionFile>> {
-        WorkspaceFileService::read_file(self, session_id.uuid(), path)
-            .await
-            .map_err(file_system_error)
-    }
-
-    async fn write_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        content: &str,
-        encoding: &str,
-    ) -> everruns_contracts::error::Result<SessionFile> {
-        let session_id_uuid = session_id.uuid();
-        if WorkspaceFileService::read_file(self, session_id_uuid, path)
-            .await
-            .map_err(file_system_error)?
-            .is_some()
-        {
-            return self
-                .update_file(
-                    session_id_uuid,
-                    path,
-                    UpdateFileInput {
-                        content: Some(content.to_string()),
-                        encoding: Some(encoding.to_string()),
-                        is_readonly: None,
-                    },
-                )
-                .await
-                .map_err(file_system_error)?
-                .ok_or_else(|| AgentLoopError::store("File not found after update"));
-        }
-
-        match self
-            .create_file(
-                session_id_uuid,
-                CreateFileInput {
-                    path: path.to_string(),
-                    content: Some(content.to_string()),
-                    encoding: Some(encoding.to_string()),
-                    is_readonly: Some(false),
-                },
-            )
-            .await
-        {
-            Ok(file) => Ok(file),
-            Err(error) if is_already_exists_error(&error) => self
-                .update_file(
-                    session_id_uuid,
-                    path,
-                    UpdateFileInput {
-                        content: Some(content.to_string()),
-                        encoding: Some(encoding.to_string()),
-                        is_readonly: None,
-                    },
-                )
-                .await
-                .map_err(file_system_error)?
-                .ok_or_else(|| AgentLoopError::store("File not found after race recovery")),
-            Err(error) => Err(file_system_error(error)),
-        }
-    }
-
-    async fn write_file_if_content_matches(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        expected_content: &str,
-        expected_encoding: &str,
-        content: &str,
-        encoding: &str,
-    ) -> everruns_contracts::error::Result<Option<SessionFile>> {
-        self.update_file_if_content_matches(
-            session_id.uuid(),
-            path,
-            expected_content,
-            expected_encoding,
-            content,
-            encoding,
-        )
-        .await
-        .map_err(file_system_error)
-    }
-
-    async fn delete_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        recursive: bool,
-    ) -> everruns_contracts::error::Result<bool> {
-        self.delete(session_id.uuid(), path, recursive)
-            .await
-            .map_err(file_system_error)
-    }
-
-    async fn list_directory(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
-        WorkspaceFileService::list_directory(self, session_id.uuid(), path)
-            .await
-            .map_err(file_system_error)
-    }
-
-    async fn stat_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> everruns_contracts::error::Result<Option<FileStat>> {
-        self.stat(session_id.uuid(), path)
-            .await
-            .map_err(file_system_error)
-    }
-
-    async fn grep_files(
-        &self,
-        session_id: SessionId,
-        pattern: &str,
-        path_pattern: Option<&str>,
-    ) -> everruns_contracts::error::Result<Vec<GrepMatch>> {
-        let results = self
-            .grep(
-                session_id.uuid(),
-                GrepInput {
-                    pattern: pattern.to_string(),
-                    path_pattern: path_pattern.map(ToString::to_string),
-                    excluded_path_prefix: None,
-                },
-            )
-            .await
-            .map_err(file_system_error)?;
-        Ok(results
-            .into_iter()
-            .flat_map(|result| result.matches)
-            .collect())
-    }
-
-    async fn grep_files_with_options(
-        &self,
-        session_id: SessionId,
-        pattern: &str,
-        options: &GrepOptions,
-    ) -> everruns_contracts::error::Result<GrepSearchResult> {
-        self.restore_virtual_mounts(session_id.uuid())
-            .await
-            .map_err(file_system_error)?;
-        grep_session_files_with_options(
-            &self.db,
-            self.virtual_registry.as_deref(),
-            session_id.uuid(),
-            pattern,
-            options,
-            None,
-        )
-        .await
-        .map_err(file_system_error)
-    }
-
-    async fn create_directory(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> everruns_contracts::error::Result<FileInfo> {
-        WorkspaceFileService::create_directory(
-            self,
-            session_id.uuid(),
-            CreateDirectoryInput {
-                path: path.to_string(),
-            },
-        )
-        .await
-        .map_err(file_system_error)
-    }
 }
 
 /// Result of applying capability mounts to a session.

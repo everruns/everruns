@@ -1,5 +1,9 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
+import { AgentSourcePanel } from "@/components/agents/agent-source";
+import { useAgentSource } from "@/hooks/use-agent-source";
 import { exportAgentPackage } from "@/lib/api/agents";
 
 // Agent page: one layout for reading and editing an agent.
@@ -17,17 +21,9 @@ import { exportAgentPackage } from "@/lib/api/agents";
 // (knowledge/ui/entity-actions-menu.md); History replaces Version history, and
 // old `?tab=versions` links open the History sheet.
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Check,
-  Copy,
-  Download,
-  FlaskConical,
-  MessageCircle,
-  Pencil,
-  Telescope,
-} from "lucide-react";
+import { Check, Copy, Download, MessageCircle, Pencil, RefreshCw, Telescope } from "lucide-react";
 import {
   useAgent,
   useAgentCredentials,
@@ -82,6 +78,7 @@ import {
 } from "@/components/layout";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
+import { agentFilesSectionVisible } from "@/components/agents/agent-files-visibility";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
@@ -115,6 +112,18 @@ import { formatTokens, pluralize } from "@/lib/formatting";
 import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
+import { AgentChatBoundary } from "@/components/chat-mode/agent-chat-boundary";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { chatPageRoute } from "@/lib/chat-page-context";
+import { useAgentChatDraft } from "@/components/chat-mode/use-agent-chat-draft";
+import {
+  ChatChangeMark,
+  ChatChangesContext,
+  ChatChangesToast,
+  ChatDraftChangesContext,
+  ChatDraftChangesToast,
+  useChatChanges,
+} from "@/components/chat-mode/chat-change-mark";
 
 const count = (n: number, singular: string, plural?: string) =>
   `${n} ${pluralize(n, singular, plural)}`;
@@ -130,11 +139,21 @@ function healthSummary(latest: LatestHealthCheckRun | undefined): string {
 
 export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
+  return (
+    <AgentChatBoundary agentId={agentId}>
+      <AgentDetailContent params={params} />
+    </AgentChatBoundary>
+  );
+}
+
+function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }) {
+  const { agentId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const deepLink = resolveAgentTab(tabParam);
   const [activeTab, setActiveTab] = useState<AgentTab>(deepLink.tab);
+  useChatPageFilters({ tab: activeTab });
   const [openSection, setOpenSection] = useState<AgentSettingsSection | null>(deepLink.section);
   // Follow the address bar when it changes without a click (refresh already
   // lands here; back/forward and a replaced query must too).
@@ -144,6 +163,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     setActiveTab(deepLink.tab);
   }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
   // Optional "Reason for this change", sent with Save and with Archive/Delete.
   const [saveReason, setSaveReason] = useState("");
@@ -161,7 +181,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
-  const { data: harnesses = [] } = useHarnesses();
+  const sourceQuery = useAgentSource(agentId);
+  const sourceManaged = !!sourceQuery.data;
+  const { data: harnesses } = useHarnesses();
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
@@ -186,6 +208,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const copyAgent = useCopyAgent();
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
+  const chatMode = usePageChatMode();
+  const chatChanges = useChatChanges();
 
   const draft = useAgentDraft(agent);
   // Built-in agents (Platform Chat) are managed by the platform: the API
@@ -193,8 +217,48 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   // them. Bindings (service account, triggers, credentials) stay editable.
   const builtIn = !!agent?.is_built_in;
   const statusReadOnly = isReadOnlyStatus(agent?.status);
-  const readOnly = builtIn || statusReadOnly;
+  const readOnly =
+    builtIn || statusReadOnly || sourceManaged || sourceQuery.isLoading || sourceQuery.isError;
   const editing = editRequested && !!agent && !readOnly;
+  const [draftConflict, setDraftConflict] = useState(false);
+  const previousAgentUpdate = useRef(agent?.updated_at);
+  const chatDraft = useAgentChatDraft({
+    agentId,
+    updatedAt: agent?.updated_at,
+    draft,
+    writable: !!agent && !readOnly && can("agent.manage"),
+    blocked: draftConflict || updateAgent.isPending,
+    beginEdit: () => setEditRequested(true),
+  });
+  useEffect(() => {
+    if (
+      chatMode &&
+      editing &&
+      draft.isDirty &&
+      previousAgentUpdate.current &&
+      previousAgentUpdate.current !== agent?.updated_at
+    )
+      setDraftConflict(true);
+    previousAgentUpdate.current = agent?.updated_at;
+  }, [agent?.updated_at, chatMode, draft.isDirty, editing]);
+  const registerPage = chatMode?.registerPage;
+  const pageRoute = chatPageRoute(`/agents/${agentId}`, searchParams);
+  const pageLabel = agent ? getDisplayName(agent) : "Agent";
+  const pageLoaded = !!agent;
+  useEffect(
+    () =>
+      registerPage?.(
+        {
+          route: pageRoute,
+          entity_type: "agent",
+          entity_id: agentId,
+          label: pageLabel,
+          editing,
+        },
+        pageLoaded ? chatDraft.adapter : undefined,
+      ),
+    [registerPage, agentId, pageRoute, pageLabel, editing, pageLoaded, chatDraft.adapter],
+  );
 
   const modelMap = useMemo(
     () => new Map<string, ModelWithProvider>((models ?? []).map((m) => [m.id, m])),
@@ -210,7 +274,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     return () => window.removeEventListener("beforeunload", warn);
   }, [editing, draft.isDirty]);
 
-  const startEdit = useCallback(() => setEditRequested(true), []);
+  const startEdit = () => {
+    chatChanges?.dismiss();
+    setEditRequested(true);
+  };
   const onDraftChange = useCallback(
     <T,>(apply: (value: T) => void) =>
       (value: T) => {
@@ -240,13 +307,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   };
 
   const handleDiscard = () => {
+    setDraftConflict(false);
+    chatMode?.recordAction(`Discarded unsaved edits to ${pageLabel}`);
     draft.reset();
+    chatDraft.changes.clear();
     updateAgent.reset();
     setSaveReason("");
     exitEdit();
   };
 
   const handleSave = async () => {
+    if (draftConflict) return;
     const result = draft.buildRequest();
     if (!result.ok) {
       selectTab("agent");
@@ -255,7 +326,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     }
     try {
       await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
+      chatMode?.recordAction(`Saved page draft changes to ${pageLabel}`);
       draft.reset();
+      chatDraft.changes.clear();
       setSaveReason("");
       exitEdit();
     } catch (error) {
@@ -265,8 +338,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const playgroundPath = `/playground/new?agent=${encodeURIComponent(agentId)}`;
   const handleTestAgent = () => router.push(playgroundPath);
-  // Test run: a Playground chat in dry run, so actions are simulated (proactive agents D5).
-  const handleTestRun = () => router.push(`${playgroundPath}&dry_run=1`);
 
   const openPlaygroundTool = useMemo<WebMcpToolDefinition>(
     () => ({
@@ -376,12 +447,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   }
 
   const isActive = agent.status === "active";
-  const canEdit = isActive && !builtIn;
+  const canEdit = isActive && !readOnly;
   const sessionCount = agent.session_count;
   const displayName = getDisplayName(agent);
   const fixedSandbox = harnessInheritsFromName(
     draft.fields.harness_id || agent.harness_id,
-    harnesses,
+    harnesses ?? [],
     "bashkit-worker",
   )
     ? "Bashkit Virtual Workspace"
@@ -392,6 +463,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     draft.fields.description.trim() ? "Description" : "No description",
     ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
   ];
+  // Keep an open Files sheet available if the draft drops the last file.
+  const showFiles =
+    agentFilesSectionVisible({
+      capabilities: draft.capabilities,
+      files: draft.files,
+      harnessId: draft.fields.harness_id,
+      harnesses,
+      catalog: allCapabilities,
+    }) || openSection === "files";
   const moreRows: AgentMoreRow[] = [
     { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
     {
@@ -429,7 +509,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     },
     {
       id: "sandbox",
-      label: "Primary sandbox",
+      label: "Sandbox",
       summary:
         fixedSandbox ??
         (draft.sandboxPolicy
@@ -444,7 +524,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         : "None",
     },
     { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
-  ];
+  ].filter((row) => row.id !== "files" || showFiles);
 
   const canArchive = canEdit;
   const canDelete = !builtIn && agent.status === "archived" && can("agent.dangerous");
@@ -462,6 +542,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       entityName={displayName}
       permissions={recordPermissions}
       actions={[
+        ...(!builtIn && canManage && !statusReadOnly && !sourceManaged
+          ? [
+              {
+                id: "source",
+                label: "Sync from GitHub",
+                icon: <RefreshCw className="size-4" />,
+                onSelect: () => setSourceOpen(true),
+                disabled: sourceQuery.isLoading || !!sourceQuery.error,
+                disabledReason: sourceQuery.error
+                  ? "Could not load Agent source"
+                  : "Loading source",
+              },
+            ]
+          : []),
         {
           id: "copy",
           label: copyAgent.isPending ? "Copying..." : "Copy",
@@ -503,7 +597,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const actions = editing ? (
     <>
-      <Button onClick={handleSave} disabled={updateAgent.isPending}>
+      <Button onClick={handleSave} disabled={updateAgent.isPending || draftConflict}>
         <Check className="size-4" />
         {updateAgent.isPending ? "Saving..." : "Save changes"}
       </Button>
@@ -520,10 +614,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </Button>
       )}
       {overflowMenu}
-      <Button variant="outline" onClick={handleTestRun} disabled={!isActive}>
-        <FlaskConical className="size-4" />
-        Test run
-      </Button>
       <Button variant="accent" onClick={handleTestAgent} disabled={!isActive}>
         <MessageCircle className="size-4" />
         Test in Playground
@@ -532,251 +622,289 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   );
 
   return (
-    <div className="min-h-full bg-brand-dots">
-      <PageContainer>
-        <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: displayName }]} />
-
-        <PageMasthead
-          icon={<AgentAvatar avatar={agent.avatar} size={38} />}
-          entityId={agent.id}
-          title={<span className={getEntityNameClassName(agent.status)}>{displayName}</span>}
-          badges={
-            <>
-              <span className="font-mono text-xs text-muted-foreground">{agent.name}</span>
-              {editing ? (
-                <Badge variant="accent">
-                  <Pencil />
-                  Editing
-                </Badge>
-              ) : (
-                <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
-              )}
-              {builtIn && <Badge variant="outline">Built-in</Badge>}
-            </>
-          }
-          description={
-            editing
-              ? "Changes apply to new sessions only. Running sessions keep the current definition."
-              : builtIn
-                ? "Managed by Everruns and read-only. Copy it to make an editable version."
-                : undefined
-          }
-          meta={
-            editing ? (
-              <ManagerNotesHint entityRef={agent.id} kind="agent" enabled={canManage} />
-            ) : undefined
-          }
-          actions={actions}
-        />
-
-        {editing && (
-          <ChangeReasonField
-            value={saveReason}
-            onChange={setSaveReason}
-            disabled={updateAgent.isPending}
-            className="max-w-xl"
-          />
-        )}
-
-        {exportError && (
-          <p role="alert" className="text-destructive">
-            Could not export: {exportError}
-          </p>
-        )}
-        {updateAgent.error && (
-          <p role="alert" className="-mt-2 text-sm text-destructive">
-            Could not save: {updateAgent.error.message}
-          </p>
-        )}
-
-        {/* The tab row and the workspace are one surface: no gap between them. */}
-        <div className="flex min-w-0 flex-col">
-          <PageControlStrip>
-            <SectionTabs
-              value={activeTab}
-              onValueChange={(value) => {
-                if (isAgentTab(value)) selectTab(value);
-              }}
-              items={getAgentTabItems(sessionCount, integrationCount)}
-              className="border-x border-t bg-background px-2"
+    <ChatDraftChangesContext.Provider value={chatDraft.changes}>
+      <ChatChangesContext.Provider
+        value={
+          chatChanges
+            ? { ...chatChanges, canUndo: canEdit, pending: chatChanges.pending || editing }
+            : null
+        }
+      >
+        <div className="min-h-full bg-brand-dots">
+          <PageContainer>
+            <PageBreadcrumb
+              items={[{ label: "Agents", href: "/agents" }, { label: displayName }]}
             />
-          </PageControlStrip>
 
-          {activeTab === "agent" && (
-            <div className="grid min-w-0 border-x border-b bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
-              <AgentPromptPane
-                className="lg:border-r"
-                value={draft.fields.system_prompt}
-                editing={editing}
-                onEdit={canEdit ? startEdit : undefined}
-                onChange={(value) => draft.setField("system_prompt", value)}
-                error={draft.errors.system_prompt}
-                checks={
-                  editing ? (
-                    <AgentChecks
-                      systemPrompt={draft.fields.system_prompt}
-                      capabilities={draft.capabilities}
-                      tools={agent.tools ?? []}
-                      onApplyFix={(start, end, replacement) =>
-                        draft.setField(
-                          "system_prompt",
-                          applyByteSpanReplacement(
-                            draft.fields.system_prompt,
-                            start,
-                            end,
-                            replacement,
-                          ),
-                        )
+            <PageMasthead
+              icon={<AgentAvatar avatar={agent.avatar} size={38} />}
+              entityId={agent.id}
+              title={<span className={getEntityNameClassName(agent.status)}>{displayName}</span>}
+              badges={
+                <>
+                  <span className="font-mono text-xs text-muted-foreground">{agent.name}</span>
+                  {editing ? (
+                    <Badge variant="accent">
+                      <Pencil />
+                      Editing
+                    </Badge>
+                  ) : (
+                    <Badge variant={getEntityStatusBadgeVariant(agent.status)}>
+                      {agent.status}
+                    </Badge>
+                  )}
+                  {builtIn && <Badge variant="outline">Built-in</Badge>}
+                </>
+              }
+              description={
+                editing
+                  ? chatMode
+                    ? "Unsaved draft. Save changes to update the Agent definition. Running turns continue."
+                    : "Changes apply to new sessions only. Running sessions keep the current definition."
+                  : builtIn
+                    ? "Managed by Everruns and read-only. Copy it to make an editable version."
+                    : undefined
+              }
+              meta={
+                editing ? (
+                  <ManagerNotesHint entityRef={agent.id} kind="agent" enabled={canManage} />
+                ) : undefined
+              }
+              actions={actions}
+            />
+
+            {!editing && !builtIn && (
+              <AgentSourcePanel
+                agentId={agentId}
+                disabled={statusReadOnly}
+                open={sourceOpen}
+                onOpenChange={setSourceOpen}
+              />
+            )}
+
+            {editing && (
+              <ChangeReasonField
+                value={saveReason}
+                onChange={setSaveReason}
+                disabled={updateAgent.isPending}
+                className="max-w-xl"
+              />
+            )}
+
+            {exportError && (
+              <p role="alert" className="text-destructive">
+                Could not export: {exportError}
+              </p>
+            )}
+            {updateAgent.error && (
+              <p role="alert" className="-mt-2 text-sm text-destructive">
+                Could not save: {updateAgent.error.message}
+              </p>
+            )}
+
+            {/* The tab row and the workspace are one surface: no gap between them. */}
+            <div className="flex min-w-0 flex-col">
+              <PageControlStrip>
+                <SectionTabs
+                  value={activeTab}
+                  onValueChange={(value) => {
+                    if (isAgentTab(value)) selectTab(value);
+                  }}
+                  items={getAgentTabItems(sessionCount, integrationCount)}
+                  className="border-x border-t bg-background px-2"
+                />
+              </PageControlStrip>
+
+              {activeTab === "agent" && (
+                <div className="agent-workspace grid min-w-0 border-x border-b bg-background lg:grid-cols-[minmax(0,1fr)_340px]">
+                  <ChatChangeMark field="system_prompt">
+                    <AgentPromptPane
+                      className="lg:border-r"
+                      value={draft.fields.system_prompt}
+                      editing={editing}
+                      onEdit={canEdit ? startEdit : undefined}
+                      onChange={(value) => draft.setField("system_prompt", value)}
+                      error={draft.errors.system_prompt}
+                      checks={
+                        editing ? (
+                          <AgentChecks
+                            systemPrompt={draft.fields.system_prompt}
+                            capabilities={draft.capabilities}
+                            tools={agent.tools ?? []}
+                            onApplyFix={(start, end, replacement) =>
+                              draft.setField(
+                                "system_prompt",
+                                applyByteSpanReplacement(
+                                  draft.fields.system_prompt,
+                                  start,
+                                  end,
+                                  replacement,
+                                ),
+                              )
+                            }
+                          />
+                        ) : undefined
                       }
                     />
-                  ) : undefined
-                }
-              />
-              <AgentConfigColumn
-                className="border-t lg:border-t-0"
-                agent={agent}
-                draft={draft}
-                editing={editing}
-                readOnly={readOnly}
-                allCapabilities={allCapabilities ?? []}
-                defaultModel={defaultModel}
-                onStartEdit={startEdit}
-                moreRows={moreRows}
-                onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
-              />
+                  </ChatChangeMark>
+                  <AgentConfigColumn
+                    className="border-t lg:border-t-0"
+                    agent={agent}
+                    draft={draft}
+                    editing={editing}
+                    readOnly={readOnly}
+                    allCapabilities={allCapabilities ?? []}
+                    defaultModel={defaultModel}
+                    onStartEdit={startEdit}
+                    moreRows={moreRows}
+                    onOpenRow={(id) => setOpenSection(id as AgentSettingsSection)}
+                  />
+                </div>
+              )}
+
+              {activeTab !== "agent" && (
+                <div className="min-w-0 pt-5 sm:pt-6">
+                  {activeTab === "preview" && (
+                    <AgentPreview
+                      systemPrompt={draft.fields.system_prompt}
+                      capabilities={draft.capabilities}
+                      harnessId={draft.fields.harness_id || undefined}
+                      mcpServers={agent.mcpServers}
+                      initialFiles={draft.files}
+                      tools={agent.tools ?? []}
+                    />
+                  )}
+                  {activeTab === "integrations" && (
+                    <AgentIntegrationsPanel
+                      agent={agent}
+                      initialChannelId={searchParams.get("channel")}
+                    />
+                  )}
+                  {activeTab === "stats" && (
+                    <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+                  )}
+                  {activeTab === "sessions" && (
+                    <AgentSessionsPanel
+                      agentId={agentId}
+                      defaultModelId={agent?.default_model_id}
+                    />
+                  )}
+                </div>
+              )}
             </div>
+
+            <PageFooter>
+              <BackLink href="/agents">Back to Agents</BackLink>
+            </PageFooter>
+          </PageContainer>
+          {draftConflict && (
+            <p role="alert" className="mx-6 border border-accent bg-card p-3 text-sm">
+              The saved agent changed while you were editing. Your unsaved draft is kept. Discard it
+              to review the latest definition before saving.
+            </p>
           )}
+          <ChatChangesToast name={displayName} canUndo={canEdit} editing={editing} />
+          <ChatDraftChangesToast />
 
-          {activeTab !== "agent" && (
-            <div className="min-w-0 pt-5 sm:pt-6">
-              {activeTab === "preview" && (
-                <AgentPreview
-                  systemPrompt={draft.fields.system_prompt}
-                  capabilities={draft.capabilities}
-                  harnessId={draft.fields.harness_id || undefined}
-                  mcpServers={agent.mcpServers}
-                  initialFiles={draft.files}
-                  tools={agent.tools ?? []}
-                />
-              )}
-              {activeTab === "integrations" && (
-                <AgentIntegrationsPanel
-                  agent={agent}
-                  initialChannelId={searchParams.get("channel")}
-                />
-              )}
-              {activeTab === "stats" && (
-                <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-              )}
-              {activeTab === "sessions" && (
-                <AgentSessionsPanel agentId={agentId} defaultModelId={agent?.default_model_id} />
-              )}
-            </div>
-          )}
-        </div>
-
-        <PageFooter>
-          <BackLink href="/agents">Back to Agents</BackLink>
-        </PageFooter>
-      </PageContainer>
-
-      {/* The menu (and its sheets) is hidden in edit mode; `?sheet=` links such
+          {/* The menu (and its sheets) is hidden in edit mode; `?sheet=` links such
           as the manager-notes hint still open there. */}
-      {editing && (
-        <EntityRecordSheets
-          entityRef={agent.id}
-          kind="agent"
-          entityName={displayName}
-          permissions={recordPermissions}
-        />
-      )}
+          {editing && (
+            <EntityRecordSheets
+              entityRef={agent.id}
+              kind="agent"
+              entityName={displayName}
+              permissions={recordPermissions}
+            />
+          )}
 
-      <AgentSettingsSheet
-        section={openSection}
-        onOpenChange={(open) => {
-          if (!open) setOpenSection(null);
-        }}
-        agent={agent}
-        draft={draft}
-        readOnly={readOnly}
-        fixedSandbox={fixedSandbox}
-        onDraftChange={onDraftChange}
-      />
-
-      <Dialog
-        open={confirmAction !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirmAction(null);
-            setConfirmReason("");
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {confirmAction === "delete" ? "Delete agent" : "Archive agent"}
-            </DialogTitle>
-            <DialogDescription>
-              {confirmAction === "delete"
-                ? `Permanently delete the archived agent “${displayName}”? Existing references will render as deleted tombstones.`
-                : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
-            </DialogDescription>
-            {confirmAction && channels && (
-              <SlackRemovalNotice channels={channels} action={confirmAction} />
-            )}
-            {slackRemovalForbidden && (
-              <p className="text-sm text-muted-foreground">
-                Removing managed Slack apps requires permission to delete Agent integrations.
-              </p>
-            )}
-            {channels === undefined && (
-              <p className="text-sm text-muted-foreground">
-                {channelsError
-                  ? "Could not check Slack connections. Reload before continuing."
-                  : "Checking Slack connections…"}
-              </p>
-            )}
-            {confirmError && confirmAction && (
-              <EntityDeleteErrorNotice
-                entityKind="agent"
-                action={confirmAction}
-                message={confirmError.message}
-                className="mt-4"
-              />
-            )}
-          </DialogHeader>
-          <ChangeReasonField
-            value={confirmReason}
-            onChange={setConfirmReason}
-            disabled={confirmPending}
+          <AgentSettingsSheet
+            section={openSection}
+            onOpenChange={(open) => {
+              if (!open) setOpenSection(null);
+            }}
+            agent={agent}
+            draft={draft}
+            readOnly={readOnly}
+            fixedSandbox={fixedSandbox}
+            onDraftChange={onDraftChange}
           />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
+
+          <Dialog
+            open={confirmAction !== null}
+            onOpenChange={(open) => {
+              if (!open) {
                 setConfirmAction(null);
                 setConfirmReason("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant={confirmAction === "delete" ? "destructive" : "default"}
-              onClick={handleConfirm}
-              disabled={confirmPending || channels === undefined || slackRemovalForbidden}
-            >
-              {confirmAction === "delete"
-                ? destroyAgent.isPending
-                  ? "Deleting..."
-                  : "Delete agent"
-                : deleteAgent.isPending
-                  ? "Archiving..."
-                  : "Archive agent"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {confirmAction === "delete" ? "Delete agent" : "Archive agent"}
+                </DialogTitle>
+                <DialogDescription>
+                  {confirmAction === "delete"
+                    ? `Permanently delete the archived agent “${displayName}”? Existing references will render as deleted tombstones.`
+                    : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
+                </DialogDescription>
+                {confirmAction && channels && (
+                  <SlackRemovalNotice channels={channels} action={confirmAction} />
+                )}
+                {slackRemovalForbidden && (
+                  <p className="text-sm text-muted-foreground">
+                    Removing managed Slack apps requires permission to delete Agent integrations.
+                  </p>
+                )}
+                {channels === undefined && (
+                  <p className="text-sm text-muted-foreground">
+                    {channelsError
+                      ? "Could not check Slack connections. Reload before continuing."
+                      : "Checking Slack connections…"}
+                  </p>
+                )}
+                {confirmError && confirmAction && (
+                  <EntityDeleteErrorNotice
+                    entityKind="agent"
+                    action={confirmAction}
+                    message={confirmError.message}
+                    className="mt-4"
+                  />
+                )}
+              </DialogHeader>
+              <ChangeReasonField
+                value={confirmReason}
+                onChange={setConfirmReason}
+                disabled={confirmPending}
+              />
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setConfirmAction(null);
+                    setConfirmReason("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant={confirmAction === "delete" ? "destructive" : "default"}
+                  onClick={handleConfirm}
+                  disabled={confirmPending || channels === undefined || slackRemovalForbidden}
+                >
+                  {confirmAction === "delete"
+                    ? destroyAgent.isPending
+                      ? "Deleting..."
+                      : "Delete agent"
+                    : deleteAgent.isPending
+                      ? "Archiving..."
+                      : "Archive agent"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </ChatChangesContext.Provider>
+    </ChatDraftChangesContext.Provider>
   );
 }

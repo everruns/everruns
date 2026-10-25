@@ -235,6 +235,26 @@ It persists and propagates exactly like `protocol_mode` below (`settings` JSONB,
 the embedded `mcpServers` object, `McpServerInfo.elicitation_policy`), and the
 same catalog-reference conflict rule applies.
 
+#### `tool_timeout_ms`
+
+How long one `tools/call` may block, per server (org-managed `McpServer` and
+scoped `ScopedMcpServer`). Unset means 60 s, the limit every call had before it
+was configurable; the accepted range is 1 s to 30 min, checked when config is
+written and clamped again in the client so a row written before validation
+cannot hold a worker longer. The cap exists because a blocking call holds a
+worker for its whole duration: work longer than that belongs in an MCP task,
+which the client polls instead of holding open. A task is bounded by its own
+wait limit instead (30 min, `TASK_WAIT_LIMIT` in `crates/core/src/mcp/tasks.rs`);
+`tool_timeout_ms` then only bounds each request. `timeout` is accepted as an
+alias, matching common `mcpServers` config files.
+
+Unlike `elicitation_policy` it is not a trust decision, so an attachment that
+references a catalog preset may set its own and otherwise inherits the
+catalog's. It persists like `protocol_mode` (`settings` JSONB, the embedded
+`mcpServers` object, `McpServerInfo.tool_timeout_ms`). Only `tools/call` uses
+it; discovery and resource reads keep their fixed limits. An update request
+sends `0` to clear it.
+
 #### `protocol_mode`
 
 Each server (org-managed `McpServer` and scoped `ScopedMcpServer`) carries a
@@ -420,6 +440,16 @@ authorization-server metadata.
   whose request failed, and a short fixed `reason`. Provider bodies and
   upstream messages never reach it; the server log keeps the detail. The
   classification is the one browser sign-in errors use (`connect_error`).
+- Discovery follows the MCP authorization spec's well-known fallbacks (RFC
+  9728 path-inserted then root protected-resource metadata; RFC 8414 and
+  OpenID Connect locations for the authorization server). A 404 tries the
+  next location, any other failure ends discovery, and a server with no
+  protected-resource metadata is its own authorization server. Order and
+  rationale: `discover_resource_metadata` and
+  `discover_oauth_server_metadata` in
+  `crates/server/src/api/user_connections/mcp_oauth.rs`. An unreachable
+  sign-in service is logged at info (it is a recorded outcome); policy blocks
+  and failed setup log at warn.
 - The check runs where the API layer wires it (REST, MCP, `/v1/commands`);
   other surfaces leave a new preset `not_checked`. Presets saved before checks
   existed read `not_checked` until a check or a successful sign-in.
@@ -655,27 +685,32 @@ In the capability selector UI, MCP capabilities are displayed with:
 
 The catalog, the connections list, and a person's own MCP servers use the title and icon the remote server publishes as the heading and mark. The operator name stays the slug, and a plugin connection display name still wins over the discovered title. Discovery and the icon rules live in `crates/server/src/domains/mcp_servers/presentation.rs`.
 
-### Agent-bound tool-parameter credentials
+### Tool-parameter credentials
 
 Some MCP servers require a credential as a tool argument rather than an HTTP
-authorization header. Those values are Agent-scoped runtime bindings, not
-session secrets and not part of the Agent blueprint. A binding identifies one
-attached server endpoint, tool, and top-level parameter. Its value is accepted
-only by the write-only Agent Credentials API/UI, encrypted with the control
-plane encryption service, and never returned by an API.
+authorization header. Those values use the [common resource ownership and
+grant contract](../security/resource-access.md), independently of the Agent
+blueprint. The binding limits the attached endpoint and parameter receiving it.
+Values enter through secure write-only provisioning, remain encrypted at rest,
+and are never returned by a management API.
 
 Before reason, the bound parameter is removed from the model-visible tool
 schema. After the original model tool call is persisted, the MCP executor
 rejects an attempted override and injects the decrypted value into a cloned
 outbound argument object. The model, events, narration, and worker logs retain
 only the original credential-free call. A missing value returns the structured
-`credential_required` result with the Agent setup URL.
+`credential_required` result with the owner's secure credential setup URL.
 
-Bindings are scoped by organization and Agent and are resolved from the
-session's Agent identity. They therefore work for shared sessions and
-session-per-invocation triggers without granting the same credential to other
-Agents. Rotation applies to future calls immediately; deletion revokes the
-binding. An endpoint mismatch fails closed as unconfigured.
+Runtime authority comes from the verified invocation and actual responder;
+ownership alone does not share a credential. Rotation and revocation apply to
+future calls, and an endpoint mismatch fails closed as unconfigured.
+
+An unattended user OAuth attachment retains its normal connection-required
+result before any parameter bindings are fetched or decrypted. Only proved
+unattended invocations can defer to that OAuth path; unknown invocations,
+private-context denials, and storage failures remain strict errors. The shared
+[descriptor adapter](../../crates/server/src/domains/agents/credentials.rs)
+applies this rule to direct and gRPC workers.
 
 ## Seed Data
 

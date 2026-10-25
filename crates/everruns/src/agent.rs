@@ -9,6 +9,7 @@
 //! A built Agent is an immutable behavior description. An application-owned
 //! [`Engine`](crate::Engine) owns session creation, identity, and resumption.
 
+mod builder;
 mod communication;
 mod package;
 
@@ -27,6 +28,7 @@ use everruns_core::host::{
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceBackend,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 
 use crate::agent_state::AgentState;
@@ -51,6 +53,8 @@ use capability_implementation::CapabilityImplementation;
 pub struct Model {
     id: String,
     bundled_provider: Option<Provider>,
+    /// Provider named by [`Model::on`]; resolved by key rather than carried.
+    provider_key: Option<everruns_contracts::runtime_provider::ProviderKey>,
 }
 
 impl Model {
@@ -67,6 +71,7 @@ impl Model {
     ///
     /// Backed by the `llmsim` driver, so an agent using it runs entirely
     /// offline — no credentials, no network.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn simulated(response: impl Into<String>) -> Self {
         Self::bundled(
             "llmsim-model",
@@ -79,6 +84,7 @@ impl Model {
     /// This keeps examples and evaluations offline while allowing multiple
     /// responses, tool-call sequences, and the other controls exposed by
     /// [`LlmSimConfig`].
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn simulated_with_config(config: LlmSimConfig) -> Self {
         Self::bundled(
             "llmsim-model",
@@ -86,10 +92,28 @@ impl Model {
         )
     }
 
+    /// Select a model served by the provider registered under `provider`.
+    ///
+    /// The key is credential-free. Host provider services
+    /// ([`HostProviders`](crate::hosting::services::HostProviders)) resolve it,
+    /// or a separately configured [`AgentBuilder::provider`] with the same key
+    /// serves it. A provider under any other key is a
+    /// [`BuildError::ConflictingProviders`]; nothing falls back to another one.
+    pub fn on(provider: impl Into<String>, id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            bundled_provider: None,
+            provider_key: Some(everruns_contracts::runtime_provider::ProviderKey::from(
+                provider.into(),
+            )),
+        }
+    }
+
     fn bundled(id: impl Into<String>, provider: Provider) -> Self {
         Self {
             id: id.into(),
             bundled_provider: Some(provider),
+            provider_key: None,
         }
     }
 
@@ -111,6 +135,7 @@ impl From<&str> for Model {
         Self {
             id: id.to_string(),
             bundled_provider: None,
+            provider_key: None,
         }
     }
 }
@@ -120,6 +145,7 @@ impl From<String> for Model {
         Self {
             id,
             bundled_provider: None,
+            provider_key: None,
         }
     }
 }
@@ -186,6 +212,7 @@ impl fmt::Debug for Model {
         f.debug_struct("Model")
             .field("id", &self.id)
             .field("bundled_provider", &self.bundled_provider)
+            .field("provider_key", &self.provider_key)
             .finish()
     }
 }
@@ -198,6 +225,8 @@ impl fmt::Debug for Model {
 pub enum BuildError {
     /// `instructions` was empty or only whitespace.
     BlankInstructions,
+    /// This target cannot supply a requested native host service.
+    UnsupportedHostFeature(&'static str),
     /// Both [`AgentBuilder::backends`] and [`AgentBuilder::local`] were set.
     ConflictingBackends,
     /// No model was selected.
@@ -235,6 +264,14 @@ pub enum BuildError {
     },
     /// A live model was selected without a provider.
     MissingProvider,
+    /// The model, Agent and host services name different providers, or a
+    /// host-resolved model also carries an Agent-owned provider.
+    ConflictingProviders {
+        /// Provider named by the model.
+        model: String,
+        /// Provider supplied by the Agent or `"host"` for host services.
+        provider: String,
+    },
     /// More than one provider was attached to the agent.
     MultipleProviders {
         /// Stable keys of the providers attached to the agent.
@@ -260,6 +297,14 @@ pub enum BuildError {
         /// The colliding workspace backend id.
         id: String,
     },
+    /// Host provider-request metadata was invalid or claimed a runtime-owned
+    /// correlation key.
+    InvalidRequestMetadata {
+        /// The rejected key, or empty when the entry count is the problem.
+        key: String,
+        /// Why the metadata was rejected.
+        reason: String,
+    },
     /// A tool requires approval but no approver was configured.
     ///
     /// Set one with `AgentBuilder::approver` (requires the default `builtins`
@@ -274,6 +319,7 @@ pub enum BuildError {
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedHostFeature(feature) => write!(f, "host does not support {feature}"),
             BuildError::BlankInstructions => {
                 write!(f, "agent instructions must not be blank")
             }
@@ -297,6 +343,10 @@ impl fmt::Display for BuildError {
                 write!(f, "duplicate capability id {id:?}")
             }
             BuildError::MissingProvider => write!(f, "agent requires a provider for a live model"),
+            BuildError::ConflictingProviders { model, provider } => write!(
+                f,
+                "model provider {model:?} conflicts with provider {provider:?}"
+            ),
             BuildError::MultipleProviders { registered } => write!(
                 f,
                 "agent accepts one provider; registered providers: [{}]",
@@ -311,6 +361,9 @@ impl fmt::Display for BuildError {
             #[allow(deprecated)]
             BuildError::DuplicateWorkspaceProvider { id } => {
                 write!(f, "duplicate workspace backend id {id:?}")
+            }
+            BuildError::InvalidRequestMetadata { key, reason } => {
+                write!(f, "invalid request metadata {key:?}: {reason}")
             }
             BuildError::MissingApprover { tool } => write!(
                 f,
@@ -333,7 +386,8 @@ pub struct Agent {
     name: String,
     instructions: String,
     model: ModelSpec,
-    provider: Provider,
+    /// `None` exactly when host provider services resolve the model.
+    provider: Option<Provider>,
     capabilities: Vec<everruns_contracts::CapabilityRef>,
     capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
@@ -342,6 +396,7 @@ pub struct Agent {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     default_workspace: crate::default_workspace::DefaultWorkspace,
     workspace_policy: everruns_core::WorkspacePolicy,
@@ -350,6 +405,11 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
+    client_questions: bool,
+    /// See [`AgentBuilder::host_services`]. Shared so cloning an Agent into
+    /// session and activation futures stays pointer-sized.
+    host_services: Option<Arc<crate::hosting::services::HostServices>>,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
     pub(crate) state: Arc<AgentState>,
@@ -378,6 +438,7 @@ impl fmt::Debug for Agent {
             .field("workspace_root", &self.workspace_root)
             .field("mcp_servers", &self.mcp_servers)
             .field("plugin_warnings", &self.plugin_warnings)
+            .field("host_services", &self.host_services)
             .field("state", &self.state)
             .finish_non_exhaustive()
     }
@@ -415,6 +476,25 @@ impl BackendInitError {
 }
 
 impl Agent {
+    pub(crate) fn requires_hosted_workspace(&self) -> bool {
+        self.workspace_root.is_some()
+            || !self.initial_files.is_empty()
+            || self.capabilities.iter().any(|reference| {
+                matches!(
+                    reference.capability_id(),
+                    "filesystem"
+                        | "file_system"
+                        | "session_file_system"
+                        | "skills"
+                        | "host_shell"
+                        | "bash"
+                        | "bashkit"
+                        | "bashkit_shell"
+                        | "virtual_bash"
+                )
+            })
+    }
+
     /// Start describing an agent.
     ///
     /// # Example
@@ -441,15 +521,54 @@ impl Agent {
         session_id: SessionId,
         environment: &Environment,
     ) -> Result<(), crate::SessionEnvironmentError> {
+        self.validate_session_environment(environment)?;
         let head = environment.workspace_head();
-        if !self.state.remember_backend(head.backend()) {
-            return Err(legacy_workspace_provider_conflict());
-        }
         binding_store
             .bind(session_id, head.binding())
             .await
             .map_err(crate::SessionEnvironmentError::from)?;
         Ok(())
+    }
+
+    pub(crate) fn validate_session_environment(
+        &self,
+        environment: &Environment,
+    ) -> Result<(), crate::SessionEnvironmentError> {
+        if !self
+            .state
+            .remember_backend(environment.workspace_head().backend())
+        {
+            return Err(legacy_workspace_provider_conflict());
+        }
+        Ok(())
+    }
+
+    /// Trusted host factory for this Agent's configured workspace. Register it
+    /// with an immutable Environment reference on the Engine. Persistent hosts
+    /// must provision the workspace storage independently of session authority.
+    pub fn environment_factory(&self) -> impl crate::hosting::EnvironmentFactory {
+        let configured = self.clone();
+        move |session| {
+            let configured = configured.clone();
+            async move {
+                configured
+                    .default_session_environment(session)
+                    .await
+                    .map_err(|error| {
+                        everruns_contracts::error::AgentLoopError::config(error.to_string())
+                    })
+            }
+        }
+    }
+
+    /// Reopen a separate durable directory workspace for each session. The
+    /// host must preserve `root` independently of the session journal.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn directory_environment_factory(
+        &self,
+        root: impl Into<PathBuf>,
+    ) -> impl crate::hosting::EnvironmentFactory {
+        crate::hosting::DirectoryEnvironmentFactory::new(root)
     }
 
     pub(crate) async fn default_session_environment(
@@ -551,6 +670,7 @@ impl Agent {
     /// distinct session ids yield independent sessions. This is the private seam
     /// [`Session`](crate::Session) builds on. The sink observes finalized event
     /// envelopes; the host log remains the sole write path and sequence owner.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn build_runtime_with_event_sink(
         &self,
         backends: HostBackends,
@@ -559,23 +679,127 @@ impl Agent {
         harness: Option<&crate::Harness>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
+        live: Option<&crate::session::LiveControls>,
     ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
-        self.build_runtime_with_backends(
+        self.runtime_builder(
             backends,
             session_id,
             environment,
             harness,
             Some(event_sink),
             Some(hook_state),
+            live,
         )
+        .await?
+        .build()
         .await
+    }
+
+    /// Resolve a live model selection (EVE-1297) against this Agent's trusted
+    /// providers. Nothing falls back: a provider neither the Agent nor its
+    /// host provider services serve is an error, and a model that bundles
+    /// its own provider is refused because a live selection never changes
+    /// credentials or provider code.
+    pub(crate) async fn live_model_spec(&self, model: Model) -> Result<ModelSpec, String> {
+        // THREAT[TM-LLM-052]: a live selection never brings provider code or
+        // credentials, and never falls back to another provider.
+        if model.bundled_provider.is_some() {
+            return Err(
+                "a live model selection names its provider by key; a bundled provider cannot \
+                 be attached to a running session"
+                    .into(),
+            );
+        }
+        let id = model.id.trim();
+        if id.is_empty() {
+            return Err("model id must not be blank".into());
+        }
+        let provider = model
+            .provider_key
+            .unwrap_or_else(|| self.model.provider.clone());
+        match self
+            .host_services
+            .as_deref()
+            .and_then(|services| services.providers.as_ref())
+        {
+            Some(providers) => Box::pin(providers.ensure_serves(&provider))
+                .await
+                .map_err(|error| error.to_string())?,
+            None if provider != self.model.provider => {
+                return Err(format!(
+                    "provider {provider} is not configured for this agent; refusing to fall \
+                     back to {}",
+                    self.model.provider
+                ));
+            }
+            None => {}
+        }
+        Ok(ModelSpec::on(provider, id))
+    }
+
+    /// Capability ids this Agent contributes on its own layer, plus the
+    /// Engine-owned lifecycle-hook capability.
+    pub(crate) fn capability_ids(&self) -> std::collections::HashSet<String> {
+        self.capabilities
+            .iter()
+            .map(|capability| capability.capability_id().to_string())
+            .chain([crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID.to_string()])
+            .collect()
     }
 
     pub(crate) fn plugin_warnings(&self) -> Vec<String> {
         self.plugin_warnings.clone()
     }
 
+    #[cfg(test)]
     pub(crate) async fn build_runtime_with_backends(
+        &self,
+        backends: HostBackends,
+        session_id: SessionId,
+        environment: Option<Environment>,
+        bound_harness: Option<&crate::Harness>,
+        event_sink: Option<Arc<dyn EventSink>>,
+        hook_state: Option<Arc<crate::hooks::HookRunState>>,
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        self.runtime_builder(
+            backends,
+            session_id,
+            environment,
+            bound_harness,
+            event_sink,
+            hook_state,
+            None,
+        )
+        .await?
+        .build()
+        .await
+    }
+
+    pub(crate) async fn build_context_runtime(
+        &self,
+        backends: HostBackends,
+        session: SessionId,
+        environment: Environment,
+        harness: Option<&crate::Harness>,
+        live: Option<&crate::session::LiveControls>,
+    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        self.runtime_builder(
+            backends,
+            session,
+            Some(environment),
+            harness,
+            None,
+            None,
+            live,
+        )
+        .await?
+        .for_context_query()
+        .build()
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn runtime_builder(
         &self,
         mut backends: HostBackends,
         session_id: SessionId,
@@ -583,8 +807,49 @@ impl Agent {
         bound_harness: Option<&crate::Harness>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
-    ) -> Result<InProcessRuntime, everruns_contracts::error::AgentLoopError> {
+        live: Option<&crate::session::LiveControls>,
+    ) -> Result<
+        everruns_core::host::InProcessRuntimeBuilder,
+        everruns_contracts::error::AgentLoopError,
+    > {
         backends = crate::batteries::runtime_backends(backends);
+        let host_services = self.host_services.as_deref();
+        if let Some(providers) = host_services.and_then(|services| services.providers.as_ref()) {
+            // Resolve before execution: an unknown host provider is a
+            // configuration failure, never a fallback to another provider.
+            Box::pin(providers.ensure_serves(&self.model.provider)).await?;
+            backends.provider_store = Arc::new(crate::hosting::services::HostProviderStore::new(
+                providers.clone(),
+            ));
+        }
+        if let Some(live) = live {
+            let agent_provider = host_services
+                .and_then(|services| services.providers.as_ref())
+                .is_none()
+                .then(|| self.model.provider.clone());
+            backends.provider_store = live.provider_store(backends.provider_store, agent_provider);
+        }
+        #[cfg(target_arch = "wasm32")]
+        if !self.memory_directories.is_empty() {
+            return Err(everruns_contracts::error::AgentLoopError::config(
+                "Wasm hosts must supply Memory through authorized filesystem ports, not native directories",
+            ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        for (mount, path) in &self.memory_directories {
+            let store = Arc::new(everruns_core::host::RealDiskFileStore::new(path)?);
+            let identity = std::fs::canonicalize(path)
+                .map_err(|e| everruns_contracts::error::AgentLoopError::config(e.to_string()))?;
+            backends.memory_mounts.push((
+                mount.clone(),
+                store,
+                everruns_core::dreaming::DreamMemoryScope {
+                    key: format!("directory:{}", identity.display()),
+                    private: true,
+                },
+            ));
+        }
+
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
@@ -595,7 +860,7 @@ impl Agent {
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
-        let harness = match bound_harness {
+        let mut harness = match bound_harness {
             Some(harness) => harness.seeded(),
             None => {
                 // Decision: the synthetic harness carries no prompt. The
@@ -613,6 +878,18 @@ impl Agent {
                 harness.build()
             }
         };
+        // EVE-1302: the one place host request metadata enters execution. The
+        // seeded harness definition feeds the assembled turn context, which
+        // both turn model calls and session completions read, on every lane
+        // and every rebuild.
+        if let Some(services) = host_services {
+            harness.definition.embedder_metadata.extend(
+                services
+                    .request_metadata
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string())),
+            );
+        }
         let harness_id = harness.id;
 
         // EVE-877: the builder produces a portable AgentDefinition; the
@@ -632,11 +909,18 @@ impl Agent {
         let agent_id = agent.agent_id();
         let agent = agent.build();
 
+        // EVE-1299: Agent capabilities stay on the agent layer above; the
+        // session record's capabilities are only the session's own overlay,
+        // so a rebuild can keep it without pinning stale Agent defaults.
         let mut session = SessionBuilder::new(harness_id)
             .id(session_id)
             .agent(agent_id)
-            .capabilities(capabilities)
             .mcp_servers(self.mcp_servers.clone());
+        for tool in &self.client_tools {
+            session = session.tool(everruns_contracts::tool_types::ToolDefinition::ClientSide(
+                tool.clone(),
+            ));
+        }
         if let Some(environment) = &environment {
             session = session.workspace(environment.workspace_head().workspace_id());
         }
@@ -649,9 +933,27 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let session =
-            crate::engine::keep_catalog_fields(backends.session_store.as_ref(), session.build())
-                .await;
+        let mut session = crate::engine::reconcile_session_record(
+            backends.session_store.as_ref(),
+            session.build(),
+            &capabilities,
+        )
+        .await;
+        // EVE-1297: live MCP edits are trusted Engine-held input, re-applied
+        // over the Agent-derived servers on every rebuild (see the MCP rule in
+        // `engine::session_overlay`).
+        if let Some(live) = live {
+            live.apply_mcp(&mut session.mcp_servers);
+        }
+        if !self.client_tools.is_empty() || self.client_questions {
+            let hints = session.hints.get_or_insert_with(Default::default);
+            if !self.client_tools.is_empty() {
+                hints.insert("setup_connection".into(), true.into());
+            }
+            if self.client_questions {
+                hints.insert("ask_user".into(), true.into());
+            }
+        }
         let mut builder = InProcessRuntimeBuilder::new()
             .host_composition(
                 everruns_core::host::HostComposition::builder()
@@ -667,6 +969,12 @@ impl Agent {
             .session(session)
             .model_spec(self.model.clone())
             .workspace_policy(self.workspace_policy.clone());
+        if let Some(live) = live {
+            let (turn, session) = live.effort_handles();
+            builder = builder
+                .reasoning_effort_handle(turn)
+                .session_reasoning_effort(session);
+        }
 
         if let Some(event_sink) = event_sink {
             backends = backends.with_event_sink(event_sink);
@@ -708,33 +1016,41 @@ impl Agent {
                 .build();
             builder = builder.host_composition(platform);
         } else if let Some(root) = workspace_root {
-            // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
-            // real-disk factory so every operation retains containment and
-            // symlink rejection; the facade does not implement a second path
-            // mapper.
-            let registry = {
-                #[cfg(feature = "local")]
-                if self.local.is_some() {
-                    // The local profile serves the hosted catalog from SQLite
-                    // (EVE-885), so validation and execution see one set.
-                    crate::local::local_capability_registry()
-                } else {
-                    framework_capability_registry(false)
-                }
-                #[cfg(not(feature = "local"))]
-                {
-                    framework_capability_registry(false)
-                }
-            };
-            let platform = everruns_core::host::HostComposition::builder()
-                .capability_registry(registry)
-                .driver_registry(everruns_contracts::DriverRegistry::new())
-                .egress_service(crate::batteries::runtime_egress_service())
-                .session_file_system_factory(Arc::new(
-                    everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
-                ))
-                .build();
-            builder = builder.host_composition(platform);
+            #[cfg(target_arch = "wasm32")]
+            return Err(everruns_contracts::error::AgentLoopError::config(format!(
+                "native workspace unavailable: {}",
+                root.display()
+            )));
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
+                // real-disk factory so every operation retains containment and
+                // symlink rejection; the facade does not implement a second path
+                // mapper.
+                let registry = {
+                    #[cfg(feature = "local")]
+                    if self.local.is_some() {
+                        // The local profile serves the hosted catalog from SQLite
+                        // (EVE-885), so validation and execution see one set.
+                        crate::local::local_capability_registry()
+                    } else {
+                        framework_capability_registry(false)
+                    }
+                    #[cfg(not(feature = "local"))]
+                    {
+                        framework_capability_registry(false)
+                    }
+                };
+                let platform = everruns_core::host::HostComposition::builder()
+                    .capability_registry(registry)
+                    .driver_registry(everruns_contracts::DriverRegistry::new())
+                    .egress_service(crate::batteries::runtime_egress_service())
+                    .session_file_system_factory(Arc::new(
+                        everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
+                    ))
+                    .build();
+                builder = builder.host_composition(platform);
+            }
         }
         // References and code-defined implementations were normalized and
         // collision-checked together at Agent build time. Register each
@@ -750,9 +1066,40 @@ impl Agent {
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }
-        builder = builder.provider(self.provider.clone());
-        builder.build().await
+        if let Some(services) = host_services {
+            builder = apply_host_services(builder, services);
+        }
+        Ok(match &self.provider {
+            Some(provider) => builder.provider(provider.clone()),
+            None => builder,
+        })
     }
+}
+
+/// Apply host services after the Framework selected the Environment-backed
+/// composition. Nothing here replaces the session filesystem, egress, stores or
+/// the turn runner; capability ids were collision-checked at Agent build time.
+fn apply_host_services(
+    mut builder: InProcessRuntimeBuilder,
+    services: &crate::hosting::services::HostServices,
+) -> InProcessRuntimeBuilder {
+    for capability in &services.capabilities {
+        builder = builder.shared_capability(capability.implementation.clone());
+    }
+    if let Some(providers) = &services.providers {
+        builder = builder.driver_registry(providers.drivers.clone());
+    }
+    if let Some(retry) = &services.retry {
+        builder = builder.provider_retry_config(retry.clone());
+    }
+    if let Some(timeout) = services.stall_timeout {
+        builder = builder.provider_stall_timeout(timeout);
+    }
+    #[cfg(feature = "mcp")]
+    if let Some(auth) = &services.mcp_auth {
+        builder = builder.mcp_auth_provider(auth.clone());
+    }
+    builder
 }
 
 /// Fluent builder behind [`Agent::builder`].
@@ -777,12 +1124,15 @@ pub struct AgentBuilder {
     providers: Vec<Provider>,
     capabilities: Vec<crate::CapabilitySpec>,
     tools: Vec<Tool>,
+    client_tools: Vec<everruns_contracts::tool_types::ClientSideTool>,
+    client_questions: bool,
     initial_files: Vec<InitialFile>,
     network_access: Option<everruns_core::network_access::NetworkAccessList>,
     package_manifest: Option<everruns_core::agent_package::Manifest>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     communication: crate::conversation::Communication,
+    memory_directories: Vec<(String, PathBuf)>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
     workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,
@@ -795,616 +1145,9 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    host_services: Option<crate::hosting::services::HostServices>,
     /// See [`AgentBuilder::backends`]; mutually exclusive with `local`.
     pub(crate) backends: Option<HostBackends>,
-}
-
-impl AgentBuilder {
-    /// Set the network policy applied to this agent and its sessions.
-    pub fn network_access(
-        mut self,
-        access: everruns_core::network_access::NetworkAccessList,
-    ) -> Self {
-        self.network_access = Some(access);
-        self
-    }
-
-    /// Set the agent's system instructions. Required.
-    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
-        self.instructions = Some(instructions.into());
-        self
-    }
-
-    /// Select the model the agent talks to. Required.
-    ///
-    /// Live models use their provider-visible string id. [`Model::new`] can
-    /// bundle the provider, or it can be configured separately with
-    /// [`provider`](Self::provider). A [`Model::simulated`] value needs no
-    /// provider.
-    pub fn model(mut self, model: impl Into<Model>) -> Self {
-        self.model = Some(model.into());
-        self
-    }
-
-    /// Configure the service provider used by the selected live model.
-    ///
-    /// Accepts a raw [`Provider`] or a provider convenience such as
-    /// [`OpenAI`](crate::providers::openai::OpenAI) with the `openai` feature.
-    /// An agent currently accepts exactly one provider.
-    pub fn provider(mut self, provider: impl Into<Provider>) -> Self {
-        self.providers.push(provider.into());
-        self
-    }
-
-    /// Set a human-readable name. Optional; defaults to `"agent"`.
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = Some(name.into());
-        self
-    }
-
-    /// Add a tool the agent can call.
-    ///
-    /// Accepts anything that is [`IntoTool`](crate::IntoTool), including a
-    /// [`FunctionTool`](crate::FunctionTool) backed by an async function or
-    /// closure. Capability references use [`capability`](Self::capability)
-    /// instead. Tool names and JSON schemas are validated, and duplicate names
-    /// rejected, at [`build`](Self::build).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use everruns::{Agent, FunctionTool, Model};
-    /// use serde_json::json;
-    ///
-    /// let agent = Agent::builder()
-    ///     .instructions("You are concise.")
-    ///     .model(Model::simulated("done"))
-    ///     .capability("test_math")
-    ///     .tool(FunctionTool::new(
-    ///         "roll",
-    ///         "Roll a die.",
-    ///         json!({ "type": "object", "properties": {} }),
-    ///         |_args: serde_json::Value| async move { Ok::<_, String>(json!({ "value": 4 })) },
-    ///     ))
-    ///     .build()?;
-    /// # let _ = agent;
-    /// # Ok::<(), everruns::BuildError>(())
-    /// ```
-    pub fn tool(mut self, tool: impl IntoTool) -> Self {
-        self.tools.push(tool.into_tool());
-        self
-    }
-
-    /// Run an async handler before the first turn attempted by each session.
-    ///
-    /// Handlers run sequentially in registration order and are awaited. An
-    /// error stops the turn before execution; the next call retries the full
-    /// agent-start chain. Infallible handlers may return `()`. Run cancellation
-    /// drops the active handler future and skips the rest. Inspecting a session
-    /// neither starts the agent nor invokes this handler.
-    pub fn on_agent_start<F, Fut, O>(mut self, handler: F) -> Self
-    where
-        F: Fn(crate::AgentStartContext) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = O> + Send + 'static,
-        O: crate::IntoHookResult + 'static,
-    {
-        self.lifecycle_hooks.on_agent_start(handler);
-        self
-    }
-
-    /// Run an async handler before every turn enters the runtime.
-    ///
-    /// Handlers see the exact input but cannot mutate it. They run sequentially
-    /// in registration order; the first error prevents the turn. Run
-    /// cancellation drops the active handler future and skips the rest.
-    pub fn on_turn_start<F, Fut, O>(mut self, handler: F) -> Self
-    where
-        F: Fn(crate::TurnStartContext) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = O> + Send + 'static,
-        O: crate::IntoHookResult + 'static,
-    {
-        self.lifecycle_hooks.on_turn_start(handler);
-        self
-    }
-
-    /// Run an async handler before every model-requested tool call.
-    ///
-    /// Multiple handlers run sequentially for one call. Tool calls in a
-    /// parallel batch may run their independent hook chains concurrently. A
-    /// handler error blocks only that tool call and becomes a model-visible
-    /// generic tool error; application error details stay on
-    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Later start
-    /// handlers for that call are skipped. Run cancellation drops an active
-    /// handler future.
-    pub fn on_tool_start<F, Fut, O>(mut self, handler: F) -> Self
-    where
-        F: Fn(crate::ToolStartContext) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = O> + Send + 'static,
-        O: crate::IntoHookResult + 'static,
-    {
-        self.lifecycle_hooks.on_tool_start(handler);
-        self
-    }
-
-    /// Run an async handler after every tool call reaches a terminal result.
-    ///
-    /// This includes calls blocked by another pre-tool hook; their context
-    /// carries the resulting error. The call has already settled, so handler
-    /// errors cannot undo it. All handlers still run; failures are returned on
-    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Run cancellation
-    /// may drop the active chain with the rest of the in-flight turn.
-    pub fn on_tool_end<F, Fut, O>(mut self, handler: F) -> Self
-    where
-        F: Fn(crate::ToolEndContext) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = O> + Send + 'static,
-        O: crate::IntoHookResult + 'static,
-    {
-        self.lifecycle_hooks.on_tool_end(handler);
-        self
-    }
-
-    /// Run an async handler after a non-cancelled turn reaches an outcome.
-    ///
-    /// Completion handlers run sequentially after the runtime settles. Their
-    /// errors are isolated because the turn is already committed; all handlers
-    /// run, and failures are appended to
-    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Once completion
-    /// begins, cancelling that turn's run token does not interrupt the chain.
-    pub fn on_completion<F, Fut, O>(mut self, handler: F) -> Self
-    where
-        F: Fn(crate::CompletionContext) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = O> + Send + 'static,
-        O: crate::IntoHookResult + 'static,
-    {
-        self.lifecycle_hooks.on_completion(handler);
-        self
-    }
-
-    /// Add one capability through the Framework's open conversion contract.
-    ///
-    /// Accepts typed built-ins such as [`CompactionConfig`](crate::CompactionConfig)
-    /// and [`ToolSearch`](crate::ToolSearch), a code-defined
-    /// `capability::Definition` (with the `capabilities` feature), a dynamic
-    /// [`CapabilityRef`](crate::CapabilityRef), or any third-party value that
-    /// implements [`IntoCapability`](crate::IntoCapability). Plain strings are
-    /// concise references with default configuration.
-    ///
-    /// Conversion happens immediately and is infallible. Identifier and JSON
-    /// validation, built-in schema validation, duplicate detection, and
-    /// implementation/reference collision checks happen together in
-    /// [`build`](Self::build). A stable ID may be activated only once; duplicate
-    /// inputs are errors rather than last-write-wins overrides.
-    pub fn capability(mut self, capability: impl crate::IntoCapability) -> Self {
-        self.capabilities.push(capability.into_capability());
-        self
-    }
-
-    /// Limit the number of model/tool iterations allowed in one turn.
-    pub fn max_iterations(mut self, max_iterations: usize) -> Self {
-        self.max_iterations = Some(max_iterations);
-        self
-    }
-
-    /// Prefer (or forbid) parallel tool calls within a single reasoning step.
-    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
-        self.parallel_tool_calls = Some(parallel);
-        self
-    }
-
-    /// Seed a file into the agent's initial workspace.
-    pub fn initial_file(mut self, file: InitialFile) -> Self {
-        self.initial_files.push(file);
-        self
-    }
-
-    /// Seed an editable UTF-8 text file into the initial workspace.
-    pub fn file(mut self, path: impl Into<String>, content: impl Into<String>) -> Self {
-        self.initial_files.push(InitialFile {
-            path: path.into(),
-            content: content.into(),
-            encoding: "text".to_string(),
-            is_readonly: false,
-        });
-        self
-    }
-
-    /// Seed a read-only UTF-8 text file into the initial workspace.
-    pub fn readonly_file(mut self, path: impl Into<String>, content: impl Into<String>) -> Self {
-        self.initial_files.push(InitialFile {
-            path: path.into(),
-            content: content.into(),
-            encoding: "text".to_string(),
-            is_readonly: true,
-        });
-        self
-    }
-
-    /// Use one real host directory as this agent's shared default `/workspace`.
-    ///
-    /// The runtime rejects traversal and symlink escapes at every filesystem
-    /// operation. A missing directory is created before the session first uses
-    /// it and it must be selected by trusted application configuration, not
-    /// model input.
-    /// This is shorthand for one shared, reopenable default WorkspaceHead over
-    /// that directory. Every session created from this Agent explicitly binds
-    /// to that same shared head before execution. Use an explicit
-    /// [`Environment`] and backend-created head when sessions need isolation,
-    /// forking, or backend-specific lifecycle operations.
-    pub fn workspace(mut self, root: impl Into<PathBuf>) -> Self {
-        self.workspace_root = Some(root.into());
-        if !self
-            .capabilities
-            .iter()
-            .any(|capability| capability.capability_ref().id() == "session_file_system")
-        {
-            self.capabilities
-                .push(crate::CapabilityRef::new("session_file_system").into());
-        }
-        self
-    }
-
-    /// Set the read and write policy for this agent's workspace.
-    ///
-    /// The default is [`WorkspacePolicy::read_only`](crate::WorkspacePolicy::read_only):
-    /// ordinary files are readable, writes and hidden or sensitive paths are
-    /// denied, and framework-managed `.agents` content remains readable.
-    /// Select [`WorkspacePolicy::read_write`](crate::WorkspacePolicy::read_write)
-    /// or build narrower scopes for an explicit write opt-in.
-    pub fn workspace_policy(mut self, policy: crate::WorkspacePolicy) -> Self {
-        self.workspace_policy = policy;
-        self
-    }
-
-    /// Register a backend for durable typed resume of backend-owned heads.
-    ///
-    /// Starting a session from a live Environment also remembers its backend
-    /// for this Agent lifetime. Register it here when a newly constructed Agent
-    /// must resume persisted sessions after process restart.
-    pub fn workspace_backend(mut self, backend: Arc<dyn WorkspaceBackend>) -> Self {
-        self.workspace_backends.push(backend);
-        self
-    }
-
-    /// Compatibility name for [`AgentBuilder::workspace_backend`].
-    #[deprecated(note = "use AgentBuilder::workspace_backend")]
-    pub fn workspace_provider(self, backend: Arc<dyn WorkspaceBackend>) -> Self {
-        self.workspace_backend(backend)
-    }
-
-    /// Add a scoped MCP server to this agent.
-    pub fn mcp_server(mut self, server: crate::McpServer) -> Self {
-        self.mcp_servers.push(server);
-        self
-    }
-
-    /// Load and enable a local plugin directory.
-    ///
-    /// Reading and compilation happen immediately so invalid or unsafe plugin
-    /// input fails before the agent is built. Non-fatal warnings are available
-    /// from [`Session::inspect`](crate::Session::inspect). Plugins contribute
-    /// instructions and capabilities, so select the directory from trusted
-    /// application configuration rather than model or request input.
-    pub fn plugin(mut self, path: impl AsRef<Path>) -> Result<Self, crate::PluginError> {
-        let loaded = crate::plugin::load(path.as_ref())?;
-        self.capabilities.push(loaded.capability);
-        self.plugin_warnings.extend(loaded.warnings);
-        Ok(self)
-    }
-
-    /// Enable restart-survivable local state and a real workspace.
-    ///
-    /// Task, schedule, and session identity state is stored in SQLite.
-    /// Conversation history is reconstructed from the canonical local event
-    /// log. Requires the `local` feature.
-    #[cfg(feature = "local")]
-    pub fn local(mut self, config: crate::LocalConfig) -> Self {
-        self.local = Some(config);
-        if !self
-            .capabilities
-            .iter()
-            .any(|capability| capability.capability_ref().id() == "session_file_system")
-        {
-            self.capabilities
-                .push(crate::CapabilityRef::new("session_file_system").into());
-        }
-        self
-    }
-
-    /// Validate the description and produce an [`Agent`].
-    ///
-    /// # Errors
-    ///
-    /// - [`BuildError::BlankInstructions`] if instructions are missing or only
-    ///   whitespace.
-    /// - [`BuildError::MissingModel`] if no model was set.
-    /// - [`BuildError::MissingProvider`] if a live model has no provider.
-    /// - [`BuildError::MultipleProviders`] if more than one provider was set.
-    /// - [`BuildError::InvalidToolName`] if a function tool's name is not a
-    ///   valid model-facing identifier.
-    /// - [`BuildError::InvalidToolSchema`] if a function tool's JSON schema is
-    ///   not a valid arguments schema.
-    /// - [`BuildError::DuplicateTool`] if two `.tool(..)` calls share a name.
-    /// - [`BuildError::InvalidMcpServer`] if an MCP server is unnamed,
-    ///   incomplete, or duplicates another server name.
-    /// - [`BuildError::InvalidCapability`] if a capability ID, JSON config, or
-    ///   code-defined descriptor is invalid.
-    /// - [`BuildError::DuplicateCapability`] if two inputs resolve to the same
-    ///   capability implementation, including aliases and reference/implementation
-    ///   collisions.
-    /// - [`BuildError::MissingApprover`] if a function tool
-    ///   [needs approval](crate::FunctionTool::needs_approval) and no approver
-    ///   was set.
-    pub fn build(self) -> Result<Agent, BuildError> {
-        #[cfg(feature = "local")]
-        if self.local.is_some() && self.backends.is_some() {
-            return Err(BuildError::ConflictingBackends);
-        }
-        let mut workspace_backends = HashMap::new();
-        for backend in &self.workspace_backends {
-            let id = backend.id();
-            if workspace_backends
-                .insert(id.clone(), backend.clone())
-                .is_some()
-            {
-                return Err(legacy_duplicate_workspace_provider(id.to_string()));
-            }
-        }
-        let default_workspace_root = self.workspace_root.clone().or({
-            #[cfg(feature = "local")]
-            {
-                self.local
-                    .as_ref()
-                    .map(|configuration| configuration.workspace_root.clone())
-            }
-            #[cfg(not(feature = "local"))]
-            {
-                None
-            }
-        });
-        let default_workspace = default_workspace_root
-            .map(crate::default_workspace::DefaultWorkspace::directory)
-            .unwrap_or_else(crate::default_workspace::DefaultWorkspace::in_memory);
-        let default_backend = default_workspace.backend();
-        let default_backend_id = default_backend.id();
-        if workspace_backends
-            .insert(default_backend_id.clone(), default_backend)
-            .is_some()
-        {
-            return Err(legacy_duplicate_workspace_provider(
-                default_backend_id.to_string(),
-            ));
-        }
-        let instructions = self.instructions.unwrap_or_default();
-        if instructions.trim().is_empty() {
-            return Err(BuildError::BlankInstructions);
-        }
-        let model = self.model.ok_or(BuildError::MissingModel)?;
-        let mut providers = self.providers;
-        if let Some(provider) = model.bundled_provider {
-            providers.push(provider);
-        }
-        if providers.is_empty() {
-            return Err(BuildError::MissingProvider);
-        }
-        if providers.len() > 1 {
-            let mut registered = providers
-                .iter()
-                .map(|provider| provider.id().to_string())
-                .collect::<Vec<_>>();
-            registered.sort();
-            return Err(BuildError::MultipleProviders { registered });
-        }
-        let provider = providers.pop().expect("provider count checked above");
-        let model = ModelSpec::on(provider.id().clone(), model.id);
-        let name = self.name.unwrap_or_else(|| "agent".to_string());
-
-        // Function tools retain their own public entrypoint. Privately they are
-        // registered as single-tool capabilities, so their names participate in
-        // the same implementation-ID collision checks as every other input.
-        let mut function_tools = Vec::new();
-        let mut seen_tool_names: HashSet<String> = HashSet::new();
-        for tool in self.tools {
-            let tool_name = tool.name().to_string();
-            if !seen_tool_names.insert(tool_name.clone()) {
-                return Err(BuildError::DuplicateTool { name: tool_name });
-            }
-            let function_tool = tool.into_function();
-            validate_tool_name(function_tool.name()).map_err(|reason| {
-                BuildError::InvalidToolName {
-                    name: tool_name.clone(),
-                    reason,
-                }
-            })?;
-            validate_tool_schema(function_tool.schema()).map_err(|reason| {
-                BuildError::InvalidToolSchema {
-                    name: tool_name,
-                    reason,
-                }
-            })?;
-            function_tools.push(function_tool);
-        }
-
-        let mcp_servers = crate::mcp::into_scoped(self.mcp_servers)
-            .map_err(|reason| BuildError::InvalidMcpServer { reason })?;
-
-        // Use the same built-in set that this Agent will place on each private
-        // runtime. This makes build-time schema checks and implementation
-        // collision detection match execution instead of relying on a closed
-        // facade-owned list.
-        let capability_registry = {
-            #[cfg(feature = "local")]
-            if self.local.is_some() {
-                crate::local::local_capability_registry()
-            } else {
-                framework_capability_registry(false)
-            }
-            #[cfg(not(feature = "local"))]
-            {
-                framework_capability_registry(false)
-            }
-        };
-
-        let mut capabilities = Vec::new();
-        let mut capability_implementations = Vec::new();
-        // Neutral duplicate/collision rejection shared with product registries.
-        let mut activated_capabilities = everruns_contracts::ActivationSet::new();
-
-        for input in self.capabilities {
-            let parts = input.into_parts();
-            let input_id = parts.reference.id().to_string();
-            everruns_contracts::validate_capability_id(&input_id).map_err(|error| {
-                BuildError::InvalidCapability {
-                    id: input_id.clone(),
-                    reason: error.reason(),
-                }
-            })?;
-            everruns_contracts::validate_capability_config(
-                &input_id,
-                parts.reference.config_value(),
-            )
-            .map_err(|error| BuildError::InvalidCapability {
-                id: input_id.clone(),
-                reason: error.reason(),
-            })?;
-
-            let canonical_id = capability_registry
-                .canonical_id(&input_id)
-                .unwrap_or(&input_id)
-                .to_string();
-            if activated_capabilities.contains(&canonical_id) {
-                return Err(BuildError::DuplicateCapability { id: canonical_id });
-            }
-
-            #[cfg(feature = "capabilities")]
-            if let Some(definition) = parts.definition {
-                definition
-                    .validate()
-                    .map_err(|error| BuildError::InvalidCapability {
-                        id: input_id.clone(),
-                        reason: error.reason(),
-                    })?;
-                if capability_registry.get(definition.id()).is_some() {
-                    return Err(BuildError::DuplicateCapability {
-                        id: definition.id().to_string(),
-                    });
-                }
-                for tool in definition.tools() {
-                    let spec = tool.spec();
-                    validate_tool_name(spec.name()).map_err(|reason| {
-                        BuildError::InvalidToolName {
-                            name: spec.name().to_string(),
-                            reason,
-                        }
-                    })?;
-                    validate_tool_schema(spec.input_schema()).map_err(|reason| {
-                        BuildError::InvalidToolSchema {
-                            name: spec.name().to_string(),
-                            reason,
-                        }
-                    })?;
-                    if !seen_tool_names.insert(spec.name().to_string()) {
-                        return Err(BuildError::DuplicateTool {
-                            name: spec.name().to_string(),
-                        });
-                    }
-                }
-                capability_implementations.push(CapabilityImplementation::Definition(definition));
-            }
-
-            validate_registered_capability_config(
-                &capability_registry,
-                &canonical_id,
-                parts.reference.config_value(),
-            )?;
-            activated_capabilities
-                .activate(canonical_id.clone())
-                .map_err(|error| BuildError::DuplicateCapability {
-                    id: error.id().to_string(),
-                })?;
-            capabilities.push(everruns_contracts::CapabilityRef::with_config(
-                canonical_id,
-                parts.reference.config_value().clone(),
-            ));
-        }
-
-        // Approval-gated function tools share one host gate whose policy names
-        // exactly those tools. Fail closed: a gated tool without an approver
-        // is a build error, never a silently ungated call.
-        let approval_predicates = crate::tool::approval_predicates(&function_tools);
-        if let Some((first_gated, _)) = approval_predicates.first() {
-            #[cfg(feature = "builtins")]
-            {
-                let Some(approver) = self.approver.clone() else {
-                    return Err(BuildError::MissingApprover {
-                        tool: first_gated.clone(),
-                    });
-                };
-                let id = everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID.to_string();
-                if capability_registry.get(&id).is_some()
-                    || activated_capabilities.activate(id.clone()).is_err()
-                {
-                    return Err(BuildError::DuplicateCapability { id });
-                }
-                capabilities.push(everruns_contracts::CapabilityRef::new(id.as_str()));
-                capability_implementations.push(CapabilityImplementation::Approval(
-                    approval::approval_capability(
-                        approver,
-                        approval_predicates.into_iter().collect(),
-                    ),
-                ));
-            }
-            #[cfg(not(feature = "builtins"))]
-            return Err(BuildError::MissingApprover {
-                tool: first_gated.clone(),
-            });
-        }
-
-        for function_tool in function_tools {
-            let id = function_tool.name().to_string();
-            everruns_contracts::validate_capability_id(&id).map_err(|error| {
-                BuildError::InvalidCapability {
-                    id: id.clone(),
-                    reason: error.reason(),
-                }
-            })?;
-            if capability_registry.get(&id).is_some()
-                || activated_capabilities.activate(id.clone()).is_err()
-            {
-                return Err(BuildError::DuplicateCapability { id });
-            }
-            capabilities.push(everruns_contracts::CapabilityRef::new(id.as_str()));
-            capability_implementations.push(CapabilityImplementation::Function(function_tool));
-        }
-        #[cfg(feature = "builtins")]
-        if let Some(ask_user) = self.ask_user {
-            capability_implementations.push(CapabilityImplementation::AskUser(ask_user));
-        }
-
-        Ok(Agent {
-            name,
-            instructions,
-            model,
-            provider,
-            capabilities,
-            capability_implementations,
-            initial_files: self.initial_files,
-            network_access: self.network_access,
-            package_manifest: self.package_manifest,
-            max_iterations: self.max_iterations,
-            parallel_tool_calls: self.parallel_tool_calls,
-            communication: self.communication,
-            workspace_root: self.workspace_root,
-            default_workspace,
-            workspace_policy: self.workspace_policy,
-            mcp_servers,
-            plugin_warnings: self.plugin_warnings,
-            #[cfg(feature = "local")]
-            local: self.local,
-            lifecycle_hooks: self.lifecycle_hooks,
-            backends: self.backends,
-            state: Arc::new(AgentState::new(workspace_backends)),
-        })
-    }
 }
 
 impl fmt::Debug for AgentBuilder {

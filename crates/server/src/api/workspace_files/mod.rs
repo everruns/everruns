@@ -51,7 +51,9 @@ pub struct AppState {
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
-            file_service: Arc::new(WorkspaceFileService::new(db.clone())),
+            file_service: Arc::new(
+                WorkspaceFileService::new(db.clone()).without_session_knowledge(),
+            ),
             db,
             auth,
         }
@@ -61,8 +63,11 @@ impl AppState {
         mut self,
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
-        self.file_service =
-            Arc::new(WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry));
+        self.file_service = Arc::new(
+            WorkspaceFileService::new(self.db.clone())
+                .with_virtual_registry(registry)
+                .without_session_knowledge(),
+        );
         self
     }
 }

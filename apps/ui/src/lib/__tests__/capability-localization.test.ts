@@ -1,4 +1,5 @@
 import {
+  capabilitySummary,
   localizedCapabilityDescription,
   localizedCapabilityName,
   localizedConfigDescription,
@@ -67,6 +68,16 @@ const capability = {
     },
   },
 };
+
+describe("capability summary", () => {
+  it("keeps the first paragraph and collapses whitespace", () => {
+    expect(
+      capabilitySummary(
+        "Discover and activate skills from the session filesystem.\n\nSkills are instruction packages.\n\n> [!TIP]\n> Use list_skills.",
+      ),
+    ).toBe("Discover and activate skills from the session filesystem.");
+  });
+});
 
 describe("capability localization", () => {
   it("resolves uk name/description and falls back to base for en", () => {

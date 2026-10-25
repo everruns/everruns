@@ -771,6 +771,7 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// Agent commands that reject built-in agents via `q::ensure_not_built_in`.
 /// Each has a matching `built_in_agent_rejects_*` test.
 const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
+    "connect_agent_source",
     "delete_agent",
     "destroy_agent",
     "update_agent",
@@ -786,6 +787,11 @@ const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
 /// agent's own definition is guarded; one that only creates something new, or
 /// attaches an org's own binding around the agent, is not.
 const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
+    // Removes only the source binding and retains the current definition.
+    "disconnect_agent_source",
+    // Only reschedules an existing binding. Connecting a built-in is rejected,
+    // and reconciliation still applies through the guarded package importer.
+    "sync_agent_source",
     // Creates a fresh agent; cannot mint a built-in (is_built_in is false on
     // every API-facing creation path).
     "create_agent",
@@ -798,6 +804,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",
+    // Creates a fresh agent from a bundled example through CreateAgent, which
+    // never mints a built-in; there is no existing agent to protect.
+    "adopt_agent_example",
     // --- Bindings, not definition -------------------------------------------
     // These live in adjacent domains and never touch the agents row. An org
     // must be able to wire a built-in agent into its own environment; a
@@ -886,6 +895,59 @@ async fn dispatch_blocks_built_in_agent_mutation() {
     );
 }
 
+#[tokio::test]
+async fn built_in_agent_rejects_source_connect() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let agent_id = seed_agent(&ctx, "source-built-in").await;
+    let row = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("load agent")
+        .expect("agent exists");
+    ctx.db
+        .mark_agent_built_in(DEFAULT_ORG_ID, row.id)
+        .await
+        .expect("mark built-in");
+
+    let err = dispatch(
+        "connect_agent_source",
+        serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "repository": "acme/agents",
+            "branch": "main",
+            "path": "agents/support",
+            "commit": "0123456789abcdef0123456789abcdef01234567",
+            "agent_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }),
+        &ctx,
+    )
+    .await
+    .expect_err("source sync must not replace a built-in definition");
+    assert!(err.message().contains("built-in agent"), "{err:?}");
+    assert!(!matches!(err.kind, CommandErrorKind::Forbidden(_)));
+
+    // Disconnecting is binding cleanup and preserves built-in immutability.
+    dispatch(
+        "disconnect_agent_source",
+        serde_json::json!({ "agent_id": agent_id.to_string() }),
+        &ctx,
+    )
+    .await
+    .expect("an empty binding can be disconnected");
+    let retained = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("reload agent")
+        .expect("agent remains");
+    assert!(retained.is_built_in);
+    assert_eq!(retained.system_prompt, row.system_prompt);
+}
+
 #[test]
 fn every_mutating_agent_command_is_classified_for_built_in_protection() {
     use everruns_server::domains::common::CommandDescriptor;
@@ -935,9 +997,13 @@ fn every_mutating_agent_command_is_classified_for_built_in_protection() {
     }
 }
 
-/// POST-style helpers intentionally available through MCP `query`.
-/// They do not persist state and each still declares a view policy.
+/// Reviewed non-GET reads, each with a view policy. Public helpers are available
+/// through MCP `query`; internal ones also require the internal-caller guard.
+/// Usage accounting and derived evidence do not change user configuration.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
+    // Browse and validate GitHub packages without persisting Agent or binding changes.
+    "get_agent_source_options",
+    "preview_agent_source",
     "validate_agent_package",
     "diff_agent_package",
     "export_report_query",
@@ -947,6 +1013,31 @@ const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     "preview_harness",
     "run_report_query",
     "run_saved_report",
+    // Cited retrieval: no collection/file mutations; ordinary usage accounting applies.
+    "search_knowledge_collections",
     "search_workspace_files",
     "stat_workspace_file",
+    // Internal-only session reads and replay evidence; never exposed through MCP query.
+    "worker_knowledge",
 ];
+
+#[tokio::test]
+async fn org_owners_cannot_dispatch_internal_knowledge_transport() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let error = dispatch(
+        "worker_knowledge",
+        serde_json::json!({
+            "session_id": everruns_contracts::typed_id::SessionId::new().to_string(),
+            "operation": "search",
+            "query": {"query": "private context"}
+        }),
+        &ctx,
+    )
+    .await
+    .expect_err("internal transport must reject ordinary organization owners");
+    assert!(matches!(error.kind, CommandErrorKind::Forbidden(_)));
+    assert!(error.message().contains("Internal command"), "{error:?}");
+}

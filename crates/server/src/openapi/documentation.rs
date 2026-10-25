@@ -57,8 +57,8 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "knowledge-memory",
         "Knowledge & memory",
-        "Give agents persistent memory and curated knowledge. Manage indexes and the documents they contain.",
-        &["memory", "knowledge_bases", "knowledge_indexes"],
+        "Give agents persistent memory and versioned file collections. Manage sources, files and optional search indexes.",
+        &["memory", "knowledge"],
     ),
     (
         "models-integrations",
@@ -80,6 +80,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         &[
             "users",
             "virtual-users",
+            "credentials",
             "Organizations",
             "organization invitations",
         ],
@@ -316,7 +317,11 @@ fn apply(spec: &mut Value) {
                 }
             }
             if group == &"agent-api" {
-                operation["security"] = json!([{"AgentCredential": []}]);
+                operation["security"] = if path == "/v1/channels/{channel_id}/chat/config" {
+                    json!([])
+                } else {
+                    json!([{"AgentCredential": []}])
+                };
             }
         }
     }

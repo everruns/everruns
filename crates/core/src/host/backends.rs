@@ -74,6 +74,12 @@ pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
 /// selection is always resolved from `HostComposition`.
 #[derive(Clone)]
 pub struct HostBackends {
+    pub memory_mounts: Vec<(
+        String,
+        Arc<dyn crate::session_files::SessionFileSystem>,
+        crate::dreaming::DreamMemoryScope,
+    )>,
+    pub dreaming_store: Arc<dyn crate::dreaming::DreamingStore>,
     /// Optional host-selected shell hook dispatcher; no integration is attached by core.
     pub bash_hook_dispatcher_factory: Option<crate::host::BashHookDispatcherFactory>,
     /// Optional shared fenced journal for native asynchronous tool execution.
@@ -135,6 +141,10 @@ impl HostBackends {
     /// Use the chainable `with_*` setters to override individual stores.
     pub fn in_memory() -> Self {
         Self {
+            memory_mounts: Vec::new(),
+            dreaming_store: Arc::new(
+                crate::engine::dreaming::store::InMemoryDreamingStore::default(),
+            ),
             bash_hook_dispatcher_factory: None,
             harness_store: Arc::new(InMemoryHarnessStore::new()),
             agent_store: Arc::new(InMemoryAgentStore::new()),

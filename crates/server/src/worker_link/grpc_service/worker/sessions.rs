@@ -8,6 +8,27 @@ use super::support::*;
 use crate::worker_link::grpc_service::*;
 
 impl WorkerServiceImpl {
+    // Maintenance snapshot assembly also uses these standalone reads, not
+    // just GetTurnContext. Resolve adoption live on every configuration seam.
+    async fn filter_dreaming_for_org(
+        &self,
+        org_id: i64,
+        capabilities: &mut Vec<everruns_contracts::CapabilityRef>,
+    ) -> Result<(), Status> {
+        if !capabilities.iter().any(|c| c.capability_id() == "dreaming") {
+            return Ok(());
+        }
+        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            org_id,
+            &crate::records::FeatureFlagPolicy::current(),
+        )
+        .await
+        .map_err(|error| internal_status("Failed to resolve organization feature flags", error))?;
+        capabilities.retain(|c| c.capability_id() != "dreaming" || flags.dreaming);
+        Ok(())
+    }
+
     pub(crate) async fn handle_get_agent(
         &self,
         request: Request<GetAgentRequest>,
@@ -17,11 +38,18 @@ impl WorkerServiceImpl {
 
         // Get agent with capabilities via domain query
         let public_id = everruns_contracts::typed_id::AgentId::from_uuid(agent_id).to_string();
-        let agent =
+        let mut agent =
             crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                 .await
                 .map_err(|e| internal_status("Failed to get agent", e))?;
 
+        if let Some(agent) = agent.as_mut() {
+            self.filter_dreaming_for_org(req.org_id, &mut agent.capabilities)
+                .await?;
+            crate::platform_chat_agent::configure_page_tools(&self.db, req.org_id, agent)
+                .await
+                .map_err(|e| internal_status("Failed to resolve page tools", e))?;
+        }
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 
         Ok(Response::new(GetAgentResponse { agent: proto_agent }))
@@ -34,7 +62,7 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
-        let harness = crate::domains::harnesses::queries::resolve_effective(
+        let mut harness = crate::domains::harnesses::queries::resolve_effective(
             &self.db,
             req.org_id,
             everruns_contracts::typed_id::HarnessId::from_uuid(harness_id),
@@ -42,6 +70,10 @@ impl WorkerServiceImpl {
         .await
         .map_err(|e| internal_status("Failed to get harness", e))?;
 
+        if let Some(harness) = harness.as_mut() {
+            self.filter_dreaming_for_org(req.org_id, &mut harness.capabilities)
+                .await?;
+        }
         let proto_harness = harness.map(|h| schema_harness_to_proto(&h));
 
         Ok(Response::new(GetHarnessResponse {
@@ -58,7 +90,7 @@ impl WorkerServiceImpl {
         let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Get session via SessionService
-        let session = self
+        let mut session = self
             .session_service
             .get_for_worker(&internal_caller, session_id)
             .await
@@ -69,6 +101,10 @@ impl WorkerServiceImpl {
 
         use crate::records::wire::schema_session_to_proto;
 
+        if let Some(session) = session.as_mut() {
+            self.filter_dreaming_for_org(req.org_id, &mut session.capabilities)
+                .await?;
+        }
         let proto_session = session.map(|s| schema_session_to_proto(&s));
 
         Ok(Response::new(GetSessionResponse {

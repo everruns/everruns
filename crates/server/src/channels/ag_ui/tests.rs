@@ -154,6 +154,7 @@ impl TestRun {
             result: Some(vec![ContentPart::text(result)]),
             error: None,
             duration_ms: Some(10),
+            worker_thread_cpu_ns: None,
             capability_id: None,
             capability_name: None,
             narration: None,

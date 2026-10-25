@@ -35,8 +35,7 @@ use crate::builtins::tool_types::{
 };
 
 pub use crate::builtins::tool_approval_durable::{
-    DurableToolApprover, ONE_OFF_DECISION_TTL_SECONDS, StoredToolApproval, TOOL_APPROVAL_KV_PREFIX,
-    always_decision_storage_key, approval_fingerprint, one_off_decision_storage_key,
+    DurableToolApprover, TOOL_APPROVAL_KV_PREFIX, approval_fingerprint,
 };
 use crate::builtins::typed_id::SessionId;
 use crate::tool_context::ToolContext;

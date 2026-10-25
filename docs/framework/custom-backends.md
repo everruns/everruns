@@ -7,7 +7,16 @@ Most applications should use `everruns::Agent`, `Model`, and `Session`. That
 surface deliberately hides stored harness records, platform registries, backend
 stores, worker phases, and durable scheduling topology.
 
-Cross into low-level composition only when your application is itself an
+For durable execution under Framework, implement
+[`SessionHosting` through the public hosting SPI](/framework/hosting/). Engine
+owns the runtime and recovery; the host supplies transactional session authority,
+epochs and independent activation. This path needs only an `everruns` dependency.
+
+To keep a host's own capability implementations, provider resolution, retry
+budgets, MCP credentials or observers while Engine runs the sessions, use
+[host services](/framework/host-services/) instead of composing a runtime.
+
+Cross into separate low-level composition only when your application is itself an
 execution host, for example, a server, evaluation harness, research runtime, or
 specialized embedder that must replace storage or orchestration components.
 
@@ -21,7 +30,7 @@ The low-level crates expose focused contracts for:
 - local SQLite-backed task and schedule state;
 - portable session and agent definitions, plus explicitly selected durable deployment components.
 
-An advanced host depends on `everruns`, `everruns-core` with the `host` feature,
+A separately composed low-level host depends on `everruns`, `everruns-core` with the `host` feature,
 and `everruns-contracts` for neutral service contracts. The low-level boundary
 is `everruns_core::host`; concrete integrations are selected on the facade. It is healthy for such a host to use
 low-level extension traits; the goal is not to re-export every backend through
@@ -29,8 +38,8 @@ one facade.
 
 ## Two engine boundaries
 
-`everruns::Engine` is a concrete application object that owns Agent snapshots,
-sessions, history, and resume authority. It is the normal Framework entrypoint,
+`everruns::Engine` is a concrete application object that owns the behavior
+registry, sessions, lifecycle, queries and activation through its hosting profile. It is the normal Framework entrypoint,
 not an extension trait. Applications do not implement it.
 
 `everruns_core::engine` is the shared execution kernel, enabled by the `engine`
@@ -46,9 +55,11 @@ execution boundary and keep deployment-specific service selection in the host.
 
 Where a turn runs is a separate interface: `everruns_core::host::TurnBackend`
 starts, cancels, and observes a session's turns. `InProcessBackend` runs a
-turn in process, `ActorRunner` (what every facade session uses) runs it there
+turn in process. The legacy local/custom-backend facade lane uses `ActorRunner`
 under the session's lease, and the Platform's server marks the session
-runnable for a worker that leases it and runs the whole turn. A host that records input
+runnable for a worker that leases it and runs the whole turn. Coherent Framework
+hosting instead enters Engine's shared session actor path. `TurnBackend` is not
+the durable Framework extension point. A low-level host that records input
 through its own event store starts turns from it with
 `TurnInput::StoredMessage` and continues a parked turn with
 `TurnInput::RecordedToolResults`, which every backend serves. The trait is

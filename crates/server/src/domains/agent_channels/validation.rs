@@ -34,7 +34,8 @@ pub(crate) fn normalize_and_validate_channel_config(
         | ChannelType::Webhook
         | ChannelType::Voice
         | ChannelType::Api
-        | ChannelType::Poppy => {
+        | ChannelType::Poppy
+        | ChannelType::WorkChat => {
             // An api channel is called with agent keys, managed on their own.
             // A Poppy channel authenticates personal agents by protocol.
             // Voice calls are placed by org members and API keys today.
@@ -195,6 +196,26 @@ pub(crate) fn normalize_and_validate_channel_config(
             if let Some(pact) = config.pact.as_ref() {
                 validate_pact_profile(pact)?;
             }
+        }
+        ChannelType::WorkChat => {
+            let mut config: super::record::work_chat::WorkChatConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid Work Chat config: {e}"))
+                })?;
+            let normalized = normalize_and_validate_channel_config(
+                ChannelType::Api,
+                serde_json::to_value(&config.execution)
+                    .map_err(|e| CommandError::bad_request(e.to_string()))?,
+            )?;
+            config.execution = serde_json::from_value(normalized)
+                .map_err(|e| CommandError::bad_request(e.to_string()))?;
+            if config.execution.errors != super::record::api::ApiErrorDetail::Public {
+                return Err(CommandError::bad_request(
+                    "Work Chat requires public errors",
+                ));
+            }
+            channel_config = serde_json::to_value(config)
+                .map_err(|e| CommandError::bad_request(e.to_string()))?;
         }
         ChannelType::Api => {
             let config: super::record::api::AgentApiChannelConfig =
@@ -707,6 +728,14 @@ pub(crate) fn merge_preserved_secret_fields(
                 {
                     out_captcha.insert("secret_key".to_string(), existing_secret.clone());
                 }
+            }
+        }
+        ChannelType::WorkChat => {
+            if let (Some(next), Some(old)) = (
+                final_channel_config.get_mut("execution"),
+                existing_decrypted.get("execution"),
+            ) {
+                merge_preserved_api_auth_method_secrets(next, old);
             }
         }
         ChannelType::Api => {

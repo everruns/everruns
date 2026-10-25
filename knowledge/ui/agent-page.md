@@ -38,7 +38,11 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   that shows its current value ("Inherited", "2 files") and opens a side sheet, so the whole
   configuration reads without opening anything. Side sheets, not accordions, because Branding and
   Files are large editors. Service account is a More row. Its sheet saves immediately, like MCP
-  servers and Credentials, and stays editable on a built-in agent.
+  servers and Credentials, and stays editable on a built-in agent. The Files row, and the Files
+  card on Preview, appear only when the effective agent has a filesystem: a capability that
+  contributes one (including through a dependency or the harness) or starter files already set.
+  Without a filesystem, the empty Files section stays hidden. Adding a filesystem capability
+  reveals the row. Source: `apps/ui/src/components/agents/agent-files-visibility.ts`.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing
@@ -63,3 +67,13 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   Chats remain bound to the managed Platform Chat. In edit mode navy Save changes replaces
   the action, with Discard beside it, and the header states that changes apply to new sessions
   only.
+
+## Page-aware Chat rollout
+
+Organizations enrolled in [Chat mode](chat-mode.md) can keep this page beside
+Platform Chat. Chat reads and patches the page's live form, including unsaved
+manual edits. Changes remain in the existing draft until Save, with separate
+draft markers and guarded local Undo. Agent definition saves attributed to that
+conversation refresh the page and receive persisted-change markers with guarded
+undo. A concurrent saved change blocks a dirty draft's Save until the operator discards and
+reviews the latest definition. Marker dismissal never bypasses that conflict.

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+
 import { use, useState, useCallback } from "react";
 import {
   useEval,
@@ -342,6 +344,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   const { evalId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("cases");
+  useChatPageFilters({ tab: activeTab });
   const [showAddCase, setShowAddCase] = useState(false);
   const [selectedRuns, setSelectedRuns] = useState<string[]>([]);
   // Evals expose no policy config; `eval.manage` is the agent manage permission.

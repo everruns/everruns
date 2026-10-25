@@ -29,6 +29,9 @@
 //! - A cancel abandons the pending approvals and questions; the runtime then
 //!   sees the turn cancelled.
 
+mod agent;
+mod cutover;
+
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::PathBuf;
@@ -37,9 +40,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use anyhow::anyhow;
 use everruns::approval::{ApprovalDecision, ToolApprover};
-use everruns::ask_user::{
-    Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, QuestionKind, Status,
-};
+use everruns::ask_user::{Answer, AnsweredBy, AskContext, AskUser, Outcome, Question, Status};
 use everruns::{
     BashkitShell, FunctionTool, LocalConfig, SendDisposition, SentMessage, SessionEvent,
     SessionEventKind, SessionId, ToolCall, ToolCallContext, ToolDefinition, ToolResponse,
@@ -107,6 +108,8 @@ impl PendingTurn {
 /// What a new session is created with.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NewSession {
+    /// Caller-retained creation identity, when supplied by the wire API.
+    pub id: Option<SessionId>,
     /// The agent to run; the default agent when `None`.
     pub agent: Option<String>,
     pub title: Option<String>,
@@ -199,11 +202,17 @@ pub(crate) struct Host {
     pub app: App,
     pub mode: Mode,
     pub build_id: String,
+    assets: HashMap<String, String>,
+    instructions: HashMap<String, String>,
     pub notices: broadcast::Sender<Notice>,
     pub(crate) store: Arc<Store>,
     /// The shared channel runtime over this host's sessions.
     channels: everruns::channels::ChannelHost,
-    engine: everruns::Engine,
+    pub(crate) engine: everruns::Engine,
+    native_authority: std::sync::OnceLock<everruns::hosting::SqliteHosting>,
+    authority_supervisor: std::sync::OnceLock<tokio::task::AbortHandle>,
+    /// Legacy child sessions by parent, indexed on the first move.
+    legacy_children: std::sync::OnceLock<Arc<cutover::LegacyChildren>>,
     /// `Some` persists sessions through everruns' local store.
     data_dir: Option<PathBuf>,
     live: Mutex<HashMap<String, Arc<Live>>>,
@@ -214,12 +223,22 @@ pub(crate) struct Host {
     pub(crate) gateway: gateway::Env,
     /// The hosting target's `[sandbox] kind = "microvm"` adapter, if any.
     microvm: std::sync::OnceLock<crate::hosting::MicroVm>,
+    environment_ref: std::sync::OnceLock<String>,
+    environment_factory: std::sync::OnceLock<Arc<dyn everruns::hosting::EnvironmentFactory>>,
     /// Who may call the agent routes; unset leaves them open.
     auth: std::sync::OnceLock<crate::auth::Auth>,
     /// Names the session a request just parked on, for AG-UI runs.
     #[cfg(feature = "ag-ui")]
     pub(crate) parked_on: broadcast::Sender<SessionId>,
     me: Weak<Host>,
+}
+
+impl Drop for Host {
+    fn drop(&mut self) {
+        if let Some(supervisor) = self.authority_supervisor.get() {
+            supervisor.abort();
+        }
+    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -233,9 +252,98 @@ fn now() -> String {
 }
 
 impl Host {
+    pub(crate) async fn authoritative_status(
+        &self,
+        id: &str,
+    ) -> crate::Result<Option<everruns::hosting::HostingStatus>> {
+        if !self.engine.has_session_hosting() {
+            return Ok(None);
+        }
+        let session = id
+            .parse()
+            .map_err(|_| ApiError::NotFound(format!("session {id}")))?;
+        Ok(Some(self.hosted_status(id, session).await?))
+    }
+
+    pub(crate) fn register_agent(&self, entry: &AgentEntry) -> crate::Result {
+        let agent = self.build_agent(entry, None, false)?;
+        if self.engine.has_session_hosting() {
+            let harness = entry
+                .spec
+                .package
+                .as_ref()
+                .map(|package| package.session_harness())
+                .transpose()?
+                .flatten();
+            let build = everruns::hosting::AgentBuild::new(&entry.name, &self.build_id);
+            let reference = self
+                .environment_ref
+                .get()
+                .cloned()
+                .unwrap_or_else(|| format!("serve-environment-{}", self.build_id));
+            // Every environment placement, the microVM adapter included,
+            // can take sessions an older release left in the legacy store.
+            self.register_pre_authority(entry, harness.clone(), reference.clone())?;
+            if let Some(factory) = self.environment_factory.get() {
+                let factory = factory.clone();
+                self.engine.register_agent_with_environment(
+                    build,
+                    agent,
+                    harness,
+                    reference,
+                    move |session| {
+                        let factory = factory.clone();
+                        async move { factory.open(session).await }
+                    },
+                )?;
+            } else if self.native_authority.get().is_some()
+                // An explicit microVM adapter owns its mounted workspace.
+                // SQLite journal placement must not replace that binding.
+                && !(matches!(self.app.inner.config.sandbox.kind, SandboxKind::Microvm)
+                    && self.microvm.get().is_some())
+            {
+                let root = self
+                    .data_dir
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("native authority requires a data directory"))?
+                    .join("workspaces");
+                let factory = agent.directory_environment_factory(root);
+                self.engine
+                    .register_agent_with_environment(build, agent, harness, reference, factory)?;
+            } else {
+                let factory = agent.environment_factory();
+                self.engine
+                    .register_agent_with_environment(build, agent, harness, reference, factory)?;
+            }
+        }
+        Ok(())
+    }
     /// A host persisting under `data_dir` (dev, start), or in memory (eval).
     pub(crate) fn new(app: App, mode: Mode, data_dir: Option<PathBuf>) -> crate::Result<Arc<Self>> {
-        Self::with_engine(app, mode, data_dir, everruns::Engine::new())
+        let authority = data_dir
+            .as_ref()
+            .map(|dir| -> crate::Result<_> {
+                std::fs::create_dir_all(dir)?;
+                Ok(everruns::hosting::SqliteHosting::open(
+                    dir.join("sessions.db"),
+                )?)
+            })
+            .transpose()?;
+        let engine = match &authority {
+            Some(authority) => everruns::Engine::builder()
+                .hosting(authority.clone())
+                .build(),
+            None => everruns::Engine::new(),
+        };
+        let host = Self::with_engine(app, mode, data_dir, engine)?;
+        if let Some(authority) = authority {
+            host.set_native_authority(authority);
+        }
+        for entry in &host.app.inner.agents {
+            host.register_agent(entry)?;
+        }
+        host.start_authority_supervisor();
+        Ok(host)
     }
 
     pub(crate) fn with_engine(
@@ -248,19 +356,57 @@ impl Host {
             Some(dir) => Store::open(&dir.join("serve.db"))?,
             None => Store::in_memory()?,
         });
-        let build_id = std::env::var("SERVE_BUILD_ID")
+        let assets: HashMap<String, String> = app
+            .inner
+            .assets
+            .iter()
+            .map(|asset| (asset.path.to_string(), load_asset(asset, mode.hot_reload())))
+            .collect();
+        let instructions: HashMap<String, String> = app
+            .inner
+            .agents
+            .iter()
+            .map(|entry| {
+                (
+                    entry.name.clone(),
+                    entry
+                        .spec
+                        .instructions
+                        .as_ref()
+                        .map(|instructions| instructions.load(mode.hot_reload()))
+                        .unwrap_or_else(|| {
+                            assets
+                                .get("instructions.md")
+                                .cloned()
+                                .unwrap_or_else(|| "You are a helpful assistant.".into())
+                        }),
+                )
+            })
+            .collect();
+        let build_id = match std::env::var("SERVE_BUILD_ID")
             .ok()
             .filter(|id| !id.is_empty())
-            .unwrap_or_else(|| crate::manifest::build_id(&app));
+        {
+            Some(retained) => retained,
+            None if engine.has_session_hosting() => {
+                crate::manifest::execution_build_id(&app, &assets, &instructions)?
+            }
+            None => crate::manifest::build_id(&app),
+        };
         let (notices, _) = broadcast::channel(1024);
         let host = Arc::new_cyclic(|me| Host {
             channels: crate::channels::build(me.clone(), &app, store.clone(), notices.clone()),
             app,
             mode,
             build_id,
+            assets,
+            instructions,
             notices,
             store,
             engine,
+            native_authority: std::sync::OnceLock::new(),
+            authority_supervisor: std::sync::OnceLock::new(),
+            legacy_children: std::sync::OnceLock::new(),
             data_dir,
             live: Mutex::new(HashMap::new()),
             approvals: Mutex::new(HashMap::new()),
@@ -268,6 +414,8 @@ impl Host {
             answered: Mutex::new(HashSet::new()),
             gateway: gateway::Env::from_process(),
             microvm: std::sync::OnceLock::new(),
+            environment_ref: std::sync::OnceLock::new(),
+            environment_factory: std::sync::OnceLock::new(),
             auth: std::sync::OnceLock::new(),
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
@@ -287,6 +435,40 @@ impl Host {
 
     /// Install the hosting target's microVM adapter. Set once, before any
     /// agent is built.
+    pub(crate) fn set_environment_ref(&self, reference: String) {
+        let _ = self.environment_ref.set(reference);
+    }
+    pub(crate) fn set_environment_factory(
+        &self,
+        factory: Arc<dyn everruns::hosting::EnvironmentFactory>,
+    ) {
+        let _ = self.environment_factory.set(factory);
+    }
+    pub(crate) fn set_native_authority(&self, authority: everruns::hosting::SqliteHosting) {
+        let _ = self.native_authority.set(authority);
+    }
+    pub(crate) fn start_authority_supervisor(&self) {
+        let Some(authority) = self.native_authority.get() else {
+            return;
+        };
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        self.authority_supervisor.get_or_init(|| {
+            let authority = authority.clone();
+            let engine = self.engine.clone();
+            runtime
+                .spawn(async move {
+                    if let Err(error) = authority
+                        .supervise(engine, everruns::CancellationToken::new())
+                        .await
+                    {
+                        eprintln!("serve authority supervisor stopped: {error}");
+                    }
+                })
+                .abort_handle()
+        });
+    }
     pub(crate) fn set_microvm(&self, microvm: crate::hosting::MicroVm) {
         let _ = self.microvm.set(microvm);
     }
@@ -352,13 +534,24 @@ impl Host {
             })?,
         }
         .clone();
-        let agent = self.build_agent(&entry, None, true)?;
-        let session = match &entry.spec.package {
-            Some(package) => package.create(&self.engine, agent)?,
-            None => self.engine.create(agent),
+        let session = if self.engine.has_session_hosting() {
+            self.engine.create_registered_with_metadata(new.id.unwrap_or_default(),&everruns::hosting::AgentBuild::new(&entry.name,&self.build_id),json!({"title":new.title,"tags":new.tags,"hints":new.hints,"metadata":new.metadata})).await?
+        } else {
+            let agent = self.build_agent(&entry, None, true)?;
+            match &entry.spec.package {
+                Some(package) => package.create(&self.engine, agent)?,
+                None => self.engine.create(agent),
+            }
         };
         let id = session.id();
-        let at = now();
+        let at = if self.engine.has_session_hosting() {
+            self.engine
+                .session_status(session.session_id())
+                .await?
+                .created_at
+        } else {
+            now()
+        };
         self.store.insert_session(&SessionRow {
             id: id.clone(),
             agent: entry.name.to_string(),
@@ -381,12 +574,17 @@ impl Host {
     }
 
     fn go_live(&self, id: &str, session: everruns::Session) -> Arc<Live> {
-        let live = Arc::new(Live {
-            session,
-            active: Mutex::new(None),
-        });
-        lock(&self.live).insert(id.to_string(), live.clone());
-        live
+        // Creation retries must retain any observer/cancellation handle already
+        // following this session, including while it waits for client tools.
+        lock(&self.live)
+            .entry(id.to_string())
+            .or_insert_with(|| {
+                Arc::new(Live {
+                    session,
+                    active: Mutex::new(None),
+                })
+            })
+            .clone()
     }
 
     /// The live session, resuming it from the local store after a restart.
@@ -394,8 +592,32 @@ impl Host {
         if let Some(live) = lock(&self.live).get(id).cloned() {
             return Ok(live);
         }
+        if self.engine.has_session_hosting() {
+            let session: SessionId = id
+                .parse()
+                .map_err(|_| ApiError::NotFound(format!("session {id}")))?;
+            let status = self.hosted_status(id, session).await?;
+            let metadata = status.binding.metadata;
+            self.store.insert_session(&SessionRow {
+                id: id.into(),
+                agent: status.binding.behavior.agent,
+                build_id: status.binding.behavior.build_id,
+                title: metadata["title"].as_str().map(str::to_owned),
+                tags: serde_json::from_value(metadata["tags"].clone()).unwrap_or_default(),
+                hints: metadata
+                    .get("hints")
+                    .filter(|value| !value.is_null())
+                    .cloned(),
+                metadata: metadata
+                    .get("metadata")
+                    .filter(|value| !value.is_null())
+                    .cloned(),
+                created_at: status.created_at.clone(),
+                updated_at: status.created_at,
+            })?;
+        }
         let row = self.session_row(id)?;
-        if row.build_id != self.build_id {
+        if row.build_id != self.build_id && !self.engine.has_session_hosting() {
             if self.mode == Mode::Start {
                 return Err(ApiError::Pinned {
                     build_id: row.build_id,
@@ -407,20 +629,30 @@ impl Host {
                 from: row.build_id.clone(),
             });
         }
-        let entry = self
-            .app
-            .agent(&row.agent)
-            .ok_or_else(|| {
-                anyhow!(
-                    "session {id} ran agent `{}`, which this build lacks",
-                    row.agent
-                )
-            })?
-            .clone();
+        // Hosted history and settled outcomes remain readable even when this
+        // deployment no longer retains the executable Agent. Engine activation
+        // handles that case by suspending instead of selecting current code.
+        let entry = if self.engine.has_session_hosting() {
+            None
+        } else {
+            Some(
+                self.app
+                    .agent(&row.agent)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "session {id} ran agent `{}`, which this build lacks",
+                            row.agent
+                        )
+                    })?
+                    .clone(),
+            )
+        };
         let session_id = SessionId::parse(id)
             .map_err(|err| ApiError::BadRequest(format!("bad session id {id}: {err}")))?;
-        let agent = self.build_agent(&entry, None, true)?;
-        self.engine.attach(session_id, agent).await?;
+        if let Some(entry) = &entry {
+            let agent = self.build_agent(entry, None, true)?;
+            self.engine.attach(session_id, agent).await?;
+        }
         let session = self.engine.resume(session_id).await?;
         let after = session
             .events_after(0)
@@ -443,11 +675,13 @@ impl Host {
         };
         self.notify(Notice::Live {
             session_id: id.to_string(),
-            agent: entry.name.to_string(),
+            agent: row.agent,
             resumed: true,
             after,
         });
-        self.resume_interrupted(id, &live, &entry).await?;
+        if let Some(entry) = &entry {
+            self.resume_interrupted(id, &live, entry).await?;
+        }
         Ok(live)
     }
 
@@ -462,6 +696,9 @@ impl Host {
         live: &Arc<Live>,
         entry: &AgentEntry,
     ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            return Ok(());
+        }
         let Some(interrupted) = live.session.interrupted_turn().await? else {
             return Ok(());
         };
@@ -650,6 +887,18 @@ impl Host {
         Ok(sent)
     }
 
+    pub(crate) async fn send_message_with_id(
+        &self,
+        id: &str,
+        message_id: everruns::MessageId,
+        message: everruns::InputMessage,
+    ) -> crate::Result<SentMessage> {
+        let live = self.live(id).await?;
+        let sent = live.session.send_with_id(message_id, message).await?;
+        self.track(id, &live, &sent);
+        Ok(sent)
+    }
+
     /// The turn running on `id`'s session, if one is.
     pub(crate) fn active_turn(&self, id: &str) -> Option<TurnHandle> {
         let live = lock(&self.live).get(id).cloned()?;
@@ -666,7 +915,7 @@ impl Host {
     /// it started a turn, follow that turn (status, cancel, delivery).
     fn track(&self, id: &str, live: &Arc<Live>, sent: &SentMessage) {
         let _ = self.store.touch(id, &now());
-        if !matches!(sent.disposition, SendDisposition::Started) {
+        if matches!(sent.disposition, SendDisposition::Steered) {
             return;
         }
         self.follow(live, sent.turn());
@@ -677,13 +926,34 @@ impl Host {
     fn follow(&self, live: &Arc<Live>, turn: TurnHandle) {
         *lock(&live.active) = Some(turn.clone());
         let live = live.clone();
+        let engine = self.engine.clone();
+        let notices = self.notices.clone();
         tokio::spawn(async move {
-            let _ = turn.wait().await;
+            let mut observed = HashSet::new();
+            loop {
+                tokio::select! {
+                    // Drop the losing wait before querying status. A retained
+                    // wait may reserve the authority's fair mutex while pending;
+                    // awaiting another query here would stop polling its owner.
+                    _=turn.wait()=>break,
+                    ()=tokio::time::sleep(std::time::Duration::from_millis(25)),if engine.has_session_hosting()=>{
+                        if let Ok(status)=engine.session_status(live.session.session_id()).await {
+                            for call in status.waiting {
+                                if !observed.insert((status.open_turn,call.id.clone())) {continue;}
+                                if let Some(request)=everruns_contracts::tool_approval_types::ToolApprovalRequired::from_request_call(&call.id,&call.name,&call.arguments) {
+                                    let _=notices.send(Notice::ApprovalRequested(PendingApprovalView{session_id:live.session.id(),tool_call_id:call.id,tool_name:request.tool,arguments:request.arguments}));
+                                } else if call.name=="ask_user"
+                                    && let Ok(questions)=serde_json::from_value(call.arguments["questions"].clone()) {let _=notices.send(Notice::QuestionAsked{session_id:live.session.id(),tool_call_id:call.id,questions});}
+                            }
+                        }
+                    }
+                }
+            }
             let mut active = lock(&live.active);
             // A newer turn may already be the active one.
             if active
                 .as_ref()
-                .is_some_and(|current| current.id() == turn.id())
+                .is_some_and(|current| current.identity() == turn.identity())
             {
                 *active = None;
             }
@@ -727,8 +997,50 @@ impl Host {
     }
 
     /// Cancel the active turn. `Ok(false)` when no turn was running.
+    #[cfg(feature = "a2a")]
     pub(crate) async fn cancel(&self, id: &str) -> crate::Result<bool> {
+        self.cancel_target(id, uuid::Uuid::new_v4(), None).await
+    }
+
+    pub(crate) async fn cancel_target(
+        &self,
+        id: &str,
+        command: uuid::Uuid,
+        message: Option<everruns::MessageId>,
+    ) -> crate::Result<bool> {
         let live = self.live(id).await?;
+        if let Some(status) = self.authoritative_status(id).await? {
+            if let Some(message) = message {
+                let admission = live
+                    .session
+                    .admission(message)
+                    .await?
+                    .ok_or_else(|| ApiError::NotFound("admission receipt".into()))?;
+                admission.cancel(command).await?;
+                return Ok(true);
+            }
+            let Some(turn) = status.open_turn else {
+                return Ok(false);
+            };
+            let events = live.session.events_after(0).await?;
+            let target = events
+                .iter()
+                .find(|event| event.canonical_json()["context"]["turn_id"] == turn.to_string())
+                .and_then(|event| {
+                    event.canonical_json()["context"]["input_message_id"]
+                        .as_str()
+                        .map(str::to_owned)
+                });
+            let target = target
+                .ok_or_else(|| ApiError::Conflict("open turn has no input identity".into()))?;
+            let target = target.parse()?;
+            let admission =
+                live.session.admission(target).await?.ok_or_else(|| {
+                    ApiError::Conflict("open turn has no admission receipt".into())
+                })?;
+            admission.cancel(command).await?;
+            return Ok(true);
+        }
         let active = lock(&live.active).clone();
         // Stop the turn before dropping what it waits on: a dropped approval
         // reads as a rejection, and the turn could finish on it first.
@@ -745,7 +1057,7 @@ impl Host {
     // --- Approvals and questions ---------------------------------------------
 
     /// Resolve a pending approval. `NotFound` when there is none by that id.
-    pub(crate) fn resolve_approval(
+    pub(crate) async fn resolve_approval(
         &self,
         session_id: &str,
         tool_call_id: &str,
@@ -757,10 +1069,62 @@ impl Host {
             ApprovalDecision::Reject
         };
         self.decide_approval(session_id, tool_call_id, decision)
+            .await
     }
 
     /// Resolve a pending approval with any decision, `*_always` included.
-    pub(crate) fn decide_approval(
+    pub(crate) async fn decide_approval(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        decision: ApprovalDecision,
+    ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            if !self
+                .engine
+                .session_status(session_id.parse()?)
+                .await?
+                .waiting
+                .iter()
+                .any(|call| call.id == tool_call_id && call.name == "approve_tool_call")
+            {
+                return Err(ApiError::NotFound(format!("pending approval {tool_call_id}")).into());
+            }
+            let decision = match decision {
+                ApprovalDecision::Allow => everruns::hosting::ToolApprovalDecision::Allow,
+                ApprovalDecision::Reject => everruns::hosting::ToolApprovalDecision::Reject,
+                ApprovalDecision::AllowAlways => {
+                    everruns::hosting::ToolApprovalDecision::AllowAlways
+                }
+                ApprovalDecision::RejectAlways => {
+                    everruns::hosting::ToolApprovalDecision::RejectAlways
+                }
+                _ => {
+                    return Err(ApiError::BadRequest(
+                        "an explicit approval decision is required".into(),
+                    )
+                    .into());
+                }
+            };
+            self.session(session_id)
+                .await?
+                .approve_tool(
+                    uuid::Uuid::new_v4(),
+                    self.engine
+                        .session_status(session_id.parse()?)
+                        .await?
+                        .open_turn
+                        .ok_or_else(|| ApiError::Conflict("no open turn".into()))?,
+                    tool_call_id,
+                    decision,
+                )
+                .await?;
+            return Ok(());
+        }
+        self.decide_local_approval(session_id, tool_call_id, decision)
+    }
+
+    pub(crate) fn decide_local_approval(
         &self,
         session_id: &str,
         tool_call_id: &str,
@@ -778,7 +1142,63 @@ impl Host {
     /// Answer a pending `ask_user` question set, like the everruns server's
     /// `POST /question-answers`. Without `tool_call_id`, the one pending set
     /// of the session is answered.
-    pub(crate) fn answer_questions(
+    pub(crate) async fn answer_questions(
+        &self,
+        session_id: &str,
+        tool_call_id: Option<&str>,
+        status: Status,
+        answers: Vec<Answer>,
+    ) -> crate::Result {
+        if self.engine.has_session_hosting() {
+            let session = self.session(session_id).await?;
+            let pending = session.pending_tools().await?;
+            let mut matches = pending.iter().filter(|call| {
+                call.name == "ask_user" && tool_call_id.is_none_or(|id| id == call.id)
+            });
+            let call = matches
+                .next()
+                .ok_or_else(|| ApiError::NotFound("pending question set".into()))?;
+            if matches.next().is_some() {
+                return Err(ApiError::BadRequest(
+                    "several question sets are pending; pass tool_call_id".into(),
+                )
+                .into());
+            }
+            let questions: Vec<Question> =
+                serde_json::from_value(call.arguments["questions"].clone())?;
+            if status == Status::Answered {
+                validate_answers(&questions, &answers).map_err(ApiError::BadRequest)?;
+            }
+            session
+                .resolve_tools(
+                    uuid::Uuid::new_v4(),
+                    self.engine
+                        .session_status(session_id.parse()?)
+                        .await?
+                        .open_turn
+                        .ok_or_else(|| ApiError::Conflict("no open turn".into()))?,
+                    vec![everruns::ToolAnswer {
+                        tool_call_id: call.id.clone(),
+                        tool_name: call.name.clone(),
+                        result: serde_json::to_value(Outcome {
+                            status,
+                            answered_by: AnsweredBy::User,
+                            answers: if status == Status::Answered {
+                                answers
+                            } else {
+                                vec![]
+                            },
+                        })?,
+                        error: None,
+                    }],
+                )
+                .await?;
+            return Ok(());
+        }
+        self.answer_local_questions(session_id, tool_call_id, status, answers)
+    }
+
+    pub(crate) fn answer_local_questions(
         &self,
         session_id: &str,
         tool_call_id: Option<&str>,
@@ -834,196 +1254,6 @@ impl Host {
             answers,
         });
         Ok(())
-    }
-
-    // --- Agent assembly -------------------------------------------------------
-
-    /// Turn a discovered agent into an `everruns::Agent`. Its approvals and
-    /// questions are parked under `surface` when given (a subagent's show on
-    /// its parent session), else under the session that asks.
-    pub(crate) fn build_agent(
-        &self,
-        entry: &AgentEntry,
-        surface: Option<String>,
-        persistent: bool,
-    ) -> crate::Result<everruns::Agent> {
-        let spec = &entry.spec;
-        let (model, _) = gateway::resolve(
-            &spec.model,
-            spec.offline.as_ref(),
-            self.mode.allow_offline(),
-            &self.gateway,
-        )?;
-        let hot = self.mode.hot_reload();
-        let instructions = match &spec.instructions {
-            Some(instructions) => instructions.load(hot),
-            None => match self.app.asset("instructions.md") {
-                Some(asset) => load_asset(asset, hot),
-                None => "You are a helpful assistant.".to_string(),
-            },
-        };
-        let gate = Gate {
-            host: self.me.clone(),
-            surface,
-        };
-        let mut builder = everruns::Agent::builder()
-            .name(&entry.name)
-            .model(model)
-            .instructions(instructions)
-            .approver(gate.clone())
-            .ask_user(gate);
-        // Skills use the built-in capability: each embedded skill is seeded
-        // read-only where it looks (`.agents/skills/<name>/SKILL.md`), and the
-        // agent discovers and activates them with its own tools.
-        let skills = &self.app.inner.skills;
-        if !skills.is_empty() {
-            builder = builder.capability(everruns::Skills);
-            for skill in skills {
-                let prefix = format!("skills/{}/", skill.name);
-                for asset in &self.app.inner.assets {
-                    if let Some(relative) = asset.path.strip_prefix(&prefix) {
-                        builder = builder.readonly_file(
-                            format!(".agents/skills/{}/{relative}", skill.name),
-                            load_asset(asset, hot),
-                        );
-                    }
-                }
-            }
-        }
-        for tool in self.app.tools_for(entry) {
-            builder = builder.tool(self.function_tool(tool, entry.name.clone()));
-        }
-        if !entry.sub {
-            for sub in self.app.inner.agents.iter().filter(|agent| agent.sub) {
-                builder = builder.tool(self.subagent_tool(sub));
-            }
-        }
-        for connection in &self.app.inner.connections {
-            let Some(mcp) = &connection.value.mcp else {
-                continue;
-            };
-            match mcp.to_everruns(connection.value.name) {
-                Ok(server) => builder = builder.mcp_server(server),
-                Err(err) if self.mode == Mode::Start => return Err(err),
-                // Dev and evals run without the connection rather than not at all.
-                Err(_) => {}
-            }
-        }
-        builder = match self.app.inner.config.sandbox.kind {
-            SandboxKind::None => builder,
-            SandboxKind::Local => builder.capability(everruns::FileSystem),
-            SandboxKind::Bashkit => builder.capability(BashkitShell::new()),
-            // A hosting target supplies the microVM adapter; without one
-            // (dev, self-hosted start) bashkit stands in.
-            SandboxKind::Microvm => match self.microvm.get() {
-                Some(microvm) => microvm(builder),
-                None => builder.capability(BashkitShell::new()),
-            },
-        };
-        if persistent && let Some(dir) = &self.data_dir {
-            builder = builder.local(LocalConfig::new(dir.join("everruns")));
-        }
-        if let Some(customize) = &spec.customize {
-            builder = customize(builder);
-        }
-        if let Some(package) = &spec.package {
-            let package = package.clone().bind_mcp(|key| std::env::var(key).ok())?;
-            builder = package.apply_to(builder)?;
-        }
-        builder
-            .build()
-            .map_err(|err| anyhow!("agent `{}`: {err}", entry.name))
-    }
-
-    /// A `#[tool]` as an everruns tool: each call gets a `Cx` over its
-    /// `ToolCallContext`, and its approval rule becomes the runtime's gate.
-    fn function_tool(&self, tool: &'static ToolRegistration, agent: String) -> FunctionTool {
-        let host = self.me.clone();
-        let function = FunctionTool::with_context(
-            tool.name,
-            tool.description,
-            (tool.schema)(),
-            move |call: ToolCallContext, args: Value| {
-                (tool.call)(Cx::tool(host.clone(), agent.clone(), call), args)
-            },
-        );
-        match tool.approval {
-            Approval::Never => function,
-            Approval::Always => function.always_needs_approval(),
-            Approval::When(predicate) => function.needs_approval(predicate),
-        }
-    }
-
-    /// `ask_<name>`: run a subagent to completion on a task and return its
-    /// answer. The child session's tool activity is reported as progress on
-    /// the parent call, and its approvals and questions surface on the parent
-    /// session.
-    fn subagent_tool(&self, sub: &AgentEntry) -> FunctionTool {
-        let description = sub
-            .spec
-            .description
-            .clone()
-            .or_else(|| (!sub.doc.is_empty()).then(|| sub.doc.to_string()))
-            .unwrap_or_else(|| format!("Delegate a task to the {} subagent.", sub.name));
-        let me = self.me.clone();
-        let sub = sub.clone();
-        FunctionTool::with_context(
-            format!("ask_{}", sub.name),
-            description,
-            json!({
-                "type": "object",
-                "properties": { "task": { "type": "string", "description": "What the subagent should do, with all context it needs." } },
-                "required": ["task"],
-            }),
-            move |call: ToolCallContext, args: Value| {
-                let (me, sub) = (me.clone(), sub.clone());
-                async move {
-                    let Some(host) = me.upgrade() else {
-                        return Ok::<_, String>(ToolResponse::error("host is shutting down"));
-                    };
-                    let task = args
-                        .get("task")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string();
-                    let parent = call.session_id().to_string();
-                    let agent = match host.build_agent(&sub, Some(parent), true) {
-                        Ok(agent) => agent,
-                        Err(err) => return Ok(ToolResponse::error(format!("{err:#}"))),
-                    };
-                    // A child session on the host's own engine, persisted in
-                    // the same store as its parent.
-                    let child = match &sub.spec.package {
-                        Some(package) => match package.create(&host.engine, agent) {
-                            Ok(child) => child,
-                            Err(err) => return Ok(ToolResponse::error(err.to_string())),
-                        },
-                        None => host.engine.create(agent),
-                    };
-                    drop(host);
-                    let mut events = child.events();
-                    let run = child.send_and_wait(task.as_str());
-                    tokio::pin!(run);
-                    let turn = loop {
-                        tokio::select! {
-                            turn = &mut run => break turn,
-                            event = events.recv() => {
-                                if let Ok(Some(event)) = event
-                                    && let Some(line) = child_progress(&sub.name, &event)
-                                {
-                                    call.progress(line).await;
-                                }
-                            }
-                        }
-                    };
-                    Ok(match turn {
-                        Ok(turn) if turn.success => ToolResponse::text(turn.response),
-                        Ok(turn) => ToolResponse::error(turn.error.unwrap_or(turn.response)),
-                        Err(err) => ToolResponse::error(err.to_string()),
-                    })
-                }
-            },
-        )
     }
 
     /// Run a schedule now.
@@ -1175,93 +1405,20 @@ impl AskUser for Gate {
 /// Check answers against the questions asked, as the everruns server does:
 /// every question answered once, only offered options, a single-select
 /// question gets one selection, and every answer says something.
-fn validate_answers(questions: &[Question], answers: &[Answer]) -> Result<(), String> {
-    for answer in answers {
-        if !questions
-            .iter()
-            .any(|question| question.id.as_deref() == Some(answer.id.as_str()))
-        {
-            return Err(format!("no question with id {:?} was asked", answer.id));
-        }
-    }
-    for question in questions {
-        let id = question.id.as_deref().unwrap_or_default();
-        let mut matching = answers.iter().filter(|answer| answer.id == id);
-        let answer = matching
-            .next()
-            .ok_or_else(|| format!("question {id:?} was not answered"))?;
-        if matching.next().is_some() {
-            return Err(format!("question {id:?} was answered more than once"));
-        }
-        if question.kind == QuestionKind::Secret {
-            return Err(format!(
-                "question {id:?} asks for a secret, which serve does not store"
-            ));
-        }
-        for label in &answer.selected {
-            if !question.options.iter().any(|option| &option.label == label) {
-                return Err(format!(
-                    "question {id:?} was not asked with option {label:?}"
-                ));
-            }
-        }
-        let other = answer
-            .other_text
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty());
-        if other.is_some() && question.kind != QuestionKind::Text && !question.allow_other {
-            return Err(format!("question {id:?} does not allow free text"));
-        }
-        if answer.selected.is_empty() && other.is_none() {
-            return Err(format!("question {id:?} has no selection and no free text"));
-        }
-        if !question.multi_select && answer.selected.len() > 1 {
-            return Err(format!("question {id:?} is single-select"));
-        }
-    }
-    Ok(())
-}
+use everruns::hosting::validate_question_answers as validate_answers;
 
 /// The event envelope the wire API sends: the complete canonical envelope,
 /// with reasoning replay state stripped the way the everruns server's public
 /// projection does (opaque provider parts dropped; reasoning signatures and
 /// encrypted payloads removed).
 pub(crate) fn wire_json(event: &SessionEvent) -> Value {
-    let mut envelope = event.canonical_json().clone();
-    let strip = |content: &mut Value| {
-        if let Some(parts) = content.as_array_mut() {
-            parts.retain(|part| part["type"] != "provider_opaque");
-            for part in parts.iter_mut() {
-                if part["type"] == "reasoning"
-                    && let Some(part) = part.as_object_mut()
-                {
-                    part.remove("signature");
-                    part.remove("encrypted");
-                }
-            }
-        }
-    };
-    if let Some(content) = envelope.pointer_mut("/data/message/content") {
-        strip(content);
-    }
-    if let Some(messages) = envelope
-        .pointer_mut("/data/messages")
-        .and_then(Value::as_array_mut)
-    {
-        for message in messages {
-            if let Some(content) = message.get_mut("content") {
-                strip(content);
-            }
-        }
-    }
-    envelope
+    everruns_contracts::execution_api::public_event(event.canonical_json())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns::ask_user::AskUserOption;
+    use everruns::ask_user::{AskUserOption, QuestionKind};
 
     fn question(id: &str, multi: bool) -> Question {
         Question {

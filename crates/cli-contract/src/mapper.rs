@@ -43,6 +43,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Secrets an agent needs from whoever runs it.",
     ),
     (
+        "agents examples",
+        "Ready-made agents (blueprints) to adopt and adapt.",
+    ),
+    (
         "agents exposures",
         "Pause or resume all of an agent's live channels at once.",
     ),
@@ -65,6 +69,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "agents scripts",
         "Saved shell scripts an agent owns and can run as tools.",
+    ),
+    (
+        "agents source",
+        "Continuous GitHub source sync, status, and local editing ownership.",
+    ),
+    (
+        "agents source options",
+        "GitHub branches and package paths available for Agent source sync.",
     ),
     (
         "agents triggers",
@@ -110,6 +122,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "context",
         "Notes managers keep about an entity, read by agents that manage it.",
+    ),
+    (
+        "credential-bindings",
+        "Declare, list and revoke write-only credential bindings.",
     ),
     ("durable", "Durable scheduled tasks and their executions."),
     ("durable executions", "Single runs of a durable schedule."),
@@ -159,24 +175,18 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("images", "Uploaded images."),
     (
-        "knowledge-bases",
-        "Curated collections of knowledge entries.",
+        "knowledge",
+        "File collections with optional indexed retrieval.",
     ),
+    ("knowledge files", "Original files, paths and metadata."),
     (
-        "knowledge-bases entries",
-        "Individual entries in a knowledge base.",
+        "knowledge sources",
+        "Connected sources and their retained trees.",
     ),
+    ("knowledge indexers", "Organization search accounts."),
     (
-        "knowledge-bases okf-import",
-        "Import an Open Knowledge Format bundle.",
-    ),
-    (
-        "knowledge-indexes",
-        "Searchable indexes synced from external sources.",
-    ),
-    (
-        "knowledge-indexes documents",
-        "Documents held in a knowledge index.",
+        "knowledge okf",
+        "Validate retained Open Knowledge Format metadata.",
     ),
     (
         "mcp-servers",
@@ -208,6 +218,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "orgs egress-allowlist grant",
         "Whether an organization may extend the allowlist.",
+    ),
+    (
+        "orgs provider-accounts",
+        "Sandbox provider and web search accounts the organization holds.",
     ),
     (
         "payments",
@@ -245,6 +259,11 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ("reports projector", "Process pending reporting work."),
     ("reports query", "Ad-hoc reporting queries."),
     ("reports saved", "Saved report definitions."),
+    ("resources", "Access to credentials and connections."),
+    (
+        "resources grants",
+        "Explicit, bounded permission to use a resource.",
+    ),
     (
         "sandbox-targets",
         "Sandbox providers this deployment offers.",
@@ -348,6 +367,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "sessions trace turns steps request",
         "The messages a model call in a trace was sent.",
+    ),
+    (
+        "sessions work",
+        "What a session's agent is doing now, or what it got done.",
     ),
     ("skills", "Skill packages and their content."),
     ("system", "Server status."),

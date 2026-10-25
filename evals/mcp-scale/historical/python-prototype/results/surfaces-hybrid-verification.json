@@ -1,0 +1,75 @@
+{
+  "task": "same synthetic ticket read through native MCP and Bashkit Tools in Shell",
+  "task_passed": true,
+  "surface_scope": "Validates native and Bashkit/Tools in Shell invocation adapters around the synthetic two-function gateway. It does not validate native individual-tool discovery, a new first-class catalog contract, or production MCP pagination.",
+  "checks": {
+    "native_ticket_read_succeeded": true,
+    "shell_nested_ticket_read_succeeded": true,
+    "same_read_only_backend_call_reached_gateway_twice": true,
+    "fixture_state_unchanged": true,
+    "cli_hides_gateway_functions": true,
+    "hybrid_keeps_gateway_functions_and_shell_visible": true,
+    "native_exposes_gateway_functions": true,
+    "same_discovery_identity_used_by_both_surfaces": true
+  },
+  "fixture_tool_count": 600,
+  "gateway_tool_count": 2,
+  "response": "OPS-8421 is owned by Ava Li and its status is `in_progress`; both read-only invocation surfaces returned the same details.",
+  "backend_calls": [
+    {
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      },
+      "at": "2026-10-18T22:34:15.544789+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "get_ticket"
+    },
+    {
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      },
+      "at": "2026-10-18T22:34:20.480494+00:00",
+      "method": "tools/call",
+      "ok": true,
+      "tool": "get_ticket"
+    }
+  ],
+  "fixture_state": {
+    "ticket_id": "OPS-8421",
+    "owner": "Ava Li",
+    "status": "in_progress",
+    "call_count": 2
+  },
+  "runtime": {
+    "success": true,
+    "iterations": 5,
+    "duration_ms": 12700,
+    "usage": {
+      "actual_cost_usd": 0.0008100200000000001,
+      "cache_creation_tokens": 3916,
+      "cache_read_tokens": 12252,
+      "effective_cost_usd": 0.0008100200000000001,
+      "input_tokens": 15,
+      "output_tokens": 393
+    }
+  },
+  "cache_note": "cache_read_tokens and cache_creation_tokens are provider-reported usage fields; this one run is not a cache stability test.",
+  "invocation_evidence": {
+    "native": {
+      "tool_id": "platform::get_ticket",
+      "schema_digest": "39838bb88d58ef35d0663419fa3dfc48ed92267f3c3c105dcc6c18de368d7f55",
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      }
+    },
+    "cli_nested_call": {
+      "arguments": {
+        "ticket_id": "OPS-8421"
+      },
+      "schema_digest": "39838bb88d58ef35d0663419fa3dfc48ed92267f3c3c105dcc6c18de368d7f55",
+      "tool_id": "platform::get_ticket"
+    },
+    "cli_command": "tools ops catalog-call"
+  }
+}

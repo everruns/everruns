@@ -1,5 +1,8 @@
 "use client";
 
+import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
+
+import { useAgentSource } from "@/hooks/use-agent-source";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, CircleAlert, Pencil, Play, Radio, Trash2 } from "lucide-react";
@@ -71,8 +74,11 @@ export function AgentChannelEditor({
   const { channels, isLoading: endpointsLoading } = useAgentChannels(agentId);
   const { can, isLoading: policiesLoading } = usePolicies("agents");
   const slackInstallCapability = useSlackInstallCapability();
+  const sourceQuery = useAgentSource(agentId);
   const channel = channels.find(({ channel }) => channel.id === channelId)?.channel;
   const returnHref = `/agents/${agentId}?tab=integrations`;
+  const packageName = (channel?.channel_config as { package_name?: string })?.package_name;
+  const sourceOwned = !!packageName && !!sourceQuery.data?.managed_channels.includes(packageName);
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
   const canDangerous =
     !policiesLoading && can("agent.dangerous") && !isReadOnlyStatus(agent?.status);
@@ -81,7 +87,13 @@ export function AgentChannelEditor({
     if (agent && !policiesLoading && !canManage) router.replace(returnHref);
   }, [agent, canManage, policiesLoading, returnHref, router]);
 
-  if (agentLoading || endpointsLoading || policiesLoading || slackInstallCapability.isLoading) {
+  if (
+    agentLoading ||
+    endpointsLoading ||
+    policiesLoading ||
+    slackInstallCapability.isLoading ||
+    sourceQuery.isLoading
+  ) {
     return <div className="container mx-auto p-6">Loading channel...</div>;
   }
   if (!agent || !channel) {
@@ -96,6 +108,18 @@ export function AgentChannelEditor({
     );
   }
 
+  if (sourceQuery.isError || sourceOwned) {
+    return (
+      <div className="container mx-auto space-y-3 p-6">
+        <p>
+          {sourceOwned
+            ? "This channel's configuration is managed by GitHub. Edit the Agent source repository to change it. Publication and credentials remain available from Integrations."
+            : "Could not check the channel source. Reload before editing."}
+        </p>
+        <BackLink href={returnHref}>Back to Agent</BackLink>
+      </div>
+    );
+  }
   return (
     <AgentChannelForm
       key={channel.id}
@@ -141,6 +165,13 @@ function AgentChannelForm({
   const [formState, setFormState] = useState<ChannelFormState>(() =>
     getDefaultChannelFormState(channel.channel_type, channel),
   );
+  const chatDraft = useChannelChatDraft({
+    state: formState,
+    setState: setFormState,
+    id: channelId,
+    baseline: channel.updated_at,
+    writable: canManage && !updateEndpoint.isPending,
+  });
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
   const publishHint = channelPublishControl(channel).hint;
@@ -155,6 +186,7 @@ function AgentChannelForm({
 
   return (
     <PageContainer>
+      {chatDraft.notice}
       <PageBreadcrumb
         items={[
           { label: "Agents", href: "/agents" },
@@ -191,7 +223,12 @@ function AgentChannelForm({
             <Button
               type="submit"
               form="channel-edit-form"
-              disabled={!canManage || !isChannelFormValid(formState) || updateEndpoint.isPending}
+              disabled={
+                chatDraft.blocked ||
+                !canManage ||
+                !isChannelFormValid(formState) ||
+                updateEndpoint.isPending
+              }
             >
               <Check className="size-4" />
               {updateEndpoint.isPending ? "Saving..." : "Save"}
@@ -237,6 +274,7 @@ function AgentChannelForm({
         id="channel-edit-form"
         onSubmit={(event) => {
           event.preventDefault();
+          if (chatDraft.blocked) return;
           updateEndpoint.mutate(
             {
               channel_config: buildChannelConfig(formState),

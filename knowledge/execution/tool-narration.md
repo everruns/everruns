@@ -138,6 +138,27 @@ an argument over a tool-internal name when one is available.
 
 When the relevant argument is absent, drop the value and keep the bare verb.
 
+### Saying what came out
+
+The completed phase receives the tool's result and details through
+`ToolNarrationContext`, so a finished line can report the outcome instead of
+only the attempt. A [work report](work-reports.md) shows these lines as its
+steps, which is why the common families do it:
+
+- **Shell** (`narrate_shell_exec`): the test tally printed by cargo, pytest,
+  jest or vitest ("Ran `cargo test`, 3 of 12 tests failed"), else a non-zero
+  exit code ("Ran `make`, exit code 2"). Nothing recognizable leaves the plain
+  line; words like "passed" in arbitrary output are not read as a test run.
+- **File search** (`narrate_grep_files`): "Found 8 matches for `parse` in 3
+  files"; the file count is dropped when the result was truncated, since the
+  returned page cannot say how many files the rest touch.
+- **Web search**: provider and result count, from the tool's details.
+
+Only counts the tool itself reported appear. Long-running tools that know a
+count send it as `current`/`total` on `tool.progress` (`ToolContext::
+emit_progress_counted`, facade `ToolCallContext::progress_of`) so the work
+report can draw a bar; the message stays readable on its own.
+
 Grouped headlines use those same bare action phrases. Repeated equivalent actions collapse to a
 localized count-aware phrase ("Searched files twice" / "Searched files 3 times") while the child
 rows retain their argument-specific narration. Mixed groups preserve the first two distinct action

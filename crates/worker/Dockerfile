@@ -3,7 +3,7 @@
 # ============================================================================
 # Stage 1: Chef - Prepare cargo-chef for dependency caching
 # ============================================================================
-FROM rust:1.99.0-slim AS chef
+FROM rust:1.99.1-slim AS chef
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -27,6 +27,7 @@ COPY vendor vendor
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
+COPY skills skills
 
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -45,6 +46,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
+COPY skills skills
 
 RUN cargo build --release -p everruns-worker
 

@@ -56,6 +56,12 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+mod builder;
+mod input_message;
+use input_message::{message_from_input, message_from_input_with_id};
+mod commands;
+mod seeding;
+use seeding::seed_runtime_initial_files;
 mod parked;
 mod steering;
 mod turn_entry;
@@ -185,6 +191,7 @@ pub struct CapabilityDelta {
 /// `build()` returns an [`InProcessRuntime`] that can execute turns in-process
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
+    initialize_session: bool,
     host_composition: HostComposition,
     /// Provider registered at build time (replacing a same-name one) whose model
     /// becomes the default when nothing else set one ([`Self::provider_with_default_model`]).
@@ -206,6 +213,8 @@ pub struct InProcessRuntimeBuilder {
     mcp_auth_provider: Option<Arc<dyn crate::mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
+    session_reasoning_effort: Option<crate::tool_context::ReasoningEffortHandle>,
     budget_checker: Option<Arc<dyn BudgetChecker>>,
     /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`],
     /// keyed by `plugin:{name}`. Agents and harnesses reference them by that
@@ -235,6 +244,7 @@ impl InProcessRuntimeBuilder {
     ///   default model via [`Self::default_model`].
     pub fn new() -> Self {
         Self {
+            initialize_session: true,
             host_composition: HostComposition::builder()
                 .capability_registry(crate::host::runtime_capability_registry())
                 .driver_registry(DriverRegistry::new())
@@ -257,87 +267,13 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
+            reasoning_effort_handle: None,
+            session_reasoning_effort: None,
             budget_checker: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
             waits_on_person: None,
         }
-    }
-
-    /// Set the auth provider used to acquire credentials for scoped MCP
-    /// servers. Defaults to no credentials, suitable
-    /// for unauthenticated servers or servers carrying literal auth headers.
-    #[cfg(feature = "mcp")]
-    pub fn mcp_auth_provider(mut self, provider: Arc<dyn crate::mcp::McpAuthProvider>) -> Self {
-        self.mcp_auth_provider = Some(provider);
-        self
-    }
-
-    /// Replace the platform definition used by the runtime.
-    pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
-        self.host_composition = host_composition;
-        self
-    }
-
-    /// Register an additional capability on the runtime platform.
-    pub fn capability<C: Capability + 'static>(self, capability: C) -> Self {
-        self.host_composition
-            .register_capability_overriding(Arc::new(capability));
-        self
-    }
-
-    /// Replace the platform driver registry.
-    pub fn driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
-        *self.host_composition.driver_registry_mut() = driver_registry;
-        self
-    }
-
-    /// Register a canonical runtime provider selected by [`ModelSpec`](everruns_contracts::model_spec::ModelSpec).
-    pub fn provider(mut self, provider: everruns_contracts::runtime_provider::Provider) -> Self {
-        self.providers.push(provider);
-        self
-    }
-
-    /// Register a provider, replacing any same-id registration, without
-    /// changing the selected default model.
-    ///
-    /// This is useful for deterministic test/simulation adapters. Ordinary
-    /// applications should prefer [`Self::provider`], which rejects duplicate
-    /// identities instead of silently replacing them.
-    pub fn replace_provider(
-        mut self,
-        provider: everruns_contracts::runtime_provider::Provider,
-    ) -> Self {
-        self.replacement_providers.push(provider);
-        self
-    }
-
-    /// Register `provider` at build time — replacing any provider already
-    /// registered under the same name — and default the runtime model to
-    /// `model_id` on that provider when no other default was configured.
-    ///
-    /// This is the seam behind deterministic simulated runtimes: the
-    /// `everruns-llmsim` crate's `.llm_sim_as_default(...)` extension builds an
-    /// `llmsim` provider and routes it through here.
-    pub fn provider_with_default_model(
-        mut self,
-        provider: everruns_contracts::runtime_provider::Provider,
-        model_id: impl Into<String>,
-    ) -> Self {
-        self.default_provider = Some((provider, model_id.into()));
-        self
-    }
-
-    /// Select the runtime's default credential-free model specification.
-    pub fn default_model(mut self, model: everruns_contracts::model_spec::ModelSpec) -> Self {
-        self.model_spec = Some(model);
-        self
-    }
-
-    /// Select a credential-free model served by a provider registered on this builder.
-    pub fn model_spec(mut self, model: everruns_contracts::model_spec::ModelSpec) -> Self {
-        self.model_spec = Some(model);
-        self
     }
 
     /// Supply a custom backend bundle instead of the built-in in-memory stores.
@@ -553,6 +489,15 @@ impl InProcessRuntimeBuilder {
         if let Some(policy) = self.workspace_policy.take() {
             file_store = crate::host::apply_workspace_policy(file_store, policy, &mut backends);
         }
+        // Workspace policy governs workspace paths. Memory is a separate,
+        // explicitly host-authorized surface and keeps its own access contract.
+        if !backends.memory_mounts.is_empty() {
+            let mut mounted = crate::mount_fs::MountFs::new(file_store);
+            for (point, backend, scope) in &backends.memory_mounts {
+                mounted = mounted.with_memory_mount(point.clone(), backend.clone(), scope.clone());
+            }
+            file_store = Arc::new(mounted);
+        }
 
         if let Some((provider, model_id)) = self.default_provider.take() {
             let provider_key = provider.id().clone();
@@ -672,6 +617,7 @@ impl InProcessRuntimeBuilder {
             event_log,
             event_history,
             native_async_store: backends.native_async_store,
+            dreaming_store: backends.dreaming_store,
             compaction_checkpoint_store: backends.compaction_checkpoint_store,
             provider_store: backends.provider_store,
             event_emitter,
@@ -691,6 +637,8 @@ impl InProcessRuntimeBuilder {
                 .unwrap_or_else(|| Arc::new(crate::mcp::NoAuthProvider)),
             provider_retry_config: self.provider_retry_config,
             provider_stall_timeout: self.provider_stall_timeout,
+            reasoning_effort_handle: self.reasoning_effort_handle,
+            session_reasoning_effort: self.session_reasoning_effort,
             budget_checker: self.budget_checker,
             #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::host::mcp_cache::McpDiscoveryCache::new()),
@@ -698,8 +646,10 @@ impl InProcessRuntimeBuilder {
             parked_turns: ParkedTurns::default(),
             waits_on_person: self.waits_on_person,
         };
-        for session in &self.sessions {
-            runtime.ensure_session_started(session).await?;
+        if self.initialize_session {
+            for session in &self.sessions {
+                runtime.ensure_session_started(session).await?;
+            }
         }
         Ok(runtime)
     }
@@ -735,6 +685,7 @@ pub struct InProcessRuntime {
     event_log: Arc<dyn EventLog>,
     event_history: Arc<EventHistory>,
     native_async_store: Option<Arc<dyn crate::native_async_store::NativeAsyncStore>>,
+    dreaming_store: Arc<dyn crate::dreaming::DreamingStore>,
     compaction_checkpoint_store: Arc<dyn crate::CompactionCheckpointStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
     event_emitter: Arc<HostEventEmitter>,
@@ -754,6 +705,8 @@ pub struct InProcessRuntime {
     mcp_auth_provider: Arc<dyn crate::mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_contracts::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
+    session_reasoning_effort: Option<crate::tool_context::ReasoningEffortHandle>,
     budget_checker: Option<Arc<dyn BudgetChecker>>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::host::mcp_cache::McpDiscoveryCache>,
@@ -1201,82 +1154,6 @@ impl InProcessRuntime {
         }
     }
 
-    /// Execute a system command declared by a registered capability.
-    ///
-    /// Looks up the first capability whose `commands()` includes the named
-    /// command (in capability-resolution order) and delegates to its
-    /// `execute_command`. Returns an error if no capability declares the
-    /// requested name. The coding-CLI example uses this for `/model`
-    /// (provided by `ModelSwitcherCapability`) so the dispatch path stays
-    /// inside the capability instead of the TUI's local `handle_command`
-    /// branches.
-    pub async fn execute_command(
-        &self,
-        session_id: SessionId,
-        request: crate::command::ExecuteCommandRequest,
-    ) -> Result<crate::command::CommandResult> {
-        let ctx = self.load_context(session_id).await?;
-        let registry = self.host_composition.capability_registry();
-        // Context-aware commands (e.g. /btw) get the same store-backed host
-        // facilities the server provides; the already-assembled context seeds
-        // the host so dispatch and execution assemble it once.
-        let host = crate::host::StoreCommandHost::new(
-            session_id,
-            self.harness_store.clone(),
-            self.agent_store.clone(),
-            self.session_store.clone(),
-            self.event_history.clone(),
-            self.provider_store.clone(),
-            (*registry).clone(),
-            self.host_composition.driver_registry().clone(),
-        )
-        .with_file_store(self.file_store.clone())
-        .with_assembled_context(ctx.clone());
-        let exec_ctx = crate::command::CommandExecutionContext::new(session_id, Arc::new(host));
-        for config in &ctx.resolved_capability_configs {
-            let Some(capability) = registry.get(config.capability_id()) else {
-                continue;
-            };
-            if capability.commands().iter().any(|c| c.name == request.name) {
-                return capability.execute_command(&request, &exec_ctx).await;
-            }
-        }
-        Err(AgentLoopError::config(format!(
-            "no capability declares command /{}",
-            request.name
-        )))
-    }
-
-    /// List slash commands available for a session.
-    ///
-    /// Resolves the session's harness/agent capability chain and aggregates
-    /// commands declared via [`Capability::commands`], deduplicated by name
-    /// (first occurrence wins, matching the order of resolved capabilities).
-    /// This is the embedded equivalent of the server's
-    /// `GET /v1/sessions/{id}/commands` system-commands list — skill
-    /// commands are not included here because skills are discovered via the
-    /// platform filesystem rather than the capability registry.
-    pub async fn list_commands(
-        &self,
-        session_id: SessionId,
-    ) -> Result<Vec<crate::command::CommandDescriptor>> {
-        let ctx = self.load_context(session_id).await?;
-        let registry = self.host_composition.capability_registry();
-        let mut seen = std::collections::HashSet::new();
-        let mut commands = Vec::new();
-        for config in &ctx.resolved_capability_configs {
-            let Some(capability) = registry.get(config.capability_id()) else {
-                continue;
-            };
-            for command in capability.commands() {
-                if seen.insert(command.name.clone()) {
-                    commands.push(command);
-                }
-            }
-        }
-        Ok(commands)
-    }
-
     /// Load a session record and fold runtime ARD attachments into its config
     /// layer before capabilities / scoped MCP servers are resolved
     /// (resource_discovery).
@@ -1452,6 +1329,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.native_async_store.clone()
     }
 
+    fn dreaming_store(&self) -> Option<Arc<dyn crate::dreaming::DreamingStore>> {
+        Some(self.dreaming_store.clone())
+    }
+
     fn compaction_checkpoint_store(&self) -> Option<Arc<dyn crate::CompactionCheckpointStore>> {
         Some(self.compaction_checkpoint_store.clone())
     }
@@ -1544,6 +1425,22 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.provider_stall_timeout
     }
 
+    fn reasoning_effort_handle(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<crate::tool_context::ReasoningEffortHandle> {
+        self.reasoning_effort_handle.clone()
+    }
+
+    fn session_reasoning_effort(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_contracts::ReasoningEffort> {
+        self.session_reasoning_effort
+            .as_ref()
+            .and_then(crate::tool_context::ReasoningEffortHandle::get)
+    }
+
     fn budget_checker(&self, _: i64, _: Option<AgentId>) -> Option<Arc<dyn BudgetChecker>> {
         self.budget_checker.clone()
     }
@@ -1592,58 +1489,6 @@ fn hydrate_plugin_refs(
         if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
             cap.set_config(hydrated.config_value().clone());
         }
-    }
-}
-
-async fn seed_runtime_initial_files(
-    harness_store: &dyn RuntimeHarnessStore,
-    agent_store: &dyn RuntimeAgentStore,
-    file_store: &dyn SessionFileSystem,
-    session: &ExecutionSession,
-) -> Result<()> {
-    let harness = harness_store
-        .get_harness(session.harness_id)
-        .await?
-        .ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "harness not found while seeding files: {}",
-                session.harness_id
-            ))
-        })?;
-    let agent = match session.agent_id {
-        Some(agent_id) => Some(
-            agent_store
-                .get_agent(agent_id)
-                .await?
-                .ok_or_else(|| AgentLoopError::store(format!("agent not found: {agent_id}")))?,
-        ),
-        None => None,
-    };
-    let overlay = effective_overlay(&harness, agent.as_ref(), session);
-    // Seed into the session's workspace (a shared workspace differs from the
-    // session id; the default 1:1 case is equal).
-    let seed_key = SessionId::from_uuid(session.workspace_id.uuid());
-    for file in &overlay.initial_files {
-        file_store.seed_initial_file(seed_key, file).await?;
-    }
-    Ok(())
-}
-
-fn message_from_input(input: InputMessage) -> RuntimeMessage {
-    message_from_input_with_id(MessageId::new(), input)
-}
-
-fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> RuntimeMessage {
-    RuntimeMessage {
-        id: message_id,
-        role: input.role,
-        content: input.content,
-        phase: None,
-        phase_source: None,
-        controls: input.controls,
-        metadata: input.metadata,
-        external_actor: input.external_actor,
-        created_at: Utc::now(),
     }
 }
 

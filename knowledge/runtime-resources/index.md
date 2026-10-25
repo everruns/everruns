@@ -4,6 +4,7 @@
 * [Legacy Agent Identities](agent-identities.md) - Refactored into virtual users.
 * [Virtual Users and Everruns Users](virtual-users.md) - Canonical runtime accounts separate from platform management users.
 * [Virtual Users API](virtual-users-api.md) - API contract for virtual users and links to the route and schema owners.
+* [Continuous GitHub Agent Sources](agent-sources.md) - Source ownership, reconciliation and failure semantics.
 * [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.
@@ -13,6 +14,7 @@
 * [User Hooks Specification](user-hooks.md) - User-authored lifecycle hooks for agent execution.
 * [Agent Reliability Tests](agent-reliability-tests.md) - Agent execution reliability tests.
 * [Subagents Specification](subagents.md) - Subagent orchestration.
+* [Session titles](session-titles.md) - Automatic naming, sparse admission, model defaults, and explicit ownership.
 * [Session Tasks](session-tasks.md) - Session task registry for background work.
 * [Coordination](coordination.md) - Coordinator agents hand work to threads and keep the person's view of it.
 * [Session Participants](session-participants.md) - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff).
@@ -27,9 +29,11 @@
 * [Session Export (JSONL)](session-export.md) - Session export to JSONL.
 * [Forking Sessions](forking-sessions.md) - Fork a session into an independent copy (history + workspace + state).
 * [Session Source and List Facets](session-source-and-facets.md) - How a session records the way it was started, and how the sessions list filters and counts over it.
-* [Knowledge Bases Specification](knowledge-bases.md) - Curated organization knowledge.
+* [Unified Knowledge](knowledge.md) - Single knowledge feature with optional indexing, file mounts, metadata and progressive disclosure.
+* [Knowledge Indexing and Storage](knowledge-indexing.md) - Incremental publication, object-backed content and organization indexer BYOK.
+* [Knowledge Bases Specification](knowledge-bases.md) - Retired undeployed curated-knowledge design; superseded by Unified Knowledge.
 * [Open Knowledge Format (OKF) Adoption](okf-adoption.md) - Open Knowledge Format (OKF) import/export adoption for Knowledge Bases.
-* [Knowledge Indexes Specification](knowledge-indexes.md) - Source-backed, embedded, citable knowledge indexes.
+* [Knowledge Indexes Specification](knowledge-indexes.md) - Retired undeployed index design; superseded by Unified Knowledge.
 * [Citations Specification](citations.md) - Claim-level source provenance as composable citation capabilities.
 * [Memory Specification](memory.md) - Org-scoped named Memories (mountable into Workspaces).
 * [Memory Model](memory-model.md) - How the per-session Workspace and durable org Memory tiers relate, shipped and planned surfaces.
@@ -38,3 +42,5 @@
 * [Compaction](compaction.md) - Context compaction capability.
 * [Session Attachments](session-attachments.md) - Attachments stored in session file storage under `/attachments`, labels with paths, attachment list after compaction, one intake path for every surface.
 * [Client Hints](client-hints.md) - Generic client hints mechanism.
+
+* [Dreaming](dreaming.md) - Background consolidation of completed experience into existing Memory files.

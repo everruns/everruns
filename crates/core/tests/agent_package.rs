@@ -632,3 +632,23 @@ fn native_globs_do_not_read_unselected_large_siblings() {
         1
     );
 }
+
+#[test]
+fn explicitly_selected_manifest_does_not_overwrite_other_manifest_assets() {
+    let entries = std::collections::BTreeMap::from([
+        (
+            "support.toml".into(),
+            b"schema_version=1\nname='support'\ninstructions='Help'\nfiles=['agent.toml']".to_vec(),
+        ),
+        (
+            "agent.toml".into(),
+            b"This is a runtime asset, not the selected manifest".to_vec(),
+        ),
+    ]);
+    let package = AgentPackage::from_manifest_entries(entries, "support.toml").unwrap();
+    assert_eq!(package.manifest.name, "support");
+    assert_eq!(
+        package.files().unwrap()[0].content,
+        "This is a runtime asset, not the selected manifest"
+    );
+}

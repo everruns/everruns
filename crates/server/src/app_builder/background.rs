@@ -38,6 +38,8 @@ pub(super) struct WorkerLinkDeps {
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub virtual_registry: Arc<VirtualMountRegistry>,
     pub slack_provisioner: Option<Arc<dyn SlackAppProvisioner>>,
+    /// The channel host targeted schedule triggers run on.
+    pub channels: Option<Arc<crate::channels::host::ServerChannels>>,
 }
 
 /// Validate gRPC auth and TLS config, then supervise the worker gRPC server.
@@ -83,6 +85,7 @@ pub(super) fn spawn_grpc_server(
                     grpc_svc.set_task_broadcaster(broadcaster);
                 }
                 grpc_svc.set_slack_provisioner(deps.slack_provisioner);
+                grpc_svc.set_channels(deps.channels);
                 grpc_svc.set_connector_registry(deps.connector_registry);
                 grpc_svc.set_permission_resolver(deps.permission_resolver);
                 grpc_svc.set_provider_services(deps.provider_services);
@@ -175,6 +178,7 @@ pub(super) fn spawn_dev_task_worker(
         deps.sqldb_store,
     )
     .with_slack_provisioner(deps.slack_provisioner)
+    .with_channels(deps.channels)
     .with_connector_registry(deps.connector_registry)
     .with_budget_service(extras.budget_service)
     .with_encryption(encryption)
@@ -316,6 +320,8 @@ fn log_sync_result(provider_id: impl std::fmt::Display, result: domains::models:
 /// Inputs for the cluster-wide maintenance loops below. They all run on the
 /// background pool (EVE-1081) so they never queue behind request traffic.
 pub(super) struct MaintenanceDeps {
+    pub agent_source_ctx: crate::domains::common::Ctx,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub background_db: Arc<StorageBackend>,
     pub background_pool: sqlx::PgPool,
     pub background_runner: Arc<dyn everruns_core::host::TurnBackend>,
@@ -325,9 +331,7 @@ pub(super) struct MaintenanceDeps {
     pub event_delivery: crate::live_updates::event_delivery::EventDelivery,
     pub connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
-    pub provider_resolver: Arc<services::ProviderResolverService>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
-    pub host_composition: Arc<HostComposition>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
 }
@@ -365,9 +369,12 @@ pub(super) async fn start_maintenance(
     );
 
     // -- Cluster-once maintenance jobs on durable schedules (crate::background::cluster_jobs) --
-    // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
+    // Blob GC, event and Sandbox history retention, source syncs: one run per cluster
     // per interval, whatever the replica count.
+    let mut agent_source_ctx = deps.agent_source_ctx;
+    agent_source_ctx.db = deps.background_db.clone();
     let cluster_jobs = vec![
+        crate::domains::agents::source::source_sync_job(agent_source_ctx),
         crate::background::actor_history_retention::retention_job(deps.background_pool.clone()),
         crate::background::blob_gc::blob_gc_job(
             deps.background_db.clone(),
@@ -395,20 +402,15 @@ pub(super) async fn start_maintenance(
             deps.background_db.clone(),
             deps.connection_resolver.clone(),
         ),
-        // Reuses Memory sync's GitHub connection resolver, the provider resolver, the
-        // driver registry (embeddings), and the vector store:
-        // knowledge/runtime-resources/knowledge-indexes.md
-        crate::domains::knowledge_indexes::source_sync::knowledge_index_sync_job(
-            deps.background_db.clone(),
-            deps.connection_resolver,
-            deps.provider_resolver.clone(),
-            deps.driver_registry.clone(),
-            deps.host_composition
-                .extension::<everruns_capabilities::VectorStoreExt>()
-                .expect("OSS platform definition installs a vector store")
-                .0
-                .clone(),
-        ),
+        // Unified file collections reuse the GitHub resolver and embeddings drivers.
+        crate::domains::knowledge::worker::job(crate::domains::knowledge::KnowledgeService {
+            db: deps.background_db.clone(),
+            events: None,
+            query_session: None,
+            encryption: deps.encryption.clone(),
+            drivers: deps.driver_registry.clone(),
+            connections: deps.connection_resolver.clone(),
+        }),
         tool_result_timeouts.backstop_job(),
     ];
     if let Some(store) = cluster_jobs_store {

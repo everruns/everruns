@@ -841,6 +841,7 @@ pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_j
 pub fn strip_reserved_message_metadata(
     metadata: &mut Option<std::collections::HashMap<String, serde_json::Value>>,
 ) {
+    super::causal::sanitize_input_metadata(metadata);
     if let Some(map) = metadata.as_mut() {
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
         map.remove(CLIENT_MESSAGE_ID_METADATA_KEY);

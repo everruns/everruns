@@ -40,7 +40,7 @@ openrouter = ["dep:everruns-drivers", "everruns-drivers/openrouter", "dep:async-
 parallel = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:everruns-contracts", "everruns-contracts/runtime"]
 typesafe = ["dep:everruns-drivers", "everruns-drivers/typesafe", "everruns-drivers/openrouter", "everruns-drivers/openai", "everruns-drivers/mai", "dep:async-trait", "dep:futures", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
 web-search = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:futures", "dep:tokio", "tokio/time", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime"]
-web-fetch = ["dep:async-trait", "dep:url", "dep:base64", "dep:bytes", "dep:ed25519-dalek", "dep:fetchkit", "dep:serde_json", "dep:futures", "dep:sha2", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+web-fetch = ["dep:chrono", "dep:async-trait", "dep:url", "dep:base64", "dep:bytes", "dep:ed25519-dalek", "dep:fetchkit", "dep:serde_json", "dep:futures", "dep:sha2", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
 webhook-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
 slack-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:hmac", "dep:sha2", "dep:hex", "dep:everruns-contracts", "everruns-contracts/runtime"]
 modal = ["dep:inventory", "dep:async-trait", "dep:base64", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:protox", "dep:tonic-prost-build"]
@@ -115,6 +115,8 @@ protox = { version = "0.10", optional = true }
 tonic-prost-build = { workspace = true, optional = true }
 
 [dev-dependencies]
+anyhow.workspace = true
+uuid.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true

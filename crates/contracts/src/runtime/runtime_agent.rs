@@ -42,6 +42,15 @@ pub struct RuntimeAgent {
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
 
+    /// Authorized definitions omitted only by bounded discovery. These are
+    /// available to search and execution, never sent as initial model tools.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub catalog_tools: Vec<ToolDefinition>,
+
+    /// Native projection ceiling, including owner-required eager tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_tool_budget: Option<super::capabilities::ModelToolBudget>,
+
     /// Maximum number of tool-calling iterations (prevents infinite loops)
     #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
@@ -106,12 +115,69 @@ pub fn default_max_iterations() -> usize {
 }
 
 impl RuntimeAgent {
+    pub(crate) fn apply_definition_hook(&mut self, hook: &dyn ToolDefinitionHook) {
+        if let Some(budget) = hook.model_tool_budget(&self.tools) {
+            self.model_tool_budget = Some(budget);
+        }
+        if !hook.preserves_execution_scope() && !self.catalog_tools.is_empty() {
+            let names: std::collections::HashSet<_> = self
+                .catalog_tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            // Restrict the whole operation scope once. Calling a hook once
+            // per projection would change count-dependent or stateful policy.
+            let mut scope = std::mem::take(&mut self.tools);
+            scope.append(&mut self.catalog_tools);
+            let (hidden, visible) = hook
+                .transform(scope)
+                .into_iter()
+                .partition(|tool| names.contains(tool.name()));
+            self.catalog_tools = hidden;
+            self.tools = visible;
+            return;
+        }
+        let before = hook.preserves_execution_scope().then(|| self.tools.clone());
+        self.tools = hook.transform(std::mem::take(&mut self.tools));
+        if let Some(before) = before {
+            let visible: std::collections::HashSet<_> = self
+                .tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            self.catalog_tools
+                .retain(|tool| !visible.contains(tool.name()));
+            let hidden: std::collections::HashSet<_> = self
+                .catalog_tools
+                .iter()
+                .map(|tool| tool.name().to_owned())
+                .collect();
+            self.catalog_tools.extend(
+                before
+                    .into_iter()
+                    .filter(|tool| !visible.contains(tool.name()) && !hidden.contains(tool.name())),
+            );
+        }
+    }
+
+    /// The current operation scope, including schemas omitted by discovery.
+    /// Provider requests must use `tools`, not this execution-only union.
+    pub fn execution_tools(&self) -> Vec<ToolDefinition> {
+        self.tools
+            .iter()
+            .chain(&self.catalog_tools)
+            .cloned()
+            .collect()
+    }
+
     /// Create a new runtime agent configuration with required fields only
     pub fn new(system_prompt: impl Into<String>, model: impl Into<String>) -> Self {
         Self {
             system_prompt: system_prompt.into(),
             model: model.into(),
             tools: Vec::new(),
+            catalog_tools: Vec::new(),
+            model_tool_budget: None,
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
@@ -126,12 +192,17 @@ impl RuntimeAgent {
     }
 }
 
+/// System prompt used when no harness, agent or session layer supplies one.
+pub const FALLBACK_SYSTEM_PROMPT: &str = "You are a helpful assistant.";
+
 impl Default for RuntimeAgent {
     fn default() -> Self {
         Self {
-            system_prompt: "You are a helpful assistant.".to_string(),
+            system_prompt: FALLBACK_SYSTEM_PROMPT.to_string(),
             model: "gpt-5.2".to_string(),
             tools: Vec::new(),
+            catalog_tools: Vec::new(),
+            model_tool_budget: None,
             max_iterations: default_max_iterations(),
             temperature: None,
             max_tokens: None,
@@ -190,9 +261,15 @@ impl RuntimeAgentBuilder {
     ) -> Self {
         let mut builder = Self::new();
 
-        // Always set system prompt (even to empty) so an intentionally empty
-        // merged prompt clears the builder default instead of leaving it.
-        builder = builder.system_prompt(layer.system_prompt.unwrap_or_default());
+        // The merged prompt replaces the builder default. Only when no layer
+        // (harness, agent, session) supplies one does the generic fallback
+        // apply: it must never be prepended to a prompt someone wrote.
+        builder = builder.system_prompt(
+            layer
+                .system_prompt
+                .filter(|prompt| !prompt.trim().is_empty())
+                .unwrap_or_else(|| FALLBACK_SYSTEM_PROMPT.to_string()),
+        );
 
         // Resolve merged capabilities (once, on the effective set)
         builder = builder
@@ -546,8 +623,7 @@ impl RuntimeAgentBuilder {
             if native_tool_search && !hook.applies_with_native_tool_search() {
                 continue;
             }
-            self.runtime_agent.tools =
-                hook.transform(std::mem::take(&mut self.runtime_agent.tools));
+            self.runtime_agent.apply_definition_hook(hook.as_ref());
         }
 
         // Clear a hosted config the model can't honor (a direct `openai_tool_search`
@@ -1129,8 +1205,28 @@ mod tests {
         );
     }
     #[tokio::test]
-    async fn empty_overlay_clears_default_prompt_without_enabling_preferences() {
-        for prompt in [None, Some(String::new())] {
+    async fn agent_prompt_is_not_prefixed_by_the_fallback() {
+        // A harness without its own prompt (every built-in level) must not
+        // put the generic persona line ahead of the agent's prompt.
+        let harness = HarnessDefinition::default();
+        let agent = AgentDefinition::new(AgentId::new(), "reviewer", "You review pull requests.");
+        let runtime = RuntimeAgentBuilder::from_overlay(
+            AgentConfigOverlay::fold([
+                AgentConfigOverlay::from(&harness),
+                AgentConfigOverlay::from(&agent),
+            ]),
+            &fixture_registry(),
+            &test_ctx(),
+        )
+        .await
+        .build();
+        assert_eq!(runtime.system_prompt, "You review pull requests.");
+        assert!(!runtime.system_prompt.contains(FALLBACK_SYSTEM_PROMPT));
+    }
+
+    #[tokio::test]
+    async fn empty_overlay_uses_fallback_prompt_without_enabling_preferences() {
+        for prompt in [None, Some(String::new()), Some("  \n".into())] {
             let agent = RuntimeAgentBuilder::from_overlay(
                 AgentConfigOverlay {
                     system_prompt: prompt,
@@ -1141,7 +1237,7 @@ mod tests {
             )
             .await
             .build();
-            assert_eq!(agent.system_prompt, "");
+            assert_eq!(agent.system_prompt, FALLBACK_SYSTEM_PROMPT);
             assert!(agent.tools.is_empty());
             assert_eq!(agent.max_iterations, 500);
             assert!(agent.tool_search.is_none());

@@ -62,6 +62,8 @@ pub(super) struct MemoryActors {
     /// Renews still to fail with a store error, as during a control-plane
     /// outage.
     failing_renews: AtomicUsize,
+    /// Journal reads still to fail with a store error (a pool timeout).
+    failing_reads: AtomicUsize,
 }
 
 impl MemoryActors {
@@ -72,6 +74,7 @@ impl MemoryActors {
             line: Mutex::new(0),
             renews: AtomicUsize::new(0),
             failing_renews: AtomicUsize::new(0),
+            failing_reads: AtomicUsize::new(0),
         }
     }
 
@@ -84,6 +87,11 @@ impl MemoryActors {
     /// Fail the next `count` renews with a store error.
     pub(super) fn fail_renews(&self, count: usize) {
         self.failing_renews.store(count, Ordering::SeqCst);
+    }
+
+    /// Fail the next `count` journal reads with a store error.
+    pub(super) fn fail_reads(&self, count: usize) {
+        self.failing_reads.store(count, Ordering::SeqCst);
     }
 
     /// Renews that reached the index, by any holder.
@@ -293,6 +301,17 @@ impl SessionActorStore for MemoryActors {
         after_sequence: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal> {
+        if self
+            .failing_reads
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok()
+        {
+            return Err(AgentLoopError::store(
+                "Failed to read actor journal: pool timed out while waiting for an open connection",
+            ));
+        }
         let events = self.runtime.events().await?;
         let head_sequence = events.iter().filter_map(|event| event.sequence).max();
         let from = match after_sequence {

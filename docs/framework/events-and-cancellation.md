@@ -21,7 +21,7 @@ let mut events = session.events();
 let pending = session.send("Start.").await?;
 while let Some(event) = events.recv().await? {
     println!("{}", event.event_type());
-    if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+    if event.kind.is_terminal() {
         break;
     }
 }

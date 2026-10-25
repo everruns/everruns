@@ -39,8 +39,18 @@ permissions:
 
 jobs:
   smoke:
-    name: Compose Quickstart Smoke
+    name: Compose Quickstart Smoke (${{ matrix.stack }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # What the guide's .env selects.
+          - stack: guide
+            profiles: scale,metrics
+          # The lean default set, with no profiles.
+          - stack: lean
+            profiles: ""
     # After Docker Publish, only test runs that published release images.
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     timeout-minutes: 20
@@ -50,4 +60,6 @@ jobs:
       - name: Run Compose quickstart
         env:
           EVERRUNS_TAG: ${{ inputs.tag || 'latest' }}
+          SMOKE_PROFILES: ${{ matrix.profiles }}
+          COMPOSE_PROJECT_NAME: everruns-smoke-${{ matrix.stack }}
         run: scripts/smoke-docker-compose.sh

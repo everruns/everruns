@@ -18,6 +18,19 @@ pub(super) async fn restart(emitter: &dyn EventEmitter, started: &EventRequest, 
     }
 }
 
+/// Persist the replacement boundary before handing a retry to another executor.
+/// Without it, crash recovery would finalize the previous attempt's partial text.
+pub(super) async fn restart_before_parking(
+    emitter: &dyn EventEmitter,
+    started: &EventRequest,
+    text: &str,
+) -> everruns_contracts::error::Result<()> {
+    if !text.is_empty() {
+        emitter.emit(started.clone()).await?;
+    }
+    Ok(())
+}
+
 /// Whether a batched delta is due. `last` is `None` until the first emit, so
 /// the first token goes out at once instead of waiting a batch interval
 /// measured from the start of the stream.

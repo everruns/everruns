@@ -7,6 +7,7 @@
 
 mod cancels;
 mod resolutions;
+mod stalls;
 mod store;
 mod turns;
 mod wakeups;
@@ -216,11 +217,20 @@ struct Probe {
     running: Mutex<HashSet<SessionId>>,
     overlapped: AtomicBool,
     on_turn_ended: Mutex<Option<Hook>>,
+    /// Runs (once) inside the flush it names (1-based), before it returns.
+    at_flush: Mutex<Option<(usize, Hook)>>,
     /// The fence of the latest turn host, as its appends would carry it.
     fence: Mutex<Option<crate::actor_lease_store::ActorFence>>,
     /// Runs (once) where a fresh turn's host is built: after its input was
     /// taken, before its `turn.started`.
     at_turn_host: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    /// Hold the next fresh turn's input assignment (a pre-turn control-plane
+    /// write that writes no event) forever, once.
+    hang_inputs_consumed: AtomicBool,
+    checkpoints: AtomicUsize,
+    /// The checkpoint (1-based) that never returns; 0 = none. The lease's
+    /// first is its setup's, the second the one before its release.
+    hang_at_checkpoint: AtomicUsize,
 }
 
 #[derive(Clone)]
@@ -249,8 +259,50 @@ impl ActorHosts for TestHosts {
         self.runtime.clone()
     }
 
+    async fn checkpoint(
+        &self,
+        _host: &InProcessRuntime,
+        _tail: &[Event],
+    ) -> everruns_contracts::error::Result<()> {
+        let checkpoint = self.probe.checkpoints.fetch_add(1, Ordering::SeqCst) + 1;
+        if checkpoint == self.probe.hang_at_checkpoint.load(Ordering::SeqCst) {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
+    async fn inputs_consumed(
+        &self,
+        _drive: &TurnDrive,
+        _inputs: &[MessageId],
+    ) -> everruns_contracts::error::Result<()> {
+        if self
+            .probe
+            .hang_inputs_consumed
+            .swap(false, Ordering::SeqCst)
+        {
+            self.probe.hung.notify_one();
+            std::future::pending::<()>().await;
+        }
+        Ok(())
+    }
+
     async fn flush(&self, _host: &InProcessRuntime) -> everruns_contracts::error::Result<()> {
         let flush = self.probe.flushes.fetch_add(1, Ordering::SeqCst) + 1;
+        let hook = {
+            let mut at_flush = self.probe.at_flush.lock().unwrap();
+            match at_flush.take() {
+                Some((at, hook)) if at == flush => Some(hook),
+                other => {
+                    *at_flush = other;
+                    None
+                }
+            }
+        };
+        if let Some(hook) = hook {
+            hook.await;
+        }
         if flush == self.probe.hang_at_flush.load(Ordering::SeqCst) {
             self.probe.hung.notify_one();
             std::future::pending::<()>().await;
@@ -280,6 +332,8 @@ struct Fixture {
     gate: Arc<ToolGate>,
     model: Arc<ModelGate>,
     poison_attempts: u32,
+    stall_timeout: Duration,
+    control_plane_retries: u32,
 }
 
 fn call(id: &str, name: &str) -> ToolCall {
@@ -356,6 +410,8 @@ impl Fixture {
             gate,
             model: model_gate,
             poison_attempts: 3,
+            stall_timeout: crate::host::session_actor::DEFAULT_ACTOR_STALL_TIMEOUT,
+            control_plane_retries: crate::host::session_actor::DEFAULT_ACTOR_CONTROL_PLANE_RETRIES,
         }
     }
 
@@ -379,6 +435,9 @@ impl Fixture {
             // Small pages, so the journal reads page.
             journal_page: 3,
             max_leased_per_org: None,
+            stall_timeout: self.stall_timeout,
+            control_plane_retries: self.control_plane_retries,
+            control_plane_backoff: Duration::from_millis(10),
         };
         (ActorRuntime::new(hosts, self.store.clone(), config), probe)
     }

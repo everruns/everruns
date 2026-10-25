@@ -353,7 +353,10 @@ Known gaps in the method: a single driver machine hits the per-IP limit early, a
 - **Assertions.** Every user message gets exactly one completed turn, or a cancelled one when it was cancelled. No turn has two terminal events, and no events follow a terminal event, apart from session lifecycle events and the cancel note. No duplicate assistant output, and every steered message is read by a later reason step. Every session ends idle. No session runs on two workers at once: on the step engine this is checked from worker task spans; on the actor runtime it is checked from `session_actors` lease samples (fence order, takeovers before expiry) and from per-worker activity spans in the logs. The run prints PASS or FAIL with counts and offending session ids, and exits non-zero on FAIL.
 
   Actor completion and release debug records are part of this oracle: they distinguish
-  separate activations and voluntary handoffs between database samples. The default log
+  separate activations and voluntary handoffs between database samples. A handoff is
+  first matched against the database's lease journal (`session_actor_lease_history`
+  releases, by holder and fence), because a worker killed right after its release RPC
+  never logs the acknowledgement the server already committed. The default log
   filter covers both worker fleet discovery and the shared core session actor driver;
   custom `--rust-log` filters must retain these records.
 - **Metrics.** Turns per second, end-to-end latency p50/p95/p99 per session kind, pickup latency, recovery time per kill (when the last turn open at the kill ended), and PostgreSQL statements per terminal turn (`pg_stat_statements`, when it is preloaded).

@@ -81,6 +81,7 @@ pub use everruns_contracts::runtime::user_hook_types;
 pub mod decision_driver;
 pub use everruns_contracts::runtime::decisions;
 pub use everruns_contracts::runtime::deployment;
+pub use everruns_contracts::runtime::dreaming;
 pub use everruns_contracts::runtime::egress;
 pub use everruns_contracts::runtime::exec_tool_result;
 pub use everruns_contracts::runtime::execution_context;
@@ -98,6 +99,7 @@ pub use everruns_contracts::runtime::localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
 pub mod telemetry;
+pub use everruns_contracts::runtime::causal;
 pub use everruns_contracts::runtime::tool_narration;
 
 // Event listeners (pluggable observability backends)
@@ -193,9 +195,11 @@ pub mod plugins;
 
 /// Durable orchestration state for the opt-in OpenAI Agents API backend.
 pub mod agents_api_store;
+pub use capabilities::ModelToolBudget;
 pub use everruns_contracts::runtime::capabilities;
 pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
+pub use everruns_contracts::runtime::tool_surface;
 pub mod compaction_checkpoint;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
@@ -258,7 +262,6 @@ pub use everruns_contracts::runtime::truncation_info;
 mod test_fixtures;
 
 // Stable completion semantics; execution state and planning live in everruns_core::engine.
-pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
@@ -523,7 +526,7 @@ pub use mcp_deferred::{
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpServerTools, McpToolInvoker, ScopedMcpToolInvoker,
-    build_mcp_proxy_tools,
+    build_mcp_proxy_tools, report_mcp_call_progress,
 };
 pub use mcp_resources::{
     LIST_MCP_RESOURCES_TOOL, McpResourceListing, McpResourceOutcome, READ_MCP_RESOURCE_TOOL,
@@ -645,6 +648,9 @@ pub mod host;
 /// MCP client, auth, and tool adaptation over injected transports.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+/// Transactional session command semantics shared by Framework and platform hosts.
+#[cfg(all(feature = "engine", feature = "builtins"))]
+pub mod session_commands;
 
 #[cfg(feature = "a2a")]
 pub mod a2a;

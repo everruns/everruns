@@ -24,6 +24,7 @@ use crate::runtime::command::{
 };
 use crate::runtime::message_filter::MessageFilterProvider;
 use crate::runtime::session_files::SessionFileSystem;
+use crate::runtime::tool_surface::{ToolSurfaceMode, ToolSurfacePlan, ToolSurfaceRoute};
 use crate::runtime::tool_types::{ToolCall, ToolDefinition};
 use crate::runtime::tools::Tool;
 use crate::runtime::typed_id::SessionId;
@@ -116,7 +117,7 @@ pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// KV key prefix for durable tool-approval decisions (EVE-1140). Owned by the
 /// `tool_approval` capability in `everruns_contracts::runtime::builtins`; defined here so the
 /// session-storage internal-prefix reservation holds without enabling `builtins`.
-pub const TOOL_APPROVAL_KV_PREFIX: &str = "tool_approval/";
+pub use crate::tool_approval_types::TOOL_APPROVAL_KV_PREFIX;
 /// KV key prefix for a person's consent to an MCP URL mode elicitation
 /// (EVE-1141). Owned by the MCP client crate; defined here so
 /// the session-storage internal-prefix reservation holds without that crate.
@@ -153,6 +154,7 @@ pub use skill_contribution::{
 /// This gives capabilities access to session-specific resources (filesystem, etc.)
 /// so they can generate system prompt content at runtime rather than returning
 /// only static text.
+#[derive(Clone)]
 pub struct SystemPromptContext {
     /// The current session ID
     pub session_id: SessionId,
@@ -174,6 +176,9 @@ pub struct SystemPromptContext {
     /// Progressive tool disclosure read from the conversation (see
     /// [`ToolDisclosure`]). Empty for callers without a transcript.
     pub tool_disclosure: ToolDisclosure,
+    /// Resolved invocation surface. The mode is available before prompt
+    /// assembly; individual routes can be absent until all tools are collected.
+    pub tool_surface_plan: ToolSurfacePlan,
 }
 
 /// What the conversation says about deferred tool schemas, so a deferral hook
@@ -181,6 +186,9 @@ pub struct SystemPromptContext {
 /// the same on every worker.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ToolDisclosure {
+    /// Most recently loaded names, oldest first. Bounded discovery uses this
+    /// transcript-derived order to admit new schemas without an external ledger.
+    pub reveal_order: Vec<String>,
     /// The session has already sent deferred schemas, so it keeps deferring
     /// even when its tool count drops below the threshold.
     pub deferring: bool,
@@ -202,12 +210,19 @@ impl SystemPromptContext {
             model: None,
             session_storage: None,
             tool_disclosure: ToolDisclosure::default(),
+            tool_surface_plan: ToolSurfacePlan::default(),
         }
     }
 
     /// Set the model the agent will run on (drives model-adaptive capabilities).
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Set the already-resolved requested tool surface.
+    pub fn with_tool_surface_plan(mut self, plan: ToolSurfacePlan) -> Self {
+        self.tool_surface_plan = plan;
         self
     }
 }
@@ -344,6 +359,34 @@ pub trait Capability: Send + Sync {
     }
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
+
+    /// Requested operation surface for this capability and its config.
+    /// Hosts combine this preference with installed adapters and operation
+    /// owner constraints before exposing any route.
+    fn tool_surface_mode_with_config(&self, _config: &serde_json::Value) -> ToolSurfaceMode {
+        ToolSurfaceMode::Native
+    }
+
+    /// Resolve routes for the canonical definitions this capability can
+    /// currently classify. Late definitions can be added by the host through
+    /// `ToolSurfacePlan::extend_definitions` using the same owner classifier.
+    fn tool_surface_routes_with_config(
+        &self,
+        _config: &serde_json::Value,
+        _definitions: &[ToolDefinition],
+    ) -> std::collections::BTreeMap<String, ToolSurfaceRoute> {
+        std::collections::BTreeMap::new()
+    }
+
+    /// Native schema loading policy contributed by this capability. The host
+    /// combines policies without depending on capability IDs.
+    fn native_tool_disclosure_policy_with_config(
+        &self,
+        _config: &serde_json::Value,
+        _definitions: &[ToolDefinition],
+    ) -> Option<crate::runtime::tool_surface::NativeToolDisclosurePolicy> {
+        None
+    }
 
     /// Returns legacy identifiers that resolve to this capability.
     ///
@@ -639,6 +682,12 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (supersedes nothing).
     fn supersedes(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    /// Config-aware supersession for capabilities with a selectable surface.
+    /// Defaults to the legacy static declaration.
+    fn supersedes_with_config(&self, _config: &serde_json::Value) -> Vec<&'static str> {
+        self.supersedes()
     }
 
     /// Whether this capability, with `config`, gives the model a way to
@@ -1166,12 +1215,64 @@ pub trait Capability: Send + Sync {
 pub trait ToolDefinitionHook: Send + Sync {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition>;
 
+    /// Total model-definition budget after accounting for owner-required eager
+    /// tools. Cache-preserving removal holds must obey the current budget too.
+    fn model_tool_budget(&self, _tools: &[ToolDefinition]) -> Option<ModelToolBudget> {
+        None
+    }
+
+    /// A discovery projection may omit schemas without revoking the current
+    /// operation scope. Ordinary restricting hooks keep the default and apply
+    /// to that retained scope too; hiding a tool never grants new authority.
+    fn preserves_execution_scope(&self) -> bool {
+        false
+    }
+
     /// Whether this hook should still run when the agent's model uses native
     /// (hosted) tool_search. Client-side deferral hooks return `false` so they
     /// don't strip schemas the hosted tool_search index needs (the two are
     /// mutually exclusive). Defaults to `true`.
     fn applies_with_native_tool_search(&self) -> bool {
         true
+    }
+}
+
+/// Bound on a serialized native definition array, including eager operations.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct ModelToolBudget {
+    pub max_tools: usize,
+    pub max_bytes: usize,
+}
+
+impl ModelToolBudget {
+    pub fn admits(&self, tools: &[ToolDefinition]) -> bool {
+        if tools.len() > self.max_tools {
+            return false;
+        }
+        struct Counter {
+            bytes: usize,
+            limit: usize,
+        }
+        impl std::io::Write for Counter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.bytes = self.bytes.saturating_add(bytes.len());
+                if self.bytes > self.limit {
+                    return Err(std::io::Error::other("model tool budget exceeded"));
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        serde_json::to_writer(
+            Counter {
+                bytes: 0,
+                limit: self.max_bytes,
+            },
+            tools,
+        )
+        .is_ok()
     }
 }
 
