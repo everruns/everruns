@@ -45,7 +45,6 @@ crates/test-support/src/capabilities/fake_aws.rs
 crates/test-support/tests/integration/reason_atom_test.rs
 crates/worker/src/grpc_adapters.rs
 crates/integrations/src/bashkit/mod.rs
-crates/integrations/src/daytona/client.rs
 crates/integrations/src/daytona/tools.rs
 crates/integrations/src/filesystem/mod.rs
 crates/integrations/src/lua/mod.rs
