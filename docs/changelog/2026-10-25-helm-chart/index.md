@@ -8,7 +8,7 @@ products: [platform]
 surfaces: [operations]
 links:
   docs: [/getting-started/kubernetes/]
-  prs: []
+  prs: [everruns/everruns#4910]
 ---
 
 The `everruns` Helm chart installs the self-hosted Platform on Kubernetes: the
