@@ -28,6 +28,7 @@
 //!   shared session, async execution, and log polling for real-time streaming
 //!   output.
 
+pub mod api;
 pub mod client;
 pub mod client_test_override;
 pub mod computer;

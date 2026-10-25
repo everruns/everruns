@@ -348,7 +348,7 @@ async fn test_file_roundtrip_via_client() {
 
     // Mock upload
     Mock::given(method("POST"))
-        .and(path("/sb_int/files/upload"))
+        .and(path("/sb_int/files/upload-v2"))
         .respond_with(ResponseTemplate::new(200).set_body_string(""))
         .expect(1)
         .mount(&mock_server)
@@ -434,7 +434,9 @@ async fn test_sandbox_lifecycle_via_client() {
 
     // Full lifecycle
     let info = client
-        .create_sandbox(json!({"name": "Test Lifecycle"}))
+        .create_sandbox(
+            serde_json::from_value(json!({"name": "Test Lifecycle"})).expect("valid create body"),
+        )
         .await
         .unwrap();
     assert_eq!(info.id, "sb_lifecycle");
@@ -711,7 +713,7 @@ async fn test_client_folder_and_file_operations() {
 
     // Upload file
     Mock::given(method("POST"))
-        .and(path("/sb_ops/files/upload"))
+        .and(path("/sb_ops/files/upload-v2"))
         .respond_with(ResponseTemplate::new(200).set_body_string(""))
         .expect(1)
         .mount(&mock_server)
@@ -719,7 +721,7 @@ async fn test_client_folder_and_file_operations() {
 
     // List files
     Mock::given(method("GET"))
-        .and(path("/sb_ops/files/"))
+        .and(path("/sb_ops/files"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
             {"name": "src", "isDir": true, "size": 0},
             {"name": "main.py", "isDir": false, "size": 100}
@@ -1038,7 +1040,7 @@ async fn test_create_sandbox_with_resources_via_client() {
     // Daytona REST API expects cpu/memory/disk as top-level fields
     Mock::given(method("POST"))
         .and(path("/sandbox"))
-        .and(wiremock::matchers::body_json(json!({
+        .and(wiremock::matchers::body_partial_json(json!({
             "name": "Resource Test",
             "cpu": 2, "memory": 4, "disk": 8
         })))
@@ -1055,10 +1057,13 @@ async fn test_create_sandbox_with_resources_via_client() {
         DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
 
     let info = client
-        .create_sandbox(json!({
-            "name": "Resource Test",
-            "cpu": 2, "memory": 4, "disk": 8
-        }))
+        .create_sandbox(
+            serde_json::from_value(json!({
+                "name": "Resource Test",
+                "cpu": 2, "memory": 4, "disk": 8
+            }))
+            .expect("valid create body"),
+        )
         .await
         .unwrap();
     assert_eq!(info.id, "sb_resource");
@@ -1118,36 +1123,38 @@ async fn test_list_snapshots_via_client() {
 
     Mock::given(method("GET"))
         .and(path("/snapshots"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {
-                "id": "snap_1",
-                "name": "daytona-small",
-                "state": "active",
-                "cpu": 1,
-                "mem": 1,
-                "disk": 3,
-                "general": true
-            },
-            {
-                "id": "snap_2",
-                "name": "daytona-medium",
-                "state": "active",
-                "cpu": 2,
-                "mem": 4,
-                "disk": 8,
-                "general": true
-            },
-            {
-                "id": "snap_3",
-                "name": "custom-ml",
-                "state": "active",
-                "cpu": 4,
-                "mem": 16,
-                "disk": 50,
-                "gpu": 1,
-                "general": false
-            }
-        ])))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"total": 3, "page": 1, "totalPages": 1, "items": [
+                {
+                    "id": "snap_1",
+                    "name": "daytona-small",
+                    "state": "active",
+                    "cpu": 1,
+                    "mem": 1,
+                    "disk": 3,
+                    "general": true
+                },
+                {
+                    "id": "snap_2",
+                    "name": "daytona-medium",
+                    "state": "active",
+                    "cpu": 2,
+                    "mem": 4,
+                    "disk": 8,
+                    "general": true
+                },
+                {
+                    "id": "snap_3",
+                    "name": "custom-ml",
+                    "state": "active",
+                    "cpu": 4,
+                    "mem": 16,
+                    "disk": 50,
+                    "gpu": 1,
+                    "general": false
+                }
+            ]}),
+        ))
         .expect(1)
         .mount(&mock_server)
         .await;

@@ -43,15 +43,12 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::client_test_override::daytona_client_from_context;
-use crate::daytona::naming::create_sandbox_with_unique_name;
+use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
 use crate::daytona::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, release_sandbox_lease,
     save_sandbox_state, touch_sandbox_lease,
 };
-use crate::daytona::{
-    AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
-    DAYTONA_WORKSPACE_PATH,
-};
+use crate::daytona::{AUTO_STOP_INTERVAL_MINUTES, DAYTONA_WORKSPACE_PATH};
 
 /// Capability id of desktop computer use on Daytona.
 pub const DAYTONA_COMPUTER_USE_CAPABILITY_ID: &str = "computer_use_daytona";
@@ -527,13 +524,8 @@ async fn create_desktop_sandbox(
     );
     labels.insert("everruns.purpose".to_string(), json!("computer_use"));
     // No snapshot: Daytona's default image is the one that ships the desktop.
-    let body = json!({
-        "autoStopInterval": AUTO_STOP_INTERVAL_MINUTES,
-        "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
-        "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
-        "labels": labels,
-        "env": { RESOLUTION_ENV: display.to_string() },
-    });
+    let mut body = create_body(&labels, AUTO_STOP_INTERVAL_MINUTES);
+    body.env = [(RESOLUTION_ENV.to_string(), display.to_string())].into();
     let (info, name) = create_sandbox_with_unique_name(client, "everruns-computer-use", body)
         .await
         .map_err(ToolExecutionResult::tool_error)?;

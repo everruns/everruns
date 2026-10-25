@@ -14,16 +14,16 @@ use serde_json::json;
 use std::time::Duration;
 use tracing::{debug, warn};
 
+use crate::daytona::api::management::types::SandboxVolume;
 use crate::daytona::client::DaytonaClient;
-use crate::daytona::naming::create_sandbox_with_unique_name;
+use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
 use crate::daytona::owned;
 use crate::daytona::state::{
     SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
     touch_sandbox_lease_with_credential,
 };
 use crate::daytona::{
-    AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
-    DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
+    AUTO_STOP_INTERVAL_MINUTES, DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
 pub struct DaytonaSessionSandboxProvider;
@@ -552,20 +552,14 @@ async fn create_daytona_instance(
     restore: bool,
 ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
     let workspace_path = workspace_path(config);
-    let mut create_body = json!({
-        "name": requested_name,
-        "snapshot": snapshot_name(config)?,
-        "autoStopInterval": auto_stop_minutes(config)?,
-        "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
-        "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
-        "labels": sandbox_labels(context).await,
-    });
+    let mut create_body = create_body(&sandbox_labels(context).await, auto_stop_minutes(config)?);
+    create_body.snapshot = Some(snapshot_name(config)?);
     if let Some(recovery) = &recovery {
-        create_body["volumes"] = json!([{
-            "volumeId": recovery.volume_id,
-            "mountPath": recovery.mount_path,
-            "subpath": recovery.subpath,
-        }]);
+        create_body.volumes = vec![SandboxVolume {
+            volume_id: Some(recovery.volume_id.clone()),
+            mount_path: Some(recovery.mount_path.clone()),
+            subpath: Some(recovery.subpath.clone()),
+        }];
     }
 
     let (sandbox_info, sandbox_name) =

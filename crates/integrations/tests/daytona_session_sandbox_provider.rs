@@ -596,7 +596,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
         .mount(&mock_server)
         .await;
     Mock::given(method("POST"))
-        .and(path("/sb_managed/files/upload"))
+        .and(path("/sb_managed/files/upload-v2"))
         .respond_with(ResponseTemplate::new(200))
         .mount(&mock_server)
         .await;

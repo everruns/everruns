@@ -73,28 +73,33 @@ This avoids entering the key in chat (see TM-AGENT-016).
 
 ## API Integration
 
-### Management API Endpoints
+The client is generated at build time from Daytona's own OpenAPI specs,
+vendored in [`openapi/daytona/`](../../openapi/daytona/): `api.json`
+(Management API, served at `app.daytona.io/api-json`) and `toolbox.json`
+(Toolbox API, served by the daemon in every sandbox at `/swagger/doc.json`,
+converted from Swagger 2.0). [`operations.json`](../../openapi/daytona/operations.json)
+lists the operations Everruns uses:
 
-| Method | Path | Purpose | Request Body |
-|--------|------|---------|-------------|
-| POST | `/sandbox` | Create sandbox | `{ name?, snapshot?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
-| GET | `/sandbox/{id}` | Get sandbox info |, |
-| GET | `/snapshots` | List available snapshots |, |
-| POST | `/sandbox/{id}/start` | Start sandbox |, |
-| POST | `/sandbox/{id}/stop` | Stop sandbox |, |
-| DELETE | `/sandbox/{id}` | Delete sandbox |, |
-| POST | `/sandbox/{id}/autostop/{minutes}` | Set auto-stop |, |
+- `client`: generated into typed calls (`daytona::api`), used by `DaytonaClient`.
+- `raw`: called without generated types: multipart upload, byte downloads
+  (files, command logs) and the Computer Use endpoints.
+- `agent`: described in the spec mounted at `/daytona/openapi.yaml` for
+  `daytona_api_call`.
 
-### Toolbox API Endpoints (at `proxy.app.daytona.io/toolbox/{sandboxId}`)
+Generation is strict for request bodies (a renamed field fails the build) and
+lenient for responses (no required fields, enums read as strings, every
+property may be null), so a new sandbox state or an extra `null` does not
+fail a call. Error responses are left out of the generated types; a non-2xx
+reaches the tools as `"Daytona API error ({status}): {body}"` or
+`"Sandbox API error ({status}): {body}"`.
 
-| Method | Path | Purpose | Request Body |
-|--------|------|---------|-------------|
-| POST | `/process/execute` | Execute command (sync) | `{ command, cwd?, timeout? }` |
-| GET | `/files?path=` | List directory |, |
-| GET | `/files/download?path=` | Download file |, |
-| POST | `/files/upload?path=` | Upload file (multipart) | multipart/form-data |
-| DELETE | `/files?path=` | Delete file/directory |, |
-| POST | `/files/folder?path=&mode=` | Create directory |, |
+Keeping current: `test_live_openapi_matches_vendored` (live suite, also in the
+weekly sweep) compares every listed operation with the specs Daytona serves
+now. When it fails, run `doppler run -- scripts/update-daytona-openapi.sh` and
+review the diff.
+
+Paginated listings (`GET /sandbox`, `GET /snapshots`) are followed to the last
+page.
 
 ## Tools
 
