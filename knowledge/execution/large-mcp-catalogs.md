@@ -72,6 +72,14 @@ unattached or unauthorized operations do not contribute results or ranking
 statistics. The index contains metadata only; every selected identity resolves
 against the live registry and current authorization at execution.
 
+Name, description and schema fields have independent BM25 IDF and length
+normalization. A verbose schema or common invocation-envelope words must not
+dilute a distinctive operation name; the authentic platform comparison exposed
+that failure in the previous pooled index. Complete names accept whitespace,
+hyphen or underscore separators while preserving canonical MCP namespace
+identity and authorized same-name ambiguity. Broad workflow queries remain
+ranked without a global score cutoff or stemming.
+
 `tool_search` remains legacy by default. With `bounded: true`, it returns at
 most eight operations, bounded by `max_result_bytes` (32 KiB by default), and
 discloses at most 32 optional schemas or 64 KiB of optional active schemas by

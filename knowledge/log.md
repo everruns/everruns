@@ -75,6 +75,15 @@
   the session read's `work` field outside `full` visibility; Slack, AG-UI and
   A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
+* **Schema-independent lexical ranking.** Authentic platform evals exposed large
+  schemas drowning name matches and common wrapper fields diluting pooled IDF.
+  Shared retrieval now scores names, descriptions and schemas independently,
+  retains scoped server ranking, and recognizes complete names written as words.
+  Native eval envelopes also make implied object types explicit after Muse sent
+  stringified update payloads; canonical validation still rejects those strings.
+  See [large MCP catalogs](execution/large-mcp-catalogs.md) and
+  [tool search](execution/tool-search.md).
+
 * **Matched platform invocation and discovery.** Corrected the offline comparison
   to separate payloads from invocation metadata, reject missing reasons/stale
   revisions, and grade exact mutation targets, ordered reads and unchanged state.

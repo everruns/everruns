@@ -109,6 +109,35 @@ fn envelope_preserves_nested_payload_validation_and_local_references() {
     assert!(!validator.is_valid(&json!({"nested":{"count":2}})));
 }
 
+#[test]
+fn composed_payloads_advertise_their_object_type_without_string_coercion() {
+    let payload = json!({"allOf":[{"$ref":"#/$defs/Patch"},{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}],"$defs":{"Patch":{"type":"object","properties":{"description":{"type":"string"}}}}});
+    let schema = native_schema(&payload);
+    assert_eq!(schema["properties"]["params"]["type"], "object");
+    let canonical = jsonschema::validator_for(&payload).unwrap();
+    let native = jsonschema::validator_for(&schema).unwrap();
+    for value in [
+        json!({"id":"agent_1","description":"new"}),
+        json!({"id":42}),
+        json!({"description":"new"}),
+        json!("{\"id\":\"agent_1\"}"),
+        Value::Null,
+    ] {
+        assert_eq!(
+            canonical.is_valid(&value),
+            native.is_valid(&json!({"params":value}))
+        );
+    }
+    let nullable = json!({"anyOf":[{"type":"object"},{"type":"null"}]});
+    let schema = native_schema(&nullable);
+    assert!(schema["properties"]["params"].get("type").is_none());
+    assert!(
+        jsonschema::validator_for(&schema)
+            .unwrap()
+            .is_valid(&json!({"params":null}))
+    );
+}
+
 #[tokio::test]
 async fn advisory_and_read_calls_do_not_require_change_reasons() {
     let plane = FakeControlPlane::new(Harness::NativeEager);

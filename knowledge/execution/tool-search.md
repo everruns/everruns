@@ -68,7 +68,10 @@ and descriptions, and MCP server names and configured descriptions. The index
 stores metadata, not duplicate schemas. Server context is scored once per
 server, so one large source does not get a vote for every tool it owns. CLI
 `tools search` uses the same server-aware index; generic native search uses it
-when bounded mode is enabled.
+when bounded mode is enabled. Name, description and schema fields use separate
+IDF and length normalization so verbose schemas and shared envelope terms cannot
+dilute distinctive names. Complete names written with spaces or hyphens resolve
+like underscore spellings; canonical MCP namespace separators remain intact.
 
 The DB-backed host preserves attached or preset server descriptions in listed
 tools and deferred placeholders, including across the worker transport. A

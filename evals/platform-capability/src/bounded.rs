@@ -276,6 +276,51 @@ mod tests {
     }
 
     #[test]
+    fn real_platform_intents_find_large_schemas_and_manager_context() {
+        let surface = BoundedSurface::new();
+        for (query, wanted) in [
+            ("update agent", vec!["update_agent"]),
+            (
+                "get agent manager context",
+                vec!["get_manager_context", "get_agent"],
+            ),
+            ("agent get list", vec!["get_agent"]),
+            (
+                "agent name description capabilities update",
+                vec!["update_agent"],
+            ),
+        ] {
+            let names: Vec<_> = surface
+                .index
+                .search_operations(query, MAX_RESULTS, |_| true)
+                .into_iter()
+                .map(|hit| hit.name)
+                .collect();
+            for name in wanted {
+                assert!(
+                    names.iter().any(|found| found == name),
+                    "{query:?} missed {name}: {names:?}"
+                );
+            }
+        }
+        // A top-eight hit is insufficient if an earlier small match crowds a
+        // real 31 KiB schema out of the default search response byte budget.
+        let mut surface = BoundedSurface::new();
+        let output = result(&mut surface, "update agent");
+        assert!(bytes(&output) <= MAX_RESULT_BYTES);
+        assert!(
+            output["loaded"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|name| name == "update_agent"),
+            "{output}"
+        );
+        surface.request_tools(3);
+        assert!(surface.callable("update_agent"));
+    }
+
+    #[test]
     fn actual_platform_schemas_fit_default_limits_and_are_revealed_exactly() {
         let mut surface = BoundedSurface::new();
         assert_eq!(surface.request_tools(2), vec![search_tool()]);

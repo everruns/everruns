@@ -6,14 +6,20 @@ on:
     paths:
       - 'evals/platform-capability/**'
       - 'evals/common/**'
-      - 'crates/cli-contract/commands.json'
+      - 'crates/cli-contract/**'
+      - 'crates/contracts/**'
+      - 'crates/server/src/credential_shape.rs'
+      - 'Cargo.toml'
       - '.github/workflows/platform-capability-evals.yml'
   push:
     branches: [main]
     paths:
       - 'evals/platform-capability/**'
       - 'evals/common/**'
-      - 'crates/cli-contract/commands.json'
+      - 'crates/cli-contract/**'
+      - 'crates/contracts/**'
+      - 'crates/server/src/credential_shape.rs'
+      - 'Cargo.toml'
       - '.github/workflows/platform-capability-evals.yml'
 
 permissions:

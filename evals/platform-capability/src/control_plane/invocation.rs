@@ -226,6 +226,26 @@ pub(super) fn subject_ref(name: &str, params: &Value) -> Option<String> {
 /// Nest the complete canonical payload schema. Local references are rooted at
 /// the JSON document, so moving $defs alone would leave broken references.
 pub(super) fn native_schema(payload: &Value) -> Value {
+    fn implies_object(schema: &Value, root: &Value, depth: usize) -> bool {
+        if depth > 32 {
+            return false;
+        }
+        schema["type"] == "object"
+            || schema
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(|reference| reference.strip_prefix('#'))
+                .and_then(|pointer| root.pointer(pointer))
+                .is_some_and(|target| implies_object(target, root, depth + 1))
+            || schema
+                .get("allOf")
+                .and_then(Value::as_array)
+                .is_some_and(|parts| {
+                    parts
+                        .iter()
+                        .any(|part| implies_object(part, root, depth + 1))
+                })
+    }
     fn rebase(value: &mut Value) {
         match value {
             Value::Object(object) => {
@@ -248,7 +268,18 @@ pub(super) fn native_schema(payload: &Value) -> Value {
             _ => {}
         }
     }
+    let object_payload = implies_object(payload, payload, 0);
     let mut payload = payload.clone();
+    // Some captured flattened commands express object-ness only through allOf
+    // or a root $ref. Provider schema adapters can otherwise expose params as a
+    // string. Make the already-required type explicit; never coerce arguments
+    // or restrict an unconstrained/nullable payload to make a model trial pass.
+    if object_payload && payload.get("type").is_none() {
+        payload
+            .as_object_mut()
+            .expect("schema object")
+            .insert("type".into(), json!("object"));
+    }
     rebase(&mut payload);
     json!({
         "type":"object", "additionalProperties":false, "required":["params"],

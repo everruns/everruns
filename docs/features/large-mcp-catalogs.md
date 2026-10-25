@@ -68,6 +68,12 @@ unqualified operation shared by several servers can still return several
 identities; include the server name to disambiguate it. Broader task queries
 continue to use ranked retrieval.
 
+Names, descriptions and schema text are scored independently, so a large
+parameter schema does not bury a strong name or description match. Complete
+operation names accept spaces, hyphens or underscores: `update agent` can find
+a registered `update_agent` operation. Current authorization still determines
+which identities can appear.
+
 By default, `tool_search` keeps its existing behavior. To opt into bounded
 schema disclosure, set `bounded` and the three limits on the capability:
 

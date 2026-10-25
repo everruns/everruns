@@ -10,6 +10,7 @@ use crate::tool_types::ToolDefinition;
 use serde_json::Value;
 
 const EXACT_NAME_BONUS: f64 = 10_000.0;
+const FIELD_WEIGHTS: [f64; 3] = [4.0, 1.0, 1.0];
 
 fn normalized_tool_name(name: &str) -> String {
     name.trim()
@@ -18,12 +19,15 @@ fn normalized_tool_name(name: &str) -> String {
         })
         .to_lowercase()
         .replace('-', "_")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 #[derive(Debug, Clone)]
 struct Document {
     name: String,
-    length: usize,
+    lengths: [usize; 3],
     server: Option<String>,
 }
 
@@ -43,7 +47,7 @@ pub struct ToolSearchHit {
 pub struct ToolSearchIndex {
     documents: Vec<Document>,
     sources: BTreeMap<String, HashMap<String, usize>>,
-    postings: HashMap<String, Vec<(usize, usize)>>,
+    postings: HashMap<String, Vec<(usize, [usize; 3])>>,
     exact_names: HashMap<String, Vec<usize>>,
 }
 
@@ -139,18 +143,27 @@ impl ToolSearchIndex {
                     terms
                 });
             }
-            let mut terms = HashMap::new();
+            // Keep operation names, descriptions and schemas as independent
+            // fields. Schema verbosity and shared invocation-envelope terms
+            // must not dilute an operation's own name or description.
+            let mut fields: [HashMap<String, usize>; 3] = Default::default();
             add_terms(
-                &mut terms,
+                &mut fields[0],
                 parsed
                     .as_ref()
                     .map(|(_, name)| name.as_str())
                     .unwrap_or(definition.name()),
-                4,
+                1,
             );
-            add_terms(&mut terms, definition.description(), 1);
-            schema_terms(definition.full_parameters(), &mut terms);
-            let length = terms.values().sum();
+            add_terms(&mut fields[1], definition.description(), 1);
+            schema_terms(definition.full_parameters(), &mut fields[2]);
+            let lengths = std::array::from_fn(|field| fields[field].values().sum());
+            let mut terms: HashMap<String, [usize; 3]> = HashMap::new();
+            for (field, field_terms) in fields.into_iter().enumerate() {
+                for (term, frequency) in field_terms {
+                    terms.entry(term).or_default()[field] = frequency;
+                }
+            }
             let position = index.documents.len();
             index
                 .exact_names
@@ -173,7 +186,7 @@ impl ToolSearchIndex {
             }
             index.documents.push(Document {
                 name: definition.name().to_owned(),
-                length,
+                lengths,
                 server,
             });
         }
@@ -219,14 +232,15 @@ impl ToolSearchIndex {
             return Vec::new();
         }
         let terms: HashSet<_> = tokens(query).into_iter().collect();
-        let average = self
-            .documents
-            .iter()
-            .zip(&visible)
-            .filter(|(_, allowed)| **allowed)
-            .map(|(document, _)| document.length)
-            .sum::<usize>() as f64
-            / count as f64;
+        let averages: [f64; 3] = std::array::from_fn(|field| {
+            self.documents
+                .iter()
+                .zip(&visible)
+                .filter(|(_, allowed)| **allowed)
+                .map(|(document, _)| document.lengths[field])
+                .sum::<usize>() as f64
+                / count as f64
+        });
         let sources: HashSet<_> = self
             .documents
             .iter()
@@ -258,18 +272,28 @@ impl ToolSearchIndex {
             let Some(postings) = self.postings.get(term) else {
                 continue;
             };
-            let frequency = postings
-                .iter()
-                .filter(|(position, _)| visible[*position])
-                .count();
-            let idf =
-                (1.0 + (count as f64 - frequency as f64 + 0.5) / (frequency as f64 + 0.5)).ln();
-            for &(position, frequency) in postings.iter().filter(|(position, _)| visible[*position])
+            // IDF is field-local too: a word shared by every schema can still
+            // identify a rare operation name. Sum weighted BM25 field scores
+            // without cutting partial matches from multi-operation workflows.
+            let idfs: [f64; 3] = std::array::from_fn(|field| {
+                let frequency = postings
+                    .iter()
+                    .filter(|(position, frequencies)| visible[*position] && frequencies[field] > 0)
+                    .count();
+                (1.0 + (count as f64 - frequency as f64 + 0.5) / (frequency as f64 + 0.5)).ln()
+            });
+            for &(position, frequencies) in
+                postings.iter().filter(|(position, _)| visible[*position])
             {
-                let frequency = frequency as f64;
-                let normalization =
-                    1.5 * (0.25 + 0.75 * self.documents[position].length as f64 / average.max(1.0));
-                scores[position] += idf * frequency * 2.5 / (frequency + normalization);
+                for field in 0..FIELD_WEIGHTS.len() {
+                    let frequency = frequencies[field] as f64;
+                    let normalization = 1.5
+                        * (0.25
+                            + 0.75 * self.documents[position].lengths[field] as f64
+                                / averages[field].max(1.0));
+                    scores[position] += FIELD_WEIGHTS[field] * idfs[field] * frequency * 2.5
+                        / (frequency + normalization);
+                }
             }
         }
         let exact = normalized_tool_name(query);
@@ -314,9 +338,10 @@ impl ToolSearchIndex {
                 .total_cmp(&left.score)
                 .then_with(|| left.name.cmp(&right.name))
         });
-        // A canonical exact name or unqualified MCP operation name expresses
-        // unambiguous intent. Keep every exact identity (including the same
-        // operation on multiple servers) and discard incidental word hits.
+        // A complete operation name, including its words separated by spaces
+        // or hyphens, expresses exact intent. Keep every authorized identity,
+        // including the same operation on multiple servers, and discard
+        // incidental word hits.
         if !exact_names.is_empty() {
             hits.retain(|hit| exact_names.contains(hit.name.as_str()));
         }
@@ -503,18 +528,39 @@ mod tests {
         ];
         let index = ToolSearchIndex::new(&definitions);
 
-        let qualified = index.search_operations("mcp_telemetry__get_deployment", 8, |_| true);
-        assert_eq!(qualified.len(), 1);
-        assert_eq!(qualified[0].name, "mcp_telemetry__get_deployment");
+        for query in [
+            "mcp_telemetry__get_deployment",
+            "mcp_telemetry__get-deployment",
+            "mcp_telemetry__get deployment",
+        ] {
+            let qualified = index.search_operations(query, 8, |_| true);
+            assert_eq!(qualified.len(), 1, "{query}");
+            assert_eq!(qualified[0].name, "mcp_telemetry__get_deployment");
+        }
 
-        let unqualified = index.search_operations("get-deployment", 8, |_| true);
-        let names: HashSet<_> = unqualified.iter().map(|hit| hit.name.as_str()).collect();
-        assert_eq!(unqualified.len(), 2);
-        assert!(names.contains("mcp_telemetry__get_deployment"));
-        assert!(names.contains("mcp_platform__get_deployment"));
+        for query in [
+            "get_deployment",
+            "get-deployment",
+            "get deployment",
+            "get \t deployment",
+        ] {
+            let unqualified = index.search_operations(query, 8, |_| true);
+            let names: HashSet<_> = unqualified.iter().map(|hit| hit.name.as_str()).collect();
+            assert_eq!(unqualified.len(), 2, "{query}");
+            assert!(names.contains("mcp_telemetry__get_deployment"));
+            assert!(names.contains("mcp_platform__get_deployment"));
+            let scoped =
+                index.search_operations(query, 8, |name| name.starts_with("mcp_telemetry__"));
+            assert_eq!(scoped.len(), 1);
+            assert_eq!(scoped[0].name, "mcp_telemetry__get_deployment");
+        }
 
-        let phrase = index.search_operations("get deployment", 8, |_| true);
-        assert_eq!(phrase.len(), 3, "a phrase should keep BM25 semantics");
+        let phrase = index.search_operations("get deployment status", 8, |_| true);
+        assert_eq!(
+            phrase.len(),
+            3,
+            "a broader phrase should keep BM25 semantics"
+        );
     }
 
     #[test]
@@ -530,6 +576,103 @@ mod tests {
         }
         assert!(index.search("volcanic", 8, |_| true).is_empty());
         assert_eq!(index.search("", 1, |_| true)[0].name, "mcp_atlas__get");
+    }
+
+    fn invocation_schema(property_count: usize) -> Value {
+        let properties: serde_json::Map<_, _> = (0..property_count)
+            .map(|position| {
+                (
+                    format!("option_{position}"),
+                    json!({"type":"string", "description":
+                        "Optional configuration details for this entity. ".repeat(20)}),
+                )
+            })
+            .collect();
+        json!({"type":"object", "properties":{
+            "params":{"type":"object","properties":properties},
+            "reason":{"type":"string","description":"Required for agent entity changes."},
+            "context_revision":{"type":"integer","description":"Manager context revision read before changing an existing entity."}
+        }})
+    }
+
+    fn with_schema(mut definition: ToolDefinition, schema: Value) -> ToolDefinition {
+        if let ToolDefinition::Builtin(tool) = &mut definition {
+            tool.parameters = schema;
+        }
+        definition
+    }
+
+    #[test]
+    fn verbose_schemas_do_not_suppress_operation_names_or_descriptions() {
+        let mut description_score: Option<f64> = None;
+        for property_count in [0, 8, 64, 128] {
+            let mut definitions = vec![
+                with_schema(
+                    operation("platform", "update_agent", "Update an agent."),
+                    invocation_schema(property_count),
+                ),
+                with_schema(
+                    operation("platform", "resolve", "Reconcile invoice obligations."),
+                    invocation_schema(property_count),
+                ),
+            ];
+            definitions.extend((0..32).map(|position| {
+                with_schema(
+                    operation(
+                        "platform",
+                        &format!("update_record_{position}"),
+                        "Update a record and reconcile its metadata.",
+                    ),
+                    invocation_schema(0),
+                )
+            }));
+            let index = ToolSearchIndex::new(&definitions);
+            for (query, expected) in [
+                ("please update agent", "mcp_platform__update_agent"),
+                ("reconcile invoice obligations", "mcp_platform__resolve"),
+            ] {
+                let hits = index.search_operations(query, 8, |_| true);
+                assert_eq!(
+                    hits[0].name, expected,
+                    "{property_count} properties: {query}"
+                );
+                if query == "reconcile invoice obligations" {
+                    if let Some(original) = description_score {
+                        assert!(
+                            (hits[0].score - original).abs() < 1e-9,
+                            "Unrelated schema text must not change description scores"
+                        );
+                    } else {
+                        description_score = Some(hits[0].score);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shared_schema_terms_do_not_erase_distinctive_name_terms() {
+        let mut definitions = vec![with_schema(
+            operation(
+                "platform",
+                "get_manager_context",
+                "Read the notes managers keep about an entity before changing it.",
+            ),
+            invocation_schema(128),
+        )];
+        definitions.extend((0..32).map(|position| {
+            with_schema(
+                operation(
+                    "platform",
+                    &format!("get_record_{position}"),
+                    "Get one record.",
+                ),
+                invocation_schema(0),
+            )
+        }));
+        let index = ToolSearchIndex::new(&definitions);
+        let hits = index.search_operations("get agent manager context", 8, |_| true);
+        assert_eq!(hits[0].name, "mcp_platform__get_manager_context");
     }
 
     struct CatalogTool(ToolDefinition);

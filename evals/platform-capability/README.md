@@ -148,7 +148,9 @@ safety. They grade completed canonical operations and exact initial-to-final moc
 state. Reasons and acknowledged context revisions stay in invocation metadata;
 missing reasons and stale revisions reject before mutation. Required context and
 entity reads must precede each target update, and undeclared operations or
-collateral entity fields fail the scorer.
+collateral entity fields fail the scorer. The creation task explicitly leaves
+optional settings unspecified, so its minimal-payload assertion does not penalize
+a configuration choice the task left open.
 They contain no CLI spelling, help-read or discovery-tool requirement. The
 shared policy prompt differs only in its interface paragraph. Existing
 `cli-tree` and `cli-contract` cases remain interface diagnostics and must not be
@@ -164,8 +166,12 @@ without this audit retain the existing script heuristic.
 with its authentic name and description in the actual request's function list.
 The native invocation schema wraps the complete captured payload under `params`
 with separate `reason` and `context_revision` metadata; local JSON Schema references
-are rebased so nested definitions retain their meaning. The eager arm is not a
-search/execute wrapper. All three routes share payload JSON Schema validation,
+are rebased so nested definitions retain their meaning. Object constraints
+expressed only through a root `$ref`
+or `allOf` are also made explicit as `type: object`; otherwise some provider
+adapters present the nested payload as a string. This preserves validation
+semantics and never parses a stringified argument to rescue a trial. All three
+routes share payload JSON Schema validation,
 invocation policy and the same isolated in-memory resource store. None can call another
 surface's unadvertised entry points. The native schema set is deliberately not
 trimmed to the tasks; provider rejection of the count/size is an infrastructure
@@ -236,6 +242,39 @@ gzip -dc results/surfaces-2026-10-23-live.jsonl.gz | \
 ```
 
 See the [manual evidence case](../../knowledge/test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
+### What this comparison says about current approaches
+
+The three arms separate schema disclosure from execution:
+
+| Arm | Model initially sees | Discovery and execution cost |
+| --- | --- | --- |
+| CLI | One shell schema | Help reads and retries, then shell composition/filtering |
+| Eager native | Every invocation schema | Direct calls, with the full catalog in every request |
+| Bounded native | One search schema | Selected schemas and extra search steps, then direct calls |
+
+The bounded arm is the relevant architectural comparison with current
+[Codex discovery](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/tool_search_spec.rs),
+[OpenAI tool search](https://developers.openai.com/api/docs/guides/tools-tool-search)
+and [Anthropic deferred tools](https://www.anthropic.com/research/advanced-tool-use).
+They retrieve a few operation schemas rather than eagerly loading an entire
+inventory. Reusing the production BM25 index follows that approach; this study
+is not a head-to-head evaluation of those clients or vendor models.
+
+[Programmatic calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling)
+and [Cloudflare Code Mode](https://blog.cloudflare.com/code-mode-mcp/) address a
+second cost: repeated calls and large intermediate results. The shell can already
+compose operations and reduce their output before the next model request. A
+small direct lookup may still be cheaper as a native call. The separate
+large-result tasks test this distinction instead of equating initial schema
+bytes with end-to-end token savings.
+
+Prompt-cache compatibility is a third question. Deterministic prefix tests can
+prove earlier messages and Framework baselines stay stable across dynamic plugin
+changes. Provider cache-read counts measure observed reuse, influenced by request
+ordering, routing and cache lifetime. Neither establishes controlled cold-cache
+economics or universal cache behavior across providers. Sparse use, cache-aware
+disclosure and per-operation native/CLI routing remain complementary mechanisms.
 
 Each runs-report JSONL record contains sample/target/trial, all scorer results,
 error classification, wall time, usage, iterations, metrics, final mock state,
