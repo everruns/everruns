@@ -80,6 +80,6 @@ pub async fn purge_deleted_sandboxes(
             .execute(&mut *tx)
             .await?
             .rows_affected();
-    tx.commit().await?;
+    everruns_durable::commit_transaction(tx).await?;
     Ok(purged)
 }

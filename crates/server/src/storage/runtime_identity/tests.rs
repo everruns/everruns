@@ -129,7 +129,7 @@ async fn concurrent_default_first_use_has_one_binding_and_account() {
             })
             .collect();
         wait_for_binding_inserts(pool, 2).await;
-        blocker.commit().await.unwrap();
+        everruns_durable::commit_transaction(blocker).await.unwrap();
         let mut ids = Vec::new();
         for task in tasks {
             ids.push(
@@ -172,7 +172,7 @@ async fn first_use_rechecks_revocation_after_losing_binding_insert() {
         .bind(input.org_id).bind(input.provider).bind(input.realm).bind(input.subject).bind(input.name)
         .execute(&mut *blocker).await.unwrap();
     assert_eq!(inserted.rows_affected(), 1);
-    blocker.commit().await.unwrap();
+    everruns_durable::commit_transaction(blocker).await.unwrap();
     let error = tokio::time::timeout(std::time::Duration::from_secs(10), task)
         .await
         .unwrap()

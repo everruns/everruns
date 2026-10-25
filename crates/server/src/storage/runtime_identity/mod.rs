@@ -182,7 +182,7 @@ impl StorageBackend {
                 .bind(user)
                 .execute(&mut *tx)
                 .await?;
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             Ok(true)
         }
     }
@@ -319,7 +319,7 @@ impl StorageBackend {
                         .await?;
                 }
             }
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             Ok(true)
         }
     }

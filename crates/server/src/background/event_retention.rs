@@ -117,7 +117,7 @@ async fn archive_old_events(pool: &PgPool, retention_days: u64) -> Result<i64, s
         .fetch_all(&mut *tx)
         .await?;
 
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
 
         let batch_count = deleted.len() as i64;
         total_archived += batch_count;

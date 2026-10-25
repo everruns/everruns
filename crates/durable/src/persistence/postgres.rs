@@ -24,7 +24,7 @@ mod schema;
 mod task_queue;
 mod workers;
 
-pub use begin::begin_transaction;
+pub use begin::{begin_transaction, commit_transaction};
 
 use super::db_failure::store_failure;
 use super::store::{
@@ -155,7 +155,7 @@ impl PostgresWorkflowEventStore {
 
         let task_id = insert_workflow_task(&mut tx, workflow_id, &task).await?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!("Failed to commit initial workflow start: {}", e);
             StoreError::Database(e.to_string())
         })?;

@@ -72,7 +72,7 @@ async fn reset_durable_tables(pool: &PgPool) {
         .await
         .expect("Failed to reset durable stat counters");
 
-    tx.commit()
+    everruns_durable::commit_transaction(tx)
         .await
         .expect("Failed to commit durable test table reset");
 }

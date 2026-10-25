@@ -602,7 +602,7 @@ async fn manual_transaction_does_not_deadlock_with_advisory_write() {
     .await
     .unwrap();
     assert!(automatic.is_err());
-    manual.commit().await.unwrap();
+    everruns_durable::commit_transaction(manual).await.unwrap();
     assert_eq!(f.title().await.as_deref(), Some("Explicit title"));
 }
 

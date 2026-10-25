@@ -217,7 +217,7 @@ impl Database {
         .execute(&mut *tx)
         .await?;
 
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(Some(generation))
     }
 

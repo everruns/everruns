@@ -144,6 +144,26 @@ async fn begin_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sql
     }
 }
 
+/// Commit the transaction open on `connection` on a task of its own, so a
+/// caller cancelled while `COMMIT` is in flight cannot queue a rollback behind
+/// it; see `everruns_durable::commit_transaction` (EVERRUNS-35).
+async fn commit_connection(mut connection: PoolConnection<Postgres>) -> Result<(), sqlx::Error> {
+    let commit = tokio::spawn(async move {
+        let result = PgTransactionManager::commit(&mut connection).await;
+        if result.is_err() {
+            PgTransactionManager::start_rollback(&mut connection);
+        }
+        result
+    })
+    .await;
+    match commit {
+        Ok(result) => result,
+        Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
+        // Only a runtime shutting down cancels the task.
+        Err(_) => Err(sqlx::Error::PoolClosed),
+    }
+}
+
 /// Identity of a pool and its clones. `connect_options` is one `Arc` shared by
 /// every clone of a pool and distinct between pools.
 fn pool_identity(pool: &PgPool) -> usize {
@@ -261,13 +281,11 @@ where
     };
     match result {
         Ok(value) => {
-            if let Err(error) = PgTransactionManager::commit(&mut connection).await {
-                PgTransactionManager::start_rollback(&mut connection);
+            // Effects may wait (a cancel waits for the turn's holder): the
+            // connection goes back to the pool when the commit task ends.
+            if let Err(error) = commit_connection(connection).await {
                 return Err(internal(error.into()));
             }
-            // Effects may wait (a cancel waits for the turn's holder): give
-            // the connection back first.
-            drop(connection);
             for effect in effects {
                 effect.await;
             }
@@ -364,7 +382,12 @@ impl DbTx {
     /// Commit this transaction, or release its savepoint.
     pub async fn commit(mut self) -> Result<(), sqlx::Error> {
         match &mut self.0 {
-            Inner::Own(tx) => tx.take().ok_or_else(closed)?.commit().await,
+            Inner::Own(tx) => {
+                everruns_durable::commit_transaction(tx.take().ok_or_else(closed)?).await
+            }
+            // A savepoint stays on this task: its connection belongs to the
+            // enclosing `scope`, whose cancellation rolls the whole
+            // transaction back.
             Inner::Savepoint { guard, open, .. } => {
                 let connection = guard.as_mut().ok_or_else(closed)?;
                 PgTransactionManager::commit(connection).await?;

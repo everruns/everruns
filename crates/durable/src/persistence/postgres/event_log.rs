@@ -557,7 +557,7 @@ impl EventLog for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit workflow claim");
             StoreError::Database(e.to_string())
         })?;
@@ -722,7 +722,7 @@ impl EventLog for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit continue_as_new");
             StoreError::Database(e.to_string())
         })?;
