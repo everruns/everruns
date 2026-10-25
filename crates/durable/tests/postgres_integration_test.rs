@@ -7,8 +7,6 @@
 //! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:{DB_PORT:-9332}/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
-// Nothing cancels these tests, so they may commit with sqlx directly.
-#![allow(clippy::disallowed_methods)]
 #![cfg(feature = "postgres-tests")]
 
 use std::{sync::Arc, time::Duration};
@@ -74,7 +72,7 @@ async fn reset_durable_tables(pool: &PgPool) {
         .await
         .expect("Failed to reset durable stat counters");
 
-    tx.commit()
+    everruns_durable::commit_transaction(tx)
         .await
         .expect("Failed to commit durable test table reset");
 }

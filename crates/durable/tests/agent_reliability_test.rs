@@ -14,8 +14,6 @@
 //!   cargo test -p everruns-durable --test agent_reliability_test \
 //!     --features "failpoints,postgres-tests" -- --test-threads=1
 
-// Nothing cancels these tests, so they may commit with sqlx directly.
-#![allow(clippy::disallowed_methods)]
 #![cfg(all(feature = "failpoints", feature = "postgres-tests"))]
 
 use std::sync::Arc;
@@ -92,7 +90,7 @@ async fn reset_durable_tables(pool: &PgPool) {
         .await
         .expect("Failed to reset durable stat counters");
 
-    tx.commit()
+    everruns_durable::commit_transaction(tx)
         .await
         .expect("Failed to commit durable test table reset");
 }
