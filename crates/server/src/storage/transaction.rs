@@ -382,7 +382,9 @@ impl DbTx {
     /// Commit this transaction, or release its savepoint.
     pub async fn commit(mut self) -> Result<(), sqlx::Error> {
         match &mut self.0 {
-            Inner::Own(tx) => everruns_durable::commit_transaction(tx.take().ok_or_else(closed)?).await,
+            Inner::Own(tx) => {
+                everruns_durable::commit_transaction(tx.take().ok_or_else(closed)?).await
+            }
             // A savepoint stays on this task: its connection belongs to the
             // enclosing `scope`, whose cancellation rolls the whole
             // transaction back.

@@ -507,7 +507,9 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
         .await
         .map_err(state_storage_error)?;
 
-        tx.commit().await.map_err(state_storage_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(state_storage_error)?;
         Ok(SandboxRef {
             id: sandbox_id,
             generation,
@@ -532,7 +534,9 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
         .await
         .map_err(state_storage_error)?;
         let Some((sandbox_id, generation, current_instance_id, is_profiled)) = current else {
-            tx.commit().await.map_err(state_storage_error)?;
+            everruns_durable::commit_transaction(tx)
+                .await
+                .map_err(state_storage_error)?;
             return Ok(false);
         };
         if let Some(expected) = expected
@@ -586,7 +590,9 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
                 .rows_affected()
                 > 0
         };
-        tx.commit().await.map_err(state_storage_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(state_storage_error)?;
         Ok(deleted)
     }
 }
@@ -755,7 +761,9 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         .await
         .map_err(storage_error)?;
 
-        tx.commit().await.map_err(storage_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(storage_error)?;
         Ok(())
     }
 
@@ -871,7 +879,9 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         .await
         .map_err(storage_error)?;
 
-        tx.commit().await.map_err(storage_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(storage_error)?;
 
         previous.map(SandboxCheckpoint::try_from).transpose()
     }

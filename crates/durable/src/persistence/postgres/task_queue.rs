@@ -322,7 +322,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             }
         }
 
-        tx.commit().await.map_err(|e| {
+        crate::commit_transaction(tx).await.map_err(|e| {
             error!(error = %e, "Failed to commit task claim");
             StoreError::Database(e.to_string())
         })?;
@@ -529,7 +529,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             TaskFailureOutcome::MovedToDlq
         };
 
-        tx.commit()
+        crate::commit_transaction(tx)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 

@@ -111,7 +111,7 @@ impl StorageBackend {
                 .execute(&mut *tx)
                 .await?;
         }
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(row)
     }
 
@@ -180,7 +180,7 @@ impl StorageBackend {
             tx.rollback().await?;
             return Ok(false);
         }
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(true)
     }
 

@@ -126,7 +126,7 @@ impl Database {
         .await?
         .unwrap_or(0);
         if head <= projected {
-            tx.commit().await?;
+            everruns_durable::commit_transaction(tx).await?;
             return Ok(TraceCatchUp::UpToDate {
                 projected_sequence: projected,
             });
@@ -202,7 +202,7 @@ impl Database {
         .bind(turn_count)
         .execute(&mut *tx)
         .await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
 
         Ok(if partial {
             TraceCatchUp::Partial {

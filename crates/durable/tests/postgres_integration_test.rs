@@ -7,6 +7,8 @@
 //! - PostgreSQL running with DATABASE_URL set or default postgres://localhost:{DB_PORT:-9332}/everruns_test
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
+// Nothing cancels these tests, so they may commit with sqlx directly.
+#![allow(clippy::disallowed_methods)]
 #![cfg(feature = "postgres-tests")]
 
 use std::{sync::Arc, time::Duration};

@@ -363,7 +363,9 @@ pub async fn create(ctx: &Ctx, input: CreateScopedCredential) -> Result<Uuid, Co
     }
     result.map_err(error)?;
     access::audit(ctx, &mut tx, r.id, "created", None).await?;
-    tx.commit().await.map_err(error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(error)?;
     Ok(r.id)
 }
 
@@ -424,7 +426,9 @@ pub async fn set_value(
     .await
     .map_err(error)?;
     access::audit(ctx, &mut tx, id, "value_changed", None).await?;
-    tx.commit().await.map_err(error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(error)?;
     Ok(())
 }
 
@@ -466,7 +470,9 @@ pub async fn revoke(ctx: &Ctx, id: Uuid, revision: i64) -> Result<(), CommandErr
         .execute(&mut *tx).await
         .map_err(error)?;
     access::audit(ctx, &mut tx, id, "revoked", None).await?;
-    tx.commit().await.map_err(error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(error)?;
     Ok(())
 }
 
@@ -576,7 +582,9 @@ pub async fn grant(ctx: &Ctx, id: Uuid, input: GrantCredential) -> Result<Uuid, 
         .execute(&mut *tx).await
         .map_err(error)?;
     access::audit(ctx, &mut tx, id, "granted", None).await?;
-    tx.commit().await.map_err(error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(error)?;
     Ok(grant)
 }
 
@@ -646,6 +654,8 @@ pub async fn revoke_grant(ctx: &Ctx, id: Uuid, grant_id: Uuid) -> Result<(), Com
     .await
     .map_err(error)?;
     access::audit(ctx, &mut tx, id, "grant_revoked", None).await?;
-    tx.commit().await.map_err(error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(error)?;
     Ok(())
 }

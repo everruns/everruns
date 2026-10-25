@@ -119,7 +119,7 @@ impl DeadLetters for PostgresWorkflowEventStore {
         .await
         .map_err(db_err("Failed to mark DLQ entry requeued"))?;
 
-        tx.commit()
+        crate::commit_transaction(tx)
             .await
             .map_err(db_err("Failed to commit DLQ requeue"))?;
 

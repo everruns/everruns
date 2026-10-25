@@ -132,7 +132,11 @@ mod tests {
                         self.0.push_str(value);
                     }
                 }
-                fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
                     if field.name() == "message" {
                         self.0.push_str(&format!("{value:?}"));
                     }
@@ -155,9 +159,8 @@ mod tests {
         use tracing_subscriber::layer::SubscriberExt;
 
         let notices = Notices::default();
-        let _guard = tracing::subscriber::set_default(
-            tracing_subscriber::registry().with(notices.clone()),
-        );
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(notices.clone()));
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
             .connect(&database_url())
@@ -193,7 +196,7 @@ mod tests {
                 break count;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
-            if notices.0.lock().expect("notices").len() > 0 {
+            if !notices.0.lock().expect("notices").is_empty() {
                 break count;
             }
         };
@@ -204,7 +207,10 @@ mod tests {
             .expect("drop probe table");
 
         let notices = notices.0.lock().expect("notices").clone();
-        assert!(notices.is_empty(), "cancelled COMMITs drew notices: {notices:?}");
+        assert!(
+            notices.is_empty(),
+            "cancelled COMMITs drew notices: {notices:?}"
+        );
         assert_eq!(committed, 200, "a cancelled COMMIT was lost");
     }
 }

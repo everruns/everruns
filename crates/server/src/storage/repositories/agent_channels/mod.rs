@@ -372,7 +372,7 @@ impl Database {
         )
         .bind(org_id).bind(agent_id).bind(public_id).bind(config).bind(encrypted)
         .execute(&mut *tx).await?;
-        tx.commit().await?;
+        everruns_durable::commit_transaction(tx).await?;
         Ok(result.rows_affected() > 0)
     }
 

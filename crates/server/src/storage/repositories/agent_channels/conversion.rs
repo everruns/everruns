@@ -154,7 +154,7 @@ impl LockedApiEndpointChannel {
         .bind(converted.status)
         .execute(&mut *self.tx)
         .await?;
-        self.tx.commit().await?;
+        everruns_durable::commit_transaction(self.tx).await?;
         Ok(())
     }
 }

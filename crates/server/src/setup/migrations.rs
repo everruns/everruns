@@ -148,6 +148,8 @@ async fn adopt_locked(conn: &mut PgConnection) -> Result<()> {
     .bind(&*baseline.checksum)
     .execute(&mut *tx)
     .await?;
+    // A borrowed connection at startup, which nothing cancels.
+    #[allow(clippy::disallowed_methods)]
     tx.commit().await?;
 
     tracing::info!(

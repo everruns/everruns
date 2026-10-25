@@ -96,7 +96,7 @@ impl PostgresWorkflowEventStore {
             .await?;
         // Another caller may have applied it while this one waited.
         if applied_marker(&mut *tx).await?.as_deref() == Some(marker.as_str()) {
-            return tx.commit().await;
+            return crate::commit_transaction(tx).await;
         }
         sqlx::raw_sql(Self::SCHEMA_SQL).execute(&mut *tx).await?;
         // COMMENT takes no bind parameters; the statement is built only from
@@ -105,7 +105,7 @@ impl PostgresWorkflowEventStore {
         sqlx::raw_sql(sqlx::AssertSqlSafe(comment))
             .execute(&mut *tx)
             .await?;
-        tx.commit().await
+        crate::commit_transaction(tx).await
     }
 
     /// Connect to the database at `url`, apply the schema with

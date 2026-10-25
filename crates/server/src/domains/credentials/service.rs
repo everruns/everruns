@@ -426,7 +426,9 @@ async fn prepare(
                     .execute(&mut *tx)
                     .await
                     .map_err(db_error)?;
-                tx.commit().await.map_err(db_error)?;
+                everruns_durable::commit_transaction(tx)
+                    .await
+                    .map_err(db_error)?;
                 return Err(CommandError::forbidden("Credential capture was declined"));
             }
         } else if p.status != "approved" {
@@ -482,7 +484,9 @@ async fn prepare(
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
-        tx.commit().await.map_err(db_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(db_error)?;
         return Ok(CapturePreparation::Ready { ticket: p.id });
     }
     let mut targets = Vec::new();
@@ -531,7 +535,9 @@ async fn prepare(
         .bind(expiry)
         .execute(&mut *tx).await
         .map_err(db_error)?;
-    tx.commit().await.map_err(db_error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(db_error)?;
     Ok(if consent {
         CapturePreparation::ConsentRequired {
             ticket: id,
@@ -641,7 +647,9 @@ async fn commit(
             .execute(&mut *tx)
             .await
             .map_err(db_error)?;
-        tx.commit().await.map_err(db_error)?;
+        everruns_durable::commit_transaction(tx)
+            .await
+            .map_err(db_error)?;
         return Ok(());
     }
     if values.len() != targets.len() {
@@ -716,7 +724,9 @@ async fn commit(
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
-    tx.commit().await.map_err(db_error)?;
+    everruns_durable::commit_transaction(tx)
+        .await
+        .map_err(db_error)?;
     Ok(())
 }
 

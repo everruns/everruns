@@ -14,6 +14,8 @@
 //!   cargo test -p everruns-durable --test agent_reliability_test \
 //!     --features "failpoints,postgres-tests" -- --test-threads=1
 
+// Nothing cancels these tests, so they may commit with sqlx directly.
+#![allow(clippy::disallowed_methods)]
 #![cfg(all(feature = "failpoints", feature = "postgres-tests"))]
 
 use std::sync::Arc;
