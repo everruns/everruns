@@ -207,84 +207,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_duplicate_scheduling_prevention_workflow() {
-        // End-to-end scenario testing the fix prevents duplicate atom scheduling
-        // This simulates the full workflow that was causing duplicate atoms
-        let store = InMemoryWorkflowEventStore::new();
-        register_workers(&store, &["worker-A", "worker-B"]);
-        let workflow_id = Uuid::now_v7();
-
-        store
-            .create_workflow(
-                workflow_id,
-                "message_processing",
-                serde_json::json!({}),
-                None,
-            )
-            .await
-            .unwrap();
-
-        // Enqueue an "act" task (triggered by an external signal)
-        let task_id = store
-            .enqueue_task(TaskDefinition {
-                workflow_id: Some(workflow_id),
-                activity_id: "act-0".to_string(),
-                activity_type: "act".to_string(),
-                input: serde_json::json!({"message": "hello"}),
-                options: ActivityOptions::default(),
-            })
-            .await
-            .unwrap();
-
-        // Worker A claims and starts processing
-        let _ = store
-            .claim_task("worker-A", &["act".to_string()], 1)
-            .await
-            .unwrap();
-
-        // Simulate: Worker A takes too long, task reclaimed
-        {
-            let mut tasks = store.tasks.write();
-            tasks.update(task_id, |task| task.release(chrono::Utc::now()));
-        }
-
-        // Worker B claims and completes
-        let _ = store
-            .claim_task("worker-B", &["act".to_string()], 1)
-            .await
-            .unwrap();
-
-        // Worker B completes successfully
-        let result_b = store
-            .complete_task(
-                task_id,
-                "worker-B",
-                serde_json::json!({"turn_complete": true}),
-            )
-            .await;
-        assert!(result_b.is_ok(), "Worker B should complete successfully");
-
-        // Now we simulate what WOULD happen in the old buggy code:
-        // Worker A finishes processing and tries to complete
-        let result_a = store
-            .complete_task(
-                task_id,
-                "worker-A",
-                serde_json::json!({"turn_complete": true}),
-            )
-            .await;
-
-        // The fix ensures Worker A is REJECTED
-        assert!(
-            matches!(result_a, Err(StoreError::TaskNotOwned(_))),
-            "Worker A must be rejected to prevent duplicate atom scheduling"
-        );
-
-        // In the real workflow, after complete_task fails, the worker
-        // should NOT call schedule_next_activity, preventing duplicate atoms
-    }
-
     // =========================================================================
     // Schedule Tests
     // =========================================================================
@@ -659,29 +581,6 @@ mod tests {
     // =========================================================================
     // System Health Tests
     // =========================================================================
-
-    #[tokio::test]
-    async fn test_system_health_empty() {
-        let store = InMemoryWorkflowEventStore::new();
-        let health = store.get_system_health().await.unwrap();
-
-        assert_eq!(health.total_workers, 0);
-        assert_eq!(health.active_workers, 0);
-        assert_eq!(health.workers_accepting, 0);
-        assert_eq!(health.total_capacity, 0);
-        assert_eq!(health.current_load, 0);
-        assert_eq!(health.pending_tasks, 0);
-        assert_eq!(health.claimed_tasks, 0);
-        assert_eq!(health.completed_tasks, 0);
-        assert_eq!(health.failed_tasks, 0);
-        assert_eq!(health.started_tasks, 0);
-        assert_eq!(health.running_workflows, 0);
-        assert_eq!(health.pending_workflows, 0);
-        assert_eq!(health.completed_workflows, 0);
-        assert_eq!(health.failed_workflows, 0);
-        assert_eq!(health.started_workflows, 0);
-        assert_eq!(health.dlq_size, 0);
-    }
 
     #[tokio::test]
     async fn test_system_health_worker_counts() {

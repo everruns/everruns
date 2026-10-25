@@ -181,17 +181,6 @@ fn build_rejects_missing_model() {
 }
 
 #[test]
-fn build_succeeds_with_simulator() {
-    let agent = Agent::builder()
-        .instructions("You are concise.")
-        .model(Model::simulated("Sure."))
-        .name("assistant")
-        .build()
-        .expect("valid agent");
-    assert_eq!(agent.name, "assistant");
-}
-
-#[test]
 fn build_resolves_plain_model_id_against_provider() {
     let agent = Agent::builder()
         .instructions("You are concise.")

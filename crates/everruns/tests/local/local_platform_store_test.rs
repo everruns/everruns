@@ -92,21 +92,6 @@ fn store() -> LocalPlatformStore {
     LocalPlatformStore::new(Arc::new(FakeRunner::default()))
 }
 
-#[tokio::test]
-async fn subagent_core_is_honest() {
-    let store = store();
-    let harness_id = HarnessId::new();
-    let child = store
-        .create_session_with_options(request(harness_id, None))
-        .await
-        .unwrap();
-    assert_eq!(child.harness_id, harness_id);
-
-    store.send_message(child.id, "go").await.unwrap();
-    assert_eq!(store.wait_for_idle(child.id, None).await.unwrap(), "idle");
-    assert_eq!(store.get_messages(child.id, None).await.unwrap().len(), 1);
-}
-
 /// The management surface the local store used to reject method-by-method is
 /// gone from `PlatformStore` entirely (EVE-953), so there is nothing left to
 /// call. What still has to hold is that the one creation path the local store

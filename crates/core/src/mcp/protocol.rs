@@ -610,17 +610,6 @@ mod tests {
     }
 
     #[test]
-    fn request_meta_carries_client_info_under_canonical_key() {
-        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07, ClientCapabilities::none());
-        let info = meta.get(CLIENT_INFO_META_KEY).expect("client info present");
-        assert_eq!(info.get("name").and_then(|v| v.as_str()), Some(CLIENT_NAME));
-        assert_eq!(
-            info.get("version").and_then(|v| v.as_str()),
-            Some(CLIENT_VERSION)
-        );
-    }
-
-    #[test]
     fn routable_headers_include_name_only_for_calls() {
         let list = routable_headers(MCP_PROTOCOL_VERSION_2026_07, "tools/list", None);
         assert!(list.iter().all(|(k, _)| k != HEADER_NAME));

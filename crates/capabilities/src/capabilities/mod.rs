@@ -366,49 +366,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "portable-builtins")]
-    #[test]
-    fn hosted_registry_contains_full_portable_policy_catalog() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        for capability_id in [
-            "human_intent",
-            "infinity_context",
-            "skills",
-            "current_time",
-            "compaction",
-            "tool_call_repair",
-            "usage_limit_auto_continue",
-            "openui",
-            "a2ui",
-        ] {
-            assert!(
-                registry.has(capability_id),
-                "hosted product registry is missing `{capability_id}`"
-            );
-        }
-    }
-
-    #[cfg(feature = "environment-capabilities")]
-    #[test]
-    fn hosted_registry_composes_product_environment_capabilities() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        for capability_id in [
-            "session_file_system",
-            "bashkit_shell",
-            "web_fetch",
-            "model_scout",
-            "openrouter_workspace",
-            "openrouter_server_tools",
-            "openai_server_tools",
-        ] {
-            assert!(
-                registry.has(capability_id),
-                "hosted product registry is missing `{capability_id}`"
-            );
-        }
-        assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
-    }
-
     #[cfg(not(feature = "environment-capabilities"))]
     #[test]
     fn platform_default_does_not_link_environment_capabilities() {

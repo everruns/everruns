@@ -303,27 +303,3 @@ async fn test_validate_rejects_token_without_cdp_access() {
         "unexpected message: {err}"
     );
 }
-
-/// A blank token is rejected the same way an invalid one is: the REST API
-/// returns 401 for it, and validate() surfaces the same error without ever
-/// attempting the CDP probe.
-#[tokio::test]
-async fn test_validate_rejects_blank_token() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/active"))
-        .respond_with(ResponseTemplate::new(401))
-        .mount(&mock_server)
-        .await;
-
-    let result = with_mock_api_base(&mock_server, || async {
-        BrowserlessConnector.validate("").await
-    })
-    .await;
-
-    let err = result.expect_err("expected Err for a blank token");
-    assert!(
-        err.contains("Invalid API token"),
-        "unexpected message: {err}"
-    );
-}

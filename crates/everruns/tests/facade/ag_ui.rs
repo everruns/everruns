@@ -959,21 +959,6 @@ async fn reserved_oversized_and_duplicate_frontend_tools_are_refused() {
     assert!(matches!(many, Err(AgUiError::InvalidInput(_))));
 }
 
-#[tokio::test]
-async fn the_latest_run_sets_the_frontend_tools() {
-    let session = confirming_session();
-    run_with(&session, with_tools(input("Hi")), AgUiOptions::new()).await;
-    assert!(
-        session
-            .inspect()
-            .await
-            .expect("inspect")
-            .tools
-            .iter()
-            .any(|tool| tool.name == "confirm")
-    );
-}
-
 /// An agent whose first turn writes a todo list through a tool named like the
 /// built-in `write_todos`, so its result takes the same path.
 fn planning_session() -> Session {

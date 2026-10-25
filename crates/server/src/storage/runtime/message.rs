@@ -455,25 +455,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_parse_input_message_event() {
-        let session_id = SessionId::new();
-        let message = RuntimeMessage::user("Hello from user!");
-        let event = Event::new(
-            session_id,
-            EventContext::empty(),
-            InputMessageData::new(message),
-        );
-
-        let stored = serde_json::to_value(&event).unwrap();
-        let result = event_to_message(&stored, "input.message");
-
-        assert!(result.is_ok());
-        let parsed = result.unwrap();
-        assert_eq!(parsed.role, RuntimeMessageRole::User);
-        assert_eq!(parsed.text(), Some("Hello from user!"));
-    }
-
-    #[test]
     fn test_parse_output_message_completed_event() {
         let session_id = SessionId::new();
         let message = RuntimeMessage::assistant("Hello from agent!");

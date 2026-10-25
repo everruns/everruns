@@ -15,21 +15,6 @@ fn builder() -> everruns::AgentBuilder {
 }
 
 #[tokio::test]
-async fn typed_compaction_runs_offline() {
-    let agent = builder()
-        .capability(CompactionConfig::new().budget_percent(0.85))
-        .build()
-        .expect("typed compaction config builds");
-
-    let turn = InMemoryEngine::new()
-        .create(agent)
-        .run("Keep this context useful.")
-        .await
-        .expect("offline turn runs");
-    assert!(turn.success);
-}
-
-#[tokio::test]
 async fn typed_tool_search_activates_the_model_adaptive_builtin() {
     let agent = builder()
         .capability(

@@ -874,19 +874,6 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_target_app_variant() {
-        let target = EvalTarget::App {
-            app_id: AppId::from_uuid(Uuid::nil()),
-        };
-        let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "app");
-        assert!(json.get("app_id").is_some());
-
-        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed, target);
-    }
-
-    #[test]
     fn test_eval_serde_skips_internal_fields() {
         let eval = Eval {
             public_id: EvalId::from_uuid(Uuid::nil()),

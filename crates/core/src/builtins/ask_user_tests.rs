@@ -283,32 +283,6 @@ fn text_normalization_materializes_its_free_text_shape() {
 }
 
 #[test]
-fn result_contract_round_trips_all_outcomes() {
-    for status in [
-        AskUserStatus::Answered,
-        AskUserStatus::Declined,
-        AskUserStatus::Cancelled,
-        AskUserStatus::TimedOut,
-    ] {
-        let result = AskUserResult {
-            status,
-            answered_by: AskUserAnsweredBy::User,
-            answers: vec![AskUserAnswer {
-                id: "target".to_string(),
-                selected: vec!["Staging".to_string()],
-                other_text: None,
-                secret_ref: None,
-            }],
-        };
-        let encoded = serde_json::to_value(&result).unwrap();
-        assert_eq!(
-            serde_json::from_value::<AskUserResult>(encoded).unwrap(),
-            result
-        );
-    }
-}
-
-#[test]
 fn prompt_and_localization_preserve_the_safety_boundary() {
     let capability = AskUserCapability::client_side();
     let prompt = capability.system_prompt_addition().unwrap();

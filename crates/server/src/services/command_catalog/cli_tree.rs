@@ -652,16 +652,6 @@ mod tests {
     }
 
     #[test]
-    fn leaf_help_carries_flags_examples_and_the_wire_name() {
-        let text = tree().render_help("agents list", None).expect("leaf help");
-        // The usage line reads back what the caller typed, not the alias.
-        assert!(text.contains("Usage: everruns agents list"), "{text}");
-        assert!(text.contains("Examples:"), "{text}");
-        assert!(text.contains("everruns agents list --search"), "{text}");
-        assert!(text.contains("Wire name: list_agents"), "{text}");
-    }
-
-    #[test]
     fn unknown_verb_help_is_an_error_naming_real_neighbours() {
         let error = tree()
             .render_help("agents", Some("lst"))

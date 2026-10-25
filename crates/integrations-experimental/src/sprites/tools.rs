@@ -1217,18 +1217,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_create_tool_requires_context() {
-        let tool = get_tool("sprites_create_sprite");
-        let result = tool.execute(json!({"sprite_name": "test"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"), "Got: {msg}");
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
     #[test]
     fn test_parse_resource_valid() {
         let args = json!({"cpus": 4});

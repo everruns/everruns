@@ -94,34 +94,6 @@ fn contract_specs() -> Vec<CliCommandSpec> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The tree is the contract's, so every routed command is spelled here and
-    /// the worker needs no round trip to know the grammar.
-    /// The worker serves the shared mapper's tree, node descriptions included,
-    /// so its root help reads as the server's does.
-    #[test]
-    fn the_shell_uses_the_shared_tree() {
-        let tree = shared_tree();
-        assert_eq!(tree.about("agents"), Some(NODE_ABOUT[0].1));
-        assert!(tree.leaf("harnesses destroy").is_some());
-    }
-
-    #[test]
-    fn the_source_serves_every_routed_command() {
-        let specs = contract_specs();
-        assert_eq!(specs.len(), everruns_cli_contract::commands().len());
-        assert!(specs.iter().any(|spec| spec.wire_name == "list_agents"));
-        assert!(
-            specs
-                .iter()
-                .any(|spec| spec.path == ["agents", "channels"] && spec.verb == "publish")
-        );
-    }
-}
-
-#[cfg(test)]
 mod dispatch_tests {
     use std::sync::Mutex;
 

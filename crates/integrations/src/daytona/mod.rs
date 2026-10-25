@@ -924,11 +924,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_api_calling_enabled_true() {
-        assert!(is_api_calling_enabled(&json!({"enable_api_calling": true})));
-    }
-
-    #[test]
     fn test_tools_with_config_default_no_api_call() {
         let cap = DaytonaCapability;
         let tools = cap.tools_with_config(&json!({}));

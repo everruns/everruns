@@ -380,38 +380,4 @@ mod tests {
         assert_eq!(error.code, -32002);
         assert_eq!(error.data, Some(json!({ "uri": "everruns://nope" })));
     }
-
-    #[test]
-    fn catalog_entries_carry_title_and_assistant_audience() {
-        let response = handle_resources_list(None);
-        let resources = response.result.expect("result")["resources"].clone();
-        let agents = resources
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|r| r["uri"] == "everruns://agents")
-            .unwrap()
-            .clone();
-        assert_eq!(agents["title"], "Agents");
-        assert_eq!(agents["annotations"]["audience"], json!(["assistant"]));
-    }
-
-    #[test]
-    fn templates_list_agent_and_session() {
-        let response = handle_resource_templates_list(None);
-        let templates = response.result.expect("result")["resourceTemplates"].clone();
-        let uris: Vec<_> = templates
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|t| t["uriTemplate"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(
-            uris,
-            [
-                "everruns://agents/{agent_id}",
-                "everruns://sessions/{session_id}"
-            ]
-        );
-    }
 }

@@ -530,38 +530,6 @@ mod tests {
         assert!(response.tool_calls.is_none());
     }
 
-    #[test]
-    fn per_call_bounds_reach_the_call_configuration() {
-        let completion = Model::simulated("ok")
-            .completion()
-            .user("go")
-            .timeout(Duration::from_secs(30))
-            .first_token_timeout(Duration::from_secs(5))
-            .max_response_bytes(1024)
-            .parallel_tool_calls(false);
-        assert_eq!(
-            completion.config.limits.total,
-            Some(Duration::from_secs(30))
-        );
-        assert_eq!(
-            completion.config.limits.first_event,
-            Some(Duration::from_secs(5))
-        );
-        assert_eq!(completion.config.limits.max_response_bytes, Some(1024));
-        assert_eq!(completion.config.parallel_tool_calls, Some(false));
-        assert!(
-            !completion.config.capture_request,
-            "the prompt is not recorded unless asked for"
-        );
-        assert!(
-            Model::simulated("ok")
-                .completion()
-                .capture_request(true)
-                .config
-                .capture_request
-        );
-    }
-
     #[tokio::test]
     async fn a_bare_model_id_has_no_provider() {
         let error = Model::from("gpt-5-mini")

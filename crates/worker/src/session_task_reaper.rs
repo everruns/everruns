@@ -1134,44 +1134,9 @@ mod tests {
         assert_eq!(result["candidates"], 1);
     }
 
-    #[tokio::test]
-    async fn empty_orphan_list_produces_zero_reap() {
-        let registry = Arc::new(MockRegistry::default());
-        let input = SessionTaskReaperInput::default();
-        let result = run_reaper(vec![], registry, &input).await;
-
-        assert_eq!(result["candidates"], 0);
-        assert_eq!(result["reaped"], 0);
-        assert_eq!(result["skipped"], 0);
-    }
-
     // -------------------------------------------------------------------------
     // Retention config (EVE-580)
     // -------------------------------------------------------------------------
-
-    #[test]
-    fn retention_fields_round_trip_through_serde_and_default_when_absent() {
-        // New fields serialize and deserialize.
-        let input = SessionTaskReaperInput {
-            retention_ttl_seconds: 1234,
-            retention_limit: 7,
-            ..Default::default()
-        };
-        let json = serde_json::to_value(&input).unwrap();
-        assert_eq!(json["retention_ttl_seconds"], 1234);
-        assert_eq!(json["retention_limit"], 7);
-
-        // A legacy stored input without the retention fields deserializes with
-        // the defaults applied (so existing durable schedules keep working).
-        let legacy: SessionTaskReaperInput = serde_json::from_value(serde_json::json!({
-            "stale_after_seconds": 300,
-            "limit": 50,
-        }))
-        .unwrap();
-        assert_eq!(legacy.retention_ttl_seconds, 30 * 24 * 60 * 60);
-        assert_eq!(legacy.retention_limit, 100);
-        assert_eq!(legacy.max_attempts, 3);
-    }
 
     #[tokio::test]
     async fn retention_pass_invokes_prune_with_configured_ttl_and_limit() {

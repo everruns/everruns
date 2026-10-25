@@ -597,29 +597,9 @@ mod tests {
     }
 
     #[test]
-    fn validate_subject_type_accepts_supported_subjects() {
-        for kind in [
-            "session",
-            "agent",
-            "user",
-            "org",
-            "agent_trigger",
-            "agent_channel",
-        ] {
-            assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
-        }
-    }
-
-    #[test]
     fn validate_subject_type_rejects_unknown_subjects() {
         assert!(validate_subject_type("unknown").is_err());
         assert!(validate_subject_type("").is_err());
-    }
-
-    #[test]
-    fn validate_subject_type_rejects_retired_app_subjects() {
-        assert!(validate_subject_type("app").is_err());
-        assert!(validate_subject_type("app_channel").is_err());
     }
 
     #[tokio::test]

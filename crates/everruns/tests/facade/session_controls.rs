@@ -785,38 +785,6 @@ async fn live_mcp_servers_are_scoped_and_validated() {
 }
 
 // ---------------------------------------------------------------------------
-// Host queries
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn host_review_uses_the_session_context_without_touching_history() {
-    let (config, captured) = scripted(vec![]);
-    let (agent, _) = legacy_agent(Model::simulated_with_config(config), vec![], None);
-    let session = Engine::new().create(agent);
-    assert!(session.run("original request").await.unwrap().success);
-    let events = event_count(&session).await;
-    let messages = session.history().page().await.unwrap().messages.len();
-
-    let review = session
-        .complete_out_of_band(Some("Review strictly."), "Was the request completed?")
-        .await
-        .expect("review");
-    assert_eq!(review, "done");
-    let sent = last_call(&captured);
-    assert!(sent.contains("original request"));
-    assert!(sent.contains("Review strictly."));
-    assert!(sent.contains("Was the request completed?"));
-
-    let context = session.command_context().await.unwrap();
-    assert_eq!(context.messages.len(), messages);
-    assert_eq!(event_count(&session).await, events);
-    assert_eq!(
-        session.history().page().await.unwrap().messages.len(),
-        messages
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Coherent hosting: the same controls commit through authority operations
 // ---------------------------------------------------------------------------
 

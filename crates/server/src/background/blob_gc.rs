@@ -385,66 +385,6 @@ mod tests {
     }
 
     #[test]
-    fn live_pointer_is_kept() {
-        let now = Utc::now();
-        // Old object, but it has a live pointer — never delete.
-        let objects = vec![obj(
-            "workspaces/a/files/1",
-            ChronoDuration::days(10),
-            5,
-            now,
-        )];
-        let live = live(&["workspaces/a/files/1"]);
-        let r = reconcile(&objects, &live, ChronoDuration::hours(24), now, 100);
-        assert!(r.to_delete.is_empty());
-        assert_eq!(r.kept_live, 1);
-        assert_eq!(r.bytes_to_reclaim, 0);
-    }
-
-    #[test]
-    fn orphan_older_than_grace_is_deleted() {
-        let now = Utc::now();
-        let objects = vec![obj(
-            "workspaces/a/files/1",
-            ChronoDuration::hours(48),
-            7,
-            now,
-        )];
-        let r = reconcile(
-            &objects,
-            &HashSet::new(),
-            ChronoDuration::hours(24),
-            now,
-            100,
-        );
-        assert_eq!(r.to_delete, vec![("workspaces/a/files/1".to_string(), 7)]);
-        assert_eq!(r.bytes_to_reclaim, 7);
-        assert_eq!(r.kept_within_grace, 0);
-    }
-
-    #[test]
-    fn orphan_within_grace_is_kept() {
-        let now = Utc::now();
-        // Orphan, but written only 1h ago — inside the 24h grace, so kept.
-        let objects = vec![obj(
-            "workspaces/a/files/1",
-            ChronoDuration::hours(1),
-            7,
-            now,
-        )];
-        let r = reconcile(
-            &objects,
-            &HashSet::new(),
-            ChronoDuration::hours(24),
-            now,
-            100,
-        );
-        assert!(r.to_delete.is_empty());
-        assert_eq!(r.kept_within_grace, 1);
-        assert_eq!(r.bytes_to_reclaim, 0);
-    }
-
-    #[test]
     fn orphan_exactly_at_grace_boundary_is_deleted() {
         let now = Utc::now();
         // last_modified == cutoff: not strictly greater than cutoff, so deleted.

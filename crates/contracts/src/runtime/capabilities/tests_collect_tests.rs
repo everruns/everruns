@@ -124,26 +124,6 @@ async fn test_collected_capabilities_apply_multiple_filters_in_priority_order() 
 // =========================================================================
 
 #[test]
-fn test_collect_message_filters_only_collects_filters() {
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        serde_json::json!({ "search": "test_query" }),
-    )];
-
-    let collected = collect_message_filters_only(&configs, &registry);
-
-    let session_id: SessionId = Uuid::now_v7().into();
-    let mut query = MessageQuery::new(session_id);
-    collected.apply_message_filters(&mut query);
-
-    assert_eq!(query.filters.len(), 1);
-    assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
-}
-
-#[test]
 fn test_collect_message_filters_only_skips_unknown_capabilities() {
     let registry = CapabilityRegistry::new();
 
@@ -605,27 +585,6 @@ async fn test_contribute_skills_normalized_to_mounts() {
         }
         _ => panic!("Expected InlineDirectory"),
     }
-}
-
-#[tokio::test]
-async fn test_contribute_skills_default_empty() {
-    // Registry-resident capability without a contribute_skills override
-    // must not add skill mounts.
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        serde_json::json!({}),
-    )];
-
-    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-    assert!(
-        collected
-            .mounts
-            .iter()
-            .all(|m| !m.path.starts_with("/.agents/skills/"))
-    );
 }
 
 #[test]

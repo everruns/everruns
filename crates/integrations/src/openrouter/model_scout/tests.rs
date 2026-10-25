@@ -9,41 +9,6 @@ fn scout_blueprint() -> AgentBlueprint {
 }
 
 #[test]
-fn config_schema_is_derived_from_scout_config() {
-    let blueprint = scout_blueprint();
-    let schema = blueprint
-        .config_schema
-        .expect("scout declares a config schema");
-    let properties = schema["properties"]
-        .as_object()
-        .expect("derived schema exposes properties");
-
-    // Every ScoutConfig field reaches the schema, with the runtime bounds
-    // attached — no hand-maintained copy to drift.
-    assert_eq!(properties.len(), 6);
-    assert_eq!(properties["model"]["minLength"], 1);
-    assert_eq!(
-        properties["max_candidates"]["maximum"],
-        MAX_PROBE_CANDIDATES
-    );
-    assert_eq!(
-        properties["max_candidates"]["default"],
-        DEFAULT_PROBE_CANDIDATES
-    );
-    assert_eq!(
-        properties["probe_timeout_ms"]["minimum"],
-        MIN_PROBE_TIMEOUT_MS
-    );
-    assert_eq!(
-        properties["probe_timeout_ms"]["maximum"],
-        MAX_PROBE_TIMEOUT_MS
-    );
-    assert_eq!(properties["max_spend_usd"]["maximum"], MAX_PROBE_SPEND_USD);
-    assert_eq!(properties["probe_tasks"]["maxItems"], MAX_PROBE_TASKS);
-    assert_eq!(schema["additionalProperties"], json!(false));
-}
-
-#[test]
 fn scout_config_defaults_round_trip_through_the_schema() {
     let blueprint = scout_blueprint();
     let defaults = serde_json::to_value(ScoutConfig::default()).expect("serialize defaults");

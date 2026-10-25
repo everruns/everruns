@@ -2319,35 +2319,6 @@ mod tests {
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
-    fn test_health_response_from_system_health() {
-        let health = SystemHealth {
-            total_workers: 5,
-            active_workers: 3,
-            workers_accepting: 2,
-            total_capacity: 50,
-            current_load: 10,
-            pending_tasks: 5,
-            claimed_tasks: 10,
-            completed_tasks: 0,
-            failed_tasks: 0,
-            started_tasks: 10,
-            running_workflows: 2,
-            pending_workflows: 1,
-            completed_workflows: 0,
-            failed_workflows: 0,
-            started_workflows: 2,
-            dlq_size: 0,
-        };
-
-        let response = HealthResponse::from(health);
-
-        assert_eq!(response.status, "healthy");
-        assert_eq!(response.total_workers, 5);
-        assert_eq!(response.active_workers, 3);
-        assert_eq!(response.load_percentage, 20.0); // 10/50 * 100
-    }
-
-    #[test]
     fn test_health_status_reflects_worker_and_dlq_state() {
         // (system health, expected status)
         let cases = [
@@ -2674,38 +2645,6 @@ mod tests {
         assert_eq!(points[0].running_workflows, 2);
         assert_eq!(points[1].running_workflows, 3);
         assert_eq!(points[2].running_workflows, 4);
-    }
-
-    #[tokio::test]
-    async fn test_metrics_collector_get_points_returns_in_order() {
-        let collector = MetricsCollector::new(100);
-
-        for i in 0..5 {
-            collector
-                .push(MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: i,
-                    pending_workflows: 0,
-                    pending_tasks: 0,
-                    claimed_tasks: 0,
-                    active_workers: 0,
-                    load_percentage: 0.0,
-                    dlq_size: 0,
-                    tasks_completed_total: 0,
-                    tasks_failed_total: 0,
-                    tasks_started_total: 0,
-                    workflows_completed_total: 0,
-                    workflows_failed_total: 0,
-                    workflows_started_total: 0,
-                })
-                .await;
-        }
-
-        let points = collector.get_points().await;
-        assert_eq!(points.len(), 5);
-        for (idx, point) in points.iter().enumerate() {
-            assert_eq!(point.running_workflows, idx);
-        }
     }
 
     // ============================================

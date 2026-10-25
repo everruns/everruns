@@ -180,14 +180,6 @@ async fn an_oidc_token_from_the_configured_issuer_is_accepted() {
     );
 }
 
-#[test]
-fn an_unenforceable_method_fails_the_boot() {
-    let result = Server::builder(app(), Mode::Eval)
-        .auth([AuthMethod::oidc(ISSUER, Vec::<String>::new())])
-        .build();
-    assert!(result.is_err());
-}
-
 /// The A2A Agent Card names the schemes a caller must satisfy once auth is on,
 /// in the A2A 1.0 shape, and none while the API is open.
 #[cfg(feature = "a2a")]

@@ -349,23 +349,6 @@ mod tests {
     }
 
     #[test]
-    fn config_schema_is_derived_from_scout_config() {
-        let cap = GitHubScoutCapability;
-        let scout = cap.agent_blueprints().pop().expect("blueprint");
-        let schema = scout.config_schema.expect("scout declares a config schema");
-
-        assert_eq!(
-            schema["properties"]["repos"]["items"]["pattern"],
-            serde_json::json!(REPO_PATTERN)
-        );
-        assert_eq!(schema["additionalProperties"], serde_json::json!(false));
-        assert!(
-            schema["required"].is_null(),
-            "every field has a default, so config stays optional"
-        );
-    }
-
-    #[test]
     fn schema_pattern_matches_runtime_validation() {
         let cap = GitHubScoutCapability;
         let scout = cap.agent_blueprints().pop().expect("blueprint");

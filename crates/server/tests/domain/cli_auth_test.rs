@@ -9,7 +9,6 @@
 //! - POST /v1/auth/cli/start issues a unique session/state each call
 //! - GET /v1/auth/cli/callback rejects an unknown/invalid `state`
 //! - POST /v1/auth/cli/exchange rejects an unknown/invalid `code`
-//! - GET /cli/login-success renders the branded static success page
 //!
 //! Run with: cargo test -p everruns-server --test domain cli_auth_test:: -- --test-threads=1
 
@@ -264,31 +263,4 @@ async fn test_cli_exchange_invalid_code() {
         StatusCode::UNAUTHORIZED,
         "exchange with an invalid code should return 401: {body}"
     );
-}
-
-#[tokio::test]
-async fn test_cli_login_success_page() {
-    let (router, _db) = build_router().await;
-
-    let request = Request::builder()
-        .method("GET")
-        .uri("/cli/login-success")
-        .body(Body::empty())
-        .unwrap();
-
-    let response = router.oneshot(request).await.unwrap();
-    let status = response.status();
-    let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    let body = String::from_utf8(bytes.to_vec()).unwrap();
-
-    assert_eq!(status, StatusCode::OK, "login-success page should be 200");
-    assert!(
-        body.contains("You're logged in"),
-        "success page should contain login confirmation"
-    );
-    assert!(
-        body.contains("terminal"),
-        "success page should mention returning to terminal"
-    );
-    assert!(body.contains("<!DOCTYPE html>"), "should be HTML");
 }

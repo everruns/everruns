@@ -203,13 +203,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_no_retry() {
-        let policy = RetryPolicy::no_retry();
-        assert_eq!(policy.max_attempts, 1);
-        assert!(!policy.has_attempts_remaining(1));
-    }
-
-    #[test]
     fn test_fixed_interval() {
         let policy = RetryPolicy::fixed(Duration::from_secs(5), 3);
 

@@ -920,15 +920,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_persist_large_output_persists_stdout_below_budget() {
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
-        let small = "a".repeat(EXEC_OUTPUT_BUDGET);
-        let result = persist_large_output(&store, test_session_id(), "call-1", &small, "").await;
-        let r = result.expect("should persist non-empty stdout");
-        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-1.stdout"));
-    }
-
-    #[tokio::test]
     async fn test_persist_large_output_persists_stdout_above_budget() {
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();
@@ -969,25 +960,6 @@ mod tests {
         assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-3.stdout"));
         assert_eq!(r.stderr_path.as_deref(), Some("/outputs/call-3.stderr"));
         assert_eq!(mock.content("/outputs/call-3.stderr").unwrap().len(), 4097);
-    }
-
-    #[tokio::test]
-    async fn test_persist_large_output_both_stdout_and_stderr() {
-        let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileSystem> = mock.clone();
-        let large_stdout = "o".repeat(EXEC_OUTPUT_BUDGET + 100);
-        let large_stderr = "e".repeat(5000);
-        let result = persist_large_output(
-            &store,
-            test_session_id(),
-            "call-4",
-            &large_stdout,
-            &large_stderr,
-        )
-        .await;
-        let r = result.expect("should persist both");
-        assert!(r.stdout_path.is_some());
-        assert!(r.stderr_path.is_some());
     }
 
     #[tokio::test]

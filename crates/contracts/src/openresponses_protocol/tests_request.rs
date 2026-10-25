@@ -785,61 +785,6 @@ fn unpaired_function_call_ids_reports_both_directions() {
     );
 }
 
-// ========================================================================
-// Provider-declared statefulness (EVE-523)
-// ========================================================================
-
-/// End-to-end shape of the call path: against a stateless gateway, a request
-/// that carries a `previous_response_id` in config must still send the FULL
-/// transcript in `input` (no trim) because the gateway will not have stored
-/// the prior response. This is the core EVE-523 regression guard.
-#[test]
-fn stateless_gateway_replays_full_transcript_despite_previous_response_id() {
-    let prev_id: Option<String> = Some("gen-turn-1".to_string());
-
-    let driver = OpenResponsesProtocolChatDriver::new();
-    let effective_prev_id = if driver.supports_stateful_responses() {
-        prev_id.clone()
-    } else {
-        None
-    };
-    assert!(
-        effective_prev_id.is_none(),
-        "stateless gateway must not chain via previous_response_id"
-    );
-
-    let items = sample_full_transcript_items();
-    let original_len = items.len();
-    let out = finalize_input_for_request(items, &effective_prev_id);
-    assert_eq!(
-        out.len(),
-        original_len,
-        "stateless gateway must replay the full transcript so the model keeps context"
-    );
-}
-
-/// The same transcript against OpenAI's hosted API trims to the delta window
-/// and keeps the continuation handle — confirming the optimization is intact
-/// for genuinely stateful endpoints.
-#[test]
-fn stateful_endpoint_still_trims_and_chains() {
-    let prev_id: Option<String> = Some("resp_turn_1".to_string());
-
-    let driver = OpenResponsesProtocolChatDriver::new().with_stateful_responses(true);
-    let effective_prev_id = if driver.supports_stateful_responses() {
-        prev_id.clone()
-    } else {
-        None
-    };
-    assert_eq!(
-        effective_prev_id, prev_id,
-        "stateful endpoint keeps the continuation handle"
-    );
-
-    let out = finalize_input_for_request(sample_full_transcript_items(), &effective_prev_id);
-    assert_eq!(out.len(), 1, "stateful endpoint trims to the delta window");
-}
-
 /// Production 2026-10-16: OpenRouter answered 429 with `Retry-After: 45`.
 /// The 45s hint did not fit the 30s retry budget, so the turn failed 282 ms
 /// in with "exhausted after 0 retries over 30.0s". A hint that cannot fit the

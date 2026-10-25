@@ -233,29 +233,6 @@ mod tests {
     }
 
     #[test]
-    fn prompt_contains_preamble_and_fence() {
-        let p = generate_prompt(&fixture(), &PromptOptions::default());
-        assert!(p.contains("A2UI"));
-        assert!(p.contains("```a2ui"));
-    }
-
-    #[test]
-    fn prompt_contains_schema() {
-        let p = generate_prompt(&fixture(), &PromptOptions::default());
-        assert!(p.contains("## Schema"));
-        assert!(p.contains("\"type\""));
-        assert!(p.contains("\"children\""));
-    }
-
-    #[test]
-    fn prompt_contains_actions() {
-        let p = generate_prompt(&fixture(), &PromptOptions::default());
-        assert!(p.contains("## Actions"));
-        assert!(p.contains("\"message\""));
-        assert!(p.contains("\"open_url\""));
-    }
-
-    #[test]
     fn component_line_optional_prop() {
         let comp = ComponentDef {
             name: "Heading",

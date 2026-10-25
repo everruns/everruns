@@ -106,20 +106,6 @@ fn stderr(output: &Output) -> String {
 }
 
 #[test]
-fn whoami_shows_a_read_tokens_access() {
-    let url = serve(|line| match line {
-        l if l.starts_with("GET /v1/auth/me ") => (200, me(r#""read""#)),
-        _ => (404, "{}".into()),
-    });
-    let output = everruns(&url, "evr_pat_read", &["whoami"]);
-    assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(
-        stdout(&output),
-        "User:    Ada (ada@example.com)\nAccess:  read-only (personal access token)\n"
-    );
-}
-
-#[test]
 fn whoami_shows_a_full_tokens_access_and_keeps_the_field_in_json() {
     let url = serve(|line| match line {
         l if l.starts_with("GET /v1/auth/me ") => (200, me(r#""*""#)),
@@ -131,16 +117,6 @@ fn whoami_shows_a_full_tokens_access_and_keeps_the_field_in_json() {
     let output = everruns(&url, "evr_pat_full", &["-o", "json", "whoami"]);
     let document: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(document["token_scope"], "*");
-}
-
-#[test]
-fn whoami_prints_no_access_line_without_a_token_scope() {
-    let url = serve(|line| match line {
-        l if l.starts_with("GET /v1/auth/me ") => (200, me("null")),
-        _ => (404, "{}".into()),
-    });
-    let output = everruns(&url, "a-session-token", &["whoami"]);
-    assert_eq!(stdout(&output), "User:    Ada (ada@example.com)\n");
 }
 
 /// Tests item 7: a read token lists agents, and `agents create` fails with

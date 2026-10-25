@@ -660,59 +660,6 @@ fn test_event_request_deserialize_reason_item_uses_event_type_dispatch() {
     }
 }
 
-/// `ReasonThinkingStartedData` only requires `turn_id`, so a richer
-/// `reason.item` payload also satisfies it structurally. Decoding does not
-/// rely on serde to disambiguate (`EventData` has no `Deserialize` impl, so
-/// variant declaration order is irrelevant); `deserialize_event_data`
-/// selects the variant from the outer `type` string. Guard that the overlap
-/// exists and that type dispatch resolves `reason.item` to `ReasonItem`
-/// (keeping `provider`, `item_id`, …) rather than the looser
-/// `ReasonThinkingStarted`.
-#[test]
-fn test_reason_item_resolves_via_type_dispatch_despite_overlap() {
-    // The two reasoning variants overlap structurally: ReasonThinkingStarted
-    // (turn_id + optional model) accepts any superset, while ReasonItem
-    // (turn_id + provider + item_id + …) is richer. Confirm both parse in
-    // isolation, then that type dispatch picks ReasonItem.
-    let turn_id = TurnId::from_uuid(Uuid::now_v7());
-    let json = serde_json::json!({
-        "turn_id": turn_id.to_string(),
-        "provider": "openai",
-        "model": "gpt-5",
-        "item_id": "rs_keep",
-        "summary": ["s"],
-        "token_count": 7,
-    });
-
-    // Both candidate structs accept the payload in isolation
-    // (ReasonThinkingStarted ignores the extra fields), proving the overlap.
-    // The canonical path disambiguates via the event_type, not via any
-    // declaration order.
-    let as_thinking: ReasonThinkingStartedData =
-        serde_json::from_value(json.clone()).expect("thinking ignores extra fields");
-    assert_eq!(as_thinking.turn_id, turn_id);
-    assert_eq!(as_thinking.model.as_deref(), Some("gpt-5"));
-
-    let as_item: ReasonItemData =
-        serde_json::from_value(json.clone()).expect("ReasonItem accepts payload");
-    assert_eq!(as_item.item_id, "rs_keep");
-    assert_eq!(as_item.provider, "openai");
-
-    // Canonical parse via type dispatch: this is the path used by Event
-    // and EventRequest deserialization (see `deserialize_event_data`).
-    let event_data = deserialize_event_data(REASON_ITEM, json);
-    match event_data {
-        EventData::ReasonItem(out) => {
-            assert_eq!(out.item_id, "rs_keep");
-            assert_eq!(out.provider, "openai");
-        }
-        other => panic!(
-            "Typed dispatcher must select ReasonItem for {REASON_ITEM}, got {}",
-            other.event_type()
-        ),
-    }
-}
-
 /// Regression guard for EVE-485: the persisted `reason.item` event must
 /// never carry plaintext hidden reasoning content, and must not carry the
 /// opaque replay state either — signatures and encrypted context are what

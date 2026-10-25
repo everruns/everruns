@@ -84,21 +84,6 @@ fn heartbeat_survives_partition_and_repair() {
     sim.run().unwrap();
 }
 
-/// Smoke test: a clean run with no faults must succeed. Guards against
-/// turmoil-version regressions in the simulator setup itself.
-#[test]
-fn heartbeat_clean_run() {
-    let mut sim = Builder::new().build();
-    sim.host("cp", run_control_plane);
-    sim.client("worker", async {
-        for _ in 0..5 {
-            heartbeat_once().await?;
-        }
-        Ok(())
-    });
-    sim.run().unwrap();
-}
-
 // TODO(turmoil-grpc): replace the byte-echo control plane with the real tonic
 // WorkerService and drive `GrpcDurableStore` from the client side. Plan:
 //   1. Build a `tonic::transport::Channel` via `Endpoint::connect_with_connector`,

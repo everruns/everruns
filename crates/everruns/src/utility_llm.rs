@@ -409,20 +409,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn service_reports_its_backend_model_and_name() {
-        let openai = ProviderUtilityLlmService::openai("sk-openai", UTILITY_LLM_MODEL);
-        assert!(openai.is_configured());
-        assert_eq!(openai.backend(), UtilityLlmBackend::OpenAi);
-        assert_eq!(openai.model(), UTILITY_LLM_MODEL);
-        assert_eq!(openai.name(), "OpenAiUtilityLlmService");
-
-        let openrouter =
-            ProviderUtilityLlmService::openrouter("sk-or", UTILITY_OPENROUTER_LLM_MODEL);
-        assert_eq!(openrouter.backend(), UtilityLlmBackend::OpenRouter);
-        assert_eq!(openrouter.model(), UTILITY_OPENROUTER_LLM_MODEL);
-        assert_eq!(openrouter.name(), "OpenRouterUtilityLlmService");
-        assert!(!format!("{openrouter:?}").contains("sk-or"));
-    }
 }

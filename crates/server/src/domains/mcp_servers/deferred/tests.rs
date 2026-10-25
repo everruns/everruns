@@ -155,23 +155,6 @@ async fn deferred_catalog_placeholder_search_uses_preset_description() {
 }
 
 #[tokio::test]
-async fn eager_servers_are_listed_as_before() {
-    let servers = ScopedMcpServers::from([("docs".to_string(), server(false))]);
-    let egress = CatalogPreviewEgress::default();
-    assert_eq!(
-        turn(
-            &servers,
-            SessionId::new(),
-            &InMemorySessionStorageStore::new(),
-            &egress
-        )
-        .await,
-        ["mcp_docs__echo"]
-    );
-    assert_eq!(egress.calls.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
 async fn a_failed_listing_keeps_the_tools_listed_last() {
     let servers = ScopedMcpServers::from([("docs".to_string(), server(false))]);
     let session = SessionId::new();

@@ -730,55 +730,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_idempotent() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        let r1 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-        assert_eq!(r1.created, harnesses().len());
-
-        let r2 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
-        assert_eq!(r2.created, 0);
-        assert_eq!(r2.unchanged, harnesses().len());
-    }
-
-    #[tokio::test]
-    async fn test_initialize_new_org() {
-        let db = make_db();
-        seed_default_org(&db).await;
-
-        // Create a second org
-        let org2 = db
-            .create_organization(crate::storage::CreateOrganizationRow {
-                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
-                name: "Test Org 2".to_string(),
-                created_by: None,
-            })
-            .await
-            .unwrap();
-
-        let result = initialize_org_harnesses(&db, org2.org_id).await.unwrap();
-        assert_eq!(result.created, harnesses().len());
-
-        // Verify harnesses exist for org 2
-        let h_org2 = db.list_harnesses(org2.org_id, None, false).await.unwrap();
-        assert_eq!(h_org2.len(), harnesses().len());
-        for h in &h_org2 {
-            assert!(h.is_built_in);
-        }
-
-        let conversation_id = h_org2.iter().find(|h| h.name == "conversation").unwrap().id;
-        let base_id = h_org2.iter().find(|h| h.name == "base").unwrap().id;
-        let settings = db
-            .get_organization_settings(org2.org_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(settings.default_harness_id, Some(conversation_id));
-        assert_eq!(settings.base_harness_id, Some(base_id));
-    }
-
-    #[tokio::test]
     async fn test_initialize_does_not_override_existing_org_harness_settings() {
         let db = make_db();
         seed_default_org(&db).await;

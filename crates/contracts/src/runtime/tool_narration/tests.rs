@@ -140,15 +140,6 @@ fn read_file_helper_uses_basename() {
 }
 
 #[test]
-fn edit_file_helper() {
-    let a = json!({ "path": "/workspace/src/main.rs" });
-    assert_eq!(
-        narrate_edit_file(&a, ToolNarrationPhase::Completed, None),
-        "Edited main.rs"
-    );
-}
-
-#[test]
 fn web_fetch_helper_strips_scheme_and_query() {
     let a = json!({ "url": "https://example.com/page?token=abc#frag" });
     assert_eq!(

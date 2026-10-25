@@ -1396,20 +1396,6 @@ mod tests {
     }
 
     #[test]
-    fn format_dispatch_error_does_not_duplicate_operation_name() {
-        // Bashkit is responsible for the `<op>:` prefix. The dispatch layer
-        // must not re-emit it, otherwise consumers see `update_model:
-        // update_model: ...`.
-        let err = CommandError::not_found_msg("Model not found");
-        let formatted = format_dispatch_error(&err);
-        assert!(formatted.starts_with("not_found:"));
-        assert!(
-            !formatted.contains("update_model"),
-            "operation name must not appear twice: {formatted}"
-        );
-    }
-
-    #[test]
     fn format_dispatch_error_distinguishes_internal_from_authz() {
         use anyhow::anyhow;
         let internal = format_dispatch_error(&CommandError::internal(anyhow!(

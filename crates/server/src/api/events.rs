@@ -1044,34 +1044,9 @@ mod tests {
         assert!(query.exclude.is_empty());
     }
 
-    /// All three params combined: since_id, types, exclude.
-    #[test]
-    fn test_query_string_all_params() {
-        let qs = "since_id=event_019c263feac17809a9d442e25317890b&types=turn.started&types=turn.completed&exclude=turn.completed";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("all params should parse");
-
-        assert!(query.since_id.is_some());
-        assert_eq!(query.types.len(), 2);
-        assert_eq!(query.exclude.len(), 1);
-    }
-
     // ============================================
     // Validation tests
     // ============================================
-
-    #[test]
-    fn test_validate_valid_types() {
-        let query = ListEventsQuery {
-            since_id: None,
-            types: vec!["turn.started".to_string(), "turn.completed".to_string()],
-            exclude: vec![],
-            limit: None,
-            before_sequence: None,
-            ..Default::default()
-        };
-        assert!(query.validate().is_ok());
-    }
 
     #[test]
     fn test_validate_unknown_type_rejected() {

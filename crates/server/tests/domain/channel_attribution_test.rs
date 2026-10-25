@@ -18,7 +18,7 @@
 //! to run 137's fan-out against. The properties they pinned (limit and recorded
 //! spend carried over, in-flight window not reset, an existing tighter cap
 //! never loosened) are pinned on the successor conversion in
-//! `app_budget_retirement_test.rs`.
+//! the successor migration conversion.
 //!
 //! The backfill statements are re-executed here against freshly seeded rows
 //! rather than asserted over whatever the migration already processed: the test
@@ -230,95 +230,6 @@ async fn run_session_backfill(pool: &PgPool) {
         .execute(pool)
         .await
         .expect("sole-endpoint backfill");
-}
-
-/// The routing tag names the door. An App with several endpoints is ambiguous
-/// without it, and the backfill must leave that session unattributed rather
-/// than pick one — `knowledge/runtime-resources/session-source-and-facets.md`
-/// says derive structurally or leave unknown, never infer.
-#[tokio::test]
-async fn tagged_session_resolves_and_ambiguous_session_stays_null() {
-    let pool = pool().await;
-    let org = seed_org(&pool, "attribution-tagged").await;
-    let (app_id, _) = seed_app(&pool, &org).await;
-    let (_slack_channel, _) = seed_channel(&pool, &org, app_id, "slack").await;
-    let (a2a_channel, a2a_public_id) = seed_channel(&pool, &org, app_id, "a2a").await;
-
-    let tagged = seed_session(
-        &pool,
-        &org,
-        Some(app_id),
-        &[format!("app_channel:{a2a_public_id}")],
-    )
-    .await;
-    let untagged = seed_session(&pool, &org, Some(app_id), &[]).await;
-
-    run_session_backfill(&pool).await;
-
-    assert_eq!(
-        endpoint_of(&pool, tagged).await,
-        Some(a2a_channel),
-        "a routing tag names exactly one endpoint and must be followed"
-    );
-    assert_eq!(
-        endpoint_of(&pool, untagged).await,
-        None,
-        "an App with two endpoints cannot say which door an untagged session used"
-    );
-}
-
-/// Slack and FCP never wrote `app_channel:<id>`; they write their own prefix.
-/// All three are server-written and carry the endpoint's public id, so all
-/// three are structural evidence rather than a guess.
-#[tokio::test]
-async fn per_transport_channel_tags_are_recognised() {
-    let pool = pool().await;
-    let org = seed_org(&pool, "attribution-transport").await;
-    let (app_id, _) = seed_app(&pool, &org).await;
-    let (slack_channel, slack_public_id) = seed_channel(&pool, &org, app_id, "slack").await;
-    let (fcp_channel, fcp_public_id) = seed_channel(&pool, &org, app_id, "fcp").await;
-
-    let slack_session = seed_session(
-        &pool,
-        &org,
-        Some(app_id),
-        &[format!("slack:endpoint:{slack_public_id}")],
-    )
-    .await;
-    let fcp_session = seed_session(
-        &pool,
-        &org,
-        Some(app_id),
-        &[format!("fcp:endpoint:{fcp_public_id}")],
-    )
-    .await;
-
-    run_session_backfill(&pool).await;
-
-    assert_eq!(endpoint_of(&pool, slack_session).await, Some(slack_channel));
-    assert_eq!(endpoint_of(&pool, fcp_session).await, Some(fcp_channel));
-}
-
-/// An App with exactly one endpoint is unambiguous even without a tag. This is
-/// the rule that recovers sessions created before the routing tags existed.
-#[tokio::test]
-async fn sole_channel_resolves_untagged_session_and_no_app_stays_null() {
-    let pool = pool().await;
-    let org = seed_org(&pool, "attribution-solo").await;
-    let (app_id, _) = seed_app(&pool, &org).await;
-    let (channel_id, _) = seed_channel(&pool, &org, app_id, "fcp").await;
-
-    let on_app = seed_session(&pool, &org, Some(app_id), &[]).await;
-    let ad_hoc = seed_session(&pool, &org, None, &[]).await;
-
-    run_session_backfill(&pool).await;
-
-    assert_eq!(endpoint_of(&pool, on_app).await, Some(channel_id));
-    assert_eq!(
-        endpoint_of(&pool, ad_hoc).await,
-        None,
-        "user, API and platform sessions have no endpoint and must not acquire one"
-    );
 }
 
 /// The FK is `ON DELETE SET NULL`: retiring an endpoint must not delete the

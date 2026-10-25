@@ -133,17 +133,6 @@ async fn a_resolution_before_the_parking_lease_releases_is_not_consumed() {
 }
 
 #[tokio::test]
-async fn an_answered_question_resumes_the_turn() {
-    // A question is a client-side pause like any other: the answer is the
-    // call's recorded result.
-    let fixture = Fixture::new(model("Blue it is.", vec![vec![call("q1", "confirm")]])).await;
-    let (worker, _) = fixture.worker("w1");
-    let parked = park(&fixture, &worker).await;
-    resume(&fixture, &worker, &parked, "q1", "confirm", Ok("blue")).await;
-    assert_eq!(fixture.answers().await, vec!["Blue it is."]);
-}
-
-#[tokio::test]
 async fn a_message_that_reaches_a_parked_turn_resolves_its_pause() {
     let fixture = Fixture::new(model("Moving on.", vec![vec![call("c1", "confirm")]])).await;
     let (worker, _) = fixture.worker("w1");

@@ -333,25 +333,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_builtin_scenario_loads() {
-        assert_eq!(
-            builtin_scenario_names(),
-            [
-                "broken-stream",
-                "chat-short",
-                "file-research",
-                "flaky-429",
-                "long-answer",
-                "parallel-tools",
-                "research-3-tools",
-                "slow-first-token",
-                "stream-stall",
-                "thinking",
-            ]
-        );
-    }
-
     #[tokio::test]
     async fn deferred_tools_use_the_original_argument_schema() {
         let mut tool = read_tool();

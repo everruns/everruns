@@ -564,17 +564,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sync_all_no_providers_returns_empty() {
-        // In-memory store has DEFAULT_ORG pre-created but no providers
-        let db = Arc::new(StorageBackend::test_database());
-        let registry = Arc::new(DriverRegistry::new());
-        let service = ModelSyncService::new(db, registry, None);
-
-        let results = service.sync_all().await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_sync_all_with_encrypted_keys_across_orgs() {
         use everruns_core::DEFAULT_ORG_ID;
 

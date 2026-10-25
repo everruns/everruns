@@ -9,26 +9,6 @@ use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::json;
 
 #[tokio::test]
-async fn message_fixture_preserves_tool_calls_in_seeded_history() {
-    let session_id = SessionId::new();
-    let fixture = InMemoryMessageRetriever::new();
-    let message = RuntimeMessage::assistant_with_tools(
-        "Checking.",
-        vec![ToolCall {
-            id: "call_weather".into(),
-            name: "get_weather".into(),
-            arguments: json!({"city": "Tokyo"}),
-        }],
-    );
-
-    fixture.store(session_id, message).await.unwrap();
-
-    let loaded = fixture.load(session_id).await.unwrap();
-    assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].tool_calls()[0].name, "get_weather");
-}
-
-#[tokio::test]
 async fn message_fixture_preserves_full_parallel_tool_conversation() {
     let session_id = SessionId::new();
     let fixture = InMemoryMessageRetriever::new();

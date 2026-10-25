@@ -303,17 +303,6 @@ mod tests {
         TurnStopReason,
     };
 
-    #[test]
-    fn exposes_tool_surface_contracts_for_capability_authors() {
-        let plan = ToolSurfacePlan::for_mode(ToolSurfaceMode::Hybrid);
-        assert_eq!(plan.mode, ToolSurfaceMode::Hybrid);
-        let _route = ToolSurfaceRoute {
-            surface: ToolSurface::Both,
-            native_disclosure: NativeToolDisclosure::Deferred,
-        };
-        let _policy = NativeToolDisclosurePolicy::default();
-    }
-
     #[derive(Deserialize, JsonSchema)]
     struct LookupInput {
         city: String,

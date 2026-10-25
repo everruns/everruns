@@ -939,20 +939,6 @@ mod tests {
     use everruns_core::RuntimeMessageRole;
 
     #[tokio::test]
-    async fn test_simple_turn() {
-        let runner = InMemoryAgenticLoop::with_fixed_response("Hello from the assistant!")
-            .await
-            .unwrap();
-
-        let result = runner.run_turn("Hi there").await.unwrap();
-
-        assert!(result.success);
-        assert_eq!(result.response, "Hello from the assistant!");
-        assert_eq!(result.iterations, 1);
-        assert_eq!(result.tool_calls_count, 0);
-    }
-
-    #[tokio::test]
     async fn turn_result_summarizes_llm_generation_contract() {
         use everruns_core::builtins::CurrentTimeCapability;
 

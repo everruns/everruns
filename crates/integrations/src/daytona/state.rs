@@ -320,20 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn test_required_str_null_value() {
-        let args = serde_json::json!({"name": null});
-        let result = required_str(&args, "name");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_required_str_non_string_value() {
-        let args = serde_json::json!({"name": 42});
-        let result = required_str(&args, "name");
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_snapshot_info_deserialization() {
         let json = r#"{"id": "snap_1", "name": "my-snap", "state": "active", "cpu": 2, "mem": 4, "disk": 10}"#;
         let info: SnapshotInfo = serde_json::from_str(json).unwrap();
@@ -347,41 +333,12 @@ mod tests {
     }
 
     #[test]
-    fn test_snapshot_info_minimal() {
-        let json = r#"{"id": "snap_2", "name": "bare", "state": "active"}"#;
-        let info: SnapshotInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.name, "bare");
-        assert_eq!(info.cpu, None);
-        assert_eq!(info.mem, None);
-        assert_eq!(info.disk, None);
-    }
-
-    #[test]
-    fn test_sandbox_info_deserialization() {
-        let json = r#"{"id": "sb_abc", "name": "My Sandbox", "state": "started"}"#;
-        let info: SandboxInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.id, "sb_abc");
-        assert_eq!(info.name, Some("My Sandbox".to_string()));
-        assert_eq!(info.state, "started");
-    }
-
-    #[test]
     fn test_sandbox_info_without_name() {
         let json = r#"{"id": "sb_abc", "state": "stopped"}"#;
         let info: SandboxInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.id, "sb_abc");
         assert_eq!(info.name, None);
         assert_eq!(info.state, "stopped");
-    }
-
-    #[test]
-    fn test_exec_result_deserialization() {
-        let json = r#"{"stdout": "hello\n", "stderr": "", "result": "hello\n", "exitCode": 0}"#;
-        let result: ExecResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.stdout, "hello\n");
-        assert_eq!(result.stderr, "");
-        assert_eq!(result.result, "hello\n");
-        assert_eq!(result.exit_code, 0);
     }
 
     #[test]

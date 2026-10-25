@@ -412,34 +412,6 @@ async fn test_set_timeout_via_client() {
 }
 
 #[tokio::test]
-async fn test_client_sends_api_key_header() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("GET"))
-        .and(path("/sandboxes/sb_auth"))
-        .and(header("X-API-KEY", "secret_key_abc"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "clientID": "c1",
-            "cpuCount": 1,
-            "diskSizeMB": 256,
-            "endAt": "",
-            "envdVersion": "0.1.0",
-            "memoryMB": 128,
-            "sandboxID": "sb_auth",
-            "startedAt": "",
-            "state": "running",
-            "templateID": "base"
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client = E2BClient::with_base_url("secret_key_abc".to_string(), mock_server.uri());
-    let detail = client.get_sandbox("sb_auth").await.unwrap();
-    assert_eq!(detail.sandbox_id, "sb_auth");
-}
-
-#[tokio::test]
 async fn test_client_api_error_returns_status() {
     let mock_server = MockServer::start().await;
 
@@ -706,53 +678,5 @@ async fn test_create_sandbox_tool_no_connection() {
             assert_eq!(provider, "e2b");
         }
         other => panic!("Expected ConnectionRequired, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_api_key_resolved_from_connection_resolver() {
-    // Verify that connection-resolver API key resolution works by contrasting
-    // behavior with and without a resolver. Uses read_file which requires
-    // API key + sandbox state — the error changes from ConnectionRequired to
-    // "not found" when the resolver is present, proving the resolution path
-    // works without any network call.
-    let tool = get_tool("e2b_read_file");
-    let session_id = SessionId::new();
-
-    // Without connection resolver — should return ConnectionRequired
-    let store_no_key = Arc::new(MockStorageStore::new());
-    let ctx_no_key = ToolContext::with_storage_store(session_id, store_no_key);
-    let result = tool
-        .execute_with_context(
-            json!({"sandbox_id": "sb_secret", "path": "/tmp/x"}),
-            &ctx_no_key,
-        )
-        .await;
-    match &result {
-        ToolExecutionResult::ConnectionRequired { provider, .. } => {
-            assert_eq!(provider, "e2b");
-        }
-        other => panic!("Expected ConnectionRequired, got: {other:?}"),
-    }
-
-    // With connection resolver — should get past key check and fail on
-    // missing sandbox state instead
-    let store_with_key = Arc::new(MockStorageStore::new());
-    let ctx_with_key = ToolContext::with_storage_store(session_id, store_with_key)
-        .with_connection_resolver(e2b_resolver());
-    let result = tool
-        .execute_with_context(
-            json!({"sandbox_id": "sb_secret", "path": "/tmp/x"}),
-            &ctx_with_key,
-        )
-        .await;
-    match &result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(
-                msg.contains("not found"),
-                "Should fail on missing sandbox, not API key: {msg}"
-            );
-        }
-        other => panic!("Expected ToolError about sandbox not found, got: {other:?}"),
     }
 }

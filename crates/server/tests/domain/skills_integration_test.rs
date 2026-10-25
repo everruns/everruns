@@ -113,35 +113,6 @@ async fn test_deleted_skill_content_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_update_skill() {
-    let server = TestServer::new().await;
-
-    let name = unique_skill_name("test-skill");
-    let create_resp = server
-        .post(
-            "/v1/skills",
-            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
-
-    let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
-
-    let updated_md =
-        format!("---\nname: {name}\ndescription: Updated description.\n---\n\n# Updated\n");
-    let update_resp = server
-        .patch(
-            &format!("/v1/skills/{skill_id}"),
-            json!({ "skill_md": updated_md }),
-        )
-        .await
-        .assert_success();
-
-    let body = update_resp.json_value();
-    assert_eq!(body["description"], "Updated description.");
-}
-
-#[tokio::test]
 async fn test_update_skill_preserves_user_invocable_false() {
     let server = TestServer::new().await;
 

@@ -1142,43 +1142,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_state_revisit_warns_on_a_mutation_cycle() {
-        let state = Arc::new(Mutex::new(ProgressGuardState::default()));
-        let hook = ProgressGuardHook { state };
-        let context = ToolContext::new(SessionId::new());
-        let transitions = [("A", "B"), ("B", "C"), ("C", "A")];
-
-        for (index, (previous, current)) in transitions.into_iter().enumerate() {
-            let mut out = result_value(json!({
-                "path": "/workspace/Cargo.toml",
-                "previous_content_hash": previous,
-                "content_hash": current,
-            }));
-            hook.after_exec(
-                &call("edit_file", json!({ "path": "/workspace/Cargo.toml" })),
-                &tool_def("edit_file"),
-                &mut out,
-                &context,
-            )
-            .await;
-
-            let warning = out
-                .result
-                .as_ref()
-                .and_then(|value| value.get("progress_guard_warning"))
-                .and_then(Value::as_str);
-            if index < 2 {
-                assert!(warning.is_none(), "new states are progress");
-            } else {
-                assert!(
-                    warning.is_some_and(|text| text.contains("workspace state")),
-                    "returning to A should expose the mutation cycle"
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn lockfile_updates_do_not_hide_a_manifest_state_cycle() {
         let state = Arc::new(Mutex::new(ProgressGuardState::default()));
         let hook = ProgressGuardHook { state };

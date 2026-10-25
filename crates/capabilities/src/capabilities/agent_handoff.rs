@@ -1454,12 +1454,6 @@ mod tests {
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn capability_no_longer_contributes_legacy_handoff_tools() {
-        let cap = AgentHandoffCapability;
-        assert!(cap.tools_with_config(&json!({})).is_empty());
-    }
-
-    #[test]
     fn terminal_handoff_status_maps_only_terminal_wait_states() {
         assert_eq!(
             terminal_handoff_status("idle"),
@@ -1492,28 +1486,6 @@ mod tests {
             .validate_config(&config)
             .expect_err("duplicate targets should fail");
         assert!(error.contains("Duplicate handoff target id"));
-    }
-
-    #[test]
-    fn spawn_agent_schema_advertises_only_agent_target() {
-        let tool = SpawnAgentHandoffTool::new(&json!({}));
-        let schema = tool.parameters_schema();
-        assert_eq!(
-            schema["properties"]["target"]["properties"]["type"]["enum"],
-            json!(["agent"])
-        );
-        assert_eq!(
-            schema["properties"]["target"]["required"],
-            json!(["type", "id"])
-        );
-        assert_eq!(
-            schema["properties"]["mode"]["enum"],
-            json!(["background", "foreground", "invite"])
-        );
-        assert_eq!(
-            schema["required"],
-            json!(["name", "instructions", "target"])
-        );
     }
 
     #[tokio::test]

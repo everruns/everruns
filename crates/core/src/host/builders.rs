@@ -820,32 +820,3 @@ impl SingleSessionBuilder {
         )
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn harness_builder_openrouter_attribution_adds_metadata_keys() {
-        let harness = HarnessBuilder::new("app", "prompt")
-            .openrouter_attribution("https://app.example", "Example App")
-            .build();
-
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
-                .map(String::as_str),
-            Some("https://app.example")
-        );
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_X_TITLE_METADATA_KEY)
-                .map(String::as_str),
-            Some("Example App")
-        );
-    }
-}

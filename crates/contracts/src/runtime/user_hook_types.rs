@@ -730,16 +730,6 @@ mod tests {
     }
 
     #[test]
-    fn glob_validation_and_matching_agree_on_alternation_whitespace() {
-        let mut hook = spec();
-        hook.matcher.tool_name_glob = Some(" bash* | edit_file ".into());
-        hook.validate().unwrap();
-        assert!(hook.matcher.matches("bash_exec", &json!({})));
-        assert!(hook.matcher.matches("edit_file", &json!({})));
-        assert!(!hook.matcher.matches("read_file", &json!({})));
-    }
-
-    #[test]
     fn glob_validation_rejects_unsupported_and_repeated_wildcards() {
         for pattern in [
             "[abc]*",

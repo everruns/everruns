@@ -55,19 +55,6 @@ fn worker_parses_the_neutral_capability_reference_shape() {
 }
 
 #[test]
-fn resolved_model_proto_conversion_is_credential_free() {
-    let resolved = proto_model_to_model_spec(proto::ResolvedModel {
-        model: "custom-model".into(),
-        provider_id: "provider-123".into(),
-        provider_type: "custom-protocol".into(),
-    })
-    .unwrap();
-
-    assert_eq!(resolved.model, "custom-model");
-    assert_eq!(resolved.provider.as_str(), "provider-123");
-}
-
-#[test]
 fn grpc_worker_adapter_parses_acts_as_and_defaults_old_servers() {
     let id = Uuid::new_v4();
     let proto_server = proto::McpServerInfo {

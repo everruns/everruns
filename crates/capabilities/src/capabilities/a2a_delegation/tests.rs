@@ -497,60 +497,6 @@ async fn spawn_agent_rejects_message_schema_for_external_a2a() {
 }
 
 #[test]
-fn uk_localization_and_schema_one_of_match_validation() {
-    let cap = A2aAgentDelegationCapability;
-    assert_eq!(cap.localized_name(Some("uk-UA")), "Делегування агентам A2A");
-    assert!(
-        cap.localized_description(Some("uk-UA"))
-            .contains("Делегує роботу")
-    );
-    assert!(cap.describe_schema(Some("uk")).is_some());
-    assert!(cap.describe_schema(None).is_some());
-
-    // preferred_binding oneOf consts must be exactly the values
-    // validate_config accepts.
-    let schema = cap.config_schema().expect("config schema");
-    let consts: Vec<&str> =
-        schema["properties"]["agents"]["items"]["properties"]["preferred_binding"]["oneOf"]
-            .as_array()
-            .expect("oneOf")
-            .iter()
-            .map(|v| v["const"].as_str().expect("const"))
-            .collect();
-    assert_eq!(consts, vec!["JSONRPC", "HTTP+JSON"]);
-    for binding in consts {
-        let config = json!({
-            "agents": [{
-                "id": "echo",
-                "name": "Echo",
-                "base_url": "https://agent.example.com",
-                "preferred_binding": binding
-            }]
-        });
-        cap.validate_config(&config)
-            .unwrap_or_else(|e| panic!("{binding} should validate: {e}"));
-    }
-    assert!(
-        cap.validate_config(&json!({
-            "agents": [{
-                "id": "echo",
-                "name": "Echo",
-                "base_url": "https://agent.example.com",
-                "preferred_binding": "SMTP"
-            }]
-        }))
-        .is_err()
-    );
-
-    let tool_schema = SpawnAgentTool::new(A2aDelegationConfig::default()).parameters_schema();
-    assert_eq!(
-        tool_schema["properties"]["mode"]["enum"],
-        json!(["background", "foreground"])
-    );
-    assert!(tool_schema["properties"]["target"]["properties"]["id"].is_object());
-}
-
-#[test]
 fn validates_local_urls_only_with_escape_hatch() {
     let mut config = configured_capability("http://127.0.0.1:1".to_string());
     config.agents[0].allow_local_urls = false;

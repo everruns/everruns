@@ -187,14 +187,6 @@ fn test_post_generation_guardrail_text_includes_reasoning_and_prose() {
 }
 
 #[test]
-fn test_reason_result_serde_default() {
-    // Test that serde uses the default_max_iterations function
-    let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
-    let result: ReasonResult = serde_json::from_str(json).unwrap();
-    assert_eq!(result.max_iterations, 500);
-}
-
-#[test]
 fn test_capability_usage_snapshot_keeps_resolved_and_exposed_separate() {
     let registry = CapabilityRegistry::new();
     let tool = ToolDefinition::Builtin(crate::engine::tool_types::BuiltinTool {

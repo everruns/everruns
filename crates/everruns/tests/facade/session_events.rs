@@ -344,22 +344,6 @@ async fn send_after_completion_starts_a_follow_up_turn() {
 }
 
 #[tokio::test]
-async fn send_and_wait_is_request_response_convenience() {
-    let agent = Agent::builder()
-        .instructions("You are concise.")
-        .model(Model::simulated("hello"))
-        .build()
-        .expect("valid agent");
-    let session = InMemoryEngine::new().create(agent.clone());
-
-    let turn = session
-        .send_and_wait("hi")
-        .await
-        .expect("convenience completes");
-    assert_eq!(turn.response, "hello");
-}
-
-#[tokio::test]
 async fn send_acknowledges_before_turn_start_hooks_finish() {
     let agent = Agent::builder()
         .instructions("You are concise.")

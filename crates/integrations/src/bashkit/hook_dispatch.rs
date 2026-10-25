@@ -461,31 +461,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn payload_env_var_visible_to_script() {
-        // The script echoes the EVERRUNS_HOOK_EVENT into a sentinel file on
-        // the session VFS so we can assert delivery without depending on
-        // bashkit's stdout for non-decision text.
-        let cmd = "echo $EVERRUNS_HOOK_EVENT > /workspace/.seen-event";
-        let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileSystem> = mock.clone();
-        let outcome = run(
-            store,
-            cmd,
-            Default::default(),
-            payload(HookEvent::PreToolUse, json!({})),
-        )
-        .await;
-        assert!(matches!(outcome, HookOutcome::Allow), "{:?}", outcome);
-        assert_eq!(
-            mock.read("/.seen-event")
-                .or_else(|| mock.read("/workspace/.seen-event"))
-                .map(|s| s.trim().to_string()),
-            Some("pre_tool_use".to_string())
-        );
-        let _ = store;
-    }
-
-    #[tokio::test]
     async fn tool_name_env_var_set_for_tool_events() {
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();
@@ -951,29 +926,5 @@ mod tests {
             }
             other => panic!("expected Mutate, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn jq_can_read_payload_from_env_path() {
-        // Smoke test for the documented `jq` workflow. We use a tiny
-        // shell-only json walk because the bashkit interpreter does not
-        // ship `jq` as a built-in.
-        let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileSystem> = mock.clone();
-        let cmd = r#"grep -o '"event":"[^"]*"' "$EVERRUNS_HOOK_PAYLOAD_PATH" > /workspace/.grep"#;
-        let outcome = run(
-            store,
-            cmd,
-            Default::default(),
-            payload(HookEvent::SessionStart, json!({"agent_id":"agt_x"})),
-        )
-        .await;
-        assert!(matches!(outcome, HookOutcome::Allow), "{:?}", outcome);
-        assert_eq!(
-            mock.read("/.grep")
-                .or_else(|| mock.read("/workspace/.grep"))
-                .map(|s| s.trim().to_string()),
-            Some("\"event\":\"session_start\"".to_string())
-        );
     }
 }

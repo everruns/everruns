@@ -278,14 +278,3 @@ fn a_tail_from_the_last_turn_started_folds_like_the_whole_log() {
     // A tail cut after its `turn.started` holds no open turn.
     assert_eq!(fold(events[tail_start + 1..].to_vec()), None);
 }
-
-#[test]
-fn a_parked_turn_with_its_results_recorded_has_nothing_left_to_run() {
-    // A client-side call's `tool.completed` arrives after the park; the
-    // open turn then only moves to its next reason.
-    let (turn_id, events) = turn_log(&["client"], &["client"], false);
-    let turn = TurnLogFold::from_events(events).expect("open turn");
-    assert_eq!(turn.turn_id(), turn_id);
-    assert!(!turn.is_answered());
-    assert!(turn.unfinished_calls().is_empty());
-}

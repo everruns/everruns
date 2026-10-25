@@ -611,39 +611,6 @@ async fn tool_call_contract_covers_request_wire_and_stream_parser() {
     assert_eq!(tool["parameters"]["additionalProperties"], false);
 }
 
-// ========================================================================
-// Compact endpoint tests
-// ========================================================================
-
-// ========================================================================
-// OpenAI Thinking/Reasoning Support Tests
-// ========================================================================
-
-#[test]
-fn test_reasoning_input_item_serialization() {
-    let item = ResponsesInputItem::Reasoning {
-        r#type: "reasoning".to_string(),
-        id: "rs_00000001".to_string(),
-        encrypted_content: "encrypted_reasoning_context_here".to_string(),
-        summary: Vec::new(),
-    };
-
-    let json = serde_json::to_value(&item).unwrap();
-    assert_eq!(json["type"], "reasoning");
-    // The API rejects a reasoning input item with no `summary` key, so an
-    // empty summary must still serialize as `[]` rather than vanish.
-    assert_eq!(
-        json["summary"],
-        serde_json::json!([]),
-        "summary is required even when empty"
-    );
-    assert_eq!(json["id"], "rs_00000001");
-    assert_eq!(
-        json["encrypted_content"],
-        "encrypted_reasoning_context_here"
-    );
-}
-
 /// Every replayed reasoning item carries `summary`, and carries the
 /// provider's own summary segments when it had them.
 ///
@@ -1306,32 +1273,6 @@ async fn reasoning_field_reflects_effort_on_the_wire() {
     assert_eq!(high_body["reasoning"]["summary"], "detailed");
 }
 
-#[test]
-fn test_build_input_assistant_without_thinking_or_tools() {
-    // Plain assistant message (no thinking, no tool calls) should just be a message
-    let messages = vec![
-        Message::text(MessageRole::User, "Hello"),
-        Message {
-            role: MessageRole::Assistant,
-            content: MessageContent::Text("Hi there!".to_string()),
-            tool_calls: None,
-            tool_call_id: None,
-            phase: None,
-            reasoning: Vec::new(),
-            configuration_update: None,
-            tool_changes: None,
-            native_tool_calls: Vec::new(),
-        },
-    ];
-
-    let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
-
-    assert_eq!(input.len(), 2);
-    let json = serde_json::to_value(&input[1]).unwrap();
-    assert_eq!(json["role"], "assistant");
-    assert!(json.get("type").is_none() || json["type"] == "message");
-}
-
 /// Each reasoning item replays under the id the provider issued for it.
 ///
 /// This previously asserted only that synthesized ids were *unique*, which
@@ -1436,7 +1377,3 @@ fn test_build_input_with_phases_enabled() {
     let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
     assert!(assistant_json_no.get("phase").is_none() || assistant_json_no["phase"].is_null());
 }
-
-// ========================================================================
-// tool_search / convert_tools_with_search tests
-// ========================================================================

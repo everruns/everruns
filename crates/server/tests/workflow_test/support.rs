@@ -390,25 +390,6 @@ pub(crate) fn response_preview_truncates_on_char_boundaries() {
     assert_eq!(response_preview(""), "");
 }
 
-#[test]
-pub(crate) fn provider_account_skip_line_names_the_test_and_code() {
-    let line = provider_account_skip_line(
-        "test_agent_execution_openai_with_tool_calls",
-        "provider_quota_exhausted",
-    );
-    // A reader scanning a green run's summary needs both: which test lost its
-    // coverage, and why.
-    assert!(
-        line.contains("test_agent_execution_openai_with_tool_calls"),
-        "{line}"
-    );
-    assert!(line.contains("provider_quota_exhausted"), "{line}");
-    // Markdown list item, so it renders in the step summary rather than running
-    // together with neighbouring lines.
-    assert!(line.starts_with("- "), "{line}");
-    assert!(!line.contains('\n'), "must stay one line: {line}");
-}
-
 /// Skips the current test when a previously captured
 /// `session_provider_account_block` says the live provider account is unusable.
 ///

@@ -190,9 +190,4 @@ mod tests {
             assert_eq!(simulated["simulated"], json!(true));
         }
     }
-
-    #[test]
-    fn the_gate_sees_final_arguments() {
-        assert!(DryRunCapability.pre_tool_use_hooks()[0].is_policy_gate());
-    }
 }

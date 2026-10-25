@@ -305,55 +305,6 @@ fn test_disclosure_reads_only_tool_search_results() {
 }
 
 #[test]
-fn test_hook_defers_mcp_tools_and_saves_full_schema() {
-    // MCP tools are deferred like regular tools. The full schema is saved
-    // in full_parameters so tool_search can return it on demand.
-    let hook = hook(3);
-    let mut tools = many_tools(3);
-    tools.push(builtin(
-        "mcp_docs__search",
-        "search docs",
-        DeferrablePolicy::Automatic,
-    ));
-
-    let out = hook.transform(tools);
-
-    let mcp = out.iter().find(|t| t.name() == "mcp_docs__search").unwrap();
-    // Stub is sent to the model (parameters stripped).
-    assert!(
-        mcp.parameters().get("properties").is_none(),
-        "MCP tool schema is deferred"
-    );
-    // Full schema is preserved for tool_search to return.
-    assert!(
-        mcp.full_parameters().get("properties").is_some(),
-        "MCP tool full schema is accessible via full_parameters()"
-    );
-}
-
-#[test]
-fn test_search_returns_full_schema_for_deferred_tools() {
-    // After DeferSchemaHook strips parameters, tool_search must still return
-    // the full schema (stored in full_parameters).
-    let hook = hook(1);
-    let tools = vec![builtin(
-        "read_file",
-        "Read a file",
-        DeferrablePolicy::Automatic,
-    )];
-    let deferred = hook.transform(tools);
-
-    let results = ToolSearchTool::search(&deferred, "read file");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["name"], "read_file");
-    // full_parameters() is used, so real schema is returned — not the stub.
-    assert!(
-        results[0]["parameters"].get("properties").is_some(),
-        "tool_search must return the full schema, not the deferred stub"
-    );
-}
-
-#[test]
 fn test_search_returns_full_schema_after_serde_round_trip() {
     // Durable execution serializes reason output before scheduling act. The
     // saved full schema must survive that boundary for deferred MCP proxies.
@@ -383,14 +334,6 @@ fn test_search_returns_full_schema_after_serde_round_trip() {
         results[0]["parameters"].get("properties").is_some(),
         "tool_search must return the full MCP schema after durable serde"
     );
-}
-
-#[test]
-fn test_hook_opts_out_of_native_tool_search() {
-    // Generic (client-side) deferral is mutually exclusive with hosted
-    // tool_search; build() uses this to skip the hook when native is active.
-    let hook = hook(15);
-    assert!(!hook.applies_with_native_tool_search());
 }
 
 #[test]

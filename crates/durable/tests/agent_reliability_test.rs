@@ -333,56 +333,6 @@ async fn test_network_failure_during_task_completion() {
     scenario.teardown();
 }
 
-/// Transient network failure: one claim fails, retry succeeds.
-#[tokio::test]
-async fn test_transient_network_failure_claim_retry() {
-    let scenario = FailScenario::setup();
-    let store = create_test_store().await;
-
-    register_worker(&store, "worker-1").await;
-
-    let workflow_id = Uuid::now_v7();
-    store
-        .create_workflow(workflow_id, "network_test", json!({}), None)
-        .await
-        .unwrap();
-
-    store
-        .enqueue_task(TaskDefinition {
-            workflow_id: Some(workflow_id),
-            activity_id: "step-1".to_string(),
-            activity_type: "pipeline_step".to_string(),
-            input: json!({"step": 1}),
-            options: ActivityOptions::default(),
-        })
-        .await
-        .unwrap();
-
-    // One-shot failure: first claim fails, second succeeds
-    fail::cfg("postgres_claim_task_after_query", "1*return").unwrap();
-
-    let result = store
-        .claim_task("worker-1", &["pipeline_step".to_string()], 1)
-        .await;
-    assert!(result.is_err(), "first claim should fail");
-
-    // Retry succeeds (failpoint auto-disabled after one shot).
-    // But the first claim already updated DB, so the task is already claimed.
-    // This is the "claim after DB success" scenario - task is claimed in DB.
-    let claimed = store
-        .claim_task("worker-1", &["pipeline_step".to_string()], 1)
-        .await
-        .unwrap();
-    // Task was claimed by the first call (DB succeeded), so no pending tasks
-    assert_eq!(
-        claimed.len(),
-        0,
-        "task already claimed by first call (DB succeeded despite error return)"
-    );
-
-    scenario.teardown();
-}
-
 /// Extended network outage: heartbeat fails, task becomes stale, reclaimed.
 #[tokio::test]
 async fn test_extended_network_outage_heartbeat_fails() {

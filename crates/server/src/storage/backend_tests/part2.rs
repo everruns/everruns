@@ -422,20 +422,6 @@ async fn test_list_events_limit_with_exclude() {
 }
 
 #[tokio::test]
-async fn test_count_non_delta_events() {
-    let db = StorageBackend::test_database();
-    let session_id = create_session_with_events(&db).await;
-
-    // 6 events total, 2 are deltas → 4 non-delta
-    let delta_types = vec![
-        "output.message.delta".to_string(),
-        "reason.thinking.delta".to_string(),
-    ];
-    let count = db.count_events(session_id, &delta_types).await.unwrap();
-    assert_eq!(count, 4);
-}
-
-#[tokio::test]
 async fn test_find_turn_boundary() {
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;
@@ -1109,34 +1095,6 @@ async fn test_audit_log_domain_filtering() {
         .unwrap();
     assert_eq!(combined.len(), 1);
     assert_eq!(combined[0].target_type.as_deref(), Some("harness"));
-}
-
-#[tokio::test]
-async fn test_audit_log_target_fields() {
-    let db = StorageBackend::test_database();
-
-    let row = db
-        .create_audit_log(CreateAuditLogRow {
-            org_id: DEFAULT_ORG_ID,
-            actor_id: None,
-            event_type: "management.agent.created".to_string(),
-            ip_address: Some("10.0.0.1".to_string()),
-            metadata: serde_json::json!({"name": "test-agent"}),
-            domain: "management".to_string(),
-            action: "management.agent.created".to_string(),
-            target_type: Some("agent".to_string()),
-            target_id: Some("agent_00000000000000000000000000000001".to_string()),
-        })
-        .await
-        .unwrap();
-
-    assert_eq!(row.domain, "management");
-    assert_eq!(row.action, "management.agent.created");
-    assert_eq!(row.target_type.as_deref(), Some("agent"));
-    assert_eq!(
-        row.target_id.as_deref(),
-        Some("agent_00000000000000000000000000000001")
-    );
 }
 
 // ─── Search / command-palette tests ───

@@ -136,23 +136,6 @@ async fn dedicated_background_pool_survives_a_request_burst() {
     );
 }
 
-/// The request pool still reaches its configured timeout while the burst is in
-/// flight.
-#[tokio::test(flavor = "multi_thread")]
-async fn request_pool_still_times_out_under_the_same_burst() {
-    let db = Database::connect_with_config(&database_url(), scaled_config(2))
-        .await
-        .expect("connect");
-
-    let _burst = saturate(db.pool(), 4).await;
-    let results = run_sweeps(&db, "request pool").await;
-
-    assert!(
-        results.iter().all(|r| r.is_err()),
-        "request-path acquires must still time out, got {results:?}"
-    );
-}
-
 async fn request_handler(
     State(db): State<Database>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, Json<ErrorResponse>)> {

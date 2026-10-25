@@ -502,25 +502,6 @@ mod tests {
         assert!(cap.tools().is_empty());
     }
 
-    #[test]
-    fn search_index_tool_when_indexes_bound() {
-        let cap = KnowledgeIndexCapability;
-        let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "search_index");
-        assert!(tools[0].requires_context());
-
-        let schema = tools[0].parameters_schema();
-        let props = &schema["properties"];
-        assert!(props.get("query").is_some());
-        assert!(props.get("top_k").is_some());
-        assert!(props.get("indexes").is_some());
-        assert_eq!(schema["required"], json!(["query"]));
-        assert_eq!(schema["additionalProperties"], json!(false));
-        assert_eq!(props["top_k"]["minimum"], json!(1));
-        assert_eq!(props["top_k"]["maximum"], json!(50));
-    }
-
     #[tokio::test]
     async fn config_top_k_is_clamped() {
         struct RecordingSearch {

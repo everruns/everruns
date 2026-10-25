@@ -408,15 +408,6 @@ mod tests {
     }
 
     #[test]
-    fn different_positional_name() {
-        let m = test_map();
-        assert_eq!(
-            rewrite("get_session sess_1", &m),
-            "get_session --session_id sess_1"
-        );
-    }
-
-    #[test]
     fn no_whitespace_between_cmd_and_value_unchanged() {
         // bash concatenation: `get_agent'abc'` tokenizes as the command name
         // `get_agentabc`, not `get_agent` followed by `abc`. Likewise

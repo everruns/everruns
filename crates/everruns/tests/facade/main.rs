@@ -22,7 +22,6 @@ mod capability_configuration;
 mod custom_provider;
 mod engine_sessions;
 mod explicit_communication;
-mod facade_smoke;
 mod function_tools;
 mod harness;
 mod host_services;

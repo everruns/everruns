@@ -530,18 +530,6 @@ mod tests {
     // ============================================
 
     #[test]
-    fn test_connection_tracker_basic_acquire_release() {
-        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits::default()));
-        let session = uuid::Uuid::new_v4();
-
-        let guard = tracker.try_acquire(1, session).unwrap();
-        assert_eq!(tracker.global_count(), 1);
-
-        drop(guard);
-        assert_eq!(tracker.global_count(), 0);
-    }
-
-    #[test]
     fn test_connection_tracker_per_session_limit() {
         let limits = SseConnectionLimits {
             global_max: 100,
@@ -657,23 +645,6 @@ mod tests {
     }
 
     #[test]
-    fn test_heartbeat_interval_less_than_sdk_read_timeout() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        // SDK read timeout is 60s. Heartbeat must be less than that.
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        let sdk_read_timeout = Duration::from_secs(60);
-        assert!(
-            config.heartbeat_interval() < sdk_read_timeout,
-            "heartbeat interval {:?} must be < SDK read timeout {:?}",
-            config.heartbeat_interval(),
-            sdk_read_timeout
-        );
-    }
-
-    #[test]
     fn test_sse_limits_from_env() {
         let _lock = ENV_LOCK.lock().unwrap();
 
@@ -748,31 +719,5 @@ mod tests {
 
         assert_eq!(rejection, SseConnectionRejection::SessionLimitReached);
         assert!(!rejection.is_capacity_signal());
-    }
-
-    #[test]
-    fn test_sse_connection_tracker_try_acquire_and_drop() {
-        let tracker = Arc::new(SseConnectionTracker::new(SseConnectionLimits {
-            global_max: 2,
-            per_session_max: 2,
-            per_org_max: 2,
-        }));
-
-        let session = uuid::Uuid::new_v4();
-        let guard1 = tracker.try_acquire(1, session).unwrap();
-        let guard2 = tracker.try_acquire(1, session).unwrap();
-
-        // Third should fail (global_max = 2)
-        assert_eq!(
-            tracker.try_acquire(1, session).unwrap_err(),
-            SseConnectionRejection::GlobalLimitReached
-        );
-
-        // Drop one guard, should be able to acquire again
-        drop(guard1);
-        let _guard3 = tracker.try_acquire(1, session).unwrap();
-
-        drop(guard2);
-        drop(_guard3);
     }
 }

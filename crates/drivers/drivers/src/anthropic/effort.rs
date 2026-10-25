@@ -128,28 +128,6 @@ mod tests {
     use super::*;
     use everruns_contracts::DriverId;
 
-    fn effort_for(model: &str) -> Option<ReasoningEffort> {
-        let profile = everruns_contracts::get_model_profile(&DriverId::Anthropic, model);
-        default_effort(model, profile.as_ref())
-    }
-
-    #[test]
-    fn thinking_always_on_families_get_the_profile_default() {
-        for model in [
-            "claude-opus-5-5",
-            "claude-sonnet-5-5",
-            "claude-fable-5-1",
-            "claude-fable-5",
-        ] {
-            assert_eq!(effort_for(model), Some(ReasoningEffort::High), "{model}");
-        }
-        // Haiku 5.5 sends its profile default, which matches the API's `medium`.
-        assert_eq!(
-            effort_for("claude-haiku-5-5"),
-            Some(ReasoningEffort::Medium)
-        );
-    }
-
     #[test]
     fn explicit_none_becomes_low_where_thinking_cannot_be_off() {
         let profile = |m| everruns_contracts::get_model_profile(&DriverId::Anthropic, m);

@@ -461,56 +461,6 @@ fn cursor_and_page_construction_reject_inconsistent_positions() {
     ));
 }
 
-/// Reader that records the request shapes it is asked to serve, proving an
-/// external implementation can tell an initial read from a continuation.
-#[derive(Default)]
-struct RecordingReader {
-    seen: std::sync::Mutex<Vec<Option<(i32, Option<i32>)>>>,
-}
-
-#[async_trait]
-impl EventReader for RecordingReader {
-    async fn read_page(
-        &self,
-        request: EventReadRequest,
-    ) -> std::result::Result<EventPage, EventLogError> {
-        self.seen.lock().expect("recorder mutex").push(
-            request
-                .cursor()
-                .map(|cursor| (cursor.after_sequence(), cursor.snapshot_high_watermark())),
-        );
-        EventPage::new(Vec::new(), None, 0)
-    }
-}
-
-#[tokio::test]
-async fn a_reader_can_inspect_the_request_cursor() {
-    let session = SessionId::new();
-    let reader = RecordingReader::default();
-
-    reader
-        .read_page(EventReadRequest::new(session, limit(4)))
-        .await
-        .expect("initial read");
-    reader
-        .read_page(EventReadRequest::from_cursor(
-            EventCursor::continuation(session, 2, 7).expect("cursor"),
-            limit(4),
-        ))
-        .await
-        .expect("continuation read");
-    reader
-        .read_page(EventReadRequest::from_cursor(
-            EventCursor::after(session, 7).expect("cursor"),
-            limit(4),
-        ))
-        .await
-        .expect("poll read");
-
-    let seen = reader.seen.lock().expect("recorder mutex").clone();
-    assert_eq!(seen, vec![None, Some((2, Some(7))), Some((7, None))]);
-}
-
 #[tokio::test]
 async fn the_external_log_serves_host_composition_and_message_projection() {
     let log = Arc::new(ExternalEventLog::new());

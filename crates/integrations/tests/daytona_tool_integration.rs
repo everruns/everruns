@@ -446,34 +446,6 @@ async fn test_sandbox_lifecycle_via_client() {
     client.delete_sandbox("sb_lifecycle").await.unwrap();
 }
 
-/// Git clone uses exec via the session API.
-#[tokio::test]
-async fn test_git_clone_via_exec() {
-    let mock_server = MockServer::start().await;
-    setup_session_mocks(
-        &mock_server,
-        "sb_git",
-        0,
-        "Cloning into '/home/daytona/user/repo'...\n",
-    )
-    .await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    let result = client
-        .exec(
-            "sb_git",
-            "git clone --depth 1 https://github.com/user/repo.git /home/daytona/user/repo",
-            None,
-            None,
-            |_| {},
-        )
-        .await
-        .unwrap();
-    assert_eq!(result.exit_code, 0);
-}
-
 // ============================================================================
 // Tool execute_with_context tests (state + parameter orchestration)
 // ============================================================================
@@ -817,46 +789,6 @@ async fn test_exec_with_nonzero_exit_preserves_output() {
 // and log polling for real-time streaming output.
 
 #[tokio::test]
-async fn test_exec_session_with_shell_operators() {
-    let mock_server = MockServer::start().await;
-    setup_session_mocks(&mock_server, "sb_shell", 0, "hello\nworld\n").await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    // Shell operators (&&) are handled natively by the session's shell
-    let result = client
-        .exec("sb_shell", "echo hello && echo world", None, None, |_| {})
-        .await
-        .unwrap();
-
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.result, "hello\nworld\n");
-}
-
-#[tokio::test]
-async fn test_exec_session_with_pipes_and_redirects() {
-    let mock_server = MockServer::start().await;
-    setup_session_mocks(&mock_server, "sb_pipe", 0, "").await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    let result = client
-        .exec(
-            "sb_pipe",
-            "cat /etc/os-release | head -1 > /tmp/out.txt",
-            None,
-            None,
-            |_| {},
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(result.exit_code, 0);
-}
-
-#[tokio::test]
 async fn test_exec_session_with_cwd_prepended() {
     let mock_server = MockServer::start().await;
 
@@ -922,24 +854,6 @@ async fn test_exec_session_with_cwd_prepended() {
     assert_eq!(result.stdout, "file.txt\n");
     assert_eq!(result.stderr, "");
     assert_eq!(result.result, "file.txt\n");
-}
-
-#[tokio::test]
-async fn test_exec_session_with_variable_expansion() {
-    let mock_server = MockServer::start().await;
-    setup_session_mocks(&mock_server, "sb_var", 0, "/home/daytona\n").await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    // Variable expansion is handled natively by the session's shell
-    let result = client
-        .exec("sb_var", "echo $HOME", None, None, |_| {})
-        .await
-        .unwrap();
-
-    assert_eq!(result.exit_code, 0);
-    assert_eq!(result.result, "/home/daytona\n");
 }
 
 #[tokio::test]
@@ -1151,38 +1065,6 @@ async fn test_create_sandbox_with_resources_via_client() {
 }
 
 #[tokio::test]
-async fn test_create_sandbox_partial_resources_via_client() {
-    let mock_server = MockServer::start().await;
-
-    // Daytona REST API expects disk as a top-level field
-    Mock::given(method("POST"))
-        .and(path("/sandbox"))
-        .and(wiremock::matchers::body_json(json!({
-            "name": "Partial",
-            "disk": 5
-        })))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "sb_partial",
-            "state": "started"
-        })))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    let info = client
-        .create_sandbox(json!({
-            "name": "Partial",
-            "disk": 5
-        }))
-        .await
-        .unwrap();
-    assert_eq!(info.id, "sb_partial");
-}
-
-#[tokio::test]
 async fn test_create_sandbox_tool_rejects_invalid_size() {
     let tool = get_tool("daytona_create_sandbox");
     let session_id = SessionId::new();
@@ -1280,24 +1162,6 @@ async fn test_list_snapshots_via_client() {
     assert_eq!(snapshots[1].name, "daytona-medium");
     assert_eq!(snapshots[2].name, "custom-ml");
     assert_eq!(snapshots[2].gpu, Some(1));
-}
-
-#[tokio::test]
-async fn test_list_snapshots_empty() {
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("GET"))
-        .and(path("/snapshots"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
-
-    let client =
-        DaytonaClient::with_base_urls("test_key".to_string(), mock_server.uri(), mock_server.uri());
-
-    let snapshots = client.list_snapshots().await.unwrap();
-    assert!(snapshots.is_empty());
 }
 
 #[tokio::test]

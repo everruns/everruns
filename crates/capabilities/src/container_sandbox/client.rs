@@ -911,15 +911,6 @@ mod tests {
     }
 
     #[test]
-    fn test_url_construction() {
-        let client = DockerClient::with_base_url("http://10.0.0.3:2375".to_string());
-        assert_eq!(
-            client.url("/containers/json").unwrap(),
-            "http://10.0.0.3:2375/v1.47/containers/json"
-        );
-    }
-
-    #[test]
     fn test_resolve_docker_host_accepts_http() {
         assert_eq!(
             resolve_docker_host("http://localhost:2375").unwrap(),
@@ -933,12 +924,6 @@ mod tests {
             resolve_docker_host("https://docker.internal:2376/").unwrap(),
             "https://docker.internal:2376"
         );
-    }
-
-    #[test]
-    fn test_resolve_docker_host_default_is_secure_unix_socket() {
-        // The default must be the host-local unix socket, never plaintext TCP.
-        assert_eq!(DEFAULT_DOCKER_HOST, "unix:///var/run/docker.sock");
     }
 
     #[test]

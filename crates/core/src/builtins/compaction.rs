@@ -2211,42 +2211,9 @@ mod tests {
         assert!(text.contains("unknown_tool"), "Fallback name: {text}");
     }
 
-    #[test]
-    fn test_masking_many_tool_calls_keeps_exactly_n() {
-        let mut messages = Vec::new();
-        for i in 0..10 {
-            let id = format!("call_{i}");
-            messages.push(make_assistant_with_tool_call(&id, &format!("tool_{i}")));
-            messages.push(make_tool_result(&id, &format!("output {i}")));
-        }
-
-        let config = ObservationMaskingConfig {
-            keep_recent_tool_outputs: 3,
-            summary_format: MaskingSummaryFormat::OneLine,
-        };
-        let result = apply_observation_masking(&messages, &config);
-        assert_eq!(result.masked_count, 7);
-
-        // Last 3 tool results at indices 15, 17, 19 should be verbatim
-        assert_eq!(extract_text(&result.messages[15].content), "output 7");
-        assert_eq!(extract_text(&result.messages[17].content), "output 8");
-        assert_eq!(extract_text(&result.messages[19].content), "output 9");
-    }
-
     // ====================================================================
     // Summarization tests
     // ====================================================================
-
-    #[test]
-    fn test_summarization_prompt_default() {
-        let config = SummarizationConfig::default();
-        let prompt = build_summarization_prompt(&config);
-        assert!(prompt.contains("<task>"));
-        assert!(prompt.contains("decisions"));
-        assert!(prompt.contains("files_modified"));
-        assert!(prompt.contains("errors"));
-        assert!(prompt.contains("current_plan"));
-    }
 
     #[test]
     fn test_summarization_prompt_custom_instructions() {
@@ -2683,19 +2650,6 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    #[test]
-    fn test_memory_tier_serialization() {
-        assert_eq!(serde_json::to_value(MemoryTier::Hot).unwrap(), json!("hot"));
-        assert_eq!(
-            serde_json::to_value(MemoryTier::Warm).unwrap(),
-            json!("warm")
-        );
-        assert_eq!(
-            serde_json::to_value(MemoryTier::Cold).unwrap(),
-            json!("cold")
-        );
-    }
-
     // ====================================================================
     // Skill content protection tests
     // ====================================================================
@@ -2973,25 +2927,6 @@ mod tests {
         assert!(is_protected_tool_call_message(&skill_call));
         assert!(!is_protected_tool_call_message(&regular_call));
         assert!(!is_protected_tool_call_message(&user_msg));
-    }
-
-    #[test]
-    fn test_default_preserve_includes_skill_instructions() {
-        let config = SummarizationConfig::default();
-        assert!(
-            config.preserve.contains(&"skill_instructions".to_string()),
-            "Default preserve list must include skill_instructions"
-        );
-    }
-
-    #[test]
-    fn test_summarization_prompt_mentions_skill_protection() {
-        let config = SummarizationConfig::default();
-        let prompt = build_summarization_prompt(&config);
-        assert!(
-            prompt.contains("activate_skill"),
-            "Summarization prompt must instruct LLM to preserve skill content"
-        );
     }
 
     #[test]

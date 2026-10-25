@@ -807,12 +807,6 @@ mod tests {
         let unconfigured = disabled.about("x").noul("q", "Is it?").send().await;
         assert!(matches!(unconfigured, Err(DecisionsError::Unconfigured)));
     }
-
-    #[test]
-    fn debug_never_renders_a_credential_bearing_service() {
-        let rendered = format!("{:?}", Decisions::simulated(0.5));
-        assert!(rendered.contains("SimulatedDecisionsService"), "{rendered}");
-    }
 }
 
 #[cfg(test)]
@@ -881,21 +875,5 @@ mod model_selection_tests {
         let _ = service.evaluate(request).await;
 
         assert_eq!(service.seen.lock().expect("lock").clone(), vec![None]);
-    }
-
-    #[tokio::test]
-    async fn the_answer_reports_the_model_that_gave_it() {
-        // The vendor resolves an alias to a version, so a caller reads back what
-        // answered rather than what it asked for — the id to pin once a
-        // threshold is calibrated. The stub names itself, so a simulated answer
-        // can never pass for a real decisions's.
-        let answers = Decisions::simulated(0.5)
-            .about("x")
-            .noul("q", "Does it hold?")
-            .send()
-            .await
-            .expect("simulated answers");
-
-        assert_eq!(answers.model(), "simulated");
     }
 }

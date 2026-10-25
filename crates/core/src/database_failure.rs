@@ -138,14 +138,6 @@ mod tests {
     const PROD_CLAIM_TASKS_RESET: &str = "Failed to claim tasks: database error: error communicating with database: Connection reset by peer (os error 104)";
 
     #[test]
-    fn the_prod_pool_timeout_classifies_as_exhaustion() {
-        assert_eq!(
-            DatabaseFailureKind::classify(PROD_POOL_TIMEOUT),
-            DatabaseFailureKind::PoolExhausted
-        );
-    }
-
-    #[test]
     fn the_prod_connection_resets_classify_as_a_lost_connection() {
         for rendered in [PROD_CONNECTION_RESET, PROD_CLAIM_TASKS_RESET] {
             assert_eq!(

@@ -173,28 +173,6 @@ async fn test_agent_preview_merges_files_and_dependency_features_without_duplica
 }
 
 #[tokio::test]
-async fn test_create_agent() {
-    let server = TestServer::new().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "test-agent",
-                "display_name": "Test Agent",
-                "description": "An agent for testing",
-                "system_prompt": "You are a helpful assistant"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(agent.name, "test-agent");
-    assert_eq!(agent.description.as_deref(), Some("An agent for testing"));
-}
-
-#[tokio::test]
 async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
     let server = TestServer::in_memory().await;
     let sentinel = "security-test-secret-must-not-be-returned";

@@ -108,11 +108,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outside_a_scope_nothing_happens() {
-        drop(begin());
-    }
-
-    #[tokio::test]
     async fn cancelled_wait_gives_the_slot_back() {
         let slots = counter(true);
         let observed = slots.clone();

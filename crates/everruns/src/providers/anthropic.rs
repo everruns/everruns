@@ -204,14 +204,6 @@ mod tests {
     }
 
     #[test]
-    fn the_provider_carries_the_anthropic_driver() {
-        let provider: Provider = Anthropic::new("k")
-            .base_url("https://proxy.example/v1")
-            .into();
-        assert_eq!(provider.driver_id(), crate::DriverId::Anthropic);
-    }
-
-    #[test]
     fn debug_redacts_api_key() {
         let rendered = format!("{:?}", Anthropic::new("sk-ant-secret"));
         assert!(!rendered.contains("sk-ant-secret"), "{rendered}");

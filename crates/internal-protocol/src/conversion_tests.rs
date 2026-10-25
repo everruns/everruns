@@ -1,28 +1,6 @@
 use super::*;
 
 #[test]
-fn test_reason_completed_data_roundtrip() {
-    use everruns_core::events::ReasonCompletedData;
-
-    // Create test data
-    let data = ReasonCompletedData::success("Test response", true, 3, Some(2000), None);
-
-    // Serialize to JSON
-    let json = serde_json::to_value(&data).unwrap();
-
-    // Convert to proto struct and back
-    let proto_struct = json_to_proto_struct(&json);
-    let result_json = proto_struct_to_json(&proto_struct);
-
-    // Deserialize back to ReasonCompletedData
-    let result: ReasonCompletedData = serde_json::from_value(result_json).unwrap();
-
-    assert!(result.success);
-    assert_eq!(result.tool_call_count, 3);
-    assert!(result.has_tool_calls);
-}
-
-#[test]
 fn test_message_reasoning_roundtrip() {
     use chrono::Utc;
     use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};

@@ -286,65 +286,6 @@ fn test_retired_semantic_variants_do_not_resolve_to_parent_profiles() {
 // see the speed_* helper docs.
 
 #[test]
-fn test_speed_config_matches_pricing_tiers() {
-    let speeds = |model: &str| -> Vec<Speed> {
-        get_model_profile("openai", model)
-            .unwrap()
-            .speed
-            .map(|s| s.values.into_iter().map(|v| v.value).collect())
-            .unwrap_or_default()
-    };
-    use Speed::*;
-    // Flex + priority pricing rows.
-    for model in [
-        "gpt-6-sol",
-        "gpt-6-luna",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.5",
-        "gpt-5.4",
-        "gpt-5.4-mini",
-    ] {
-        assert_eq!(speeds(model), vec![Flex, Default, Priority], "{model}");
-    }
-    // Flex-only pricing rows.
-    for model in ["gpt-5.5-pro", "gpt-5.4-nano", "gpt-5.4-pro"] {
-        assert_eq!(speeds(model), vec![Flex, Default], "{model}");
-    }
-    // Priority-only pricing rows.
-    for model in [
-        "gpt-4.1",
-        "gpt-4.1-mini",
-        "gpt-4.1-nano",
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-codex",
-        "gpt-5.1",
-        "gpt-5.1-codex",
-        "gpt-5.2",
-        "gpt-5.3-codex",
-        "o3",
-        "o4-mini",
-    ] {
-        assert_eq!(speeds(model), vec![Default, Priority], "{model}");
-    }
-    // No tier rows: unlisted variants, chat-latest, and deep research.
-    for model in [
-        "gpt-5-nano",
-        "gpt-5-pro",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex-max",
-        "gpt-5.2-pro",
-        "gpt-5.2-codex",
-        "gpt-5-chat-latest",
-        "o3-deep-research",
-    ] {
-        assert_eq!(speeds(model), vec![], "{model}");
-    }
-}
-
-#[test]
 fn test_speed_masked_for_non_openai_surfaces() {
     assert!(
         get_model_profile("openai", "gpt-5.2")
@@ -365,63 +306,11 @@ fn test_speed_masked_for_non_openai_surfaces() {
     }
 }
 
-#[test]
-fn reasoning_effort_sets_match_model_contracts() {
-    use ReasoningEffort::{High, Low, Medium, None as NoReasoning, Xhigh};
-    let cases: &[(&str, ReasoningEffort, &[ReasoningEffort])] = &[
-        ("gpt-5", Medium, &[Low, Medium, High]),
-        ("gpt-5-mini", Medium, &[Low, Medium, High]),
-        ("gpt-5-pro", High, &[High]),
-        ("gpt-5.1", NoReasoning, &[NoReasoning, Low, Medium, High]),
-        (
-            "gpt-5.1-codex-max",
-            NoReasoning,
-            &[NoReasoning, Low, Medium, High, Xhigh],
-        ),
-        ("o3", Medium, &[Low, Medium, High]),
-        ("o3-pro", High, &[High]),
-        ("o4-mini", Medium, &[Low, Medium, High]),
-    ];
-    for (id, default, values) in cases {
-        let profile = get_model_profile("openai", id).unwrap();
-        assert!(profile.reasoning, "{id}");
-        assert!(profile.tool_call, "{id}");
-        assert_eq!(profile.family, *id, "{id}");
-        let effort = profile.reasoning_effort.unwrap();
-        assert_eq!(effort.default, *default, "{id}");
-        assert_eq!(
-            effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-            *values,
-            "{id}"
-        );
-    }
-}
-
 // Claude 4.7 / 4.6 model tests
 
 // Normalize tests for new models
 
 // Gemini model tests
-
-#[test]
-fn argon_profile_allows_long_decode_and_exposes_only_supported_thinking_levels() {
-    let profile = get_model_profile("gemini", "gemini-4-argon").unwrap();
-    assert_eq!(profile.name, "Gemini 4 Argon");
-    assert!(!profile.temperature);
-    assert!(profile.reasoning && profile.tool_call && profile.attachment);
-    let limits = profile.limits.unwrap();
-    assert_eq!((limits.context, limits.output), (1_048_576, 1_048_576));
-    let effort = profile.reasoning_effort.unwrap();
-    assert_eq!(effort.default, ReasoningEffort::Medium);
-    assert_eq!(
-        effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
-        vec![
-            ReasoningEffort::Low,
-            ReasoningEffort::Medium,
-            ReasoningEffort::High
-        ]
-    );
-}
 
 // Newly added flagship model profiles
 

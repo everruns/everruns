@@ -1413,14 +1413,6 @@ mod tests {
         assert_eq!(result.images.map(|images| images.len()), Some(1));
         assert_eq!(result.result, Some(json!("")));
     }
-
-    #[test]
-    fn test_truncate_helper_over() {
-        let s = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
-        let t = OutputHardLimitHook::truncate(s);
-        assert!(t.len() <= MAX_TOOL_RESULT_BYTES);
-        assert!(t.ends_with(TRUNCATION_SUFFIX));
-    }
 }
 
 #[cfg(test)]

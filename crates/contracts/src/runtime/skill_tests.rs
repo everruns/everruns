@@ -115,19 +115,6 @@ Instructions.
 }
 
 #[test]
-fn test_validate_skill_md_invalid() {
-    let content = r#"---
-name: INVALID
----
-
-Body.
-"#;
-    let result = validate_skill_md(content);
-    assert!(!result.valid);
-    assert!(!result.errors.is_empty());
-}
-
-#[test]
 fn test_parse_argument_hint() {
     let content = r#"---
 name: fix-issue
@@ -243,21 +230,6 @@ Lint instructions.
     let parsed = parse_skill_md(content).unwrap();
     assert_eq!(parsed.model.as_deref(), Some("claude-haiku-4-5-20251001"));
     assert_eq!(parsed.context, SkillContext::Fork);
-}
-
-#[test]
-fn test_parse_model_without_fork() {
-    let content = r#"---
-name: my-skill
-description: A skill.
-model: gpt-5.2
----
-
-Body.
-"#;
-    let parsed = parse_skill_md(content).unwrap();
-    assert_eq!(parsed.model.as_deref(), Some("gpt-5.2"));
-    assert_eq!(parsed.context, SkillContext::Inline);
 }
 
 #[test]

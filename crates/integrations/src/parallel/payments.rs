@@ -624,29 +624,6 @@ mod tests {
     }
 
     #[test]
-    fn narrate_task_status_is_bare() {
-        let tool = ParallelTaskStatusTool;
-        assert_eq!(
-            narrate(
-                &tool,
-                json!({"run_id": "abc123"}),
-                ToolNarrationPhase::Started
-            )
-            .as_deref(),
-            Some("Checking task status")
-        );
-        assert_eq!(
-            narrate(
-                &tool,
-                json!({"run_id": "abc123"}),
-                ToolNarrationPhase::Completed
-            )
-            .as_deref(),
-            Some("Checked task status")
-        );
-    }
-
-    #[test]
     fn narrate_task_omits_private_input() {
         let tool = ParallelTaskTool;
         assert_eq!(

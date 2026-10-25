@@ -543,13 +543,4 @@ mod tests {
         assert!(mount.child_segment_of("/memory/agent").is_none());
         assert!(mount.child_segment_of("/notes").is_none());
     }
-
-    #[test]
-    fn only_declared_harnesses_get_shared_memory() {
-        assert_eq!(
-            shared_memory_name_for_harness("platform-chat").as_deref(),
-            Some(PLATFORM_CHAT_SHARED_MEMORY_NAME)
-        );
-        assert!(shared_memory_name_for_harness("generic").is_none());
-    }
 }

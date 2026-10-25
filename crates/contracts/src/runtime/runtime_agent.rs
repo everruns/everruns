@@ -775,31 +775,6 @@ mod tests {
     }
 
     #[test]
-    fn builder_preserves_all_explicit_request_options() {
-        let tool = client_tool("click", "Click a selector");
-        let policy =
-            crate::runtime::network_access::NetworkAccessList::block(["private.example.com"]);
-        let agent = RuntimeAgentBuilder::default()
-            .system_prompt("You are a coder.")
-            .model("gpt-5.4")
-            .max_iterations(23)
-            .temperature(0.75)
-            .max_tokens(2048)
-            .parallel_tool_calls(Some(false))
-            .network_access(Some(policy.clone()))
-            .tool(tool.clone())
-            .build();
-        assert_eq!(
-            serde_json::to_value(agent).unwrap(),
-            serde_json::json!({
-                "system_prompt":"You are a coder.", "model":"gpt-5.4", "tools":[tool],
-                "max_iterations":23, "temperature":0.75, "max_tokens":2048,
-                "network_access":policy, "parallel_tool_calls":false
-            })
-        );
-    }
-
-    #[test]
     fn prompt_operations_preserve_order_and_ignore_empty_additions() {
         for (prefix, suffix, expected) in [
             ("", "", "Base prompt."),

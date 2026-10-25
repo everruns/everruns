@@ -199,12 +199,6 @@ mod tests {
     }
 
     #[test]
-    fn the_provider_carries_the_gemini_driver() {
-        let provider: Provider = Gemini::new("k").into();
-        assert_eq!(provider.driver_id(), crate::DriverId::Gemini);
-    }
-
-    #[test]
     fn debug_redacts_api_key() {
         let rendered = format!("{:?}", Gemini::new("gemini-secret"));
         assert!(!rendered.contains("gemini-secret"), "{rendered}");

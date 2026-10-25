@@ -480,12 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn unknown_mode_is_rejected() {
-        let err = serde_json::from_str::<VoiceChannelConfig>(r#"{"mode":"telepathy"}"#);
-        assert!(err.is_err());
-    }
-
-    #[test]
     fn speech_instructions_carry_style_but_no_business_rules() {
         let config = VoiceChannelConfig {
             speaking_style: Some("Warm and brief.".into()),

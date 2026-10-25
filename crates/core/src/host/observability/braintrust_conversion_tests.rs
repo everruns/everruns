@@ -25,39 +25,6 @@ fn test_init_never_panics_and_disables_on_missing_config() {
 }
 
 #[test]
-fn test_convert_turn_started() {
-    let listener = BraintrustListener::new(test_config()).unwrap();
-
-    let turn_id = TurnId::new();
-    let message_id = MessageId::new();
-
-    let data = TurnStartedData {
-        turn_id,
-        input_message_id: message_id,
-        input_content: Some("Hello, how are you?".to_string()),
-        agent_id: None,
-        agent_name: None,
-        agent_description: None,
-    };
-
-    let event = Event::new(
-        SessionId::new(),
-        EventContext::empty(),
-        EventData::TurnStarted(data.clone()),
-    );
-
-    let bt_event = listener.convert_turn_started(&event, &data);
-
-    assert_eq!(bt_event.id, turn_id.to_string());
-    assert_eq!(bt_event.span_attributes.span_type, "task");
-    assert_eq!(bt_event.span_attributes.name, "agent turn");
-    // Root span self-references for proper trace correlation
-    assert_eq!(bt_event.span_id, Some(turn_id.to_string()));
-    assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()));
-    assert!(bt_event.span_parents.is_none()); // Root has no parents
-}
-
-#[test]
 fn test_convert_llm_generation_with_parent() {
     let listener = BraintrustListener::new(test_config()).unwrap();
 

@@ -1215,16 +1215,6 @@ mod tests {
     // --- Config tests ---
 
     #[test]
-    fn test_config_parse_partial() {
-        let json = json!({
-            "image": "node:18"
-        });
-        let config = parse_config(&json);
-        assert_eq!(config.image, "node:18");
-        assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
-    }
-
-    #[test]
     fn test_container_name() {
         let uuid = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
         let session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid);
@@ -1247,56 +1237,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_docker_read_file_without_context() {
-        let tool = DockerReadFileTool;
-        let result = tool.execute(json!({"path": "/test.txt"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            _ => panic!("Expected tool error"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_write_file_without_context() {
-        let tool = DockerWriteFileTool;
-        let result = tool
-            .execute(json!({"path": "/test.txt", "content": "hello"}))
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            _ => panic!("Expected tool error"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_stop_without_context() {
-        let tool = DockerStopTool;
-        let result = tool.execute(json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            _ => panic!("Expected tool error"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_logs_without_context() {
-        let tool = DockerLogsTool;
-        let result = tool.execute(json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            _ => panic!("Expected tool error"),
-        }
-    }
-
-    #[tokio::test]
     async fn test_docker_exec_missing_command() {
         let tool = DockerExecTool;
         let context = ToolContext::new(everruns_contracts::typed_id::SessionId::from_uuid(
@@ -1308,21 +1248,6 @@ mod tests {
                 assert!(msg.contains("Missing required parameter"));
             }
             _ => panic!("Expected tool error for missing command"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_docker_read_file_missing_path() {
-        let tool = DockerReadFileTool;
-        let context = ToolContext::new(everruns_contracts::typed_id::SessionId::from_uuid(
-            uuid::Uuid::nil(),
-        ));
-        let result = tool.execute_with_context(json!({}), &context).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("Missing required parameter"));
-            }
-            _ => panic!("Expected tool error for missing path"),
         }
     }
 

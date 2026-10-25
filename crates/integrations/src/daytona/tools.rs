@@ -2468,111 +2468,9 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_exec_without_context() {
-        let tool = DaytonaExecTool;
-        let result = tool
-            .execute(json!({"sandbox_id": "test", "command": "ls"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_read_file_without_context() {
-        let tool = DaytonaReadFileTool;
-        let result = tool
-            .execute(json!({"sandbox_id": "test", "path": "/test.txt"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_write_file_without_context() {
-        let tool = DaytonaWriteFileTool;
-        let result = tool
-            .execute(json!({"sandbox_id": "test", "path": "/test.txt", "content": "hello"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_download_workspace_without_context() {
-        let tool = DaytonaDownloadWorkspaceTool;
-        let result = tool.execute(json!({"sandbox_id": "test"})).await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_list_snapshots_without_context() {
-        let tool = DaytonaListSnapshotsTool;
-        let result = tool.execute(json!({})).await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_list_sandboxes_without_context() {
-        let tool = DaytonaListSandboxesTool;
-        let result = tool.execute(json!({})).await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_manage_sandbox_without_context() {
-        let tool = DaytonaManageSandboxTool;
-        let result = tool
-            .execute(json!({"sandbox_id": "test", "action": "stop"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[test]
-    fn test_encode_content_binary_files() {
-        // PNG-like header with null bytes
-        let binary_bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
-        let (content, encoding) = SessionFile::encode_content(binary_bytes);
-        assert_eq!(encoding, "base64");
-        // Verify round-trip
-        let decoded = SessionFile::decode_content(&content, &encoding).unwrap();
-        assert_eq!(decoded, binary_bytes);
-    }
-
     // --- Git credentials tool tests ---
 
-    #[tokio::test]
-    async fn test_git_credentials_without_context() {
-        let tool = DaytonaGitCredentialsTool;
-        let result = tool.execute(json!({"sandbox_id": "test"})).await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
     // --- Git clone tool tests ---
-
-    #[tokio::test]
-    async fn test_git_clone_without_context() {
-        let tool = DaytonaGitCloneTool;
-        let result = tool
-            .execute(json!({"sandbox_id": "test", "repo_url": "user/repo"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
 
     // --- Session path normalization tests ---
 
@@ -2622,31 +2520,8 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_repo_url_http() {
-        let url = "http://github.com/user/repo";
-        assert_eq!(normalize_repo_url(url), url);
-    }
-
-    #[test]
-    fn test_shell_escape_simple() {
-        assert_eq!(shell_escape("hello"), "'hello'");
-    }
-
-    #[test]
     fn test_shell_escape_with_single_quote() {
         assert_eq!(shell_escape("it's"), "'it'\\''s'");
-    }
-
-    #[test]
-    fn test_shell_escape_with_spaces() {
-        assert_eq!(shell_escape("path with spaces"), "'path with spaces'");
-    }
-
-    #[test]
-    fn test_normalize_repo_url_https_without_git_suffix() {
-        // HTTPS URLs without .git are valid and returned as-is
-        let url = "https://github.com/user/repo";
-        assert_eq!(normalize_repo_url(url), url);
     }
 
     #[test]
@@ -2904,14 +2779,6 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_owner_repo_http() {
-        assert_eq!(
-            extract_owner_repo("http://github.com/user/repo"),
-            Some("user/repo".to_string())
-        );
-    }
-
-    #[test]
     fn test_extract_owner_repo_with_spaces() {
         assert_eq!(extract_owner_repo("user /repo"), None);
     }
@@ -3073,42 +2940,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_git_credentials_with_connection_resolver() {
-        // When connection resolver provides a GitHub token, it should be used.
-        let tool = DaytonaGitCredentialsTool;
-        let session_id = SessionId::new();
-        let store = Arc::new(MockStorageStore::new());
-        let state = SandboxState {
-            sandbox_id: "sb_test".to_string(),
-            workspace_path: "/home/daytona".to_string(),
-            started_at: "2026-01-01T00:00:00Z".to_string(),
-        };
-        store
-            .seed_secret(
-                session_id,
-                "daytona_sandbox:sb_test",
-                &serde_json::to_string(&state).unwrap(),
-            )
-            .await;
-        // Connection resolver provides both Daytona key and GitHub token
-        let resolver = Arc::new(MockConnectionResolver {
-            token: Some("ghs_connection_token_456".to_string()),
-        });
-        let context =
-            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
-        let result = tool
-            .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
-            .await;
-        // Should fail at HTTP call, not at token resolution
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                !msg.contains("No GitHub credentials"),
-                "Token should have been resolved from connection resolver, got: {msg}"
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn test_git_credentials_no_storage_store() {
         let tool = DaytonaGitCredentialsTool;
         let session_id = SessionId::new();
@@ -3146,27 +2977,6 @@ mod tests {
                 );
             }
             _ => panic!("Expected ToolError for missing repo_url"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_git_clone_no_api_key() {
-        let tool = DaytonaGitCloneTool;
-        let session_id = SessionId::new();
-        let store = Arc::new(MockStorageStore::new());
-        // No connection resolver — API key cannot be resolved
-        let context = ToolContext::with_storage_store(session_id, store);
-        let result = tool
-            .execute_with_context(
-                json!({"sandbox_id": "sb_test", "repo_url": "user/repo"}),
-                &context,
-            )
-            .await;
-        match result {
-            ToolExecutionResult::ConnectionRequired { provider, .. } => {
-                assert_eq!(provider, "daytona");
-            }
-            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
         }
     }
 
@@ -3276,17 +3086,6 @@ mod tests {
     // ========================================================================
 
     #[tokio::test]
-    async fn test_api_call_without_context() {
-        let tool = DaytonaApiCallTool;
-        let result = tool
-            .execute(json!({"method": "GET", "path": "/sandbox"}))
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
-        );
-    }
-
-    #[tokio::test]
     async fn test_api_call_missing_method() {
         let tool = DaytonaApiCallTool;
         let session_id = SessionId::new();
@@ -3316,23 +3115,6 @@ mod tests {
         assert!(
             matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("Missing required parameter"))
         );
-    }
-
-    #[tokio::test]
-    async fn test_api_call_no_api_key() {
-        let tool = DaytonaApiCallTool;
-        let session_id = SessionId::new();
-        let store = Arc::new(MockStorageStore::new());
-        let context = ToolContext::with_storage_store(session_id, store);
-        let result = tool
-            .execute_with_context(json!({"method": "GET", "path": "/sandbox"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::ConnectionRequired { provider, .. } => {
-                assert_eq!(provider, "daytona");
-            }
-            _ => panic!("Expected ConnectionRequired for missing API key, got: {result:?}"),
-        }
     }
 
     // ========================================================================

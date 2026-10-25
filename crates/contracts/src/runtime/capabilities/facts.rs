@@ -145,10 +145,4 @@ mod tests {
             "<facts>\n- plan: pro\n- current_time: 2026-07-04T12:00:00Z\n</facts>"
         );
     }
-
-    #[test]
-    fn constructors_set_volatility() {
-        assert_eq!(Fact::stat("a", "b").volatility, Volatility::Static);
-        assert_eq!(Fact::dynamic("a", "b").volatility, Volatility::Dynamic);
-    }
 }

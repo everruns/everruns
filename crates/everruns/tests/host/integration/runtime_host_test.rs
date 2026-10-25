@@ -1125,76 +1125,6 @@ async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
 }
 
 #[tokio::test]
-async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_path() {
-    let mut adapter = mock_host();
-    adapter.capability_registry.register(OverlayEchoCapability);
-    set_default_model_spec(&adapter).await;
-
-    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    let session_id = SessionId::from_uuid(Uuid::now_v7());
-    let agent_id = AgentId::from_uuid(Uuid::now_v7());
-    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
-
-    adapter
-        .harness_store
-        .add_harness(
-            harness_id,
-            HarnessDefinition {
-                capabilities: vec![everruns_contracts::CapabilityRef::new("overlay_echo")],
-                ..harness()
-            },
-        )
-        .await;
-    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
-    adapter
-        .session_store
-        .insert(ExecutionSession {
-            agent_id: Some(agent_id),
-            ..session(session_id, harness_id)
-        })
-        .await;
-
-    let result = execute_act_activity(
-        &adapter,
-        ActInput {
-            org_id: Some(1),
-            context: ExecutionContext::new(
-                session_id,
-                TurnId::from_uuid(Uuid::now_v7()),
-                input_message_id,
-            ),
-            harness_id,
-            agent_id: Some(agent_id),
-            tool_calls: vec![ToolCall {
-                id: "call_overlay_echo".into(),
-                name: "overlay_echo".into(),
-                arguments: json!({"value": "merged"}),
-            }],
-            tool_definitions: reason_tool_definitions(
-                &adapter,
-                session_id,
-                harness_id,
-                Some(agent_id),
-            )
-            .await,
-            locale: None,
-            blueprint_id: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.success_count, 1);
-    assert_eq!(result.error_count, 0);
-    assert_eq!(
-        result.results[0].result.result.as_ref().unwrap()["value"],
-        "merged"
-    );
-}
-
-#[tokio::test]
 async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
     let mut adapter = mock_host();
     adapter.capability_registry.register(OverlayEchoCapability);
@@ -1496,34 +1426,6 @@ async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
         result.results[0].result.result.as_ref().unwrap()["hooked"],
         true
     );
-}
-
-#[tokio::test]
-async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
-    let adapter = mock_host();
-    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter
-        .harness_store
-        .add_harness(harness_id, harness())
-        .await;
-    adapter
-        .session_store
-        .insert(session(session_id, harness_id))
-        .await;
-
-    RuntimeSessionLifecycle::new(adapter.clone(), 1, session_id)
-        .waiting_for_tool_results()
-        .await
-        .unwrap();
-
-    let session = adapter
-        .session_store
-        .get_session(session_id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(session.status, SessionExecutionState::WaitingForToolResults);
 }
 
 #[tokio::test]

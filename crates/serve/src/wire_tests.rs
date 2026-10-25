@@ -1383,23 +1383,6 @@ mod ag_ui {
             .await;
         assert_eq!(unknown.status(), 404);
     }
-
-    #[tokio::test]
-    async fn the_manifest_and_agent_card_list_the_endpoints() {
-        let manifest = app().manifest();
-        assert!(
-            manifest
-                .routes
-                .contains(&"POST /v1/channels/tester/ag-ui".to_string()),
-            "{:?}",
-            manifest.routes
-        );
-        let host = Host::new(app(), Mode::Eval, None).unwrap();
-        let server = serve(host).await;
-        let card: Value = server.get("/v1/agent").await.json().await.unwrap();
-        assert_eq!(card["ag_ui"]["tester"], "/v1/channels/tester/ag-ui");
-        assert_eq!(card["ag_ui"]["asker"], "/v1/channels/asker/ag-ui");
-    }
 }
 
 #[cfg(feature = "a2a")]

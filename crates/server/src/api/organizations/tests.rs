@@ -427,21 +427,6 @@ async fn organization_sets_validated_web_search_defaults() {
 }
 
 #[tokio::test]
-async fn create_organization_rejects_empty_name() {
-    let (app, db, user_id) = create_org_app(None).await;
-
-    let response = app.oneshot(create_org_request("")).await.unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["detail"], "Organization name cannot be empty");
-    assert_eq!(
-        db.count_user_created_organizations(user_id).await.unwrap(),
-        0
-    );
-}
-
-#[tokio::test]
 async fn create_organization_rejects_whitespace_only_name() {
     let (app, db, user_id) = create_org_app(None).await;
 

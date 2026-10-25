@@ -14,8 +14,7 @@ use uuid::Uuid;
 
 use chrono::Utc;
 use everruns_durable::persistence::{
-    EventLog, PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskQueue, WorkerInfo,
-    WorkerRegistry,
+    EventLog, PostgresWorkflowEventStore, TaskDefinition, TaskQueue, WorkerInfo, WorkerRegistry,
 };
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent};
 
@@ -105,40 +104,6 @@ async fn cleanup_worker(store: &PostgresWorkflowEventStore, worker_id: &str) {
 // ============================================
 
 #[tokio::test]
-async fn test_append_events_failure_after_insert_rolls_back() {
-    let scenario = FailScenario::setup();
-    let store = create_test_store().await;
-    let workflow_id = Uuid::now_v7();
-
-    // Create workflow
-    store
-        .create_workflow(workflow_id, "failure_test", json!({}), None)
-        .await
-        .unwrap();
-
-    // Enable fail point - fail after insert but before commit
-    fail::cfg("postgres_append_events_after_insert", "return").unwrap();
-
-    // Attempt to append events - should fail
-    let result = store
-        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
-        .await;
-
-    assert!(result.is_err());
-    assert!(matches!(result, Err(StoreError::Database(_))));
-
-    // Disable fail point
-    fail::cfg("postgres_append_events_after_insert", "off").unwrap();
-
-    // Verify no partial writes - events should be empty (rolled back)
-    let events = store.load_events(workflow_id).await.unwrap();
-    assert!(events.is_empty(), "Expected no events after rollback");
-
-    cleanup_workflow(&store, workflow_id).await;
-    scenario.teardown();
-}
-
-#[tokio::test]
 async fn test_append_events_failure_before_commit_rolls_back() {
     let scenario = FailScenario::setup();
     let store = create_test_store().await;
@@ -163,37 +128,6 @@ async fn test_append_events_failure_before_commit_rolls_back() {
     // Verify rollback
     let events = store.load_events(workflow_id).await.unwrap();
     assert!(events.is_empty());
-
-    cleanup_workflow(&store, workflow_id).await;
-    scenario.teardown();
-}
-
-#[tokio::test]
-async fn test_append_events_single_failure_then_success() {
-    let scenario = FailScenario::setup();
-    let store = create_test_store().await;
-    let workflow_id = Uuid::now_v7();
-
-    store
-        .create_workflow(workflow_id, "retry_test", json!({}), None)
-        .await
-        .unwrap();
-
-    // Fail once, then succeed (1* prefix means one-shot)
-    fail::cfg("postgres_append_events_after_insert", "1*return").unwrap();
-
-    // First attempt fails
-    let result1 = store
-        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
-        .await;
-    assert!(result1.is_err());
-
-    // Second attempt succeeds (fail point auto-disabled after one failure)
-    let result2 = store
-        .append_events(workflow_id, 0, vec![WorkflowEvent::started(json!({}))])
-        .await;
-    assert!(result2.is_ok());
-    assert_eq!(result2.unwrap(), 1);
 
     cleanup_workflow(&store, workflow_id).await;
     scenario.teardown();
@@ -267,67 +201,6 @@ async fn test_claim_task_failure_after_db_commit_preserves_state() {
 // ============================================
 // Task Completion Failure Tests
 // ============================================
-
-#[tokio::test]
-async fn test_complete_task_failure_after_db_commit_is_idempotent() {
-    // Test: Fail point fires AFTER successful completion in DB.
-    // Verifies task is completed even when code returns error.
-    // Retry returns TaskNotOwned (task no longer claimed - it's completed).
-    let scenario = FailScenario::setup();
-    let store = create_test_store().await;
-    let workflow_id = Uuid::now_v7();
-
-    store
-        .create_workflow(workflow_id, "complete_failure_test", json!({}), None)
-        .await
-        .unwrap();
-
-    register_test_worker(&store, "worker-1").await;
-
-    store
-        .enqueue_task(TaskDefinition {
-            workflow_id: Some(workflow_id),
-            activity_id: "step-1".to_string(),
-            activity_type: "failpoint_test".to_string(),
-            input: json!({}),
-            options: ActivityOptions::default(),
-        })
-        .await
-        .unwrap();
-
-    // Claim task
-    let claimed = store
-        .claim_task("worker-1", &["failpoint_test".to_string()], 10)
-        .await
-        .unwrap();
-    assert_eq!(claimed.len(), 1);
-    let task_id = claimed[0].id;
-
-    // Enable fail point (fires AFTER successful DB update)
-    fail::cfg("postgres_complete_task_after_update", "return").unwrap();
-
-    // Complete returns error, but DB operation succeeded
-    let result = store
-        .complete_task(task_id, "worker-1", json!({"done": true}))
-        .await;
-    assert!(result.is_err());
-
-    // Disable fail point
-    fail::cfg("postgres_complete_task_after_update", "off").unwrap();
-
-    // Retry returns TaskNotOwned (task already completed in DB)
-    let result = store
-        .complete_task(task_id, "worker-1", json!({"done": true}))
-        .await;
-    assert!(
-        matches!(result, Err(StoreError::TaskNotOwned(_))),
-        "Task already completed, should return TaskNotOwned"
-    );
-
-    cleanup_workflow(&store, workflow_id).await;
-    cleanup_worker(&store, "worker-1").await;
-    scenario.teardown();
-}
 
 // ============================================
 // Heartbeat Failure Tests

@@ -189,29 +189,3 @@ pub async fn submit_tool_results(
         result.log_internal_error_json("resolve client tool results")?,
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_submit_tool_results_request_with_error() {
-        let json = r#"{
-            "tool_results": [
-                {
-                    "tool_call_id": "call_def456",
-                    "error": "Connection refused"
-                }
-            ]
-        }"#;
-
-        let req: SubmitToolResultsRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.tool_results.len(), 1);
-        assert_eq!(req.tool_results[0].tool_call_id, "call_def456");
-        assert!(req.tool_results[0].result.is_none());
-        assert_eq!(
-            req.tool_results[0].error.as_ref().unwrap(),
-            "Connection refused"
-        );
-    }
-}

@@ -15,8 +15,6 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-#[cfg(test)]
-use serde_json::{Map, Value};
 
 use crate::domains::evals::record::*;
 
@@ -248,44 +246,9 @@ pub async fn export_run_dataset(
 }
 
 #[cfg(test)]
-fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
-    let mut export = Map::new();
-    export.insert(
-        "instance_id".to_string(),
-        Value::String(
-            result
-                .case_name
-                .clone()
-                .unwrap_or_else(|| result.eval_case_id.to_string()),
-        ),
-    );
-
-    if let Some(artifacts) = &result.artifacts {
-        for (name, content) in artifacts {
-            let key = if name == "patch" {
-                "model_patch"
-            } else {
-                name.as_str()
-            };
-            if export.contains_key(key) {
-                tracing::warn!(
-                    eval_case_id = %result.eval_case_id,
-                    artifact_name = %name,
-                    export_key = %key,
-                    "Skipping colliding eval artifact export field"
-                );
-                continue;
-            }
-            export.insert(key.to_string(), Value::String(content.clone()));
-        }
-    }
-
-    Value::Object(export)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::evals::queries::run_artifact_export_value;
     use everruns_contracts::typed_id::EvalCaseId;
     use std::collections::BTreeMap;
     use uuid::Uuid;

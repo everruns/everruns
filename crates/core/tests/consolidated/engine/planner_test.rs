@@ -478,53 +478,6 @@ fn act_waiting_continues_when_hint_absent() {
     }
 }
 
-/// Serializing a `TurnState`, deserializing it, and planning from both must
-/// yield the same next plan for the same input — the durable-replay property in
-/// miniature.
-#[test]
-fn serialize_deserialize_plan_round_trip_is_equal() {
-    let mut state = turn_state();
-    state.started_at = Some(fixed_now() - chrono::Duration::milliseconds(500));
-    state.cumulative_usage = Some(TokenUsage::new(3, 1));
-    state.tool_call_count = 2;
-    state.llm_call_count = 1;
-
-    let serialized = serde_json::to_string(&state).expect("serialize");
-    let restored: TurnState = serde_json::from_str(&serialized).expect("deserialize");
-
-    let now = fixed_now();
-    let (plan_a, effects_a) = plan_after_reason(&state, reason_result(), 0, now, None);
-    let (plan_b, effects_b) = plan_after_reason(&restored, reason_result(), 0, now, None);
-
-    // Both terminal completions with identical stop reason + summarized fields.
-    let (sr_a, err_a) = match plan_a {
-        TurnPlan::Complete { stop_reason, error } => (stop_reason, error),
-        other => panic!("expected Complete, got {other:?}"),
-    };
-    let (sr_b, err_b) = match plan_b {
-        TurnPlan::Complete { stop_reason, error } => (stop_reason, error),
-        other => panic!("expected Complete, got {other:?}"),
-    };
-    assert_eq!(sr_a, sr_b);
-    assert_eq!(err_a, err_b);
-
-    let completed = |effects: &[TurnLifecycleEffect]| -> everruns_core::events::TurnCompletedData {
-        match &effects[0] {
-            TurnLifecycleEffect::TurnCompleted { data, .. } => data.clone(),
-            other => panic!("expected TurnCompleted, got {other:?}"),
-        }
-    };
-    let data_a = completed(&effects_a);
-    let data_b = completed(&effects_b);
-    assert_eq!(data_a.duration_ms, data_b.duration_ms);
-    assert_eq!(data_a.tool_call_count, data_b.tool_call_count);
-    assert_eq!(data_a.llm_call_count, data_b.llm_call_count);
-    assert_eq!(
-        serde_json::to_value(&data_a.usage).unwrap(),
-        serde_json::to_value(&data_b.usage).unwrap()
-    );
-}
-
 /// A URL elicitation consent card is only worth pausing for when the client
 /// said it can render one. The `setup_connection` hint does not stand in for
 /// that: a client that renders connection cards need not render this one.

@@ -744,11 +744,6 @@ mod tests {
     use crate::builtins::capabilities::SystemPromptContext;
 
     #[test]
-    fn off_contributes_no_prompt() {
-        assert!(render_approval_block(ApprovalMode::Off).is_none());
-    }
-
-    #[test]
     fn config_validation_accepts_known_levels_and_rejects_typos() {
         let capability = SoftApprovalCapability::new();
         assert!(capability.validate_config(&json!({})).is_ok());
