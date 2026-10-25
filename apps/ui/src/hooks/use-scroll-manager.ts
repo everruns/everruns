@@ -24,6 +24,12 @@ interface UseScrollManagerOptions {
   sessionId: string;
   /** Dependencies that trigger auto-scroll when near bottom (e.g., streaming text) */
   scrollDeps?: unknown[];
+  /**
+   * Client id of the reader's newest own send. A new value always scrolls to the
+   * bottom, even when they had scrolled up to read: they just sent it and expect
+   * to see it and the turn it starts.
+   */
+  latestOwnSendId?: string | null;
 }
 
 export function useScrollManager({
@@ -34,6 +40,7 @@ export function useScrollManager({
   loadOlderEvents,
   sessionId,
   scrollDeps = [],
+  latestOwnSendId = null,
 }: UseScrollManagerOptions) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -42,6 +49,7 @@ export function useScrollManager({
   const initialScrollDoneRef = useRef(false);
   const prevScrollHeightRef = useRef<number | null>(null);
   const [hasNewMessages, setHasNewMessages] = useState(false);
+  const prevOwnSendIdRef = useRef(latestOwnSendId);
 
   const checkIsNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -110,6 +118,15 @@ export function useScrollManager({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventCount, scrollToBottom, ...scrollDeps]);
+
+  // The reader's own send pulls the view to the bottom and keeps following.
+  useEffect(() => {
+    if (!latestOwnSendId || latestOwnSendId === prevOwnSendIdRef.current) return;
+    prevOwnSendIdRef.current = latestOwnSendId;
+    isNearBottomRef.current = true;
+    setHasNewMessages(false);
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+  }, [latestOwnSendId, scrollToBottom]);
 
   // Preserve scroll position when older events are prepended
   useLayoutEffect(() => {

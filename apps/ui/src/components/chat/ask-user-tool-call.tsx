@@ -16,7 +16,7 @@ import {
 
 export interface AskUserOption {
   label: string;
-  description: string;
+  description?: string;
   default?: boolean;
 }
 
@@ -511,9 +511,11 @@ export function AskUserToolCall({
                               </Badge>
                             )}
                           </span>
-                          <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                            {option.description}
-                          </span>
+                          {option.description ? (
+                            <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                              {option.description}
+                            </span>
+                          ) : null}
                         </span>
                         {shortcutHeld && status === "idle" && optionIndex < 9 && (
                           <OptionNumber number={optionIndex + 1} modifier={shortcutModifier} />

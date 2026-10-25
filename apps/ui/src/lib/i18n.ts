@@ -50,6 +50,7 @@ const messages = {
     turn_queued: "Queued",
     turn_queued_status: "Joins the current turn",
     turn_starting: "Starting",
+    turn_waiting_for_worker: "Waiting for a worker to pick this up",
     turn_thinking: "Thinking",
     turn_stopped_after: "Stopped after {duration}",
     turn_not_delivered: "Not delivered",
@@ -131,9 +132,10 @@ const messages = {
     expand_tool_activity: "Expand tool activity",
     collapse_activity_group: "Collapse activity group",
     expand_activity_group: "Expand activity group",
-    chat_error_title: "Something went wrong",
+    chat_error_title: "The agent could not reply",
     chat_error_description:
       "Try sending your message again. If it keeps happening, share feedback so we can investigate.",
+    chat_error_action_description: "Sending again will not help until this is fixed.",
     chat_error_fallback: "Message failed.",
     chat_model_loading: "Checking model availability…",
     chat_model_required: "Choose a model, or configure a default model, before sending.",
@@ -179,7 +181,7 @@ const messages = {
     runtime_error_provider_in_flight_limit_auto_retry:
       "The AI provider's in-flight spending limit is reached. Retrying automatically in about {retry_after}s.",
     runtime_error_provider_misconfigured:
-      "There is a misconfiguration with the AI provider. Please contact support.",
+      "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
     runtime_error_provider_quota_exhausted_affordable:
@@ -341,6 +343,7 @@ const messages = {
     turn_queued: "У черзі",
     turn_queued_status: "Приєднається до поточного ходу",
     turn_starting: "Починаю",
+    turn_waiting_for_worker: "Чекаю, поки воркер візьме це в роботу",
     turn_thinking: "Думаю",
     turn_stopped_after: "Зупинено через {duration}",
     turn_not_delivered: "Не доставлено",
@@ -422,9 +425,10 @@ const messages = {
     expand_tool_activity: "Розгорнути активність інструментів",
     collapse_activity_group: "Згорнути групу активності",
     expand_activity_group: "Розгорнути групу активності",
-    chat_error_title: "Щось пішло не так",
+    chat_error_title: "Агент не зміг відповісти",
     chat_error_description:
       "Спробуйте надіслати повідомлення ще раз. Якщо це повторюється, надішліть відгук, щоб ми могли дослідити проблему.",
+    chat_error_action_description: "Повторне надсилання не допоможе, доки це не виправлено.",
     chat_error_fallback: "Повідомлення не вдалося надіслати.",
     chat_model_loading: "Перевіряємо доступність моделі…",
     chat_model_required:
@@ -472,7 +476,7 @@ const messages = {
     runtime_error_provider_in_flight_limit_auto_retry:
       "Досягнуто ліміту одночасних витрат AI-провайдера. Автоматична повторна спроба приблизно через {retry_after} с.",
     runtime_error_provider_misconfigured:
-      "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
+      "AI-провайдер налаштований некоректно. Попросіть адміністратора перевірити провайдера в розділі Models.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
     runtime_error_provider_quota_exhausted_affordable:

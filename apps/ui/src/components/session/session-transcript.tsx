@@ -89,6 +89,7 @@ export function SessionTranscript({
       loadOlderEvents,
       sessionId,
       scrollDeps: [streamingText, isThinking],
+      latestOwnSendId: chatSends.pending.at(-1)?.clientId ?? null,
     });
 
   // Turn navigation rail: one marker per user turn. Anchors must line up with

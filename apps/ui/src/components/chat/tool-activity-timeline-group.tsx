@@ -12,6 +12,7 @@ import { useLocale } from "@/providers/locale-provider";
 import { FailureIcon, failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { isSettledRow, type TimelineToolRow } from "./tool-activity-groups";
 import { WebSearchRow } from "./web-search-details";
+import { useToolErrorsInline } from "./tool-error-disclosure";
 import { parseWebSearchDetails } from "@/lib/web-search";
 export type { TimelineToolRow } from "./tool-activity-groups";
 
@@ -52,7 +53,17 @@ function GenericTimelineRow({ row }: { row: TimelineToolRow }) {
     : "";
   const mcpAppResources = extractMcpAppResources(row.result?.result, row.result?.tool_name);
   const preview = resultPreview(row.result);
-  const hasDetails = fullText.length > 0;
+  // In chat the row label already says the step failed ("Could not ask user"), so
+  // the raw tool error waits behind Details; see tool-error-disclosure.ts.
+  const errorsInline = useToolErrorsInline();
+  const errorText = row.result?.error?.trim() ?? "";
+  const hasDetails = fullText.length > 0 || (!errorsInline && errorText.length > 0);
+  const errorLine =
+    errorText && row.result ? (
+      <div className={cn("text-xs", failureTextClass(toolFailureSeverity(row.result) ?? "issue"))}>
+        {errorText}
+      </div>
+    ) : null;
 
   return (
     <div className="py-1.5">
@@ -100,16 +111,7 @@ function GenericTimelineRow({ row }: { row: TimelineToolRow }) {
             )}
           </div>
 
-          {row.result?.error && (
-            <div
-              className={cn(
-                "mt-0.5 text-xs",
-                failureTextClass(toolFailureSeverity(row.result) ?? "issue"),
-              )}
-            >
-              {row.result.error}
-            </div>
-          )}
+          {errorsInline && errorLine && <div className="mt-0.5">{errorLine}</div>}
 
           <ExecutedArgumentsNotice toolResult={row.result} originalArguments={row.arguments} />
 
@@ -124,7 +126,8 @@ function GenericTimelineRow({ row }: { row: TimelineToolRow }) {
             )}
           >
             <div className="min-h-0 overflow-hidden">
-              {hasDetails && (
+              {!errorsInline && errorLine}
+              {fullText && (
                 <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/90">
                   {fullText}
                 </pre>

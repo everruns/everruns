@@ -25,6 +25,7 @@ import { extractMcpAppResources, extractResultImages, getFullText } from "./tool
 import { useLocale } from "@/providers/locale-provider";
 import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-activity";
 import { WebSearchRow } from "./web-search-details";
+import { useToolErrorsInline } from "./tool-error-disclosure";
 import { parseWebSearchDetails } from "@/lib/web-search";
 
 export function ToolActivityRow({
@@ -49,8 +50,10 @@ export function ToolActivityRow({
   const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
   const resultImages = extractResultImages(toolResult?.result);
   const detailsId = `tool-activity-details-${toolCall.id}`;
-  const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
+  // In chat the raw tool error waits behind Details; see tool-error-disclosure.ts.
+  const errorsInline = useToolErrorsInline();
+  const hasOutput = fullText.length > 0 || (!errorsInline && hasToolError);
   const failureSeverity = hasToolError ? (toolFailureSeverity(toolResult) ?? "issue") : null;
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
@@ -125,7 +128,7 @@ export function ToolActivityRow({
             )}
           </div>
 
-          {failureSeverity && (
+          {errorsInline && failureSeverity && (
             <div className={cn("mt-1 text-xs", failureTextClass(failureSeverity))}>
               {toolResult?.error}
             </div>
@@ -145,7 +148,12 @@ export function ToolActivityRow({
             )}
           >
             <div className="min-h-0 overflow-hidden">
-              {hasOutput && (
+              {!errorsInline && failureSeverity && (
+                <div className={cn("mb-1 text-xs", failureTextClass(failureSeverity))}>
+                  {toolResult?.error}
+                </div>
+              )}
+              {fullText && (
                 <pre className="max-h-80 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
                   {formatResultDetails(toolCall, fullText)}
                 </pre>

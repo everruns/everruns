@@ -484,7 +484,7 @@ impl UserFacingError {
             codes::PROVIDER_RATE_LIMITED => rate_limited_message(&self.fields),
             codes::PROVIDER_USAGE_LIMIT_REACHED => usage_limit_reached_message(&self.fields),
             codes::PROVIDER_MISCONFIGURED => {
-                "There is a misconfiguration with the AI provider. Please contact support."
+                "The AI provider is not set up correctly. Ask an administrator to check the provider in Models."
                     .to_string()
             }
             codes::PROVIDER_QUOTA_EXHAUSTED => quota_exhausted_message(&self.fields),

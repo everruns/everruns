@@ -21,6 +21,11 @@ import { getEventData } from "@/lib/api/types";
 export const CLIENT_MESSAGE_ID_METADATA_KEY = "everruns_client_message_id";
 /** No ack after this long: the row reads "Still connecting…". */
 export const STILL_CONNECTING_MS = 3_000;
+/**
+ * A turn still "starting" after this long has not been picked up by a worker
+ * (all busy, or none running). The row says so instead of looking like work.
+ */
+export const STILL_STARTING_MS = 15_000;
 /** No ack after this long: the send is reported as not delivered. */
 export const NOT_DELIVERED_MS = 10_000;
 

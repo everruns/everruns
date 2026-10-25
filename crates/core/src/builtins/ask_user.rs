@@ -88,6 +88,10 @@ pub enum AskUserQuestionKind {
 #[serde(deny_unknown_fields)]
 pub struct AskUserOption {
     pub label: String,
+    /// Optional: a plain confirmation ("Create it" / "Not yet") reads fine
+    /// without one, and models routinely omit it there. Rejecting the call for
+    /// that cost users the confirmation card and dropped them to a typed reply.
+    #[serde(default)]
     pub description: String,
     #[serde(default, rename = "default")]
     pub is_default: bool,
@@ -436,11 +440,6 @@ pub fn validate_ask_user_request(request: &AskUserRequest) -> Result<(), String>
             if option.label.trim().is_empty() {
                 return Err(format!(
                     "question {position} option labels must not be empty"
-                ));
-            }
-            if option.description.trim().is_empty() {
-                return Err(format!(
-                    "question {position} option descriptions must not be empty"
                 ));
             }
             if !labels.insert(option.label.as_str()) {
@@ -870,10 +869,10 @@ fn ask_user_parameters_schema() -> Value {
                                 "type": "object",
                                 "properties": {
                                     "label": {"type": "string", "minLength": 1},
-                                    "description": {"type": "string", "minLength": 1},
+                                    "description": {"type": "string"},
                                     "default": {"type": "boolean", "default": false}
                                 },
-                                "required": ["label", "description"],
+                                "required": ["label"],
                                 "additionalProperties": false
                             }
                         }
