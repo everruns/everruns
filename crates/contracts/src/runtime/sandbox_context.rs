@@ -19,6 +19,10 @@ impl SessionSandboxContext for ToolContext {
         Arc::new(self.clone())
     }
 
+    fn network_access(&self) -> Option<crate::runtime::network_access::NetworkAccessList> {
+        self.network_access.clone()
+    }
+
     async fn connection_token(
         &self,
         provider: &str,

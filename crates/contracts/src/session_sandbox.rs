@@ -240,6 +240,14 @@ pub trait SessionSandboxContext: Send + Sync {
     /// Non-secret labels for resources created on behalf of this session.
     async fn resource_labels(&self) -> serde_json::Map<String, Value>;
 
+    /// The session's merged network access list (harness, Agent, Session),
+    /// which a provider enforces on the sandbox's own outbound traffic where
+    /// it can (`runtime::sandbox_egress`).
+    #[cfg(feature = "runtime")]
+    fn network_access(&self) -> Option<crate::runtime::network_access::NetworkAccessList> {
+        None
+    }
+
     /// Labels for the managed Session Sandbox itself: [`Self::resource_labels`]
     /// plus [`LABEL_MANAGED`], which the orphan scan keys on.
     async fn managed_resource_labels(&self) -> serde_json::Map<String, Value> {

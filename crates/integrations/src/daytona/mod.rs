@@ -35,6 +35,7 @@ pub mod computer;
 pub mod connection;
 mod git_auth;
 mod naming;
+mod network;
 pub mod openapi_spec;
 mod owned;
 mod session_sandbox_provider;

@@ -67,6 +67,7 @@ pub mod resource_names;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod sandbox_context;
+pub mod sandbox_egress;
 pub mod sandbox_workspace;
 pub mod saved_scripts;
 pub mod session;

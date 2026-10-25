@@ -309,22 +309,21 @@ impl Tool for DaytonaCreateSandboxTool {
         };
 
         let mut create_body = create_body(&labels, auto_stop);
+        if let Err(error) = super::network::apply_tool_rules(context, &mut create_body) {
+            return error;
+        }
         // Resolve snapshot: explicit snapshot > size tier > default (small)
         let explicit_snapshot = arguments
             .get("snapshot")
             .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.to_string());
+            .filter(|s| !s.trim().is_empty());
         let size = arguments.get("size").and_then(|v| v.as_str());
-
-        let snapshot_name = if let Some(snap) = &explicit_snapshot {
-            snap.clone()
-        } else {
-            let sz = size.unwrap_or("small");
-            match snapshot_for_size(sz) {
+        let snapshot_name = match explicit_snapshot {
+            Some(snap) => snap.to_string(),
+            None => match snapshot_for_size(size.unwrap_or("small")) {
                 Ok(name) => name.to_string(),
                 Err(e) => return ToolExecutionResult::tool_error(&e),
-            }
+            },
         };
 
         create_body.snapshot = Some(snapshot_name);

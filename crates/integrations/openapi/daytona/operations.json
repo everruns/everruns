@@ -12,7 +12,8 @@
       "createVolume",
       "getVolume",
       "getVolumeByName",
-      "getAllSnapshots"
+      "getAllSnapshots",
+      "updateNetworkSettings"
     ],
     "toolbox": [
       "CreateSession",

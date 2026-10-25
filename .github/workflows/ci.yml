@@ -1374,7 +1374,7 @@ jobs:
       - name: Run Daytona live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test --test daytona_live_openapi_test -- --test-threads=1
 
   # Live E2B API tests — only when crates/integrations/src/e2b/** changes
   e2b-live-test:

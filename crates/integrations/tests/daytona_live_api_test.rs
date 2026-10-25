@@ -1225,90 +1225,6 @@ async fn test_live_computer_use_capability_reuses_the_desktop() {
     );
 }
 
-// ============================================================================
-// OpenAPI drift
-// ============================================================================
-
-/// The client is generated from vendored copies of Daytona's specs
-/// (`openapi/daytona/`). This checks that every operation Everruns uses
-/// (`openapi/daytona/operations.json`) still has the same path, parameters,
-/// request body and success response shape in the specs Daytona serves now.
-/// On failure, refresh with `doppler run -- scripts/update-daytona-openapi.sh`
-/// and review the diff.
-///
-/// Shapes compare property names, nesting and `required`, not descriptions,
-/// examples or enum values: the generated client reads enums as strings, so a
-/// new sandbox state is not drift. The toolbox spec is Swagger 2.0 when served
-/// and OpenAPI 3.0 once vendored, so both forms are normalized.
-#[tokio::test]
-async fn test_live_openapi_matches_vendored() {
-    let api_key = require_api_key!();
-    let operations: serde_json::Value =
-        serde_json::from_str(include_str!("../openapi/daytona/operations.json")).unwrap();
-    let ids = |api: &str| -> Vec<String> {
-        let mut ids: Vec<String> = ["client", "raw", "agent"]
-            .iter()
-            .filter_map(|group| operations[group][api].as_array())
-            .flatten()
-            .map(|id| id.as_str().unwrap().to_string())
-            .collect();
-        ids.sort();
-        ids.dedup();
-        ids
-    };
-
-    let http = reqwest::Client::new();
-    let live_management: serde_json::Value = http
-        .get("https://app.daytona.io/api-json")
-        .send()
-        .await
-        .expect("fetch management spec")
-        .json()
-        .await
-        .expect("management spec is JSON");
-
-    let (_client, guard) = create_test_sandbox(api_key.clone(), "openapi-drift").await;
-    let live_toolbox: serde_json::Value = http
-        .get(format!(
-            "https://proxy.app.daytona.io/toolbox/{}/swagger/doc.json",
-            guard.sandbox_id
-        ))
-        .bearer_auth(&api_key)
-        .send()
-        .await
-        .expect("fetch toolbox spec")
-        .json()
-        .await
-        .expect("toolbox spec is JSON");
-
-    let vendored_management: serde_json::Value =
-        serde_json::from_str(include_str!("../openapi/daytona/api.json")).unwrap();
-    let vendored_toolbox: serde_json::Value =
-        serde_json::from_str(include_str!("../openapi/daytona/toolbox.json")).unwrap();
-
-    let mut drift = Vec::new();
-    for (api, vendored, live) in [
-        ("management", &vendored_management, &live_management),
-        ("toolbox", &vendored_toolbox, &live_toolbox),
-    ] {
-        for id in ids(api) {
-            let expected = spec_shape::operation(vendored, &id);
-            let actual = spec_shape::operation(live, &id);
-            if expected != actual {
-                drift.push(format!(
-                    "{api} {id}:\n  vendored: {expected}\n  live:     {actual}"
-                ));
-            }
-        }
-    }
-    assert!(
-        drift.is_empty(),
-        "Daytona's specs changed for operations Everruns uses; run \
-         scripts/update-daytona-openapi.sh and review:\n{}",
-        drift.join("\n")
-    );
-}
-
 /// Snapshot listing is paginated (`PaginatedSnapshots`), not a bare array.
 #[tokio::test]
 async fn test_live_list_snapshots() {
@@ -1323,138 +1239,99 @@ async fn test_live_list_snapshots() {
     );
 }
 
-/// Format-neutral view of one operation in an OpenAPI 3.0 or Swagger 2.0 spec.
-mod spec_shape {
-    use serde_json::{Value, json};
+/// The template network policy and the session access list reach Daytona on
+/// create, and a resumed sandbox follows the session's current list.
+#[tokio::test]
+async fn test_live_session_sandbox_enforces_network_policy() {
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
 
-    const DEPTH: usize = 4;
+    let api_key = require_api_key!();
+    let mut context = live_provider_context(api_key);
+    context.network_access = Some(NetworkAccessList::allow_only(["github.com"]));
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        credential: live_provider_credential(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
+        provider_config: json!({
+            "snapshot": "daytona-small",
+            "workspace_path": "/home/daytona/workspace",
+            "title": "live-session-sandbox-network",
+            "network": {"mode": "allowlist", "domains": ["github.com", "example.com"]}
+        }),
+        init: Default::default(),
+    };
 
-    pub fn operation(spec: &Value, id: &str) -> Value {
-        let Some((path, method, op)) = find(spec, id) else {
-            return json!("missing");
-        };
-        let path = path.strip_prefix("/api").unwrap_or(&path).to_string();
-        let mut params = Vec::new();
-        let mut body = Value::Null;
-        for param in op["parameters"].as_array().into_iter().flatten() {
-            let param = resolve(spec, param);
-            match param["in"].as_str() {
-                // Swagger 2.0 body and form parameters become OpenAPI 3.0 request bodies.
-                Some("body") => body = schema(spec, &param["schema"], DEPTH),
-                Some("formData") => {
-                    if body.is_null() {
-                        body = json!({ "properties": {} });
-                    }
-                    body["properties"][param["name"].as_str().unwrap_or_default()] = json!("field");
-                }
-                Some(location) => params.push(format!(
-                    "{location}:{}{}",
-                    param["name"].as_str().unwrap_or_default(),
-                    if param["required"].as_bool() == Some(true) {
-                        "!"
-                    } else {
-                        ""
-                    }
-                )),
-                None => {}
-            }
+    let instance = provider
+        .create(&context, &config)
+        .await
+        .expect("managed session sandbox create failed");
+    let guard = SandboxGuard::new(instance.external_id.clone());
+
+    let reaches = |context: ToolContext,
+                   instance: everruns_contracts::session_sandbox::SessionSandboxInstance,
+                   host: &'static str| {
+        let provider = &provider;
+        let config = &config;
+        async move {
+            let exec = provider
+                .exec(
+                    &context,
+                    config,
+                    &instance,
+                    &SessionSandboxExecRequest {
+                        command: format!(
+                            "curl -s -o /dev/null -w '%{{http_code}}' --max-time 10 https://{host}/ || true"
+                        ),
+                        cwd: instance.workspace_path.clone(),
+                        timeout_ms: Some(30_000),
+                        output_mode: "normal".to_string(),
+                    },
+                )
+                .await
+                .expect("network probe exec failed");
+            let code = exec.stdout.trim().to_string();
+            eprintln!("[test] {host} -> {code}");
+            !code.is_empty() && code != "000"
         }
-        if let Some(content) = op["requestBody"]["content"].as_object()
-            && let Some((media, media_body)) = content.iter().next()
+    };
+
+    // Template allows github.com and example.com; the session narrows to github.com.
+    assert!(reaches(context.clone(), instance.clone(), "github.com").await);
+    assert!(!reaches(context.clone(), instance.clone(), "example.com").await);
+
+    let paused = provider
+        .pause(&context, &config, &instance)
+        .await
+        .expect("managed session sandbox pause failed");
+    context.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
+    let resumed = provider
+        .resume(&context, &config, &paused)
+        .await
+        .expect("managed session sandbox resume failed");
+
+    // The runner applies an update asynchronously; give it a few seconds.
+    let mut switched = false;
+    for _ in 0..5 {
+        if reaches(context.clone(), resumed.clone(), "example.com").await
+            && !reaches(context.clone(), resumed.clone(), "github.com").await
         {
-            body = if media.starts_with("multipart/") {
-                let fields: serde_json::Map<String, Value> = media_body["schema"]["properties"]
-                    .as_object()
-                    .into_iter()
-                    .flatten()
-                    .map(|(name, _)| (name.clone(), json!("field")))
-                    .collect();
-                json!({ "properties": fields })
-            } else {
-                schema(spec, &media_body["schema"], DEPTH)
-            };
+            switched = true;
+            break;
         }
-        params.sort();
-        let response = op["responses"]
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter(|(status, _)| status.starts_with('2'))
-            .map(|(_, response)| {
-                let response = resolve(spec, response);
-                let schema_ref = response["content"]
-                    .as_object()
-                    .and_then(|content| {
-                        content
-                            .get("application/json")
-                            .or_else(|| content.values().next())
-                    })
-                    .map(|media| &media["schema"])
-                    .unwrap_or(&response["schema"]);
-                schema(spec, schema_ref, DEPTH)
-            })
-            .next()
-            .unwrap_or(Value::Null);
-        json!({
-            "path": format!("{method} {path}"),
-            "params": params,
-            "body": body,
-            "response": response,
-        })
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
+    assert!(
+        switched,
+        "resumed sandbox did not follow the new access list"
+    );
 
-    fn find(spec: &Value, id: &str) -> Option<(String, String, Value)> {
-        spec["paths"].as_object()?.iter().find_map(|(path, item)| {
-            item.as_object()?.iter().find_map(|(method, op)| {
-                (op["operationId"].as_str() == Some(id))
-                    .then(|| (path.clone(), method.clone(), op.clone()))
-            })
-        })
-    }
-
-    fn resolve<'a>(spec: &'a Value, value: &'a Value) -> &'a Value {
-        let Some(reference) = value["$ref"].as_str() else {
-            return value;
-        };
-        let pointer = reference.trim_start_matches('#');
-        spec.pointer(pointer).unwrap_or(&Value::Null)
-    }
-
-    fn schema(spec: &Value, value: &Value, depth: usize) -> Value {
-        let value = resolve(spec, value);
-        if let Some(first) = value["allOf"].as_array().and_then(|parts| parts.first()) {
-            return schema(spec, first, depth);
-        }
-        if depth == 0 {
-            return json!("…");
-        }
-        if let Some(properties) = value["properties"].as_object() {
-            let properties: serde_json::Map<String, Value> = properties
-                .iter()
-                .map(|(name, child)| (name.clone(), schema(spec, child, depth - 1)))
-                .collect();
-            let mut required: Vec<&str> = value["required"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .collect();
-            required.sort_unstable();
-            return json!({ "properties": properties, "required": required });
-        }
-        if value["type"] == "array" {
-            return json!({ "array": schema(spec, &value["items"], depth - 1) });
-        }
-        if let Some(additional) = value.get("additionalProperties")
-            && additional.is_object()
-        {
-            return json!({ "map": schema(spec, additional, depth - 1) });
-        }
-        match value["type"].as_str() {
-            // Swagger 2.0 `file` is OpenAPI 3.0 `string` + `format: binary`.
-            Some("file") => json!("string"),
-            Some(kind) => json!(kind),
-            None => json!("any"),
-        }
-    }
+    provider
+        .delete(&context, &config, &resumed)
+        .await
+        .expect("managed session sandbox delete failed");
+    std::mem::forget(guard);
 }

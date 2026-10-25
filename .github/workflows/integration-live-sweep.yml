@@ -35,7 +35,7 @@ jobs:
       matrix:
         include:
           - name: Daytona Live API Tests
-            command: cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
+            command: cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test --test daytona_live_openapi_test -- --test-threads=1
           # Browserless Live API Tests are out of the sweep: the account runs on
           # a small credit allowance, so its live job runs only when the
           # integration changes or on manual dispatch of
