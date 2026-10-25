@@ -8,6 +8,17 @@
 // sandbox that is still running past its idle limit while its session is not
 // running a turn. It waits one sweep period past the limit so the timer, when
 // it survives, still acts first.
+//
+// Decision: a sandbox unused for `STALE_TURN` is paused even while its session
+// claims to run a turn. A turn whose worker died can leave the session
+// `active` for days (yolop#858 ran its Daytona sandbox for nine). Pausing a
+// live turn's sandbox is harmless: its next sandbox call resumes it.
+//
+// Decision: the same job deletes paused sandboxes past their template's
+// `lifecycle.delete_after_seconds` (default one day), and right away when the
+// idle action is `delete`. Nothing else deletes a paused sandbox until its
+// session is deleted, and trigger sessions never are, so every webhook run
+// left one behind. Only the provider sandbox goes: the record stays forever.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,6 +28,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::background::cluster_jobs::ClusterJob;
+use crate::domains::sandbox_templates::record::DEFAULT_DELETE_AFTER_SECONDS;
 use crate::domains::session_sandbox::SessionSandboxService;
 
 /// Durable schedule name of the Sandbox idle sweep.
@@ -25,6 +37,9 @@ pub const SANDBOX_IDLE_SWEEP_SCHEDULE: &str = "sandbox-idle-sweep";
 pub const SANDBOX_IDLE_SWEEP_ACTIVITY: &str = "sandbox_idle_sweep";
 
 const SWEEP_PERIOD: Duration = Duration::from_secs(60);
+/// How long a sandbox of an `active` session may go unused before it counts
+/// as idle.
+const STALE_TURN: Duration = Duration::from_secs(6 * 3600);
 /// Most sandboxes paused per run; the next run picks up the rest.
 const SWEEP_BATCH: i64 = 50;
 
@@ -37,7 +52,7 @@ pub fn idle_sweep_job(pool: PgPool, service: Option<Arc<SessionSandboxService>>)
     ClusterJob::every(
         SANDBOX_IDLE_SWEEP_SCHEDULE,
         SANDBOX_IDLE_SWEEP_ACTIVITY,
-        "Pauses managed Sandboxes still running past their idle limit.",
+        "Pauses managed Sandboxes still running past their idle limit and deletes paused ones past their retention.",
         SWEEP_PERIOD,
         move || {
             let pool = pool.clone();
@@ -48,6 +63,33 @@ pub fn idle_sweep_job(pool: PgPool, service: Option<Arc<SessionSandboxService>>)
 }
 
 async fn sweep(pool: &PgPool, service: &SessionSandboxService) {
+    pause_overdue(pool, service).await;
+    delete_expired(pool, service).await;
+}
+
+async fn delete_expired(pool: &PgPool, service: &SessionSandboxService) {
+    let sessions = match expired_paused_sandbox_sessions(pool, SWEEP_BATCH).await {
+        Ok(sessions) => sessions,
+        Err(e) => {
+            warn!(error = %e, "Sandbox retention sweep query failed");
+            return;
+        }
+    };
+    for session_id in sessions {
+        let session_id = everruns_contracts::typed_id::SessionId::from_uuid(session_id);
+        match service.delete_expired(session_id).await {
+            Ok(true) => {
+                info!(session_id = %session_id, "Deleted paused Sandbox past its retention")
+            }
+            Ok(false) => {}
+            Err(e) => {
+                warn!(session_id = %session_id, error = %e, "Sandbox retention delete failed")
+            }
+        }
+    }
+}
+
+async fn pause_overdue(pool: &PgPool, service: &SessionSandboxService) {
     let sessions = match overdue_idle_sandbox_sessions(pool, SWEEP_PERIOD, SWEEP_BATCH).await {
         Ok(sessions) => sessions,
         Err(e) => {
@@ -68,7 +110,8 @@ async fn sweep(pool: &PgPool, service: &SessionSandboxService) {
 }
 
 /// Sessions whose managed sandbox is running, has had no activity for longer
-/// than its idle limit plus `grace`, and whose session is not running a turn.
+/// than its idle limit plus `grace`, and whose session is not running a turn
+/// (or has not used the sandbox for `STALE_TURN`).
 /// Sandboxes whose lifecycle says `keep_running` are left alone.
 pub async fn overdue_idle_sandbox_sessions(
     pool: &PgPool,
@@ -85,7 +128,10 @@ pub async fn overdue_idle_sandbox_sessions(
           AND s.desired_state = 'ready'
           AND COALESCE(s.profile_snapshot->'target'->>'kind', '') NOT IN ('vfs', 'host')
           AND COALESCE(s.profile_snapshot->'lifecycle'->>'idle_action', '') <> 'keep_running'
-          AND sess.status IN ('idle', 'started', 'paused')
+          AND (sess.status IN ('idle', 'started', 'paused')
+               OR (sess.status = 'active'
+                   AND COALESCE(s.last_activity_at, s.updated_at)
+                       < now() - make_interval(secs => $3)))
           AND COALESCE(s.last_activity_at, s.updated_at)
               < now() - make_interval(secs => COALESCE(
                     (s.profile_snapshot->'lifecycle'->>'idle_after_seconds')::double precision,
@@ -95,6 +141,45 @@ pub async fn overdue_idle_sandbox_sessions(
         "#,
     )
     .bind(grace.as_secs_f64())
+    .bind(limit)
+    .bind(STALE_TURN.as_secs_f64())
+    .fetch_all(pool)
+    .await
+}
+
+/// Sessions whose managed sandbox is paused and has had no activity for
+/// longer than its lifecycle's `delete_after_seconds`, or at once when its
+/// idle action is `delete`. A snapshot without the field gets the default; an
+/// explicit `null` keeps the sandbox.
+pub async fn expired_paused_sandbox_sessions(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        SELECT s.session_id
+        FROM sandboxes s
+        JOIN sessions sess ON sess.id = s.session_id
+        WHERE s.deleted_at IS NULL
+          AND s.observed_state = 'paused'
+          -- Only profiled Sandboxes: deleting their state keeps the row as
+          -- `deleted` with its instances retired, so fleet history and stats
+          -- survive. An unprofiled row would be removed outright.
+          AND s.profile_snapshot IS NOT NULL
+          AND s.profile_snapshot->'target'->>'kind' NOT IN ('vfs', 'host')
+          AND sess.status <> 'active'
+          AND (s.profile_snapshot->'lifecycle'->>'idle_action' = 'delete'
+               OR (COALESCE(jsonb_typeof(s.profile_snapshot->'lifecycle'->'delete_after_seconds'), '')
+                       <> 'null'
+                   AND COALESCE(s.last_activity_at, s.updated_at)
+                       < now() - make_interval(secs => COALESCE(
+                             (s.profile_snapshot->'lifecycle'->>'delete_after_seconds')::double precision,
+                             $1))))
+        ORDER BY s.last_activity_at NULLS FIRST
+        LIMIT $2
+        "#,
+    )
+    .bind(DEFAULT_DELETE_AFTER_SECONDS as f64)
     .bind(limit)
     .fetch_all(pool)
     .await

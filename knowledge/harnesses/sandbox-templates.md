@@ -878,6 +878,24 @@ GET /v1/sessions/{session_id}/sandbox
 deliberately no switch endpoint: a session's environment is fixed once it
 starts, and moving work elsewhere is a fork with a different environment.
 
+### Idle pause and retention
+
+A cluster job (`crates/server/src/background/sandbox_idle_sweep.rs`) pauses
+running Sandboxes once `lifecycle.idle_after_seconds` passes without activity,
+and deletes paused ones after `lifecycle.delete_after_seconds` (one day when
+the field is absent, never when it is `null`), or on the next sweep when
+`idle_action` is `delete`. The provider Sandbox is disposable; its record is
+permanent (rows are marked deleted, never purged). Two cases drove the rules:
+
+- A session stuck in `active` (a turn that never finished) used to keep its
+  Sandbox running indefinitely. The sweep now pauses it too once the Sandbox
+  itself has been unused for six hours. Pausing is safe: the next Sandbox call
+  resumes it.
+- Trigger-started sessions are never deleted, so their paused Sandboxes piled
+  up as provider storage. Retention deletes the provider Sandbox and its state,
+  not the session; a later turn provisions a fresh one. Active sessions are
+  never deleted from under a turn.
+
 ### Targets this deployment can actually offer
 
 The UI cannot render an honest picker from provider names alone.

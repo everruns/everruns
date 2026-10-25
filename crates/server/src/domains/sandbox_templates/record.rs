@@ -282,6 +282,13 @@ pub struct SandboxLifecycle {
     /// Action Everruns requests after the idle interval.
     #[serde(default)]
     pub idle_action: SandboxIdleAction,
+    /// How long a paused Sandbox is kept, counted from its last activity,
+    /// before Everruns deletes it with its files. The Session stays; its next
+    /// Sandbox call provisions a fresh one. `null` keeps paused Sandboxes
+    /// until their Session is deleted.
+    #[serde(default = "default_delete_after_seconds")]
+    #[schema(example = 259_200, nullable)]
+    pub delete_after_seconds: Option<u64>,
 }
 
 impl Default for SandboxLifecycle {
@@ -289,8 +296,20 @@ impl Default for SandboxLifecycle {
         Self {
             idle_after_seconds: default_idle_after_seconds(),
             idle_action: SandboxIdleAction::CheckpointAndStop,
+            delete_after_seconds: default_delete_after_seconds(),
         }
     }
+}
+
+/// Paused Sandboxes are deleted after one day without activity unless the
+/// template says otherwise. Decision: the provider Sandbox is disposable (a
+/// Session recovers on a fresh one) while its record is kept forever. Without
+/// a limit nothing ever deleted a paused Sandbox, and Sessions started by
+/// triggers are never deleted either, so every webhook run left one behind.
+pub const DEFAULT_DELETE_AFTER_SECONDS: u64 = 86_400;
+
+fn default_delete_after_seconds() -> Option<u64> {
+    Some(DEFAULT_DELETE_AFTER_SECONDS)
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -300,6 +319,9 @@ pub enum SandboxIdleAction {
     CheckpointAndStop,
     Stop,
     KeepRunning,
+    /// Pause on idle, then delete the provider Sandbox on the next sweep.
+    /// For disposable work: the next turn gets a fresh Sandbox.
+    Delete,
 }
 
 /// Reproducible initialization pinned with the specification snapshot.
@@ -385,6 +407,24 @@ fn is_empty_object(value: &serde_json::Value) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn lifecycle_retention_defaults_and_null_means_keep() {
+        let absent: SandboxLifecycle =
+            serde_json::from_value(json!({ "idle_after_seconds": 60 })).unwrap();
+        assert_eq!(
+            absent.delete_after_seconds,
+            Some(DEFAULT_DELETE_AFTER_SECONDS)
+        );
+
+        let keep: SandboxLifecycle = serde_json::from_value(
+            json!({ "idle_after_seconds": 60, "delete_after_seconds": null }),
+        )
+        .unwrap();
+        assert_eq!(keep.delete_after_seconds, None);
+        // Stored snapshots keep the explicit null, which the retention sweep reads.
+        assert!(serde_json::to_value(&keep).unwrap()["delete_after_seconds"].is_null());
+    }
 
     #[test]
     fn named_selection_is_distinct_from_inline_spec() {

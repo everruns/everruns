@@ -251,9 +251,9 @@ hosted store keeps:
 
 - `sandboxes` rows outlive their Session. Deleting a Session marks its
   Sandboxes deleted and keeps the Session title and Agent, so deleted compute
-  stays explainable. Deleted rows are purged after
-  `SANDBOX_HISTORY_RETENTION_DAYS` (default 30,
-  [`sandbox_history_retention.rs`](../../crates/server/src/background/sandbox_history_retention.rs)).
+  stays explainable. Deleted rows are never purged:
+  the provider sandbox is disposable, the record is permanent; the UI hides
+  deleted Sandboxes by default instead.
 - `sandbox_state_transitions` is an append-only log written by a database
   trigger on every `observed_state` or `generation` change, so running time,
   pauses and rebuilds can be drawn without each writer remembering to log.

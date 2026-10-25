@@ -23736,7 +23736,7 @@ export interface components {
       window_days: number;
     };
     /** @enum {string} */
-    SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
+    SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running" | "delete";
     /** @description One physical provider resource behind a logical Sandbox. */
     SandboxIncarnation: {
       /** Format: date-time */
@@ -23755,6 +23755,15 @@ export interface components {
     };
     /** @description Control-plane lifecycle intent. Providers do not own these timers. */
     SandboxLifecycle: {
+      /**
+       * Format: int64
+       * @description How long a paused Sandbox is kept, counted from its last activity,
+       *     before Everruns deletes it with its files. The Session stays; its next
+       *     Sandbox call provisions a fresh one. `null` keeps paused Sandboxes
+       *     until their Session is deleted.
+       * @example 259200
+       */
+      delete_after_seconds?: number | null;
       /** @description Action Everruns requests after the idle interval. */
       idle_action?: components["schemas"]["SandboxIdleAction"];
       /**

@@ -17,7 +17,6 @@ pub mod durable_reaper;
 
 // Event and sandbox-history retention jobs
 pub mod event_retention;
-pub mod sandbox_history_retention;
 
 // Pauses managed Sandboxes whose in-process idle timer was lost
 pub mod sandbox_idle_sweep;
