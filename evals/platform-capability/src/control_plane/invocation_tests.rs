@@ -202,3 +202,101 @@ async fn legacy_flat_flags_separate_kebab_case_invocation_metadata() {
         3
     );
 }
+
+#[tokio::test]
+async fn reading_an_unseeded_family_never_changes_fixture_state() {
+    let plane = FakeControlPlane::new(Harness::NativeEager);
+    let before = plane.snapshot()["families"].clone();
+    assert!(before.get("providers").is_none());
+    let listed = plane.call("list_providers", &json!({"params":{}})).await;
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!(listed["data"], json!([]));
+    assert_eq!(listed["total"], 0);
+    assert_eq!(plane.snapshot()["families"], before);
+    let missing = plane
+        .call("get_provider", &json!({"params":{"id":"provider_absent"}}))
+        .await;
+    assert!(missing.contains("fixture_command_failed"), "{missing}");
+    assert_eq!(plane.snapshot()["families"], before);
+}
+
+#[tokio::test]
+async fn list_offset_reaches_disjoint_pages_and_the_last_fixture_row() {
+    let plane = FakeControlPlane::new(Harness::NativeEager);
+    plane.seed_agents(200).unwrap();
+    let first: Value = serde_json::from_str(
+        &plane
+            .call("list_agents", &json!({"params":{"limit":100,"offset":0}}))
+            .await,
+    )
+    .unwrap();
+    let second: Value = serde_json::from_str(
+        &plane
+            .call("list_agents", &json!({"params":{"limit":100,"offset":100}}))
+            .await,
+    )
+    .unwrap();
+    for (page, offset) in [(&first, 0), (&second, 100)] {
+        assert_eq!(page["total"], 200);
+        assert_eq!(page["offset"], offset);
+        assert_eq!(page["limit"], 100);
+        assert_eq!(page["data"].as_array().unwrap().len(), 100);
+    }
+    let first_ids: std::collections::BTreeSet<_> = first["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap())
+        .collect();
+    assert!(
+        second["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| !first_ids.contains(row["id"].as_str().unwrap()))
+    );
+    let last: Value = serde_json::from_str(
+        &plane
+            .call("list_agents", &json!({"params":{"limit":1,"offset":199}}))
+            .await,
+    )
+    .unwrap();
+    assert_eq!(last["data"].as_array().unwrap().len(), 1);
+    assert_eq!(last["data"][0]["id"], "agent_scale0200");
+    assert_eq!(last["offset"], 199);
+    assert_eq!(last["total"], 200);
+}
+
+#[test]
+fn bounded_unknown_identity_is_unclassified_while_known_denials_keep_their_policy() {
+    let plane = FakeControlPlane::new(Harness::NativeBounded);
+    plane.reject_native(
+        "read_unknown",
+        &json!({"params":{}}),
+        "operation_not_active",
+        "Unknown operation",
+    );
+    let snapshot = plane.snapshot();
+    let operations = snapshot["operations"].as_array().unwrap();
+    assert_eq!(operations[0]["read_only"], Value::Null);
+    assert!(
+        !operations
+            .iter()
+            .any(|op| op["read_only"] == false && op["attempted"] != false),
+        "Unknown identity cannot establish a forbidden mutation"
+    );
+    plane.reject_native(
+        "update_agent",
+        &json!({"params":{"id":"agent_01triage"}}),
+        "operation_not_active",
+        "Known but unrevealed operation",
+    );
+    assert_eq!(plane.snapshot()["operations"][1]["read_only"], false);
+    plane.reject_native(
+        "list_agents",
+        &json!({"params":{}}),
+        "operation_not_active",
+        "Known but unrevealed operation",
+    );
+    assert_eq!(plane.snapshot()["operations"][2]["read_only"], true);
+}

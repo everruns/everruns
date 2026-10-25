@@ -723,6 +723,10 @@ pub fn operation_state() -> Box<dyn Scorer> {
                 }
                 if wanted["require_entity_read"] == true {
                     let entity_id = arguments["id"].as_str();
+                    let entity_kind = wanted["name"]
+                        .as_str()
+                        .and_then(|name| name.strip_prefix("update_"));
+                    let expected_read = entity_kind.map(|kind| format!("get_{kind}"));
                     let read_before_write = entity_id.is_some_and(|id| {
                         ops.iter().enumerate().any(|(index, read)| {
                             index
@@ -731,9 +735,7 @@ pub fn operation_state() -> Box<dyn Scorer> {
                                     .position(|candidate| std::ptr::eq(candidate, op))
                                     .unwrap_or(usize::MAX)
                                 && read["status"] == "completed"
-                                && read["name"]
-                                    .as_str()
-                                    .is_some_and(|name| name.starts_with("get_"))
+                                && read["name"].as_str() == expected_read.as_deref()
                                 && read.pointer("/arguments/id").and_then(Value::as_str) == Some(id)
                         })
                     });
@@ -984,12 +986,13 @@ mod tests {
             "history":[]
         },"operations":[]});
         let sample = sample(json!({"surface_comparison":true,
-            "expect_operations":[{"name":"get_manager_context"},{"name":"update_agent"}],
-            "expect_mutations":[{"name":"update_agent","arguments":{"id":"agent_1","description":"after"},"context_ref":"agent_1"}]
+            "expect_operations":[{"name":"get_agent"},{"name":"get_manager_context"},{"name":"update_agent"}],
+            "expect_mutations":[{"name":"update_agent","arguments":{"id":"agent_1","description":"after"},"context_ref":"agent_1","require_entity_read":true}]
         }));
         let mut final_state = initial.clone();
         final_state["families"]["agents"][0]["description"] = json!("after");
         final_state["operations"] = json!([
+            {"name":"get_agent","arguments":{"id":"agent_1"},"read_only":true,"status":"completed","attempted":true},
             {"name":"get_manager_context","arguments":{"entity_ref":"agent_1"},"read_only":true,"status":"completed","attempted":true},
             {"name":"update_agent","arguments":{"id":"agent_1","description":"after"},"metadata":{"reason":"Requested by user","context_revision":4},"read_only":false,"status":"completed","attempted":true}
         ]);
@@ -1023,25 +1026,38 @@ mod tests {
     #[tokio::test]
     async fn operation_state_requires_context_read_revision_and_clean_entity_fields() {
         let (sample, transcript) = update_case();
-        for mutate in [0, 1, 2] {
+        for mutate in [0, 1, 2, 3] {
             let mut broken = transcript.clone();
             match mutate {
                 0 => broken.metadata.get_mut("control_plane_state").unwrap()["operations"]
                     .as_array_mut()
                     .unwrap()
-                    .swap(0, 1),
+                    .swap(1, 2),
                 1 => {
-                    broken.metadata.get_mut("control_plane_state").unwrap()["operations"][1]["metadata"].as_object_mut().unwrap().remove("context_revision");
+                    broken.metadata.get_mut("control_plane_state").unwrap()["operations"][2]["metadata"].as_object_mut().unwrap().remove("context_revision");
                 }
-                _ => {
+                2 => {
                     let polluted = broken.metadata.get_mut("control_plane_state").unwrap();
                     polluted["families"]["agents"][0]["manager_context"] = json!("revision 4");
                 }
+                _ => {
+                    let ops = broken.metadata.get_mut("control_plane_state").unwrap()["operations"]
+                        .as_array_mut()
+                        .unwrap();
+                    ops[0]["name"] = json!("get_manager_context");
+                    ops[0]["arguments"] = json!({"id":"agent_1","entity_ref":"agent_1"});
+                    ops.remove(1);
+                }
             }
-            assert!(
-                !operation_state().score(&sample, &broken).await.pass,
-                "mutation {mutate}"
-            );
+            let score = operation_state().score(&sample, &broken).await;
+            assert!(!score.pass, "mutation {mutate} unexpectedly passed");
+            if mutate == 3 {
+                assert!(
+                    score.reason.contains("did not read the target entity"),
+                    "manager-context lookup must not satisfy get_agent: {}",
+                    score.reason
+                );
+            }
         }
     }
 

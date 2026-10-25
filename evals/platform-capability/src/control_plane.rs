@@ -280,7 +280,9 @@ impl FakeControlPlane {
             "name":name,
             "arguments":invocation.as_ref().map(|call| call.params.clone()).unwrap_or_else(|| args.get("params").cloned().unwrap_or_else(|| json!({}))),
             "metadata":invocation.as_ref().map(Invocation::metadata).unwrap_or_else(|| json!({})),
-            "read_only":self.catalog.iter().find(|entry| entry["name"] == name).and_then(|entry| entry["read_only"].as_bool()).unwrap_or(false),
+            // Unknown names have no catalog policy; they cannot establish a
+            // mutation merely because the bounded adapter rejected them.
+            "read_only":self.catalog.iter().find(|entry| entry["name"] == name).and_then(|entry| entry["read_only"].as_bool()),
             "status":"rejected", "attempted":true, "warnings":[]
         });
         reject_attempt(
@@ -948,8 +950,8 @@ impl Store {
         let family = family_of(wire_name, entry);
         let args = args.as_object().cloned().unwrap_or_default();
 
-        if let Some(rest) = wire_name.strip_prefix("list_") {
-            let rows = self.families.entry(family.clone()).or_default().clone();
+        if wire_name.starts_with("list_") {
+            let rows = self.families.get(&family).cloned().unwrap_or_default();
             let search = args
                 .get("search")
                 .and_then(Value::as_str)
@@ -975,16 +977,16 @@ impl Store {
                 .get("limit")
                 .and_then(Value::as_u64)
                 .unwrap_or(filtered.len().max(1) as u64) as usize;
+            let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
             let total = filtered.len();
-            let page: Vec<Value> = filtered.into_iter().take(limit).collect();
-            let _ = rest;
-            return json!({ "data": page, "total": total, "offset": 0, "limit": limit })
+            let page: Vec<Value> = filtered.into_iter().skip(offset).take(limit).collect();
+            return json!({ "data": page, "total": total, "offset": offset, "limit": limit })
                 .to_string();
         }
 
         if wire_name.starts_with("get_") {
             let id = first_id(&args);
-            let rows = self.families.entry(family.clone()).or_default();
+            let rows = self.families.get(&family).map(Vec::as_slice).unwrap_or(&[]);
             return match rows.iter().find(|row| {
                 let key = row["id"].as_str().or(row["entity_ref"].as_str());
                 key.is_some() && key == id.as_deref()
