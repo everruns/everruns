@@ -199,6 +199,71 @@ function optionString(options: Record<string, unknown>, key: string): string {
 /** Modal fields; the server and provider validate the same ranges. */
 type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
 
+/**
+ * Outbound network policy for providers that enforce it themselves (Modal,
+ * Daytona). Renders grid cells, so it sits inside a two-column grid.
+ */
+function NetworkPolicyFields({
+  name,
+  network,
+  disabled,
+  onNetworkChange,
+}: {
+  name: string;
+  network: NetworkPolicy;
+  disabled: boolean;
+  onNetworkChange: (network: NetworkPolicy) => void;
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-network-${name}`}>Outbound network</Label>
+        <Select
+          value={network.mode}
+          onValueChange={(mode) =>
+            onNetworkChange(
+              mode === "allowlist"
+                ? { mode: "allowlist", allowed_hosts: [] }
+                : { mode: mode as "allow" | "deny" },
+            )
+          }
+          disabled={disabled}
+        >
+          <SelectTrigger id={`sandbox-network-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="allow">Open</SelectItem>
+            <SelectItem value="allowlist">Only listed domains</SelectItem>
+            <SelectItem value="deny">Blocked</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {network.mode === "allowlist" ? (
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor={`sandbox-domains-${name}`}>Allowed domains</Label>
+          <Textarea
+            id={`sandbox-domains-${name}`}
+            value={network.allowed_hosts.join("\n")}
+            onChange={(event) =>
+              onNetworkChange({
+                mode: "allowlist",
+                allowed_hosts: event.target.value
+                  .split("\n")
+                  .map((host) => host.trim())
+                  .filter(Boolean),
+              })
+            }
+            placeholder={"pypi.org\n*.pythonhosted.org"}
+            disabled={disabled}
+            className="font-mono"
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function ModalOptionFields({
   name,
   options,
@@ -287,29 +352,6 @@ function ModalOptionFields({
           className="font-mono"
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor={`sandbox-network-${name}`}>Outbound network</Label>
-        <Select
-          value={network.mode}
-          onValueChange={(mode) =>
-            onNetworkChange(
-              mode === "allowlist"
-                ? { mode: "allowlist", allowed_hosts: [] }
-                : { mode: mode as "allow" | "deny" },
-            )
-          }
-          disabled={disabled}
-        >
-          <SelectTrigger id={`sandbox-network-${name}`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="allow">Open</SelectItem>
-            <SelectItem value="allowlist">Only listed domains</SelectItem>
-            <SelectItem value="deny">Blocked</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
       <div className="flex items-start gap-3 pt-6">
         <Switch
           id={`sandbox-inject-github-${name}`}
@@ -324,27 +366,12 @@ function ModalOptionFields({
           {injectionAllowed ? "" : " Needs open network."}
         </p>
       </div>
-      {network.mode === "allowlist" ? (
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={`sandbox-domains-${name}`}>Allowed domains</Label>
-          <Textarea
-            id={`sandbox-domains-${name}`}
-            value={network.allowed_hosts.join("\n")}
-            onChange={(event) =>
-              onNetworkChange({
-                mode: "allowlist",
-                allowed_hosts: event.target.value
-                  .split("\n")
-                  .map((host) => host.trim())
-                  .filter(Boolean),
-              })
-            }
-            placeholder={"pypi.org\n*.pythonhosted.org"}
-            disabled={disabled}
-            className="font-mono"
-          />
-        </div>
-      ) : null}
+      <NetworkPolicyFields
+        name={name}
+        network={network}
+        disabled={disabled}
+        onNetworkChange={onNetworkChange}
+      />
     </div>
   );
 }
@@ -435,6 +462,17 @@ function TemplateSpecEditor({
   const managed = spec.target.kind === "managed";
   const modal = managed && spec.target.provider === "modal";
   const e2b = managed && spec.target.provider === "e2b";
+  const daytona = managed && spec.target.provider === "daytona";
+  const network = spec.containment?.network ?? { mode: "allow" as const };
+  const setNetwork = (next: NetworkPolicy) =>
+    onChange({
+      ...spec,
+      containment: {
+        level: "isolated" as const,
+        ...spec.containment,
+        network: next,
+      },
+    });
   const providerName = descriptor?.display_name || targetLabel(spec.target);
   const providerIconName = descriptor?.icon || spec.target.provider || "cloud";
   const credentialSource = spec.target.credential?.source ?? "session_user";
@@ -678,13 +716,17 @@ function TemplateSpecEditor({
             <ModalOptionFields
               name={name}
               options={options}
-              network={spec.containment?.network ?? { mode: "allow" }}
+              network={network}
               disabled={disabled}
               setOption={setOption}
               onNetworkChange={(network) => {
                 const next = {
                   ...spec,
-                  containment: { level: "isolated" as const, ...spec.containment, network },
+                  containment: {
+                    level: "isolated" as const,
+                    ...spec.containment,
+                    network,
+                  },
                 };
                 // Injection needs open egress; drop it rather than save a template Modal rejects.
                 if (network.mode !== "allow") {
@@ -763,6 +805,14 @@ function TemplateSpecEditor({
                   disabled={disabled}
                 />
               </div>
+              {daytona ? (
+                <NetworkPolicyFields
+                  name={name}
+                  network={network}
+                  disabled={disabled}
+                  onNetworkChange={setNetwork}
+                />
+              ) : null}
             </div>
           )}
         </div>

@@ -44,6 +44,7 @@ use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::client_test_override::daytona_client_from_context;
 use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
+use crate::daytona::network;
 use crate::daytona::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, release_sandbox_lease,
     save_sandbox_state, touch_sandbox_lease,
@@ -526,6 +527,7 @@ async fn create_desktop_sandbox(
     // No snapshot: Daytona's default image is the one that ships the desktop.
     let mut body = create_body(&labels, AUTO_STOP_INTERVAL_MINUTES);
     body.env = [(RESOLUTION_ENV.to_string(), display.to_string())].into();
+    network::apply_to_create(&mut body, &network::tool_egress_rules(context)?);
     let (info, name) = create_sandbox_with_unique_name(client, "everruns-computer-use", body)
         .await
         .map_err(ToolExecutionResult::tool_error)?;

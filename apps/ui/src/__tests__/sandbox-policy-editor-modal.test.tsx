@@ -203,6 +203,17 @@ describe("SandboxPolicyEditor with a Modal template", () => {
       network: { mode: "allowlist", allowed_hosts: ["pypi.org", "*.pythonhosted.org"] },
     });
   });
+
+  it("offers Daytona the network policy but not E2B", () => {
+    const onChange = jest.fn();
+    const { unmount } = render(<SandboxPolicyEditor value={daytonaPolicy()} onChange={onChange} />);
+    expect(screen.getByLabelText("Outbound network")).toHaveTextContent("Open");
+    expect(screen.queryByLabelText("Allowed domains")).not.toBeInTheDocument();
+    unmount();
+
+    render(<SandboxPolicyEditor value={e2bPolicy()} onChange={jest.fn()} />);
+    expect(screen.queryByLabelText("Outbound network")).not.toBeInTheDocument();
+  });
 });
 
 describe("SandboxPolicyEditor for an Agent with triggers", () => {

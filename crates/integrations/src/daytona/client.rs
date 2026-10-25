@@ -315,6 +315,23 @@ impl DaytonaClient {
         Ok(sandbox_info(sandbox))
     }
 
+    /// Replace a running sandbox's outbound network rules.
+    pub async fn update_network_settings(
+        &self,
+        sandbox_id: &str,
+        body: management::types::UpdateSandboxNetworkSettings,
+    ) -> Result<(), String> {
+        self.management
+            .update_network_settings()
+            .sandbox_id_or_name(sandbox_id)
+            .body(body)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
+        Ok(())
+    }
+
     pub async fn get_sandbox(&self, sandbox_id: &str) -> Result<SandboxInfo, String> {
         let sandbox = self
             .management

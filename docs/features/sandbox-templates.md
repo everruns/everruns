@@ -81,6 +81,26 @@ new Sessions only. Open the Session's **Workspace** tab to inspect the primary S
 template revision, target, containment, capabilities, recovery class, generation, and lifecycle
 state.
 
+## Outbound network
+
+Daytona and Modal templates can limit what the Sandbox reaches on the network. Under
+**Outbound network**, choose **Open**, **Only listed domains** (one per line, `*.example.com` for
+subdomains), or **Blocked**. The provider enforces the rule on its own network, so it holds for
+every process in the Sandbox. E2B templates are open for now.
+
+The Session's network access list narrows the rule further: a Daytona Sandbox reaches only hosts
+both allow, and a Sandbox resumed later follows the Session's current list. Daytona filters by
+host, so a URL rule such as `https://pypi.org/simple/` opens all of `pypi.org` inside the Sandbox.
+
+```json
+{
+  "containment": {
+    "level": "isolated",
+    "network": { "mode": "allowlist", "allowed_hosts": ["github.com", "*.github.com"] }
+  }
+}
+```
+
 ## Recovery after compute loss
 
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.

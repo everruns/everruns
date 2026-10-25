@@ -254,6 +254,7 @@ The trust-boundary decision and rationale are documented at the top of `crates/i
 - **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
 - **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
 - **Clone-auth host allowlist**: GitHub token injected only into URLs whose host is on the operator-configured allowlist; default `["github.com"]`, extended via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (TM-DAYTONA-008)
+- **Outbound network**: Daytona enforces the sandbox template's `containment.network` (server-written as `provider_config.network`) narrowed by the session network access list, through `networkBlockAll` / `domainAllowList` / `networkAllowList` on create and `updateNetworkSettings` on resume; tool-created and desktop sandboxes get the session list. Open rules send nothing, restricted rules fail closed. See `network.rs` (TM-DAYTONA-015)
 
 See [threat-model.md](../../knowledge/security/threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 

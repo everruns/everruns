@@ -192,6 +192,11 @@ path = "tests/daytona_live_api_test.rs"
 required-features = ["daytona-live-tests"]
 
 [[test]]
+name = "daytona_live_openapi_test"
+path = "tests/daytona_live_openapi_test.rs"
+required-features = ["daytona-live-tests"]
+
+[[test]]
 name = "daytona_plugin_registration"
 path = "tests/daytona_plugin_registration.rs"
 required-features = ["daytona", "daytona-test-util"]

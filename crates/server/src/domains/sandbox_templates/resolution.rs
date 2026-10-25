@@ -28,6 +28,10 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
 /// rules in `validate_target_options`.
 const MANAGED_PROVIDERS: &[&str] = &["daytona", "e2b", "modal"];
 
+/// Managed providers that enforce `containment.network` themselves, from the
+/// `network` entry the server writes into their provider config.
+const PROVIDER_ENFORCED_NETWORK: &[&str] = &["daytona", "modal"];
+
 /// Managed providers offered only at development grade while their integration
 /// is experimental. The plugin is linked into every build, so registration
 /// alone does not decide availability.
@@ -443,7 +447,7 @@ fn modal_egress(
     let mut egress = Map::new();
     egress.insert(
         "network".to_string(),
-        modal_network_config(&containment.network),
+        provider_network_config(&containment.network),
     );
     if let Some(connections) = profile.target.options.get("inject_connections") {
         egress.insert("inject_connections".to_string(), connections.clone());
@@ -621,11 +625,16 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
-            if profile.target.provider.as_deref() == Some("modal") {
+            if profile
+                .target
+                .provider
+                .as_deref()
+                .is_some_and(|provider| PROVIDER_ENFORCED_NETWORK.contains(&provider))
+            {
                 // Server-written: `network` is not a caller option.
                 provider_config.insert(
                     "network".to_string(),
-                    modal_network_config(&profile.containment.network),
+                    provider_network_config(&profile.containment.network),
                 );
             }
             if profile.durability == SandboxDurability::Checkpointed {
@@ -658,7 +667,7 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
     }
 }
 
-fn modal_network_config(network: &SandboxNetworkPolicy) -> Value {
+fn provider_network_config(network: &SandboxNetworkPolicy) -> Value {
     match network {
         SandboxNetworkPolicy::Allow => json!({"mode": "open"}),
         SandboxNetworkPolicy::Deny => json!({"mode": "blocked"}),
@@ -734,8 +743,11 @@ fn validate_target_contract(
         }
         SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            // Modal enforces deny and allowlists itself (`modal_egress`).
-            if provider != Some("modal") && containment.network != SandboxNetworkPolicy::Allow {
+            // Modal (`modal_egress`) and Daytona (`daytona::network`) enforce
+            // deny and allowlists themselves.
+            if !provider.is_some_and(|provider| PROVIDER_ENFORCED_NETWORK.contains(&provider))
+                && containment.network != SandboxNetworkPolicy::Allow
+            {
                 return Err(
                     "managed targets currently support only network.mode=allow; an unenforced allowlist is rejected"
                         .to_string(),
@@ -1322,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn modal_enforces_the_template_network_policy() {
+    fn modal_and_daytona_enforce_the_template_network_policy() {
         let modal = |network: SandboxNetworkPolicy, options: Value| {
             let mut value = profile(SandboxTargetSpec::managed("modal"));
             value.containment = Some(SandboxContainmentSpec {
@@ -1387,14 +1399,30 @@ mod tests {
             assert!(error.contains(expected), "{error}");
         }
 
-        // Daytona still cannot enforce anything but open egress.
-        let mut daytona = profile(SandboxTargetSpec::managed("daytona"));
-        daytona.containment = Some(SandboxContainmentSpec {
-            network: SandboxNetworkPolicy::Deny,
-            ..SandboxContainmentSpec::isolated()
-        });
+        // Daytona enforces deny and allowlists too; E2B does not yet.
+        let restricted = |provider: &str, network: SandboxNetworkPolicy| {
+            let mut value = profile(SandboxTargetSpec::managed(provider));
+            value.containment = Some(SandboxContainmentSpec {
+                network,
+                ..SandboxContainmentSpec::isolated()
+            });
+            resolve_spec(&value)
+        };
+        let daytona = restricted(
+            "daytona",
+            SandboxNetworkPolicy::Allowlist {
+                allowed_hosts: vec!["github.com".into()],
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            config(&daytona)["network"],
+            json!({"mode": "allowlist", "domains": ["github.com"]})
+        );
+        let daytona = restricted("daytona", SandboxNetworkPolicy::Deny).unwrap();
+        assert_eq!(config(&daytona)["network"], json!({"mode": "blocked"}));
         assert!(
-            resolve_spec(&daytona)
+            restricted("e2b", SandboxNetworkPolicy::Deny)
                 .unwrap_err()
                 .contains("network.mode=allow")
         );

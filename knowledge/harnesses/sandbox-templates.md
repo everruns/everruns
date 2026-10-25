@@ -166,7 +166,7 @@ profile confirms rather than assumes it:
 | Target | Implied | Choice available |
 |---|---|---|
 | bashkit | isolated, network default-deny | none, fixed by the target |
-| daytona, modal, e2b, container | isolated | egress policy only |
+| daytona, modal, e2b, container | isolated | egress policy only (enforced by Daytona and Modal; E2B and container accept only `allow` for now) |
 | host, machine | none | `native` kernel policy, later |
 
 Naming note: `sandbox` is the plainer wire name for this field, and it makes the

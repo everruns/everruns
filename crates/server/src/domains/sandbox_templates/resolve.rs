@@ -294,7 +294,11 @@ fn sandbox_targets_for_grade(
             available: daytona_registered,
             reason: (!daytona_registered)
                 .then(|| "the Daytona provider is not registered in this deployment".to_string()),
-            capabilities: managed_capabilities(true),
+            // Daytona enforces deny and allowlists on its runners.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(true)
+            },
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
             credential_sources: vec![

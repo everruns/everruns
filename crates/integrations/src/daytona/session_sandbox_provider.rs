@@ -17,6 +17,7 @@ use tracing::{debug, warn};
 use crate::daytona::api::management::types::SandboxVolume;
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
+use crate::daytona::network;
 use crate::daytona::owned;
 use crate::daytona::state::{
     SandboxInfo, SandboxState, VolumeInfo, get_managed_api_key, release_sandbox_lease,
@@ -554,6 +555,7 @@ async fn create_daytona_instance(
     let workspace_path = workspace_path(config);
     let mut create_body = create_body(&sandbox_labels(context).await, auto_stop_minutes(config)?);
     create_body.snapshot = Some(snapshot_name(config)?);
+    network::apply_to_create(&mut create_body, &network::egress_rules(context, config)?);
     if let Some(recovery) = &recovery {
         create_body.volumes = vec![SandboxVolume {
             volume_id: Some(recovery.volume_id.clone()),
@@ -684,6 +686,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let Some(recovery) = recovery_binding(&context.session_id(), instance)? else {
             let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+            network::apply_to_running(
+                &client,
+                &instance.external_id,
+                &network::egress_rules(context, config)?,
+            )
+            .await?;
             let workspace_path = instance
                 .workspace_path
                 .clone()
@@ -734,6 +742,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             return Ok(replacement);
         }
         let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+        network::apply_to_running(
+            &client,
+            &instance.external_id,
+            &network::egress_rules(context, config)?,
+        )
+        .await?;
 
         let workspace_path = instance
             .workspace_path
