@@ -295,6 +295,7 @@ export default defineConfig({
                   label: "Start here",
                   items: [
                     { label: "Choose how you run Everruns", slug: "getting-started/introduction" },
+                    { label: "Self-hosted: on your machine", slug: "getting-started/run-locally" },
                     { label: "Self-hosted: Docker Compose", slug: "getting-started/docker-compose" },
                     { label: "Everruns Cloud", slug: "getting-started/cloud" },
                     { label: "Concepts", slug: "getting-started/concepts" },

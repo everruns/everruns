@@ -1,6 +1,7 @@
 # Infrastructure and operations
 
 * [Production Deployment Specification](production-deployment.md) - Production deployment aggregation and reverse proxy contract.
+* [Local Setup and Kubernetes](local-setup.md) - `everruns docker up` on a person's machine; Helm chart, not an operator, for Kubernetes.
 * [Migrations Specification](migrations.md) - Database migration naming, squashing, ordering, conflict resolution.
 * [Caching and Distributed Rate Limiting](cache.md) - Valkey rate limiting and in-process moka caching.
 * [Durable Execution Engine Specification](durable-execution-engine.md) - PostgreSQL-backed durable workflow engine.

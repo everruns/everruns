@@ -23,6 +23,7 @@
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
 #      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
+#      SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true # Needed for the keys above to be used
 #
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
@@ -39,7 +40,7 @@
 #      Try query: everruns_http_request_duration_seconds_count
 #
 # Ports:
-#   - 9300: Web UI (Caddy)
+#   - 9300: Web UI (Caddy), on all interfaces; EXAMPLE_PROXY_BIND=127.0.0.1 keeps it local
 #   - 8428 (default): VictoriaMetrics UI & API (configurable via VICTORIAMETRICS_PORT)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
@@ -108,9 +109,14 @@ services:
       DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
+      # The DEFAULT_*_API_KEY values become the default organization's provider
+      # keys only when this is true and no one can sign themselves up.
+      SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV: ${SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV:-false}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       AUTH_MODE: ${AUTH_MODE:-admin}
+      # AUTH_MODE=none is refused outside the dev grade.
+      DEPLOYMENT_GRADE: ${DEPLOYMENT_GRADE:-prod}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set when AUTH_MODE is admin/full}
       AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-}
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-}
@@ -187,7 +193,7 @@ services:
   caddy:
     image: caddy:2-alpine
     ports:
-      - "${EXAMPLE_PROXY_PORT:-9300}:9300"
+      - "${EXAMPLE_PROXY_BIND:-0.0.0.0}:${EXAMPLE_PROXY_PORT:-9300}:9300"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile

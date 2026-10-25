@@ -46,13 +46,13 @@ clients, multi-tenant organizations, or durable execution that survives a worker
 restart, and want to keep the deployment and data in your own environment.
 
 ```bash
-curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
-# write .env with the required secrets, see the Docker Compose guide
-docker compose up -d   # UI and API on http://localhost:9300
+brew install everruns/tap/everruns
+everruns docker up     # UI and API on http://localhost:9300
 ```
 
-Next: [Docker Compose](/getting-started/docker-compose/), which lists the
-required secrets and walks through the first session. Operators continue with
+Next: [Run Everruns on your machine](/getting-started/run-locally/) for what
+`everruns docker up` asks and keeps, or [Docker Compose](/getting-started/docker-compose/)
+to set up the same stack by hand on a server. Operators continue with
 [Environment variables](/sre/environment-variables/).
 
 ## Everruns Cloud
