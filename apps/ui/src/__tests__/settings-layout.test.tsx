@@ -129,7 +129,7 @@ describe("SettingsLayout", () => {
     );
 
     expect(screen.getByRole("link", { name: new RegExp(linkName, "i") })).toHaveClass(
-      "border-accent",
+      "border-primary",
     );
   });
 });

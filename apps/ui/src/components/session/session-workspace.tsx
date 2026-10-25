@@ -48,7 +48,7 @@ function StoragePanel({ sessionId, enabled }: { sessionId: string; enabled: bool
       ) : (
         <div className="space-y-4">
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Key className="h-3 w-3" />
               Key-value
             </div>
@@ -77,7 +77,7 @@ function StoragePanel({ sessionId, enabled }: { sessionId: string; enabled: bool
           </div>
 
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Lock className="h-3 w-3" />
               Secrets
             </div>

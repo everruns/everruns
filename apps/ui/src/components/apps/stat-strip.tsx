@@ -36,7 +36,7 @@ export function StatStrip({
       {items.map((item) => (
         <Card key={item.label}>
           <CardContent className="space-y-2 py-4">
-            <p className="text-xs font-medium uppercase text-muted-foreground">{item.label}</p>
+            <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
             {loading ? (
               <Skeleton className="h-7 w-24" />
             ) : (
@@ -52,7 +52,7 @@ export function StatStrip({
       ))}
       <Card>
         <CardContent className="space-y-3 py-4">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Activity</p>
+          <p className="text-xs font-medium text-muted-foreground">Activity</p>
           {loading ? <Skeleton className="h-7 w-full" /> : <MiniTimeline runs={stats.timeline} />}
           <p className="text-sm text-muted-foreground">Last 24 hours</p>
         </CardContent>

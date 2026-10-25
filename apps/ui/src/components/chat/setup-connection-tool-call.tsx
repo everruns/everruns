@@ -208,7 +208,7 @@ export function SetupConnectionToolCall({
                 disabled={status === "submitting"}
               >
                 <Check className="h-3.5 w-3.5 mr-1" />
-                I&apos;ve connected — continue
+                I&apos;ve connected, continue
               </Button>
             ) : (
               <Button

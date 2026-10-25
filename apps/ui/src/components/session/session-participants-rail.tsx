@@ -134,9 +134,7 @@ export function SessionParticipantsRail({ sessionId, className }: SessionPartici
       aria-label="Session participants"
     >
       <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-        <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          In this session
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">In this session</span>
         <Button
           type="button"
           variant="ghost"
@@ -153,9 +151,7 @@ export function SessionParticipantsRail({ sessionId, className }: SessionPartici
         <ul className="space-y-2">{active.map((p) => renderRow(p, false))}</ul>
         {left.length > 0 && (
           <>
-            <div className="mt-4 mb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Left
-            </div>
+            <div className="mt-4 mb-2 text-xs font-medium text-muted-foreground">Left</div>
             <ul className="space-y-2">{left.map((p) => renderRow(p, true))}</ul>
           </>
         )}

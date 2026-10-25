@@ -129,11 +129,10 @@ export function ModelRow({
                   {profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"}
                 </Badge>
               )}
-              {profile && (
-                <Badge
-                  variant="outline"
-                  className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                >
+              {/* The family usually repeats the model id shown on the next line; show it
+                  only when it adds something (e.g. a dated snapshot of a family). */}
+              {profile && profile.family !== model.model_id && (
+                <Badge variant="outline" className="text-xs">
                   {profile.family}
                 </Badge>
               )}

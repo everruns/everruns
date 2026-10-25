@@ -216,7 +216,7 @@ export function ToolApprovalRequests({
                 )}
                 {chosen && requests.length > 1 && !submitting && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {CHOICES.find((choice) => choice.decision === chosen)?.label} — waiting for your
+                    {CHOICES.find((choice) => choice.decision === chosen)?.label}, waiting for your
                     other answers.
                   </p>
                 )}

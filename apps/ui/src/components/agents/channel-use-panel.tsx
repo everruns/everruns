@@ -40,7 +40,7 @@ function describe(kind: ChannelType): string {
     case "slack":
       return "Point your Slack app's Event Subscriptions request URL here.";
     case "fcp":
-      return "Open this URL in a browser, or embed it — it serves the chat surface itself.";
+      return "Open this URL in a browser, or embed it: it serves the chat surface itself.";
     case "ag_ui":
       return "AG-UI clients POST a run to this URL and read the SSE stream back.";
     case "a2a":
@@ -110,9 +110,9 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
   if (!path) {
     return (
       <div>
-        <p className="text-xs font-medium uppercase text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">Use it</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          This channel fires on its own — there is no inbound URL to call.
+          This channel fires on its own, so there is no inbound URL to call.
         </p>
       </div>
     );
@@ -121,7 +121,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <p className="text-xs font-medium uppercase text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">Use it</p>
         <p className="mt-1 text-sm text-muted-foreground">{describe(channel.channel_type)}</p>
       </div>
       <CodeBlock samples={samples} />
@@ -139,7 +139,7 @@ function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
   const url = hosted.data?.public_url;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium uppercase text-muted-foreground">Use it</p>
+      <p className="text-xs font-medium text-muted-foreground">Use it</p>
       {url ? (
         <>
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline">

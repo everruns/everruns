@@ -60,11 +60,11 @@ function getStatusLabel(status: CapabilityStatus): string {
     case "available":
       return "Available";
     case "coming_soon":
-      return "Coming Soon";
+      return "Coming soon";
     case "deprecated":
       return "Deprecated";
     case "needs_identity":
-      return "Needs Identity";
+      return "Needs identity";
     case "retired":
       return "Removed";
   }
@@ -259,9 +259,9 @@ export default function CapabilitiesPage() {
   const statusItems = [
     { value: "all" as const, label: "All" },
     { value: "available" as const, label: "Available" },
-    { value: "coming_soon" as const, label: "Coming Soon" },
+    { value: "coming_soon" as const, label: "Coming soon" },
     { value: "deprecated" as const, label: "Deprecated" },
-    { value: "needs_identity" as const, label: "Needs Identity" },
+    { value: "needs_identity" as const, label: "Needs identity" },
   ];
 
   return (
@@ -271,11 +271,11 @@ export default function CapabilitiesPage() {
       <PageMasthead
         icon={<CapabilitiesIcon />}
         title="Capabilities"
-        description="Building blocks — system prompt additions and tools agents and harnesses can use."
+        description="Building blocks: system prompt additions and tools agents and harnesses can use."
         actions={
           <LinkButton variant="accent" href="/capabilities/declarative/new">
             <Plus className="size-4" />
-            New Declarative
+            New declarative
           </LinkButton>
         }
       />
@@ -379,9 +379,7 @@ export default function CapabilitiesPage() {
             {grouped.map(([category, caps]) => (
               <section key={category}>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                    {category}
-                  </h2>
+                  <h2 className="text-sm font-semibold text-muted-foreground">{category}</h2>
                   <span className="text-xs text-muted-foreground">
                     {formatCountLabel(caps.length, "capability", "capabilities")}
                   </span>

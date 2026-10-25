@@ -37,9 +37,7 @@ function Tile({
 }) {
   const body = (
     <>
-      <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <span
         className={cn(
           "text-2xl font-semibold tabular-nums tracking-tight text-foreground",

@@ -231,10 +231,11 @@ impl Capability for KnowledgeBaseCapability {
     }
 
     fn description(&self) -> &str {
+        // User-facing (capability catalog): no repository paths. Design notes live in
+        // knowledge/runtime-resources/knowledge-bases.md.
         "Bind an agent to curated org Knowledge Bases and give it the \
          `search_knowledge` tool to ground answers in human-edited table docs, \
-         business rules, validated SQL templates, and runbooks. \
-         See `knowledge/runtime-resources/knowledge-bases.md`."
+         business rules, validated SQL templates, and runbooks."
     }
 
     fn status(&self) -> CapabilityStatus {

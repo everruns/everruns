@@ -36,7 +36,8 @@
     --secondary: 0 0% 96%;
     --secondary-foreground: 0 0% 10%;
     --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    /* 42% keeps secondary text at AA (4.5:1) on the muted surface, not only on the page. */
+    --muted-foreground: 0 0% 42%;
     /* Accent: Gold for active states, highlights */
     --accent: 43 60% 53%;
     --accent-foreground: 43 60% 30%;
@@ -50,7 +51,9 @@
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 88%;
     --input: 0 0% 85%;
-    --ring: 43 60% 53%;
+    /* Focus ring: a deeper gold than the accent. Accent gold is 2.2:1 on the light page,
+       under the 3:1 non-text contrast focus indicators need; 38% lightness is 3.9:1. */
+    --ring: 43 60% 38%;
     /* Sidebar: used by Streamdown code blocks — white for clean contrast against muted bg */
     --sidebar: 0 0% 100%;
     --sidebar-foreground: 0 0% 10%;

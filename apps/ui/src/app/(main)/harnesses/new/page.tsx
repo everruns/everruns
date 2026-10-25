@@ -359,7 +359,7 @@ export default function NewHarnessPage() {
                   )}
                   <p className="text-xs text-muted-foreground">
                     Base instructions for the AI model (supports Markdown). Leave empty to
-                    contribute no base prompt — the parent harness, agent, session, and capabilities
+                    contribute no base prompt; the parent harness, agent, session, and capabilities
                     still apply.
                   </p>
                 </div>

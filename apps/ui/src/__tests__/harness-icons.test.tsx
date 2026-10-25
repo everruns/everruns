@@ -10,4 +10,10 @@ describe("getHarnessIcon", () => {
   it("falls back for an icon name the UI does not know", () => {
     expect(getHarnessIcon("not-a-real-icon")).toBe(HarnessDomainIcon);
   });
+
+  it("resolves the icons Platform Chat starters name", () => {
+    for (const name of ["zap", "bot", "activity"]) {
+      expect(getHarnessIcon(name)).not.toBe(HarnessDomainIcon);
+    }
+  });
 });

@@ -196,6 +196,14 @@ export default function SessionsPageClient() {
     [filters, views],
   );
 
+  // A quiet org shows no counters: a row of zeros ("p95 duration 0ms") reads as data
+  // when there is none.
+  const hasActivity =
+    !!facets &&
+    (facets.active_now > 0 ||
+      facets.failed_today > 0 ||
+      facets.p95_duration_ms > 0 ||
+      facets.tokens_today > 0);
   const metrics = facets && [
     { label: "Active now", value: String(facets.active_now) },
     { label: "Failed today", value: String(facets.failed_today) },
@@ -215,19 +223,20 @@ export default function SessionsPageClient() {
             <Badge variant="outline" className="font-mono">
               {total}
             </Badge>
-            <Badge variant="secondary">read-only</Badge>
           </>
         }
-        description="Every run across your agents — chats, schedules, channels and API calls."
+        description="Every run across your agents: chats, schedules, channels and API calls."
         meta={
           metrics ? (
-            <>
-              {metrics.map((metric) => (
-                <span key={metric.label}>
-                  {metric.label} <span className="text-foreground">{metric.value}</span>
-                </span>
-              ))}
-            </>
+            hasActivity ? (
+              <>
+                {metrics.map((metric) => (
+                  <span key={metric.label}>
+                    {metric.label} <span className="text-foreground">{metric.value}</span>
+                  </span>
+                ))}
+              </>
+            ) : undefined
           ) : facetsError ? (
             // Say so rather than claim a permanent "Loading…" the counters will
             // never resolve out of.
@@ -329,7 +338,7 @@ export default function SessionsPageClient() {
               description={
                 filtered
                   ? "Every filter narrows the same set. Clear one to widen it."
-                  : "Runs appear here as soon as an agent is started — from a chat, a schedule, a channel or the API."
+                  : "Runs appear here as soon as an agent is started from a chat, a schedule, a channel or the API."
               }
               action={
                 filtered ? (

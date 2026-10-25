@@ -229,7 +229,7 @@ export function SelectedCapabilityList({
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>
-                          Scheduled for removal. It still works today — plan to replace it before it
+                          Scheduled for removal. It still works today; plan to replace it before it
                           is removed.
                         </p>
                       </TooltipContent>

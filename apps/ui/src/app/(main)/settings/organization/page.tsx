@@ -340,7 +340,7 @@ export default function OrganizationPage() {
               error={saveStates.identity.error}
             >
               <SettingsRow
-                label="Organization Name"
+                label="Organization name"
                 description="Shown in navigation, resource ownership, and member-facing views."
                 htmlFor="org-name"
               >
@@ -383,7 +383,7 @@ export default function OrganizationPage() {
               error={saveStates.models.error}
             >
               <SettingsRow
-                label="Default Model"
+                label="Default model"
                 description="Leave empty to use the platform default, GPT-6 Luna."
                 htmlFor="default-model"
               >
@@ -409,7 +409,7 @@ export default function OrganizationPage() {
               error={saveStates.harnesses.error}
             >
               <SettingsRow
-                label="Default Harness"
+                label="Default harness"
                 description="Used as the normal starting harness in the UI. New orgs default this to Generic."
                 htmlFor="default-harness"
               >
@@ -428,7 +428,7 @@ export default function OrganizationPage() {
               </SettingsRow>
 
               <SettingsRow
-                label="Base Harness"
+                label="Base harness"
                 description="Used only when a session starts without an explicit harness. New orgs default this to Base."
                 htmlFor="base-harness"
               >
@@ -602,10 +602,7 @@ function SettingsGroup({
     <section aria-labelledby={headingId}>
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <h3
-            id={headingId}
-            className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-          >
+          <h3 id={headingId} className="text-sm font-semibold text-foreground">
             {title}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
@@ -647,6 +644,10 @@ function SettingsRow({
 }
 
 function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
+  // Nothing edited yet: no badge. A "Saved" chip before any change claims an action
+  // that never happened.
+  if (saveState.state === "idle") return null;
+
   if (saveState.state === "saving") {
     return (
       <Badge role="status" aria-live="polite" variant="outline" className="text-muted-foreground">
@@ -669,12 +670,7 @@ function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
   }
 
   return (
-    <Badge
-      role="status"
-      aria-live="polite"
-      variant="outline"
-      className={cn(saveState.state === "saved" && "text-success")}
-    >
+    <Badge role="status" aria-live="polite" variant="outline" className="text-success">
       <Check className="h-3 w-3" />
       Saved
     </Badge>

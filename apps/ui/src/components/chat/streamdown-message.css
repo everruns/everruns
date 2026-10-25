@@ -104,6 +104,21 @@
   background: var(--color-muted);
   font-weight: 600;
 }
+/* One frame per table: Streamdown boxes the table in a bordered toolbar card and a
+   bordered scroller, and the cells draw their own grid. Keep only the cell grid. */
+.streamdown [data-streamdown="table-wrapper"] {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.streamdown [data-streamdown="table-wrapper"] > div:has(> [data-streamdown="table"]) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.streamdown [data-streamdown="table"] {
+  margin: 0;
+}
 .streamdown img {
   max-width: 100%;
   height: auto;

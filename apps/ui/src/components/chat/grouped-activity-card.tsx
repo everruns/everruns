@@ -55,7 +55,7 @@ export function GroupedActivityCard({
       <div className="flex items-center justify-between gap-3 py-1">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/70">
+            <div className="text-xs font-medium text-muted-foreground/70">
               {summarizeToolCalls(toolCalls, backendLocale)}
             </div>
             <div className="text-[10px] text-muted-foreground/50">
@@ -65,7 +65,7 @@ export function GroupedActivityCard({
         </div>
         <div className="flex items-center gap-2">
           {isActive ? (
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-accent-foreground/70">
+            <div className="flex items-center gap-2 text-xs font-medium text-accent-foreground/70">
               <span className="animate-tool-pulse inline-flex h-1.5 w-1.5 bg-accent" />
             </div>
           ) : null}

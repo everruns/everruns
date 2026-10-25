@@ -154,8 +154,8 @@ export function SetApiKeyDialog({
               Connect with {oauthLabel}
             </Button>
             <p className="text-sm text-muted-foreground">
-              Authorize in your browser to set up a key automatically — no copy &amp; paste needed.
-              Or enter credentials manually below.
+              Authorize in your browser to set up a key automatically, with no copy &amp; paste. Or
+              enter credentials manually below.
             </p>
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-border" />

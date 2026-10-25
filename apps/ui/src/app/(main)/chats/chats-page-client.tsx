@@ -57,7 +57,7 @@ function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: str
               {threadTitle(thread)}
             </span>
             {archived && (
-              <span className="flex-none border border-border/70 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span className="flex-none border border-border/70 px-1.5 text-xs font-medium text-muted-foreground">
                 Archived
               </span>
             )}

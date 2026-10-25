@@ -65,8 +65,8 @@ export default function SlackWorkspacesPage() {
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Slack workspaces</h2>
         <p className="text-sm text-muted-foreground">
-          Connect a workspace once, and every agent you put in Slack gets its own Slack app there —
-          its own name in the Agents menu — with one click and one Slack approval.
+          Connect a workspace once, and every agent you put in Slack gets its own Slack app there,
+          its own name in the Agents menu, with one click and one Slack approval.
         </p>
       </div>
 
@@ -240,7 +240,7 @@ function WorkspaceRow({
         <Notice variant="warning">
           <NoticeDescription>
             <span className="block">
-              Agents already in this workspace keep working — each has its own Slack app. You will
+              Agents already in this workspace keep working; each has its own Slack app. You will
               not be able to add agents to it, or update their Slack apps, until you connect it
               again.
             </span>

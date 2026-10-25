@@ -279,7 +279,7 @@ export function SessionCard({
         )}
       </div>
       {failure && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-l-2 border-destructive bg-destructive/5 px-3 py-2 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-3 border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-destructive">
               {failure.count} failed {failure.count === 1 ? "turn" : "turns"} ·{" "}

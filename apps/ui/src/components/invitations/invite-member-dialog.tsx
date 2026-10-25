@@ -33,7 +33,7 @@ interface InviteMemberDialogProps {
 
 const DELIVERY_MESSAGE: Record<EmailDelivery, string> = {
   sent: "We emailed the invitation. You can also share the link below.",
-  failed: "We couldn't send the email. Share this invite link instead — it works the same way.",
+  failed: "We couldn't send the email. Share this invite link instead; it works the same way.",
   not_configured:
     "Email delivery isn't configured for this deployment. Share this invite link to add the member.",
 };

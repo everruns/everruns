@@ -316,7 +316,7 @@ export default function SkillsPageClient() {
       <PageMasthead
         icon={<SkillsIcon />}
         title="Skills"
-        description="Reusable Agent Skills — SKILL.md instructions and optional bundled files."
+        description="Reusable Agent Skills: SKILL.md instructions and optional bundled files."
         actions={
           <>
             <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>

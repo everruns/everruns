@@ -13,7 +13,7 @@ tags:
 ## Abstract
 
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
-Five groups carry every destination: Chats, Operational, Building, Registers, Quality,
+Five groups carry every destination: Chats, Operational, Building, Library, Quality,
 with Settings pinned below them. The data lives in
 [`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
@@ -57,7 +57,7 @@ authoring is the activity that brings the user to the page.
 | **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
-| **Registers** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
+| **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
 | **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
@@ -70,7 +70,9 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   reference it by name from an agent. You do not sit and author a skill as part of
   building a specific agent, and you do not read it back as a record of what ran.
   Registering-and-referencing beats its surface resemblance to Knowledge indexes.
-* **Memory and Knowledge indexes are Registers.** They are curated resources referenced
+* **The group is called Library, not Registers.** "Registers" meant nothing to a new
+  user; Library says what the group holds: reusable entries agents draw from.
+* **Memory and Knowledge indexes are in Library.** They are curated resources referenced
   by agents; keeping them with the other reusable entries leaves Building focused on
   composing and trying agents.
 * **Sandboxes is Building, one entry with tabs.** Live execution environments sit beside
@@ -82,7 +84,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
 * **Reports is Quality.** Reporting sits with Evals and Observers, leaving Operational
   focused on recordings and external exposure. Approvals stays within its session.
-* **Identities is Building, not Registers.** An identity is authored per agent
+* **Identities is Building, not Library.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
 ## Playground

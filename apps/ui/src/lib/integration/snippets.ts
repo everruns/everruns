@@ -73,7 +73,7 @@ export function sessionFlowSamples(opts: { origin: string } & SessionBinding): C
     label: "curl",
     language: "bash",
     code: [
-      `# 1. Credentials — create a token at ${tokensUrl(opts.origin)}`,
+      `# 1. Credentials: create a token at ${tokensUrl(opts.origin)}`,
       `export EVERRUNS_TOKEN="${TOKEN_PLACEHOLDER}"`,
       `export EVERRUNS_API="${base}"`,
       ``,
@@ -521,7 +521,7 @@ export function codingAgentPrompt(opts: {
       `   "output.message.completed" (final agent message) and "session.idled" (turn done).`,
       `   Alternatively poll GET /sessions/{id}/messages.`,
       ``,
-      `Official SDKs are available — prefer them if my project uses one of these:`,
+      `Official SDKs are available; prefer them if my project uses one of these:`,
       `- Rust: \`cargo add everruns-sdk\``,
       `- Python: \`pip install everruns-sdk\``,
       `- TypeScript: \`npm install @everruns/sdk\``,

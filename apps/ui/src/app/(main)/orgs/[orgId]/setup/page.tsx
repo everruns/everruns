@@ -356,7 +356,7 @@ export default function OrgSetupPage() {
           brand={{
             eyebrow: "Setup complete",
             headline:
-              "Deploy your first agent and keep it running — through restarts, deploys, and outages.",
+              "Deploy your first agent and keep it running through restarts, deploys, and outages.",
             features: [
               { label: "Durable execution engine", done: true },
               { label: "Agent harnesses & capabilities", done: true },
@@ -623,7 +623,7 @@ export default function OrgSetupPage() {
                   </div>
 
                   {/* Breadth strip: the two featured cards must not read as
-                      the whole catalog. Informational only — the full picker
+                      the whole catalog. Informational only: the full picker
                       lives in Models → Providers after setup. */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-muted-foreground">Also supported</span>

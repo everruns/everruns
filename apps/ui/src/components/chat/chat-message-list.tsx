@@ -1279,19 +1279,19 @@ export const ChatMessageList = memo(function ChatMessageList({
                         <div className={chatSurfaceStyles.userMessage}>
                           {showPageContext && <MessagePageContext value={pageContext} />}
                           {isTaskWake && (
-                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <RefreshCw className="h-3 w-3" />
                               <span>{t("automatic_update")}</span>
                             </div>
                           )}
                           {isScheduleTriggered && (
-                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <CalendarClock className="h-3 w-3" />
                               <span>{t("scheduled")}</span>
                             </div>
                           )}
                           {coordinatorMessage && (
-                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                            <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                               <MessageSquare className="h-3 w-3" />
                               <span>{t("from_chat")}</span>
                             </div>

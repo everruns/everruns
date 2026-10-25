@@ -23,9 +23,7 @@ export function MoreSettingsNav({
 }) {
   return (
     <nav aria-label="More settings" className="flex flex-col pt-2 pb-4">
-      <p className="px-4 pt-2 pb-1 font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase">
-        More
-      </p>
+      <p className="px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground">More</p>
       {rows.map((row) => {
         const content = (
           <button

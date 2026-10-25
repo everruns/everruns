@@ -98,7 +98,7 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
         {configChanged && (
           <p className="text-sm text-warning flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            This agent&apos;s configuration changed since this run — re-run to refresh results.
+            This agent&apos;s configuration changed since this run. Re-run to refresh results.
           </p>
         )}
         {run && <HealthCheckResults run={run} />}

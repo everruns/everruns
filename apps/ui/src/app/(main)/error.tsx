@@ -30,7 +30,7 @@ export default function MainError({
           </div>
           <CardTitle>Something went wrong</CardTitle>
           <CardDescription>
-            An unexpected error occurred. Your work is safe — try again or return to the dashboard.
+            An unexpected error occurred. Your work is safe. Try again or return to the dashboard.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center gap-3">

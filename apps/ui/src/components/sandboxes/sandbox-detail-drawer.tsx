@@ -254,9 +254,7 @@ export function SandboxDetailDrawer({
               </div>
               <Actions detail={detail} />
               <section className="flex flex-col gap-3">
-                <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                  History
-                </h3>
+                <h3 className="text-xs font-medium text-muted-foreground">History</h3>
                 {detail.history.length > 0 ? (
                   <History history={detail.history} />
                 ) : (
@@ -265,9 +263,7 @@ export function SandboxDetailDrawer({
               </section>
               {detail.incarnations.length > 0 ? (
                 <section className="flex flex-col gap-2">
-                  <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                    Provider resources
-                  </h3>
+                  <h3 className="text-xs font-medium text-muted-foreground">Provider resources</h3>
                   <ul className="flex flex-col divide-y border text-sm">
                     {detail.incarnations.map((incarnation) => (
                       <li key={incarnation.generation} className="flex flex-col gap-0.5 p-2.5">

@@ -54,7 +54,7 @@ async fn activity_buckets_turns_by_hour_and_reports_load_and_triggers() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::from_database(Database::new(pool));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     org_init::initialize_org_harnesses(&backend, DEFAULT_ORG_ID)
         .await
         .expect("initialize built-in harnesses");
@@ -73,6 +73,12 @@ async fn activity_buckets_turns_by_hour_and_reports_load_and_triggers() {
     let mut input = session_input(owner, "agent-activity");
     input.agent_id = Some(agent.id);
     let session = backend.create_session(input).await.expect("create session");
+    let mut queued_input = session_input(owner, "agent-activity-queued");
+    queued_input.agent_id = Some(agent.id);
+    let queued = backend
+        .create_session(queued_input)
+        .await
+        .expect("create queued session");
 
     turn(&backend, session.id, "turn.started", Duration::minutes(150)).await;
     turn(
@@ -99,6 +105,29 @@ async fn activity_buckets_turns_by_hour_and_reports_load_and_triggers() {
         .await
         .expect("mark session active")
         .expect("session exists");
+    // The second session is active too, but its turn waits in the actor queue with no
+    // worker lease: it must not count as running.
+    backend
+        .update_session(
+            DEFAULT_ORG_ID,
+            queued.id,
+            UpdateSession {
+                status: Some("active".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("mark queued session active")
+        .expect("queued session exists");
+    sqlx::query(
+        "INSERT INTO session_actors (session_id, org_id, inbox_seq, runnable_since) \
+         VALUES ($1, $2, 1, NOW())",
+    )
+    .bind(queued.id.uuid())
+    .bind(DEFAULT_ORG_ID)
+    .execute(&pool)
+    .await
+    .expect("queue the second session's turn");
 
     backend
         .create_agent_trigger(CreateAgentTriggerRow {

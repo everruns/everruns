@@ -97,7 +97,7 @@ function GenericTimelineRow({ row }: { row: TimelineToolRow }) {
               <button
                 type="button"
                 onClick={() => setExpanded((current) => !current)}
-                className="inline-flex shrink-0 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 transition-colors hover:text-foreground"
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground/70 transition-colors hover:text-foreground"
                 aria-expanded={expanded}
                 aria-controls={detailsId}
               >

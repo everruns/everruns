@@ -25,7 +25,8 @@ import {
 } from "@/hooks/use-sandbox-fleet";
 import type { SandboxFleetFilters } from "@/lib/api/sandboxes";
 import { EmptyState, PageControlStrip } from "@/components/layout";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import {
   Select,
@@ -43,6 +44,12 @@ import { SandboxFleetTable } from "@/components/sandboxes/sandbox-fleet-table";
 import { SandboxTimelineChart } from "@/components/sandboxes/sandbox-timeline";
 
 const PAGE_SIZE = 50;
+const UNFILTERED: SandboxFleetFilters = {
+  state: "all",
+  provider: "all",
+  needsAttention: false,
+  search: "",
+};
 const WINDOWS = { "24h": 24 * 3_600_000, "7d": 7 * 86_400_000 } as const;
 type WindowKey = keyof typeof WINDOWS;
 
@@ -115,6 +122,13 @@ export function SandboxFleetTab() {
     offset: page * PAGE_SIZE,
   });
   const stats = useSandboxFleetStats(filters);
+  // Unfiltered roll-up: tells "this org has never had a Sandbox" apart from "the filters
+  // hide every Sandbox". A fresh org gets one teaching empty state instead of a dashboard
+  // of zero tiles, zero chips and filters with nothing to filter.
+  const everything = useSandboxFleetStats(UNFILTERED);
+  const fleetIsEmpty =
+    everything.data !== undefined &&
+    everything.data.by_state.reduce((sum, entry) => sum + entry.count, 0) === 0;
   const timeline = useSandboxTimeline(
     {
       ...filters,
@@ -150,6 +164,21 @@ export function SandboxFleetTab() {
 
   const total = fleet.data?.total ?? 0;
   const items = fleet.data?.items ?? [];
+
+  if (fleetIsEmpty) {
+    return (
+      <EmptyState
+        icon={<SandboxIcon />}
+        title="No Sandboxes yet"
+        description="A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed."
+        action={
+          <Link href="/sandboxes/templates" className={buttonVariants({ variant: "outline" })}>
+            Set up a Sandbox Template
+          </Link>
+        }
+      />
+    );
+  }
 
   return (
     <>
@@ -247,11 +276,13 @@ export function SandboxFleetTab() {
           ) : items.length === 0 ? (
             <EmptyState
               icon={<SandboxIcon />}
-              title={needsAttention ? "Nothing needs attention" : "No Sandboxes match"}
+              title={
+                needsAttention ? "Nothing needs attention" : "No Sandboxes match these filters"
+              }
               description={
                 needsAttention
                   ? "No Sandbox is lost, failed, idle while running, or stuck in cleanup."
-                  : "Sessions get a Sandbox when their Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. In-process sandboxes are not listed."
+                  : "Try another state, provider or search."
               }
             />
           ) : (

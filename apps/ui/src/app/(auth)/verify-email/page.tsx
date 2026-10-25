@@ -107,7 +107,7 @@ export default function VerifyEmailPage() {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           We sent a verification link to <b className="font-medium text-foreground">{email}</b>.
-          Click it to continue — this keeps your account secure and stays enforced on our side.
+          Click it to continue. This keeps your account secure and stays enforced on our side.
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button

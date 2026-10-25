@@ -74,7 +74,8 @@ Measured against current `main`:
   optional agent mark stays available as a surface prop for multi-agent sessions, where the
   speaker must be named.
 - **User turns are a tinted block.** Right aligned, `max-width: min(78%, 42rem)`, accent wash
-  (`hsl(var(--accent) / 0.12)`) with a right accent rule, 14 px. "Gold wash" is the default
+  (`hsl(var(--accent) / 0.12)`), 14 px, no edge rule: the wash and the alignment already mark
+  the speaker, and a one-sided stripe is a decoration Slate avoids. "Gold wash" is the default
   tone of the three the handoff offered.
 - **Day separators.** A centered muted timestamp ("Wednesday 7:53 PM", "Today 7:40 PM")
   before a user turn when the gap to the previous turn is over one hour or crosses midnight.

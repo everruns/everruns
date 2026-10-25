@@ -100,10 +100,30 @@ describe("StreamdownMessage", () => {
     >;
     const AnchorComponent = components.a;
 
-    const { container } = render(<AnchorComponent href="/sessions/123">Session</AnchorComponent>);
+    const { container } = render(
+      <AnchorComponent href="/no-such-page/123">Somewhere</AnchorComponent>,
+    );
     const logo = container.querySelector(".markdown-link-everruns-icon");
 
     expect(logo).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("MarkdownLink uses the destination page icon for in-app links", () => {
+    render(<StreamdownMessage>test</StreamdownMessage>);
+
+    const components = capturedStreamdownProps.components as Record<
+      string,
+      React.ComponentType<React.AnchorHTMLAttributes<HTMLAnchorElement>>
+    >;
+    const AnchorComponent = components.a;
+
+    const { container } = render(<AnchorComponent href="/harnesses/abc">Harness</AnchorComponent>);
+
+    expect(container.querySelector(".markdown-link-everruns-icon")).toBeNull();
+    expect(container.querySelector("svg.markdown-link-icon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("enables mermaid plugin after lazy load", async () => {

@@ -324,7 +324,7 @@ function LlmJudgeFields({
 
       <div className="space-y-2">
         <Label htmlFor={`scorer-model-${index}`}>
-          Judge model — defaults to your org default model when unset
+          Judge model (defaults to your org default model when unset)
         </Label>
         <ModelPicker
           id={`scorer-model-${index}`}

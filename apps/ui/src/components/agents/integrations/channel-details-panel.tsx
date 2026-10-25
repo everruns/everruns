@@ -19,7 +19,7 @@ function channelUrl(channelId: string, suffix: string): string {
   return `${origin}/api/v1/channels/${channelId}/${suffix}`;
 }
 function SetupHeading() {
-  return <p className="text-xs font-medium uppercase text-muted-foreground">Set up</p>;
+  return <p className="text-xs font-medium text-muted-foreground">Set up</p>;
 }
 
 function ChannelSetupGuidance({

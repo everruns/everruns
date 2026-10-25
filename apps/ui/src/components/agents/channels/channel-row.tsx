@@ -204,7 +204,7 @@ export function ChannelRow({
         </button>
         <div className="flex flex-wrap items-center justify-between gap-4 @min-[44rem]/channel-row:justify-end">
           <div className="shrink-0">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               {channel.channel_type === "schedule" ? "Next run" : "Last invoke"}
             </p>
             <p className="mt-1 text-sm">
@@ -214,7 +214,7 @@ export function ChannelRow({
             </p>
           </div>
           <div className="hidden @min-[52rem]/channel-row:block">
-            <p className="text-xs font-medium uppercase text-muted-foreground">Runs · 24h</p>
+            <p className="text-xs font-medium text-muted-foreground">Runs · 24h</p>
             <p className="mt-1 text-sm">0</p>
           </div>
           <div className="flex items-center justify-end gap-1">
@@ -262,11 +262,11 @@ export function ChannelRow({
           {!inlineConfiguration && (
             <div className="grid gap-3 text-sm md:grid-cols-3">
               <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Configuration</p>
+                <p className="text-xs font-medium text-muted-foreground">Configuration</p>
                 <p className="mt-1">{detailText(channel)}</p>
               </div>
               <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">Created</p>
+                <p className="text-xs font-medium text-muted-foreground">Created</p>
                 <p className="mt-1">{new Date(channel.created_at).toLocaleString()}</p>
               </div>
               <div className="flex items-center justify-between gap-3 md:justify-end">

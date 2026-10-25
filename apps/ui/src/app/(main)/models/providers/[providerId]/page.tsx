@@ -351,7 +351,7 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
           {chatDraft.notice}
           <p className="text-sm text-muted-foreground">
             Show links from session chats to this provider&apos;s trace/logs dashboard. Enable this
-            only after turning on request logging for the account — most providers retain
+            only after turning on request logging for the account; most providers retain
             prompt/completion content only when logging is enabled. Templates support the{" "}
             <code>{"{response_id}"}</code>, <code>{"{session_id}"}</code>,{" "}
             <code>{"{turn_id}"}</code> and <code>{"{model}"}</code> placeholders.
@@ -526,10 +526,10 @@ function ProviderAdvancedCard({
           <div className="space-y-2">
             <Label>Custom headers</Label>
             <p className="text-sm text-muted-foreground">
-              Sent with every request to this provider — useful for gateways and proxies that
-              require their own headers. A header set here replaces the one the driver would send
-              under the same name. Saved values are never read back; leave one blank to keep it, or
-              type a new value to replace it.
+              Sent with every request to this provider, useful for gateways and proxies that require
+              their own headers. A header set here replaces the one the driver would send under the
+              same name. Saved values are never read back; leave one blank to keep it, or type a new
+              value to replace it.
             </p>
             {headers.length === 0 && (
               <p className="text-sm text-muted-foreground">No custom headers.</p>

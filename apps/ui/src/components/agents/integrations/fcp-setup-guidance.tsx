@@ -88,7 +88,7 @@ export function FcpSetupGuidance({
           <p className="text-sm text-muted-foreground">No channel token required</p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Anonymous access is off — configure a token, otherwise every request will be rejected
+            Anonymous access is off. Configure a token, otherwise every request will be rejected
             with 401.
           </p>
         )}
@@ -108,8 +108,8 @@ export function FcpSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {formatFcpSessionExpiration(sessionExpirationSeconds)}
           {sessionExpirationSeconds > 0
-            ? " — after this the fcp_session cookie can no longer resume the same conversation; the next request starts a fresh one."
-            : " — sessions can be resumed indefinitely."}
+            ? ". After this the fcp_session cookie can no longer resume the same conversation; the next request starts a fresh one."
+            : ". Sessions can be resumed indefinitely."}
         </p>
       </div>
 
@@ -119,14 +119,14 @@ export function FcpSetupGuidance({
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per client IP`
             : "No per-channel cap (global API limit applies)"}
-          {" — counted in an FCP-only limiter namespace."}
+          {", counted in an FCP-only limiter namespace."}
         </p>
       </div>
 
       <div>
         <p className="text-sm font-medium">Response timeout</p>
         <p className="text-sm text-muted-foreground">
-          {timeoutSeconds} seconds — after which the channel returns 504 with the same{" "}
+          {timeoutSeconds} seconds, after which the channel returns 504 with the same{" "}
           <code>fcp_session</code> cookie so the client can retry.
         </p>
       </div>
