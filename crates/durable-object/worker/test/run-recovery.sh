@@ -10,7 +10,7 @@ if curl -s --max-time 1 http://127.0.0.1:8789/ >/dev/null 2>&1 || curl -s --max-
   echo "Recovery test needs unused ports 8789 and 8790" >&2
   exit 1
 fi
-cargo test --locked --manifest-path crates/durable-object/Cargo.toml --test recovery --no-run
+cargo test --locked --manifest-path crates/durable-object/Cargo.toml --features workerd-tests --test recovery --no-run
 RUN_DIR="$(mktemp -d /tmp/everruns-object-recovery.XXXXXX)"
 AUTHORITY_PID=""
 cleanup() {
@@ -34,7 +34,7 @@ done
 if [[ "$READY" != true ]]; then cat "$RUN_DIR/authority.log"; exit 1; fi
 cd "$PROJECT_ROOT"
 echo "Authority evidence: $RUN_DIR/authority.log"
-cargo test --locked --manifest-path crates/durable-object/Cargo.toml --test recovery \
-  a_killed_native_executor_recovers_from_do_without_resending_input -- --ignored --exact --nocapture
+cargo test --locked --manifest-path crates/durable-object/Cargo.toml --features workerd-tests --test recovery \
+  a_killed_native_executor_recovers_from_do_without_resending_input -- --exact --nocapture
 
-cargo test --locked --manifest-path crates/durable-object/Cargo.toml --test conformance -- --ignored --nocapture
+cargo test --locked --manifest-path crates/durable-object/Cargo.toml --features workerd-tests --test conformance -- --nocapture

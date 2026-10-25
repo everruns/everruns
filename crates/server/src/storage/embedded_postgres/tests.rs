@@ -14,12 +14,13 @@ fn identifiers_are_quoted_and_validated() {
     }
 }
 
-// Invoke the same test executable so the fixture exercises process-global
-// sharing, including process::exit and SIGKILL bypassing Rust destructors.
-#[tokio::test]
-#[ignore = "subprocess fixture for owner_exit_stops_postgres_and_removes_private_data"]
-async fn cluster_owner_fixture() {
-    let ready = PathBuf::from(std::env::var_os("EVERRUNS_PG_OWNER_READY").unwrap());
+/// The cluster owner `owner_exit_stops_postgres_and_removes_private_data`
+/// starts in a child process: the same test executable, so it exercises
+/// process-global sharing, including process::exit and SIGKILL bypassing Rust
+/// destructors. It checks the cluster, reports its port and data root in
+/// `ready`, and waits for the parent to end it.
+#[tokio::main(flavor = "current_thread")]
+async fn cluster_owner(ready: PathBuf) {
     let pg = EmbeddedPostgres::shared()
         .await
         .expect("start embedded postgres");
@@ -87,6 +88,12 @@ impl Drop for Owner {
 
 #[test]
 fn owner_exit_stops_postgres_and_removes_private_data() {
+    // The test is its own child: run with this variable, it plays the owner
+    // instead (and never returns). It is the parent-to-child channel, not a
+    // switch that skips anything; the parent always runs.
+    if let Some(ready) = std::env::var_os("EVERRUNS_PG_OWNER_READY") {
+        return cluster_owner(PathBuf::from(ready));
+    }
     for termination in ["exit", "kill", "group"] {
         let work = tempfile::tempdir().unwrap();
         let ready = work.path().join("ready");
@@ -98,8 +105,7 @@ fn owner_exit_stops_postgres_and_removes_private_data() {
                 .process_group(0)
                 .args([
                     "--exact",
-                    "storage::embedded_postgres::tests::cluster_owner_fixture",
-                    "--ignored",
+                    "storage::embedded_postgres::tests::owner_exit_stops_postgres_and_removes_private_data",
                     "--nocapture",
                 ])
                 .env("EVERRUNS_PG_OWNER_READY", &ready)

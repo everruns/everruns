@@ -163,8 +163,15 @@ impl KnowledgeService {
             .transpose()?
             .unwrap_or_else(|| "/".into());
         let limit = query.limit.unwrap_or(100).clamp(1, 500) as i64;
-        let rows:Vec<Value>=sqlx::query_scalar("SELECT to_jsonb(f)||jsonb_build_object('version',to_jsonb(v)-'raw_key'-'raw_parts'-'text_key'-'org_id') FROM knowledge_files f JOIN knowledge_versions v ON v.id=f.current_version WHERE f.org_id=$1 AND f.collection_id=$2 AND f.deleted_at IS NULL AND f.path>$3 AND starts_with(f.path,$4) ORDER BY f.path LIMIT $5")
-            .bind(c.org_id).bind(c.id).bind(query.after.as_deref().unwrap_or("")).bind(&prefix).bind(limit+1).fetch_all(self.db.tx_pool()).await.map_err(db_error)?;
+        let rows: Vec<Value> = sqlx::query_scalar(FILES_PAGE_SQL)
+            .bind(c.org_id)
+            .bind(c.id)
+            .bind(query.after.as_deref().unwrap_or(""))
+            .bind(&prefix)
+            .bind(limit + 1)
+            .fetch_all(self.db.tx_pool())
+            .await
+            .map_err(db_error)?;
         let more = rows.len() > limit as usize;
         let next = more.then(|| {
             rows[limit as usize - 1]["path"]
@@ -237,3 +244,10 @@ pub fn excluded(c: &Collection, kind: &str, p: &str) -> bool {
             })
         })
 }
+
+/// One catalog page in path order. Binds: org, collection, the cursor (paths
+/// after it), the path prefix and the row limit. `UNIQUE(collection_id,path)`
+/// serves the order and the cursor, so a page reads its rows and no more however
+/// large the collection; `files_page_reads_the_path_index` pins that plan and the
+/// weekly `knowledge_catalog` bench times it on a million files.
+pub(crate) const FILES_PAGE_SQL: &str = "SELECT to_jsonb(f)||jsonb_build_object('version',to_jsonb(v)-'raw_key'-'raw_parts'-'text_key'-'org_id') FROM knowledge_files f JOIN knowledge_versions v ON v.id=f.current_version WHERE f.org_id=$1 AND f.collection_id=$2 AND f.deleted_at IS NULL AND f.path>$3 AND starts_with(f.path,$4) ORDER BY f.path LIMIT $5";

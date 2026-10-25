@@ -1,9 +1,7 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live compatibility tests against Meta Model API.
 //!
-//! These tests intentionally use the lower-cost Contributor tier. They are
-//! ignored by default and require `MODEL_API_KEY`:
-//!   `doppler run -- cargo test -p everruns-drivers --features meta --test meta_model_api_live -- --ignored --nocapture`
+//! These tests intentionally use the lower-cost Contributor tier and need
+//! `MODEL_API_KEY`.
 
 use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_contracts::model::ReasoningEffort;
@@ -50,7 +48,6 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
 }
 
 #[tokio::test]
-#[ignore = "live network + MODEL_API_KEY"]
 async fn contributor_completes_text_response() {
     let provider = provider("meta", api_key());
     let messages = vec![Message::text(
@@ -72,7 +69,6 @@ async fn contributor_completes_text_response() {
 }
 
 #[tokio::test]
-#[ignore = "live network + MODEL_API_KEY"]
 async fn contributor_accepts_parallel_tool_calls() {
     let provider = provider("meta", api_key());
     let messages = vec![

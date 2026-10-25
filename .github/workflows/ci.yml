@@ -939,6 +939,8 @@ jobs:
       run: bash scripts/lib/check-log-error-field.sh
     - name: Check nothing links the former docs host
       run: bash scripts/lib/check-docs-host.sh
+    - name: Check no Rust test is ignored
+      run: bash scripts/lib/check-no-ignored-tests.sh
     - name: Check domains, storage, services and records never import crate::api
       run: bash scripts/lib/check-server-api-layering.sh
     - name: Check server modules use folder mod.rs and no path attributes
@@ -1773,7 +1775,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    timeout-minutes: 40
+    timeout-minutes: 55
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1826,6 +1828,15 @@ jobs:
         # provider's wire serialization, which is what this matrix exists to
         # check. `--nocapture` exposes the generations behind the failure.
         run: doppler run -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --test tool_search_test --all-features -- --nocapture
+
+      # Driver and Agents API live tests (`crates/llm-tests/tests/provider_live`).
+      # Unlike the matrix above these never skip: a missing key or exhausted
+      # account fails the step, so green means every vendor answered.
+      - name: Run provider live tests
+        if: ${{ !cancelled() }}
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: doppler run -- cargo test -p everruns-llm-tests --test provider_live --all-features -- --nocapture
 
       - name: Report provider coverage
         # `always()`: the coverage picture is most valuable when the step above

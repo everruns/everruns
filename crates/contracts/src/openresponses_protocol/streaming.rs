@@ -64,11 +64,39 @@ pub(crate) struct ToolCallStream {
     /// event, so reconciling at completion stays a no-op when the incremental
     /// frames already delivered everything.
     pub(crate) emitted: Vec<(String, String, String)>,
+    /// Item and call ids already handed on as native calls. The terminal
+    /// `response` lists those items again; folding them back in would emit an
+    /// async call a second time as a synchronous `ToolCalls` entry, which the
+    /// native coordinator rejects as a reused call id with different inputs.
+    pub(crate) native: Vec<String>,
 }
 
 impl ToolCallStream {
+    fn is_native(&self, id: &str, call_id: &str) -> bool {
+        self.native.iter().any(|known| {
+            (!id.is_empty() && known == id) || (!call_id.is_empty() && known == call_id)
+        })
+    }
+
+    /// Take a call out of the synchronous set: it was handed on as a native call.
+    pub(crate) fn mark_native(&mut self, id: &str, call_id: &str) {
+        self.calls.retain(|tc| {
+            !((!id.is_empty() && (tc.id == id || tc.call_id == id))
+                || (!call_id.is_empty() && (tc.call_id == call_id || tc.id == call_id)))
+        });
+        self.native.extend(
+            [id, call_id]
+                .into_iter()
+                .filter(|known| !known.is_empty())
+                .map(str::to_owned),
+        );
+    }
+
     /// Append one streamed argument fragment to its call.
     pub(crate) fn observe_arguments_delta(&mut self, item_id: &str, delta: &str) {
+        if self.is_native(item_id, "") {
+            return;
+        }
         match self.calls.iter_mut().find(|tc| tc.id == item_id) {
             Some(entry) if !entry.completed => entry.arguments.push_str(delta),
             Some(_) => {}
@@ -90,6 +118,9 @@ impl ToolCallStream {
         reason = "The accumulator entry was just pushed, so the call set cannot be empty"
     )]
     pub(crate) fn observe_item(&mut self, id: &str, call_id: &str, name: &str, arguments: &str) {
+        if self.is_native(id, call_id) {
+            return;
+        }
         // Match on either identifier: the frames do not all carry both, and a
         // gateway that omits `id` entirely would otherwise collapse every
         // parallel call in the response into one entry.
@@ -346,6 +377,8 @@ pub(crate) fn completed_tool_call_event(
     if call.is_async() || matches!(call, crate::native_async::NativeToolCall::Custom { .. }) {
         // Native calls are checkpointed verbatim, so they must be well formed.
         call.validate()?;
+        let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+        accumulated.lock().unwrap().mark_native(item_id, call.id());
         return Ok(LlmStreamEvent::NativeToolCall(call));
     }
     // A synchronous call joins the accumulator below: arguments that are not

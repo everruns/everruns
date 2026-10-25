@@ -32,6 +32,10 @@ path = "src/bin/export_openapi.rs"
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
 lua = ["everruns-capabilities/lua"]
+# Tests that need an outside service: github.com, a TypeSafe key, a NATS
+# server. Never on in PR CI; the weekly `Integration Live Sweep` turns it on
+# and supplies each service, and a missing one fails the test.
+live-tests = []
 
 [dependencies]
 everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
@@ -164,4 +168,10 @@ harness = false
 # `durable-bench.yml`, never by `cargo test`.
 [[bench]]
 name = "turn_latency"
+harness = false
+
+# Catalog pages on a million-file knowledge collection, with a time budget
+# (`benches/knowledge_catalog.rs`). Run weekly by `durable-bench.yml`.
+[[bench]]
+name = "knowledge_catalog"
 harness = false

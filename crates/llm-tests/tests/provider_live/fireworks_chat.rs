@@ -1,13 +1,9 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke tests for Fireworks AI chat + model discovery.
 //!
 //! Exercises a real streamed chat completion through `FireworksChatDriver` plus
 //! live `/models` discovery and profile mapping. These are the live counterparts
 //! to the wiremock unit tests. (Live tool-calling is covered by the shared
 //! `everruns-llm-tests` matrix via the `FIREWORKS_KIMI_K2` case.)
-//!
-//! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features fireworks --test fireworks_chat_live -- --ignored --nocapture`
 
 use everruns_contracts::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use everruns_drivers::fireworks::provider;
@@ -21,7 +17,6 @@ fn api_key() -> String {
 }
 
 #[tokio::test]
-#[ignore = "live network + FIREWORKS_API_KEY"]
 async fn fireworks_chat_streams_response() {
     let provider = provider("fireworks", api_key());
 
@@ -76,7 +71,6 @@ async fn fireworks_chat_streams_response() {
 }
 
 #[tokio::test]
-#[ignore = "live network + FIREWORKS_API_KEY"]
 async fn fireworks_discovery_returns_chat_models_with_profiles() {
     let provider = provider("fireworks", api_key());
 

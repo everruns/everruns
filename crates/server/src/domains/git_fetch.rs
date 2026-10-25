@@ -882,10 +882,11 @@ mod tests {
         );
     }
 
-    /// End-to-end against a real remote. Ignored by default because it needs
-    /// network access; run with `--ignored` when changing the protocol code.
+    /// End-to-end against a real remote, so it needs network access to
+    /// github.com; runs in the weekly `Integration Live Sweep` (feature
+    /// `live-tests`).
+    #[cfg(feature = "live-tests")]
     #[test]
-    #[ignore = "requires network access to github.com"]
     fn fetches_a_real_repository() {
         let checkout = tempfile::TempDir::new().expect("temp dir");
         shallow_checkout(
