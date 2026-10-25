@@ -138,5 +138,7 @@ test("registers and executes WebMCP shell tools", async ({
     await modelContext.executeTool(tool, JSON.stringify({ target_type: "page", page: "sessions" }));
   });
   await expect(page).toHaveURL(/\/sessions$/);
-  await expect(page.getByText("Tokens today 0")).toBeVisible();
+  await expect(
+    page.getByText("Every run across your agents: chats, schedules, channels and API calls."),
+  ).toBeVisible();
 });

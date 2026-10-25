@@ -167,7 +167,9 @@ test.describe("Sidebar navigation prefetch", () => {
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
     await page.getByRole("link", { name: "Sessions" }).click();
     await expect(page).toHaveURL(/\/sessions$/);
-    await expect(page.getByText("Tokens today 0")).toBeVisible();
+    await expect(
+      page.getByText("Every run across your agents: chats, schedules, channels and API calls."),
+    ).toBeVisible();
   });
 
   test("Settings navigation avoids child route fan-out", async ({ page }) => {
