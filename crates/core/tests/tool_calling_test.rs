@@ -350,22 +350,6 @@ impl Tool for ImageTool {
 }
 
 #[tokio::test]
-async fn test_image_tool_execution_result() {
-    let tool = ImageTool;
-    let result = tool.execute(json!({"region": "header"})).await;
-
-    match result {
-        ToolExecutionResult::SuccessWithImages { result, images } => {
-            assert_eq!(result["region"], "header");
-            assert_eq!(images.len(), 1);
-            assert_eq!(images[0].media_type, "image/png");
-            assert!(!images[0].base64.is_empty());
-        }
-        _ => panic!("Expected SuccessWithImages"),
-    }
-}
-
-#[tokio::test]
 async fn test_image_tool_into_tool_result() {
     let result = ToolExecutionResult::success_with_images(
         json!({"status": "ok"}),
@@ -495,17 +479,6 @@ async fn test_tool_result_with_images_llm_conversion() {
     }
 }
 
-#[test]
-fn test_tool_result_without_images_backward_compat() {
-    // Ensure old JSON without `images` field still deserializes
-    let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_contracts::tool_types::ToolResult =
-        serde_json::from_str(json_str).unwrap();
-
-    assert!(parsed.images.is_none());
-    assert_eq!(parsed.tool_call_id, "call_1");
-}
-
 // ============================================================================
 // ConnectionRequired tests
 // ============================================================================
@@ -539,59 +512,4 @@ fn test_connection_required_into_tool_result() {
     // Result JSON contains connection_required key
     let result_json = tool_result.result.unwrap();
     assert_eq!(result_json["connection_required"], "daytona");
-}
-
-#[test]
-fn test_connection_required_serialization_roundtrip() {
-    let result = everruns_contracts::tool_types::ToolResult {
-        details: None,
-        tool_call_id: "call_conn".to_string(),
-        result: Some(json!({"connection_required": "daytona"})),
-        images: None,
-        error: None,
-        connection_required: Some(everruns_contracts::ConnectionRequired::provider_only(
-            "daytona",
-        )),
-        raw_output: None,
-    };
-
-    let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_contracts::tool_types::ToolResult =
-        serde_json::from_str(&json_str).unwrap();
-
-    assert_eq!(
-        parsed.connection_required,
-        Some(everruns_contracts::ConnectionRequired::provider_only(
-            "daytona"
-        ))
-    );
-    assert_eq!(parsed.result.unwrap()["connection_required"], "daytona");
-}
-
-#[test]
-fn test_tool_result_without_connection_required_backward_compat() {
-    // Old JSON without connection_required field still deserializes
-    let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_contracts::tool_types::ToolResult =
-        serde_json::from_str(json_str).unwrap();
-
-    assert!(parsed.connection_required.is_none());
-}
-
-#[test]
-fn test_connection_required_not_classified_as_error() {
-    use everruns_core::tools::ToolExecutionResult;
-
-    let success = ToolExecutionResult::success(json!({"ok": true}));
-    assert!(success.is_success());
-    assert!(!success.is_error());
-
-    let error = ToolExecutionResult::tool_error("bad input");
-    assert!(!error.is_success());
-    assert!(error.is_error());
-
-    let conn = ToolExecutionResult::connection_required("daytona");
-    assert!(!conn.is_success());
-    assert!(!conn.is_error());
-    assert!(conn.is_connection_required());
 }

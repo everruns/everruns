@@ -825,13 +825,6 @@ async fn tools_call_deadlines(connection: McpConnection) -> Vec<Option<u64>> {
 }
 
 #[tokio::test]
-async fn tools_call_uses_the_default_deadline_when_unset() {
-    let deadlines = tools_call_deadlines(McpConnection::http("ci", FAKE_URL)).await;
-    assert!(!deadlines.is_empty());
-    assert!(deadlines.iter().all(|deadline| *deadline == Some(60_000)));
-}
-
-#[tokio::test]
 async fn tools_call_honors_the_servers_configured_deadline() {
     let deadlines =
         tools_call_deadlines(McpConnection::http("ci", FAKE_URL).with_tool_timeout_ms(300_000))

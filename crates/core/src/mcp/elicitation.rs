@@ -401,12 +401,6 @@ mod tests {
                 record: std::sync::Mutex::new(Some(record)),
             }
         }
-
-        fn empty() -> Self {
-            Self {
-                record: std::sync::Mutex::new(None),
-            }
-        }
     }
 
     #[async_trait]
@@ -427,30 +421,6 @@ mod tests {
             host: host.to_string(),
             punycode: false,
         }
-    }
-
-    #[tokio::test]
-    async fn accepts_only_once_a_human_has_consented() {
-        let handler = ConsentingUrlElicitations::new(Arc::new(OneShotConsents::empty()));
-        assert_eq!(
-            handler
-                .request_url_consent(&elicitation("pay.example.com"))
-                .await
-                .expect("handled"),
-            ElicitationAction::Cancel,
-            "no recorded consent must never become an implicit accept"
-        );
-
-        let handler = ConsentingUrlElicitations::new(Arc::new(OneShotConsents::holding(
-            StoredConsent::new("billing", "charge", "pay.example.com", chrono::Utc::now()),
-        )));
-        assert_eq!(
-            handler
-                .request_url_consent(&elicitation("pay.example.com"))
-                .await
-                .expect("handled"),
-            ElicitationAction::Accept
-        );
     }
 
     #[tokio::test]

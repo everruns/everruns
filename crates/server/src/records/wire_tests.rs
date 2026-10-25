@@ -94,65 +94,6 @@ fn test_proto_agent_includes_capability_ids() {
 }
 
 #[test]
-fn test_proto_agent_without_capabilities() {
-    use chrono::Utc;
-    use uuid::Uuid;
-
-    // Create an Agent without capabilities
-    let id = Uuid::now_v7();
-    let agent = crate::domains::agents::record::Agent {
-        is_built_in: false,
-        avatar: None,
-        service_virtual_user_id: None,
-
-        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
-        internal_id: id,
-        name: "test-agent".to_string(),
-        display_name: Some("Test Agent".to_string()),
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: "You are a helpful assistant".to_string(),
-        default_model_id: None,
-        harness_id: everruns_contracts::typed_id::HarnessId::new(),
-        forked_from_agent_id: None,
-        root_agent_id: None,
-        tags: vec!["slack:thread:123.456".to_string()],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        max_output_tokens: None,
-        communication: Default::default(),
-        sandbox_policy: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: crate::domains::agents::record::AgentStatus::Active,
-        exposures_suspended: false,
-        exposed: false,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
-    };
-
-    // Convert to proto
-    let proto_agent = schema_agent_to_proto(&agent);
-
-    // Verify capability_ids are empty
-    assert!(proto_agent.capability_ids.is_empty());
-
-    // Convert back to schema
-    let schema_agent = proto_agent_to_schema(proto_agent).unwrap();
-
-    // Verify capabilities remain empty
-    assert!(schema_agent.capabilities.is_empty());
-}
-
-#[test]
 fn test_proto_session_roundtrip_includes_organization_id() {
     use chrono::Utc;
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;

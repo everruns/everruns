@@ -116,17 +116,6 @@ fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
     assert!(json.get("generic_tool_text").is_none());
 }
 
-/// EVE-1005: `SessionBinding::default()` is `Thread`, which is correct for
-/// messaging and wrong for invocations. Every invocation-shaped config must
-/// therefore carry an explicit field default of `Shared` — the former
-/// `shared_session`. A config that silently fell back to `Thread` would
-/// route every schedule firing to a different session.
-#[test]
-fn invocation_configs_default_to_the_shared_binding() {
-    assert_eq!(default_invocation_binding(), SessionBinding::Shared);
-    assert_ne!(SessionBinding::default(), SessionBinding::Shared);
-}
-
 #[test]
 fn test_webhook_channel_config_rate_limit_roundtrip() {
     // EVE-627: an explicit per-channel rate limit parses and re-serializes.

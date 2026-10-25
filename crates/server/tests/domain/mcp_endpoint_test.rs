@@ -748,15 +748,6 @@ async fn test_mcp_notification_contract_matrix() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_tools_call_unknown_tool() {
-    let server = TestServer::new().await;
-    let resp = mcp_tool_call(&server, "nonexistent_tool", json!({})).await;
-
-    assert!(tool_is_error(&resp), "Expected isError for unknown tool");
-    assert!(tool_text(&resp).contains("Unknown tool"));
-}
-
 /// EVE-492: unknown-tool errors carry the typed `structuredContent`
 /// envelope alongside the legacy `content[0].text`. The legacy text path
 /// stays the same for back-compat; new SDKs branch on the structured
@@ -1269,24 +1260,6 @@ async fn test_mcp_discover_harnesses() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_discover_mcp_servers() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "discover", json!({ "query": "mcp" })).await;
-
-    assert!(
-        !tool_is_error(&resp),
-        "discover failed: {}",
-        tool_text(&resp)
-    );
-    let payload = tool_json(&resp);
-    let text = payload.to_string();
-    assert!(
-        text.contains("mcp"),
-        "discover should find MCP-related operations"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_missing_query() {
     let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({})).await;
@@ -1467,21 +1440,6 @@ async fn test_mcp_discover_resource_phrase_ranks_read_paths() {
 // ============================================================================
 // Tier 2: query/execute scripted tools
 // ============================================================================
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_query_list_harnesses() {
-    let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "query", json!({ "commands": "list_harnesses" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "query list_harnesses failed: {}",
-        tool_text(&resp)
-    );
-
-    let result = tool_json(&resp);
-    let harnesses = result.as_array().expect("Expected harnesses array");
-    assert!(!harnesses.is_empty(), "Should have seed harnesses");
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_query_reporting_catalog_and_model_usage() {

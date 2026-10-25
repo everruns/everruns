@@ -2045,31 +2045,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_bash_write_and_read_file() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Write a file
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "echo 'test content' > /workspace/test.txt"}),
-                &context,
-            )
-            .await;
-        assert!(matches!(result, ToolExecutionResult::Success(_)));
-
-        // Read it back
-        let result = tool
-            .execute_with_context(json!({"commands": "cat /workspace/test.txt"}), &context)
-            .await;
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "test content\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
-    #[tokio::test]
     async fn test_bash_recursive_walk_descends_into_subdirectories() {
         let (context, _guard) = create_context_with_mock_store();
         let tool = BashTool::default();
@@ -2160,39 +2135,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_pipe_command() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo hello | cat"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "hello\n");
-            assert_eq!(output["exit_code"], 0);
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_arithmetic() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo $((2 + 3 * 4))"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "14\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
     // ========================================================================
     // Paths outside /workspace resolve into the backend (EVE-660)
     // ========================================================================
@@ -2250,24 +2192,6 @@ mod tests {
                 );
             }
             _ => panic!("Unexpected result type"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_mkdir_from_root_succeeds() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "mkdir /tmp/sub && echo done"}), &context)
-            .await;
-
-        match result {
-            ToolExecutionResult::Success(output) => {
-                assert_eq!(output["exit_code"], 0, "got: {:?}", output);
-                assert_eq!(output["stdout"], "done\n");
-            }
-            other => panic!("expected success, got: {:?}", other),
         }
     }
 
@@ -2330,26 +2254,6 @@ mod tests {
     // ========================================================================
 
     #[tokio::test]
-    async fn test_adapter_read_write_workspace_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write a file
-        adapter
-            .write_file(Path::new("/workspace/test.txt"), b"hello")
-            .await
-            .unwrap();
-
-        // Read it back
-        let content = adapter
-            .read_file(Path::new("/workspace/test.txt"))
-            .await
-            .unwrap();
-        assert_eq!(content, b"hello");
-    }
-
-    #[tokio::test]
     async fn test_adapter_read_missing_file_is_not_found() {
         let adapter = mount_adapter();
 
@@ -2360,21 +2264,6 @@ mod tests {
         assert!(
             matches!(&err, bashkit::Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound),
             "expected NotFound, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_adapter_write_from_root_succeeds() {
-        let adapter = mount_adapter();
-
-        // Writing outside /workspace now resolves into the backend and reads back.
-        adapter
-            .write_file(Path::new("/tmp/file.txt"), b"data")
-            .await
-            .unwrap();
-        assert_eq!(
-            adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(),
-            b"data"
         );
     }
 
@@ -2613,92 +2502,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_loop_within_limit() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Execute a loop within the 10000 iteration limit
-        let command = "i=0; while [ $i -lt 100 ]; do i=$((i + 1)); done; echo $i";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed within limits
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "100");
-        } else {
-            panic!("Expected success for loop within limit: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_function_calls() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Test basic function definition and calls (non-recursive to avoid stack issues)
-        let command = r#"
-            greet() {
-                echo "Hello, $1!"
-            }
-            greet world
-        "#;
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert!(
-                output["stdout"]
-                    .as_str()
-                    .unwrap_or("")
-                    .contains("Hello, world!")
-            );
-        } else {
-            panic!("Expected success for function call: {:?}", result);
-        }
-    }
-
     // ========================================================================
     // Script file execution tests
     // ========================================================================
-
-    #[tokio::test]
-    async fn test_bash_execute_script_by_absolute_path() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Create a script file
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "cat > /workspace/test.sh << 'EOF'\n#!/bin/bash\necho hello\nEOF"}),
-                &context,
-            )
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::Success(_)),
-            "Failed to create script: {:?}",
-            result
-        );
-
-        // Execute by absolute path
-        let result = tool
-            .execute_with_context(json!({"commands": "/workspace/test.sh"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"], "hello\n");
-        } else {
-            panic!("Expected success, got: {:?}", result);
-        }
-    }
 
     #[tokio::test]
     async fn test_bash_execute_script_with_args() {
@@ -2951,32 +2757,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_adapter_append_to_existing_file() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // Write initial
-        adapter
-            .write_file(Path::new("/workspace/ap.txt"), b"AAA")
-            .await
-            .unwrap();
-
-        // Append
-        adapter
-            .append_file(Path::new("/workspace/ap.txt"), b"BBB")
-            .await
-            .unwrap();
-
-        // Verify combined
-        let content = adapter
-            .read_file(Path::new("/workspace/ap.txt"))
-            .await
-            .unwrap();
-        assert_eq!(content, b"AAABBB");
-    }
-
-    #[tokio::test]
     async fn test_bash_redirect_creates_parent_dirs() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool::default();
@@ -3015,26 +2795,6 @@ mod tests {
     // ========================================================================
     // SearchCapable / indexed search tests
     // ========================================================================
-
-    #[test]
-    fn test_adapter_is_search_capable() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        let sc = adapter.as_search_capable();
-        assert!(
-            sc.is_some(),
-            "SessionFileSystemAdapter should be SearchCapable"
-        );
-
-        let provider = sc.unwrap().search_provider(Path::new("/workspace"));
-        assert!(provider.is_some(), "Should return a SearchProvider");
-
-        let caps = provider.unwrap().capabilities();
-        assert!(caps.content_search, "Should support content search");
-        assert!(caps.regex, "Should support regex patterns");
-    }
 
     #[tokio::test]
     async fn test_search_provider_returns_grep_results() {

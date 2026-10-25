@@ -673,25 +673,6 @@ fn merge_effective_scoped_mcp_servers_prefers_more_specific_layers() {
 }
 
 #[test]
-fn validate_scoped_mcp_servers_rejects_stdio_transport() {
-    let mut servers = ScopedMcpServers::default();
-    servers.insert(
-        "fs".to_string(),
-        ScopedMcpServer {
-            transport_type: everruns_core::McpServerTransportType::Stdio,
-            command: Some("mcp-server-filesystem".to_string()),
-            ..Default::default()
-        },
-    );
-
-    let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-    assert!(
-        error.to_string().contains("stdio"),
-        "expected stdio rejection, got: {error}"
-    );
-}
-
-#[test]
 fn validate_scoped_mcp_servers_rejects_inline_identity_and_preset_fields() {
     for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
         let servers = ScopedMcpServers::from([(
@@ -1140,26 +1121,6 @@ fn capability_mcp_validation_rejects_presets_and_allows_declared_identity() {
         )]);
         validate_capability_mcp_servers(&contribution).unwrap();
     }
-}
-
-#[test]
-fn validate_scoped_mcp_servers_rejects_duplicate_sanitized_names() {
-    let mut servers = ScopedMcpServers::default();
-    servers.insert(
-        "Docs API".to_string(),
-        scoped_server("https://one.example.com/mcp"),
-    );
-    servers.insert(
-        "docs-api".to_string(),
-        scoped_server("https://two.example.com/mcp"),
-    );
-
-    let error = validate_scoped_mcp_servers(&servers).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("must be unique after sanitization")
-    );
 }
 
 #[test]

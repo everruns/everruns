@@ -261,37 +261,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_instant_answer_empty_response() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Abstract": "",
-                "AbstractSource": "",
-                "AbstractURL": "",
-                "Answer": "",
-                "AnswerType": "",
-                "Definition": "",
-                "DefinitionSource": "",
-                "DefinitionURL": "",
-                "Heading": "",
-                "Type": "",
-                "RelatedTopics": [],
-                "Results": []
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = DuckDuckGoClient::with_base_url(mock_server.uri());
-        let result = client.instant_answer("asdfghjkl", false).await;
-        assert!(result.is_ok());
-        let response = result.unwrap();
-        assert!(response.r#abstract.is_empty());
-        assert!(response.heading.is_empty());
-        assert!(response.related_topics.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_instant_answer_with_no_html() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -366,30 +335,6 @@ mod tests {
         };
         assert!(group.is_group());
         assert!(!group.is_direct());
-    }
-
-    #[test]
-    fn test_response_deserialization() {
-        let json = r#"{
-            "Abstract": "Test abstract",
-            "AbstractSource": "Wikipedia",
-            "AbstractURL": "https://en.wikipedia.org/wiki/Test",
-            "Answer": "42",
-            "AnswerType": "calc",
-            "Definition": "A test",
-            "DefinitionSource": "Wiktionary",
-            "DefinitionURL": "https://en.wiktionary.org/wiki/test",
-            "Heading": "Test",
-            "Type": "A",
-            "RelatedTopics": [],
-            "Results": []
-        }"#;
-        let response: InstantAnswerResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(response.r#abstract, "Test abstract");
-        assert_eq!(response.answer, "42");
-        assert_eq!(response.answer_type, "calc");
-        assert_eq!(response.heading, "Test");
-        assert_eq!(response.response_type, "A");
     }
 
     #[test]

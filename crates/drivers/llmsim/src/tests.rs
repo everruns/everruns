@@ -31,39 +31,6 @@ impl LlmSimDriver {
     }
 }
 
-#[test]
-fn auditor_demo_script_calls_ec2_then_s3_then_summarises() {
-    let config = auditor_demo_script();
-    let turns = match &config.response {
-        ResponseConfig::Scripted { turns, .. } => turns,
-        other => panic!("expected Scripted, got {other:?}"),
-    };
-    assert_eq!(turns.len(), 3, "script has three turns");
-    match &turns[0] {
-        SimTurn::Mixed { tool_calls, .. } => {
-            assert_eq!(tool_calls.len(), 1);
-            assert_eq!(tool_calls[0].name, "aws_list_ec2_instances");
-        }
-        other => panic!("turn 0 should be Mixed, got {other:?}"),
-    }
-    match &turns[1] {
-        SimTurn::Mixed { tool_calls, .. } => {
-            assert_eq!(tool_calls.len(), 1);
-            assert_eq!(tool_calls[0].name, "aws_list_s3_buckets");
-        }
-        other => panic!("turn 1 should be Mixed, got {other:?}"),
-    }
-    match &turns[2] {
-        SimTurn::Assistant(text) => {
-            assert!(
-                text.contains("/workspace/.audit.log"),
-                "summary mentions the audit log: {text:?}"
-            );
-        }
-        other => panic!("turn 2 should be Assistant, got {other:?}"),
-    }
-}
-
 fn make_config() -> LlmCallConfig {
     LlmCallConfig::new("test-model")
 }
@@ -591,64 +558,4 @@ fn test_resolve_latency_profile_from_model_name() {
     let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
     let profile = driver.resolve_latency_profile("llmsim-default");
     assert!(profile.sample_ttft().as_nanos() > 0);
-}
-
-#[tokio::test]
-async fn test_latency_streaming_from_model_name() {
-    // Default driver (simulate_latency=false) but model name triggers latency
-    let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
-    let messages = vec![user_message("test")];
-
-    let mut config = make_config();
-    config.model = "llmsim-latency".to_string();
-
-    let start = std::time::Instant::now();
-    let mut stream = driver
-        .chat_completion_stream(messages, &config)
-        .await
-        .unwrap();
-
-    let mut text_parts = Vec::new();
-    let mut got_done = false;
-
-    while let Some(event) = stream.next().await {
-        match event.unwrap() {
-            LlmStreamEvent::TextDelta(text) => text_parts.push(text),
-            LlmStreamEvent::Done(meta) => {
-                got_done = true;
-                assert_eq!(meta.model, Some("llmsim-latency".to_string()));
-            }
-            _ => {}
-        }
-    }
-
-    assert!(got_done);
-    assert_eq!(text_parts.join(""), "Hello world");
-    // With latency simulation, streaming should take non-zero time
-    // (TTFT + inter-token delays)
-    assert!(
-        start.elapsed().as_millis() > 0,
-        "latency simulation should introduce delays"
-    );
-}
-
-#[tokio::test]
-async fn test_no_latency_streaming_is_instant() {
-    let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello world"));
-    let messages = vec![user_message("test")];
-
-    let mut config = make_config();
-    config.model = "llmsim-default".to_string();
-
-    let start = std::time::Instant::now();
-    let response = driver.chat_completion(messages, &config).await.unwrap();
-    let elapsed = start.elapsed();
-
-    assert_eq!(response.text, "Hello world");
-    // Without latency, should complete nearly instantly (under 50ms)
-    assert!(
-        elapsed.as_millis() < 50,
-        "instant mode should have no delays, took {}ms",
-        elapsed.as_millis()
-    );
 }

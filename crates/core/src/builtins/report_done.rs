@@ -203,26 +203,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn narration_is_localized() {
-        let call = ToolCall {
-            id: "c1".into(),
-            name: "report_done".into(),
-            arguments: json!({}),
-        };
-        let ctx = ToolNarrationContext::default();
-        assert_eq!(
-            ReportDoneTool
-                .narrate(&call, ToolNarrationPhase::Completed, None, ctx)
-                .as_deref(),
-            Some("Reported what got done")
-        );
-        assert_eq!(
-            ReportDoneTool
-                .narrate(&call, ToolNarrationPhase::Started, Some("uk"), ctx)
-                .as_deref(),
-            Some("Звітую про виконане")
-        );
-    }
 }

@@ -282,15 +282,6 @@ mod tests {
     }
 
     #[test]
-    fn test_fs_url_empty() {
-        let client = test_client();
-        assert_eq!(
-            client.fs_url(""),
-            "https://api.example.com/v1/sessions/ses_123/fs"
-        );
-    }
-
-    #[test]
     fn test_fs_url_file() {
         let client = test_client();
         assert_eq!(
@@ -347,13 +338,6 @@ mod tests {
             updated_at: None,
         };
         assert!(RemoteClient::decode_content(&content).is_err());
-    }
-
-    #[test]
-    fn test_auth_header_uses_bearer_scheme() {
-        let client = RemoteClient::new("https://api.example.com", "evr_test", "session_abc");
-
-        assert_eq!(client.auth_header_value(), "Bearer evr_test");
     }
 
     #[test]

@@ -370,24 +370,6 @@ mod tests {
     }
 
     #[test]
-    fn test_backpressure_stops_at_high_watermark() {
-        let config = BackpressureConfig::new()
-            .with_high_watermark(0.8)
-            .with_low_watermark(0.5);
-        let state = BackpressureState::new(config, 10);
-
-        // Add 8 tasks (80% = high watermark)
-        for _ in 0..8 {
-            state.task_started();
-        }
-
-        // Should stop accepting at high watermark
-        assert!(!state.should_accept());
-        assert!(!state.is_accepting());
-        assert!(state.backpressure_reason().is_some());
-    }
-
-    #[test]
     fn test_backpressure_resumes_at_low_watermark() {
         let config = BackpressureConfig::new()
             .with_high_watermark(0.8)

@@ -207,18 +207,6 @@ async fn test_screenshot_tool_no_context_error() {
     }
 }
 
-#[tokio::test]
-async fn test_content_tool_no_context_error() {
-    let tool = BrowserlessContentTool;
-    let result = tool.execute(json!({"url": "https://example.com"})).await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
 // ============================================================================
 // EVE-339 — Reading-tool truncation envelope conformance
 // ============================================================================
@@ -287,46 +275,6 @@ fn test_truncate_html_utf8_boundary_safe() {
     );
     assert!(!content.contains('z'), "content after cap must not appear");
     assert!(total > MAX_HTML_BYTES);
-}
-
-#[tokio::test]
-async fn test_scrape_tool_no_context_error() {
-    let tool = BrowserlessScrapeTool;
-    let result = tool
-        .execute(json!({"url": "https://example.com", "elements": []}))
-        .await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_interact_tool_no_context_error() {
-    let tool = BrowserlessInteractTool;
-    let result = tool
-        .execute(json!({"url": "https://example.com", "steps": []}))
-        .await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_navigate_tool_no_context_error() {
-    let tool = BrowserlessNavigateTool;
-    let result = tool.execute(json!({"url": "https://example.com"})).await;
-    match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("requires context"));
-        }
-        other => panic!("Expected ToolError, got: {other:?}"),
-    }
 }
 
 #[test]

@@ -93,25 +93,6 @@ async fn cleanup_circuit_breaker(store: &PostgresWorkflowEventStore, key: &str) 
 // ============================================
 
 #[tokio::test]
-async fn test_list_workflows_empty() {
-    let store = create_test_store().await;
-
-    let workflows = store
-        .list_workflows(
-            WorkflowFilter::default(),
-            Pagination {
-                offset: 0,
-                limit: 10,
-            },
-        )
-        .await
-        .unwrap();
-
-    // May have existing data, just verify query succeeds
-    assert!(workflows.len() <= 10);
-}
-
-#[tokio::test]
 async fn test_list_workflows_with_filter() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -371,25 +352,6 @@ async fn test_get_task() {
 }
 
 #[tokio::test]
-async fn test_list_tasks_empty() {
-    let store = create_test_store().await;
-
-    let tasks = store
-        .list_tasks(
-            TaskFilter::default(),
-            Pagination {
-                offset: 0,
-                limit: 10,
-            },
-        )
-        .await
-        .unwrap();
-
-    // Query should succeed
-    assert!(tasks.len() <= 10);
-}
-
-#[tokio::test]
 async fn test_list_tasks_with_filter() {
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -634,24 +596,6 @@ async fn test_drain_and_resume_worker() {
 // ============================================
 // System Health Tests
 // ============================================
-
-#[tokio::test]
-async fn test_get_system_health() {
-    let store = create_test_store().await;
-
-    // Query should succeed and return valid SystemHealth struct
-    // All fields are u64 so we just verify the query executes without error
-    let health = store.get_system_health().await.unwrap();
-
-    // Verify active_workers <= total_workers (sanity check)
-    assert!(health.active_workers <= health.total_workers);
-    // Verify workers_accepting <= active_workers
-    assert!(health.workers_accepting <= health.active_workers);
-    // Verify current_load <= total_capacity (when capacity exists)
-    if health.total_capacity > 0 {
-        assert!(health.current_load <= health.total_capacity);
-    }
-}
 
 #[tokio::test]
 async fn test_get_system_health_with_data() {

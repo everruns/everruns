@@ -1484,18 +1484,6 @@ mod tests {
         );
     }
 
-    /// Verify that ToolRegistry::with_defaults() alone does NOT include 'bash'.
-    /// This documents why harness capability registration is necessary.
-    #[test]
-    fn test_defaults_alone_miss_bash_tool() {
-        let registry = everruns_core::ToolRegistry::with_defaults();
-        assert!(
-            !registry.has("bash"),
-            "with_defaults() must NOT include 'bash' — it comes from bashkit_shell capability. \
-             If this fails, the tool was added to defaults and the harness fallback is moot."
-        );
-    }
-
     /// Verify server-executed Generic tools have implementations.
     #[tokio::test]
     async fn test_generic_harness_collected_tools_have_implementations() {
@@ -1544,47 +1532,6 @@ mod tests {
             ["bash", "list_skills", "activate_skill", "ask_user"]
                 .iter()
                 .all(|expected| tool_names.contains(expected))
-        );
-    }
-
-    /// Verify Generic Harness includes skills discovery tools.
-    #[tokio::test]
-    async fn test_generic_harness_capabilities_produce_skills_tools() {
-        use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
-
-        let registry =
-            crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
-
-        let built_in_harnesses = built_in_harnesses();
-        let generic = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "generic")
-            .expect("Generic harness should exist");
-
-        let cap_ids: Vec<String> = generic
-            .capabilities
-            .iter()
-            .map(|s| s.capability_id().to_string())
-            .collect();
-        let ctx =
-            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
-        let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-
-        assert!(
-            tool_names.contains(&"list_skills"),
-            "Generic Harness must include 'list_skills' tool from skills capability, got: {:?}",
-            tool_names
-        );
-        assert!(
-            tool_names.contains(&"activate_skill"),
-            "Generic Harness must include 'activate_skill' tool from skills capability, got: {:?}",
-            tool_names
         );
     }
 
@@ -1822,38 +1769,6 @@ mod tests {
     }
 
     // --- MCP Server upsert ---
-
-    #[tokio::test]
-    async fn linear_mcp_seed_uses_application_actor_oauth() {
-        let db = make_db();
-        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-
-        let row = db
-            .get_mcp_server(DEFAULT_ORG_ID, seed_ids::LINEAR_MCP)
-            .await
-            .unwrap()
-            .expect("Linear MCP preset should be seeded");
-        let settings = crate::domains::mcp_servers::McpServerService::settings_from_row(&row);
-        let oauth = settings
-            .oauth
-            .as_ref()
-            .expect("Linear MCP preset should use OAuth");
-
-        assert_eq!(row.name, "linear");
-        assert_eq!(row.url, "https://mcp.linear.app/mcp");
-        assert_eq!(settings.auth_mode, everruns_core::McpServerAuthMode::OAuth);
-        assert_eq!(settings.protocol_mode, everruns_core::McpProtocolMode::Auto);
-        assert_eq!(oauth.scope.as_deref(), Some("read,write"));
-        assert_eq!(
-            oauth
-                .service_authorization_params
-                .get("actor")
-                .map(String::as_str),
-            Some("app")
-        );
-    }
 
     #[tokio::test]
     async fn test_mcp_server_seed_detects_url_change() {

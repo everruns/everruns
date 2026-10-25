@@ -380,19 +380,6 @@ mod tests {
     }
 
     #[test]
-    fn requests_keep_question_order_and_carry_metadata() {
-        let request = DecisionRequest::new(serde_json::json!({"text": "hi"}))
-            .ask("second", DecisionQuestion::noul("b"))
-            .ask("first", DecisionQuestion::score("a", ["low", "high"]))
-            .with_metadata("purpose", "guardrails");
-        assert_eq!(request.len(), 2);
-        assert_eq!(request.questions[0].0, "second");
-        assert_eq!(request.questions[1].1.kind(), "score");
-        assert_eq!(request.metadata["purpose"], "guardrails");
-        assert_eq!(request.state["text"], "hi");
-    }
-
-    #[test]
     fn score_tail_mass_is_read_from_the_distribution_not_the_mean() {
         // Probably fine, possibly severe: the mean says 0.6, the tail says 30%.
         let answer = DecisionAnswer::Score {

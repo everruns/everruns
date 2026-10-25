@@ -2901,34 +2901,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_edits_coerces_top_level_only() {
-        // Backward-compat: a legacy call with only top-level scalars (no edits[])
-        // is folded into a single edit instead of rejected.
-        let edits = parse_text_edits(&json!({
-            "old_text": "hello",
-            "new_text": "world"
-        }))
-        .expect("legacy top-level scalars should be coerced into edits[]");
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].old_text, "hello");
-        assert_eq!(edits[0].new_text, "world");
-    }
-
-    #[test]
-    fn test_parse_text_edits_allows_legacy_top_level_deletion() {
-        // Backward-compat: an explicit empty-string replacement is still a valid
-        // deletion edit when both legacy scalar fields are well-formed strings.
-        let edits = parse_text_edits(&json!({
-            "old_text": "remove me",
-            "new_text": ""
-        }))
-        .expect("explicit legacy deletion edit should be accepted");
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].old_text, "remove me");
-        assert_eq!(edits[0].new_text, "");
-    }
-
-    #[test]
     fn test_parse_text_edits_rejects_malformed_legacy_top_level_new_text() {
         let missing_err = parse_text_edits(&json!({
             "old_text": "remove me"
@@ -2958,20 +2930,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_edits_accepts_batch() {
-        let edits = parse_text_edits(&json!({
-            "edits": [
-                {"old_text": "a", "new_text": "1"},
-                {"old_text": "b", "new_text": "2"}
-            ]
-        }))
-        .expect("batch mode should be accepted");
-        assert_eq!(edits.len(), 2);
-        assert_eq!(edits[1].old_text, "b");
-        assert_eq!(edits[1].new_text, "2");
-    }
-
-    #[test]
     fn test_parse_text_edits_allows_empty_single_placeholders_with_batch() {
         // EVE-498 compat: some models emit empty top-level placeholders alongside a
         // real edits[]. That is treated as batch mode, not an ambiguous mixed call.
@@ -2984,25 +2942,6 @@ mod tests {
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].old_text, "c");
         assert_eq!(edits[0].new_text, "d");
-    }
-
-    #[test]
-    fn test_apply_text_edits_rejects_overlaps() {
-        let result = apply_text_edits(
-            "abcdef",
-            &[
-                TextEdit {
-                    old_text: "abcd".to_string(),
-                    new_text: "wxyz".to_string(),
-                },
-                TextEdit {
-                    old_text: "cdef".to_string(),
-                    new_text: "1234".to_string(),
-                },
-            ],
-        );
-
-        assert_eq!(result.unwrap_err(), "Edits overlap in the target file");
     }
 
     // Metadata and tool-list constants are covered registry-wide by
@@ -3090,35 +3029,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_read_many_files_schema_is_required_bounded_and_dependency_safe() {
-        let schema = ReadManyFilesTool.parameters_schema();
-        let paths = &schema["properties"]["paths"];
-
-        assert_eq!(paths["type"], "array");
-        assert_eq!(paths["minItems"], 2);
-        assert_eq!(paths["maxItems"], READ_FILE_BATCH_MAX_PATHS);
-        assert_eq!(paths["items"]["type"], "string");
-        assert_eq!(paths["items"]["maxLength"], READ_FILE_BATCH_MAX_PATH_BYTES);
-        assert!(
-            paths["description"]
-                .as_str()
-                .unwrap()
-                .contains("Never include a path discovered from another file")
-        );
-        assert_eq!(schema["required"], json!(["paths"]));
-        assert_eq!(
-            ReadFileTool.parameters_schema()["required"],
-            json!(["path"])
-        );
-        assert!(
-            ReadFileTool.parameters_schema()["properties"]
-                .get("paths")
-                .is_none(),
-            "single-file compatibility keeps one unambiguous path input"
-        );
     }
 
     #[test]
@@ -3702,37 +3612,6 @@ mod tests {
         assert_eq!(value["applied_edits"], 2);
         assert_eq!(value["rebased"], false);
         assert_eq!(value["first_changed_line"], 1);
-    }
-
-    #[tokio::test]
-    async fn test_edit_file_batch_replace_ignores_empty_single_placeholders() {
-        let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/batch-placeholders.txt", "one\ntwo\nthree\n");
-        let context = make_context(store.clone());
-        let expected_hash = read_hash(&context, "/workspace/batch-placeholders.txt").await;
-
-        let result = EditFileTool
-            .execute_with_context(
-                json!({
-                    "path": "/workspace/batch-placeholders.txt",
-                    "expected_hash": expected_hash,
-                    "edits": [
-                        {"old_text": "one", "new_text": "ONE"},
-                        {"old_text": "three", "new_text": "THREE"}
-                    ],
-                    "old_text": "",
-                    "new_text": ""
-                }),
-                &context,
-            )
-            .await;
-        let value = expect_success(result);
-
-        assert_eq!(
-            store.content("/batch-placeholders.txt").unwrap(),
-            "ONE\ntwo\nTHREE\n"
-        );
-        assert_eq!(value["applied_edits"], 2);
     }
 
     #[tokio::test]

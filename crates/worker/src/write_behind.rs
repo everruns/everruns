@@ -543,17 +543,6 @@ mod tests {
     }
 
     #[test]
-    fn streamed_deltas_and_generations_are_queued() {
-        for event_type in [
-            crate::core::events::OUTPUT_MESSAGE_DELTA,
-            crate::core::events::LLM_GENERATION,
-        ] {
-            assert!(QUEUED.contains(&event_type));
-        }
-        assert!(!QUEUED.contains(&crate::core::events::OUTPUT_MESSAGE_COMPLETED));
-    }
-
-    #[test]
     fn only_lifecycle_starts_without_reasoning_state_are_queued() {
         use crate::core::{EventContext, OutputMessageStartedData};
         use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};

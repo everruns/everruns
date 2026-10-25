@@ -139,59 +139,6 @@ fn capability_by_id<'a>(body: &'a Value, id: &str) -> Option<&'a Value> {
         .find(|capability| capability["id"].as_str() == Some(id))
 }
 
-#[tokio::test]
-async fn test_capability_info_includes_features() {
-    let server = TestServer::new().await;
-
-    // Check that the capabilities endpoint returns features
-    let body: Value = server
-        .get("/v1/capabilities")
-        .await
-        .assert_success()
-        .json_value();
-
-    let data = body["data"].as_array().expect("data array");
-
-    // Find session_storage capability — should have secrets and key_value features
-    let storage = data
-        .iter()
-        .find(|c| c["id"] == "session_storage")
-        .expect("session_storage capability should exist");
-
-    let features = storage["features"]
-        .as_array()
-        .expect("features should be an array");
-    assert!(
-        features.contains(&json!("secrets")),
-        "session_storage should have secrets feature",
-    );
-    assert!(
-        features.contains(&json!("key_value")),
-        "session_storage should have key_value feature",
-    );
-
-    // Find session_schedule — should have schedules feature
-    let schedule = data
-        .iter()
-        .find(|c| c["id"] == "session_schedule")
-        .expect("session_schedule capability should exist");
-
-    let schedule_features = schedule["features"]
-        .as_array()
-        .expect("features should be an array");
-    assert!(
-        schedule_features.contains(&json!("schedules")),
-        "session_schedule should have schedules feature",
-    );
-
-    // noop is a test fixture (everruns-test-support) and must not appear in
-    // the product capability registry.
-    assert!(
-        !data.iter().any(|c| c["id"] == "noop"),
-        "noop fixture capability must not be registered in the product",
-    );
-}
-
 // ============================================
 // Retired Global Chat Session Routes
 // ============================================

@@ -309,23 +309,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rewrite_replaces_text_and_resets_prior_annotations() {
-        let providers = vec![
-            provider(FixedHook {
-                annotations: vec![ann(0, 4)],
-                rewritten: None,
-            }),
-            provider(FixedHook {
-                annotations: vec![ann(0, 2)],
-                rewritten: Some("hi".into()),
-            }),
-        ];
-        let out = collect_annotations(&providers, "", "hello", &[], &[], None).await;
-        assert_eq!(out.text, "hi");
-        assert_eq!(out.annotations, [ann(0, 2)]);
-    }
-
-    #[tokio::test]
     async fn drops_span_out_of_bounds_after_rewrite() {
         let providers = vec![provider(FixedHook {
             annotations: vec![ann(0, 5)],

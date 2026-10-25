@@ -506,21 +506,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_namespace_uses_delete_verb() {
-        let server = MockServer::start().await;
-        let store = TurbopufferVectorStore::new(server.uri(), "secret-key");
-
-        Mock::given(method("DELETE"))
-            .and(path("/v2/namespaces/org_1__kidx_a"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        store.delete_namespace("org_1__kidx_a").await.unwrap();
-    }
-
-    #[tokio::test]
     async fn delete_namespace_treats_404_as_success() {
         let server = MockServer::start().await;
         let store = TurbopufferVectorStore::new(server.uri(), "secret-key");

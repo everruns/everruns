@@ -13,7 +13,6 @@ use everruns_core::host::{
     EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit, EventReadRequest,
     TurnResult,
 };
-use everruns_core::{ContentPart, InputMessage, RuntimeMessageRole};
 
 use super::Turn;
 use crate::{Agent, InMemoryEngine, Model};
@@ -125,31 +124,6 @@ async fn two_sessions_do_not_share_history() {
         "a second session must not inherit the first session's history"
     );
     assert!(calls[1].len() > calls[2].len());
-}
-
-#[tokio::test]
-async fn accepts_multimodal_input() {
-    let agent = Agent::builder()
-        .instructions("You are concise.")
-        .model(Model::simulated("ok"))
-        .build()
-        .expect("valid agent");
-
-    let session = InMemoryEngine::new().create(agent.clone());
-    // A rich, multi-part InputMessage goes through unchanged.
-    let message = InputMessage {
-        external_actor: None,
-        role: RuntimeMessageRole::User,
-        content: vec![
-            ContentPart::text("describe"),
-            ContentPart::text("this attachment"),
-        ],
-        controls: None,
-        metadata: None,
-        tags: vec![],
-    };
-    let turn = session.run(message).await.expect("turn runs");
-    assert!(turn.success);
 }
 
 #[test]

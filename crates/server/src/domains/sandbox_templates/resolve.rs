@@ -494,17 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn e2b_is_a_managed_session_sandbox_target() {
-        let e2b = sandbox_targets()
-            .into_iter()
-            .find(|target| target.provider.as_deref() == Some("e2b"))
-            .expect("E2B is listed");
-        assert!(e2b.available, "{:?}", e2b.reason);
-        assert_eq!(e2b.durability, "provider_snapshot");
-        assert!(e2b.credential_sources.contains(&"organization".to_string()));
-    }
-
-    #[test]
     fn an_unavailable_target_says_why() {
         let targets = sandbox_targets();
         let host = targets

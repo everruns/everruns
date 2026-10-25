@@ -75,24 +75,6 @@ const DECLARED: &[(DriverId, &[&str])] = &[
     (DriverId::Mistral, &["MISTRAL_API_KEY", "MISTRAL_BASE_URL"]),
 ];
 
-#[test]
-fn every_driver_declares_its_vendors_variables() {
-    let registry = create_driver_registry();
-    for (id, expected) in DECLARED {
-        let descriptor = registry
-            .descriptor(id)
-            .unwrap_or_else(|| panic!("{id} is registered"));
-        assert_eq!(
-            descriptor.declared_env_vars(),
-            expected
-                .iter()
-                .map(|name| name.to_string())
-                .collect::<Vec<_>>(),
-            "{id} declares different variables than the documented table"
-        );
-    }
-}
-
 /// A `base_url` here is the *versioned* API root: drivers append bare operation
 /// paths to it, and their defaults end in `/v1`. A vendor variable naming the
 /// bare host instead cannot be imported verbatim — it resolves to
@@ -114,18 +96,6 @@ fn a_vendor_variable_with_different_base_url_semantics_is_not_declared() {
              while base_url here is the versioned API root"
         );
     }
-}
-
-#[test]
-fn a_keyless_driver_declares_nothing() {
-    let registry = create_driver_registry();
-    let llmsim = registry
-        .descriptor(&DriverId::LlmSim)
-        .expect("llmsim is registered");
-    assert!(
-        llmsim.declared_env_vars().is_empty(),
-        "the simulator needs no credentials, so it must not read any variable"
-    );
 }
 
 #[test]

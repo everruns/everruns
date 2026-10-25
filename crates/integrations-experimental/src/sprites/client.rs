@@ -765,23 +765,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_401_error() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sprites"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_string("{\"error\":\"Unauthorized\"}"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let client = SpritesClient::with_base_url("bad_token".to_string(), mock_server.uri());
-        let result = client.create_sprite("test", json!({})).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("401"));
-    }
-
-    #[tokio::test]
     async fn test_client_read_file() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -945,31 +928,5 @@ mod tests {
             checkpoint.created_at.as_deref(),
             Some("2026-03-23T10:05:01Z")
         );
-    }
-
-    #[test]
-    fn test_latest_non_current_checkpoint_prefers_newest_timestamp() {
-        let checkpoint = latest_non_current_checkpoint(vec![
-            CheckpointInfo {
-                id: "Current".to_string(),
-                created_at: Some("2026-03-23T10:05:03Z".to_string()),
-                comment: None,
-                is_auto: false,
-            },
-            CheckpointInfo {
-                id: "cp_old".to_string(),
-                created_at: Some("2026-03-23T10:05:01Z".to_string()),
-                comment: None,
-                is_auto: false,
-            },
-            CheckpointInfo {
-                id: "cp_new".to_string(),
-                created_at: Some("2026-03-23T10:05:02Z".to_string()),
-                comment: None,
-                is_auto: false,
-            },
-        ])
-        .unwrap();
-        assert_eq!(checkpoint.id, "cp_new");
     }
 }

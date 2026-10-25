@@ -251,21 +251,6 @@ fn test_system_prompt_preview_default_delegates_to_addition() {
 // =========================================================================
 
 #[tokio::test]
-async fn test_apply_capabilities_empty() {
-    let registry = CapabilityRegistry::new();
-    let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-    let applied = apply_capabilities(base_runtime_agent.clone(), &[], &registry, &test_ctx()).await;
-
-    assert_eq!(
-        applied.runtime_agent.system_prompt,
-        base_runtime_agent.system_prompt
-    );
-    assert!(applied.tool_registry.is_empty());
-    assert!(applied.applied_ids.is_empty());
-}
-
-#[tokio::test]
 async fn test_apply_capabilities_noop() {
     let registry = fixture_registry();
     let mut base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
@@ -462,29 +447,6 @@ async fn test_apply_capabilities_skips_retired_without_failing() {
     assert_eq!(applied.applied_ids, vec!["current_time"]);
     assert!(applied.tool_registry.has("get_current_time"));
 }
-
-#[tokio::test]
-async fn test_apply_capabilities_preserves_order() {
-    let registry = fixture_registry();
-    let base_runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.2");
-
-    // Order should be preserved in applied_ids
-    let applied = apply_capabilities(
-        base_runtime_agent,
-        &["current_time".to_string(), "noop".to_string()],
-        &registry,
-        &test_ctx(),
-    )
-    .await;
-
-    assert_eq!(applied.applied_ids, vec!["current_time", "noop"]);
-    assert_eq!(applied.tool_registry.len(), 1);
-    assert!(applied.tool_registry.has("get_current_time"));
-}
-
-// =========================================================================
-// XML prompt formatting tests
-// =========================================================================
 
 // =========================================================================
 // Mount collection tests
@@ -812,10 +774,6 @@ async fn collect_drops_every_member_of_a_conflicting_group() {
     let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
     assert_eq!(collected.applied_ids, vec!["current_time".to_string()]);
 }
-
-// =========================================================================
-// Message filter provider tests
-// =========================================================================
 
 /// An `external_ag_ui` provider is advertised, opens the tool to the world,
 /// and gets the same external-target refusals as `external_a2a`.

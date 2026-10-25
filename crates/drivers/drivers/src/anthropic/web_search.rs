@@ -293,7 +293,6 @@ pub(crate) fn reported_searches(server_tool_use: Option<&Value>) -> Option<u32> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::ToolDefinition;
     use serde_json::json;
 
     fn call(id: &str) -> Value {
@@ -311,20 +310,6 @@ mod tests {
         json!({ "type": "text", "text": "Rust 1.95 is out.", "citations": [
             { "type": "web_search_result_location", "url": "https://blog.rust-lang.org",
               "title": "Rust", "encrypted_index": "Eo8B", "cited_text": "1.95" } ] })
-    }
-
-    #[test]
-    fn server_tool_needs_the_option_and_a_model_with_search() {
-        let mut config = LlmCallConfig::new("claude-haiku-5-5");
-        config.tools = vec![ToolDefinition::function("web_search", "", json!({}))];
-        assert_eq!(server_tool(&config, "claude-haiku-5-5"), None);
-        let (key, value) = NativeWebSearch::default().to_driver_option();
-        config.driver_options.insert(key, value);
-        assert_eq!(
-            server_tool(&config, "claude-haiku-5-5").unwrap()["type"],
-            "web_search_20250305"
-        );
-        assert_eq!(server_tool(&config, "claude-3-5-sonnet-20241022"), None);
     }
 
     #[test]

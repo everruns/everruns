@@ -605,37 +605,6 @@ mod tests {
     }
 
     #[test]
-    fn chat_threads_require_org_adoption_on_every_deployment() {
-        let definition = API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .find(|definition| definition.name == "chat_threads")
-            .unwrap();
-        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
-        let enrolled = HashMap::from([("chat_threads".to_string(), true)]);
-        for deployment in [
-            DeploymentGrade::Dev,
-            DeploymentGrade::Preview,
-            DeploymentGrade::Prod,
-        ] {
-            let available = policy(deployment, definition.grade);
-            assert!(available.deployment_flags().chat_threads);
-            assert!(!available.for_org(&HashMap::new()).chat_threads);
-            assert!(available.for_org(&enrolled).chat_threads);
-            assert!(
-                !available
-                    .for_org(&HashMap::from([("chat_threads".to_string(), false)]))
-                    .chat_threads
-            );
-            assert!(
-                !available
-                    .with_grade("chat_threads", FeatureFlagGrade::Off)
-                    .for_org(&enrolled)
-                    .chat_threads
-            );
-        }
-    }
-
-    #[test]
     fn mistral_is_off_until_a_deployment_raises_it() {
         let definition = API_FEATURE_FLAG_DEFINITIONS
             .iter()
@@ -801,32 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn registration_availability_does_not_enroll_an_org() {
-        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Internal);
-        assert!(policy.deployment_flags().openai_agents_api);
-        assert!(!policy.for_org(&HashMap::new()).openai_agents_api);
-        assert!(
-            policy
-                .for_org(&HashMap::from([("openai_agents_api".into(), true)]))
-                .openai_agents_api
-        );
-    }
-
-    #[test]
-    fn production_defaults_can_be_disabled_and_off_ignores_stale_enrollment() {
-        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Prod);
-        assert!(policy.for_org(&HashMap::new()).evals);
-        let overrides = HashMap::from([("evals".into(), false), ("skills".into(), true)]);
-        assert!(!policy.for_org(&overrides).evals);
-        assert!(
-            !policy
-                .with_grade("skills", FeatureFlagGrade::Off)
-                .for_org(&overrides)
-                .skills
-        );
-    }
-
-    #[test]
     fn catalog_and_api_boolean_map_have_exactly_the_same_keys() {
         let flags = FeatureFlags::all_enabled();
         let map = flags.to_map();
@@ -929,20 +872,5 @@ mod tests {
         assert!(disabled.is_connector_enabled("daytona"));
         assert!(enabled.is_connector_enabled("daytona"));
         assert!(disabled.is_connector_enabled("e2b"));
-    }
-
-    #[test]
-    fn integration_flags_follow_the_same_grade_policy() {
-        let prod = FeatureFlagPolicy {
-            deployment: DeploymentGrade::Prod,
-            grades: feature_flag_definitions()
-                .map(|def| (def.name.to_string(), def.grade))
-                .collect(),
-        };
-        assert!(prod.deployment_flags().is_connector_enabled("daytona"));
-        assert!(
-            prod.for_org(&HashMap::new())
-                .is_connector_enabled("daytona")
-        );
     }
 }

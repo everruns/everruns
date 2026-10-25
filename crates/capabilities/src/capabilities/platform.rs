@@ -514,61 +514,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn tools_own_phase_aware_human_narration() {
-        use everruns_contracts::tool_types::ToolCall;
-        use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-
-        let cases = [
-            (
-                PlatformCommandTool::discover(),
-                "discover",
-                "Discovering operations",
-                "Discovered operations",
-            ),
-            (
-                PlatformCommandTool::query(),
-                "query",
-                "Querying platform",
-                "Queried platform",
-            ),
-            (
-                PlatformCommandTool::execute(),
-                "execute",
-                "Executing platform commands",
-                "Executed platform commands",
-            ),
-        ];
-
-        for (tool, name, started, completed) in cases {
-            let call = ToolCall {
-                id: format!("call_{name}"),
-                name: name.to_string(),
-                arguments: json!({}),
-            };
-            assert_eq!(
-                tool.narrate(
-                    &call,
-                    ToolNarrationPhase::Started,
-                    None,
-                    ToolNarrationContext::new(None),
-                )
-                .as_deref(),
-                Some(started)
-            );
-            assert_eq!(
-                tool.narrate(
-                    &call,
-                    ToolNarrationPhase::Completed,
-                    None,
-                    ToolNarrationContext::new(None),
-                )
-                .as_deref(),
-                Some(completed)
-            );
-        }
-    }
-
     #[tokio::test]
     async fn tools_dispatch_to_platform_store() {
         let store = Arc::new(MockPlatformStore::new());

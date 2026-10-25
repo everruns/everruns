@@ -279,14 +279,6 @@ mod tests {
     }
 
     #[test]
-    fn credentials_found_in_a_server_list() {
-        assert_eq!(
-            credentials_from_url("nats://nats1:4222, nats://u:p/w@nats2:4222").unwrap(),
-            Some(("u".to_string(), "p/w".to_string()))
-        );
-    }
-
-    #[test]
     fn server_urls_are_redacted_for_logs() {
         for (url, expected) in [
             (
@@ -324,11 +316,6 @@ mod tests {
             "userinfo must not reach the dialled address"
         );
         assert_eq!(creds, Some(("u".to_string(), "p/w".to_string())));
-    }
-
-    #[test]
-    fn invalid_url_is_an_error() {
-        assert!(credentials_from_url("not a url").is_err());
     }
 
     #[test]

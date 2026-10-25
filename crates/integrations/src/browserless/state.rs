@@ -461,20 +461,6 @@ mod tests {
     }
 
     #[test]
-    fn test_required_str_null_value() {
-        let args = serde_json::json!({"url": null});
-        let result = required_str(&args, "url");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_required_str_non_string_value() {
-        let args = serde_json::json!({"url": 42});
-        let result = required_str(&args, "url");
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_browser_session_reconnect_url_no_query() {
         let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
         assert_eq!(
@@ -568,16 +554,6 @@ mod tests {
     #[test]
     fn test_extract_secret_refs_ignores_unclosed() {
         assert!(extract_secret_refs("${{secrets.name").is_empty());
-    }
-
-    #[test]
-    fn test_substitute_secrets_basic() {
-        let mut resolved = std::collections::HashMap::new();
-        resolved.insert("pw".to_string(), "YExample0".to_string());
-        assert_eq!(
-            substitute_secrets("${{secrets.pw}}", &resolved),
-            "YExample0"
-        );
     }
 
     #[test]

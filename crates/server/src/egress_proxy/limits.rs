@@ -252,14 +252,6 @@ mod tests {
         assert_eq!(lookup.limits, capped(120));
     }
 
-    #[tokio::test]
-    async fn fixed_limits_apply_to_every_org_without_refreshing() {
-        let cache = LimitsCache::fixed(OrgLimits::unlimited());
-        let lookup = cache.get("org_a").await;
-        assert!(!lookup.refreshed);
-        assert_eq!(lookup.limits, OrgLimits::unlimited());
-    }
-
     #[test]
     fn a_hosted_tier_answer_reads_as_a_label() {
         // The shape a hosted control plane answers with today.

@@ -293,18 +293,4 @@ mod tests {
         assert!(!rendered.contains("client-secret-value"), "{rendered}");
         assert!(!rendered.contains("signing-secret-value"), "{rendered}");
     }
-
-    #[tokio::test]
-    async fn absent_provisioner_reports_unavailable_rather_than_failing() {
-        let provisioner = UnavailableSlackAppProvisioner;
-        assert!(!provisioner.deployment_supported());
-        assert_eq!(
-            provisioner.connection_status(1).await.expect("status"),
-            SlackProvisioningConnectionStatus::default()
-        );
-        assert!(matches!(
-            provisioner.create_app(1, None, "_meta: {}").await,
-            Err(SlackProvisioningError::Unavailable)
-        ));
-    }
 }

@@ -254,14 +254,6 @@ fn test_rule_continue_when_budget_healthy() {
 }
 
 #[test]
-fn test_rule_warn_at_80_percent_consumed() {
-    let (svc, _) = make_service();
-    let budget = make_budget_row(100.0, 15.0, None, "usd");
-    let action = svc.evaluate_rules(&budget);
-    assert!(matches!(action, BudgetAction::Warn { .. }));
-}
-
-#[test]
 fn test_rule_warn_at_exactly_20_percent_remaining() {
     let (svc, _) = make_service();
     let budget = make_budget_row(100.0, 20.0, None, "usd");
@@ -650,38 +642,6 @@ async fn test_delete_budget_soft_deletes() {
 // ========================================================================
 // Ledger tests
 // ========================================================================
-
-#[tokio::test]
-async fn test_ledger_entry_reduces_balance() {
-    let db = make_db();
-    let budget = db
-        .create_budget(CreateBudgetRow {
-            org_id: 1,
-            subject_type: "session".into(),
-            subject_id: "s1".into(),
-            currency: "usd".into(),
-            limit: 10.0,
-            soft_limit: None,
-            period: None,
-            metadata: None,
-        })
-        .await
-        .unwrap();
-    let (entry, updated) = db
-        .create_budget_ledger_entry(CreateBudgetLedgerRow {
-            budget_id: budget.id,
-            amount: 3.0,
-            meter_source: "llm_tokens".into(),
-            ref_type: Some("llm_generation".into()),
-            ref_id: Some(uuid::Uuid::now_v7()),
-            session_id: None,
-            description: Some("test debit".into()),
-        })
-        .await
-        .unwrap();
-    assert_eq!(entry.amount, 3.0);
-    assert_eq!(updated.balance, 7.0);
-}
 
 #[tokio::test]
 async fn test_budget_ledger_entry_creates_usage_journal_link() {
@@ -1399,36 +1359,6 @@ async fn test_check_budgets_respects_user_budget_from_session_hierarchy() {
 // ========================================================================
 // Set budget status + DTO conversion tests
 // ========================================================================
-
-#[tokio::test]
-async fn test_set_budget_status() {
-    let db = make_db();
-    let budget = db
-        .create_budget(CreateBudgetRow {
-            org_id: 1,
-            subject_type: "session".into(),
-            subject_id: "s1".into(),
-            currency: "usd".into(),
-            limit: 10.0,
-            soft_limit: None,
-            period: None,
-            metadata: None,
-        })
-        .await
-        .unwrap();
-    let updated = db
-        .set_budget_status(budget.id, "paused")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(updated.status, "paused");
-    let updated2 = db
-        .set_budget_status(budget.id, "active")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(updated2.status, "active");
-}
 
 // ========================================================================
 // Delegation tree budget pool

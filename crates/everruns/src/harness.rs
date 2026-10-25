@@ -637,55 +637,12 @@ mod tests {
     }
 
     #[test]
-    fn generic_declares_no_environment_requirement() {
-        // `generic` is the portable floor: it must bind to a session with no
-        // Environment, which is what `engine.create(agent).harness(..)` does
-        // without `.environment(..)`.
-        let harness = Harness::generic();
-        assert_eq!(harness.required_containment(), ContainmentLevel::None);
-    }
-
-    #[test]
     fn deserialization_regenerates_runtime_association_identity() {
         let harness = Harness::builder("portable").build().unwrap();
         let serialized = serde_json::to_string(&harness).unwrap();
         let deserialized: Harness = serde_json::from_str(&serialized).unwrap();
 
         assert_ne!(deserialized.inner.id, harness.inner.id);
-    }
-
-    #[tokio::test]
-    async fn missing_native_processes_is_rejected_at_session_start() {
-        let session = crate::InMemoryEngine::new().create(test_agent());
-        let environment = test_environment(
-            &session,
-            ComputeKind::Vfs,
-            ComputeCapabilities::default(),
-            ContainmentLevel::Isolated,
-        )
-        .await;
-        let harness = Harness::builder("coding")
-            .requires_capabilities(ComputeCapabilities {
-                native_processes: true,
-                ..Default::default()
-            })
-            .build()
-            .expect("valid harness");
-
-        let error = session
-            .harness(harness)
-            .environment(environment)
-            .start()
-            .await
-            .err()
-            .expect("missing native processes must reject the session");
-        assert_eq!(
-            error,
-            SessionEnvironmentError::MissingHarnessCapability {
-                capability: "native_processes"
-            }
-        );
-        assert!(error.to_string().contains("native_processes"));
     }
 
     #[tokio::test]

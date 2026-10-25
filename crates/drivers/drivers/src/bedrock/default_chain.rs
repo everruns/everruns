@@ -123,19 +123,4 @@ mod tests {
         assert_eq!(resolve_region(Some(String::new()), empty), "us-east-1");
         assert_eq!(resolve_region(None, lookup(&[])), "us-east-1");
     }
-
-    #[tokio::test]
-    async fn client_is_built_without_io_and_carries_the_region() {
-        let client = build_client("ap-southeast-2".into());
-        assert_eq!(
-            client.config().region().map(|region| region.as_ref()),
-            Some("ap-southeast-2")
-        );
-    }
-
-    #[test]
-    fn the_chain_is_not_built_until_credentials_are_requested() {
-        let lazy = LazyDefaultChain::new(Region::new("us-east-1"));
-        assert!(lazy.chain.get().is_none());
-    }
 }

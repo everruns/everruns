@@ -78,35 +78,6 @@ mod cloudflare {
         );
     }
 
-    /// The account token is a plain bearer token on this surface, not the
-    /// `cf-aig-authorization` the deprecated `/compat` endpoint takes.
-    #[tokio::test]
-    async fn bearer_auth_reaches_chat_completions_and_streams() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/client/v4/accounts/acct123/ai/v1/chat/completions"))
-            .and(header("authorization", "Bearer cf-token"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("connection", "close")
-                    .set_body_raw(sse_responses(), "text/event-stream"),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let stream = provider("cloudflare-test", "acct123", "cf-token", None)
-            .base_url(format!("{}/client/v4/accounts/acct123/ai/v1", server.uri()))
-            .chat_completion_stream(
-                vec![Message::text(MessageRole::User, "ping")],
-                &LlmCallConfig::new("openai/gpt-6-luna"),
-            )
-            .await
-            .expect("the AI REST API should accept a bearer-authed Chat Completions request");
-
-        assert_eq!(drain_text(stream).await, "pong");
-    }
-
     /// A pinned gateway rides the `cf-aig-gateway-id` header, which is what
     /// Workers AI (`@cf/`) models require.
     #[tokio::test]

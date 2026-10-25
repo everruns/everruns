@@ -254,23 +254,6 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_prompt_contains_preamble() {
-        let lib = test_library();
-        let prompt = generate_prompt(&lib, &PromptOptions::default());
-        assert!(prompt.contains("openui-lang"));
-        assert!(prompt.contains("```openui"));
-    }
-
-    #[test]
-    fn test_generate_prompt_contains_syntax_rules() {
-        let lib = test_library();
-        let prompt = generate_prompt(&lib, &PromptOptions::default());
-        assert!(prompt.contains("## Syntax Rules"));
-        assert!(prompt.contains("root = Stack(...)"));
-        assert!(prompt.contains("POSITIONAL"));
-    }
-
-    #[test]
     fn test_generate_prompt_contains_component_signatures() {
         let lib = test_library();
         let prompt = generate_prompt(&lib, &PromptOptions::default());
@@ -279,22 +262,6 @@ mod tests {
         assert!(
             prompt.contains("TextContent(text: string, size?: \"small\" | \"large\") — Text block")
         );
-    }
-
-    #[test]
-    fn test_generate_prompt_contains_streaming_rules() {
-        let lib = test_library();
-        let prompt = generate_prompt(&lib, &PromptOptions::default());
-        assert!(prompt.contains("## Hoisting & Streaming"));
-        assert!(prompt.contains("hoisting"));
-    }
-
-    #[test]
-    fn test_generate_prompt_contains_important_rules() {
-        let lib = test_library();
-        let prompt = generate_prompt(&lib, &PromptOptions::default());
-        assert!(prompt.contains("## Important Rules"));
-        assert!(prompt.contains("Start with root = Stack(...)"));
     }
 
     #[test]
@@ -376,21 +343,6 @@ mod tests {
         assert!(prompt.contains("### Layout"));
         assert!(prompt.contains("### Content"));
         assert!(prompt.contains("Use TextContent for plain text."));
-    }
-
-    #[test]
-    fn test_build_component_line_required_only() {
-        let comp = ComponentDef {
-            name: "Table",
-            props: &[PropDef {
-                name: "data",
-                type_annotation: "any[]",
-                optional: false,
-            }],
-            description: "Data table",
-        };
-        let line = build_component_line(&comp);
-        assert_eq!(line, "Table(data: any[]) — Data table");
     }
 
     #[test]

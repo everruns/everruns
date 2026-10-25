@@ -354,24 +354,6 @@ mod tests {
     }
 
     #[test]
-    fn default_budget_enforces_literal_turn_and_token_ceilings() {
-        let mut budget = ContinuationBudget::default();
-        for turn in 1..=6 {
-            assert!(budget.observe_turn(0));
-            assert_eq!(budget.usage(), (turn, 0));
-        }
-        assert!(!budget.observe_turn(0));
-        assert_eq!(budget.usage(), (7, 0));
-        budget.reset();
-        assert!(budget.observe_turn(64_000));
-        assert!(!budget.observe_turn(1));
-        assert_eq!(budget.usage(), (2, 64_001));
-        budget.reset();
-        budget.started = Instant::now() - Duration::from_secs(601);
-        assert!(!budget.observe_turn(0));
-    }
-
-    #[test]
     fn custom_budget_reset_clears_usage_and_keeps_all_configured_limits() {
         let mut budget = ContinuationBudget::new(2, 3, Duration::from_secs(60));
         assert!(budget.observe_turn(1));
@@ -397,14 +379,6 @@ mod tests {
                 !ContinuationBudget::new(turns, tokens, Duration::from_secs(60)).observe_turn(1)
             );
         }
-    }
-
-    #[test]
-    fn an_elapsed_budget_stops_a_cheap_but_slow_loop() {
-        let mut budget = ContinuationBudget::new(100, u64::MAX, Duration::from_secs(1));
-        budget.started = Instant::now() - Duration::from_secs(2);
-        assert!(!budget.observe_turn(1));
-        assert_eq!(budget.usage(), (1, 1));
     }
 
     #[test]

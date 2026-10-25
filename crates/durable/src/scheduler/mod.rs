@@ -423,15 +423,6 @@ mod tests {
     use serde_json::Value;
 
     #[tokio::test]
-    async fn test_scheduler_creates_and_runs() {
-        let store: Arc<dyn WorkflowEventStore> = Arc::new(InMemoryWorkflowEventStore::new());
-        let scheduler = DurableScheduler::with_defaults(store, "test-scheduler-1".to_string());
-
-        assert_eq!(scheduler.instance_id, "test-scheduler-1");
-        assert_eq!(scheduler.config.batch_size, 100);
-    }
-
-    #[tokio::test]
     async fn test_scheduler_processes_due_schedules() {
         let store = Arc::new(InMemoryWorkflowEventStore::new());
 

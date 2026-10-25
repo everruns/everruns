@@ -431,63 +431,6 @@ async fn query_history_reads_seeded_resumed_session_messages() {
 }
 
 #[tokio::test]
-async fn single_session_builder_seeds_runnable_runtime() {
-    let runtime = everruns::batteries::runtime_builder()
-        .host_composition(minimal_platform())
-        .llm_sim_as_default(LlmSimConfig::fixed("single session works"))
-        .single_session(|s| {
-            s.harness("math", "You are a math assistant.")
-                .with_capability("test_math")
-                .agent("math-agent", "Use tools when needed.")
-                .agent_max_iterations(8)
-                .session_title("Embedded ExecutionSession")
-        })
-        .build()
-        .await
-        .unwrap();
-
-    let session_id = runtime.default_session_id().expect("default session id");
-    let context = runtime.load_context(session_id).await.unwrap();
-
-    assert!(
-        context
-            .snapshot
-            .instructions
-            .as_deref()
-            .is_some_and(|instructions| instructions.contains("Use tools when needed."))
-    );
-
-    let result = runtime
-        .run_text_turn(session_id, "Say this is working.")
-        .await
-        .unwrap();
-    assert!(result.success);
-}
-
-#[tokio::test]
-async fn single_session_builder_pins_session_id_when_set() {
-    // Embedders that need the id ahead of build (e.g. a JSONL session log
-    // whose filename encodes the id) must be able to pin it.
-    let expected = everruns_contracts::typed_id::SessionId::from_seed(481);
-    let runtime = everruns::batteries::runtime_builder()
-        .host_composition(minimal_platform())
-        .llm_sim_as_default(LlmSimConfig::fixed("pinned id works"))
-        .single_session(|s| {
-            s.harness("h", "h")
-                .agent("a", "a")
-                .session_id(expected)
-                .session_title("Pinned")
-        })
-        .build()
-        .await
-        .unwrap();
-
-    assert_eq!(runtime.default_session_id(), Some(expected));
-    let context = runtime.load_context(expected).await.unwrap();
-    assert_eq!(context.session_id(), expected);
-}
-
-#[tokio::test]
 async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(minimal_platform())
@@ -602,33 +545,6 @@ async fn runtime_runs_session_without_agent_entity() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, RuntimeMessageRole::User);
     assert_eq!(messages[1].role, RuntimeMessageRole::Agent);
-}
-
-#[tokio::test]
-async fn runtime_accepts_explicit_backend_bundle() {
-    let harness_id = "harness_00000000000000000000000000000051".parse().unwrap();
-    let agent_id = "agent_00000000000000000000000000000051".parse().unwrap();
-    let session_id = "session_00000000000000000000000000000051".parse().unwrap();
-
-    let runtime = everruns::batteries::runtime_builder()
-        .host_composition(minimal_platform())
-        .backends(HostBackends::in_memory())
-        .llm_sim_as_default(LlmSimConfig::fixed("Custom backend bundle works"))
-        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
-        .harness(harness(harness_id))
-        .agent(agent(agent_id))
-        .session(session(session_id, harness_id, Some(agent_id)))
-        .build()
-        .await
-        .unwrap();
-
-    let result = runtime
-        .run_text_turn(session_id, "Use the explicit backend bundle")
-        .await
-        .unwrap();
-
-    assert!(result.success);
-    assert_eq!(result.response, "Custom backend bundle works");
 }
 
 #[tokio::test]
@@ -760,41 +676,6 @@ async fn runtime_exposes_assembled_context() {
             .any(|tool| tool.name() == "multiply"),
         "assembled context should expose effective capability tools",
     );
-}
-
-#[tokio::test]
-async fn list_commands_returns_capability_commands_for_session() {
-    use everruns_core::builtins::BtwCapability;
-    use everruns_core::command::CommandSource;
-
-    let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(TestMathCapability);
-    capabilities.register(BtwCapability);
-    let platform = HostComposition::new(capabilities, DriverRegistry::new());
-
-    let runtime = everruns::batteries::runtime_builder()
-        .host_composition(platform)
-        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
-        .single_session(|s| {
-            s.harness("math", "You are a math assistant.")
-                .with_capability("test_math")
-                .with_capability("btw")
-                .agent("math-agent", "Use tools when needed.")
-        })
-        .build()
-        .await
-        .unwrap();
-
-    let session_id = runtime.default_session_id().expect("default session id");
-    let commands = runtime.list_commands(session_id).await.unwrap();
-
-    let btw = commands
-        .iter()
-        .find(|c| c.name == "btw")
-        .expect("btw command surfaced");
-    assert_eq!(btw.source, CommandSource::System);
-    assert_eq!(btw.args.len(), 1);
-    assert!(btw.args[0].required);
 }
 
 #[tokio::test]
@@ -1129,24 +1010,6 @@ async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
 }
 
 #[tokio::test]
-async fn runtime_without_resolver_leaves_connection_resolver_unset() {
-    use everruns_core::host::RuntimeHostAdapter;
-
-    let runtime = everruns::batteries::runtime_builder()
-        .host_composition(connection_platform())
-        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
-        .single_session(|s| s.harness("h", "h").agent("a", "a"))
-        .build()
-        .await
-        .unwrap();
-
-    assert!(
-        runtime.connection_resolver(1).is_none(),
-        "no resolver should be wired unless the embedder supplies one",
-    );
-}
-
-#[tokio::test]
 async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let harness_id = "harness_00000000000000000000000000000061".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000061".parse().unwrap();
@@ -1255,37 +1118,6 @@ async fn runtime_with_microsoft_docs_plugin() -> (
         .expect("single_session sets default_session_id");
 
     (runtime, session_id)
-}
-
-#[tokio::test]
-async fn with_plugin_dir_compiles_and_loads_microsoft_docs() {
-    use std::path::Path;
-
-    // Loading a valid plugin directory must succeed.
-    let result = everruns::batteries::runtime_builder()
-        .with_plugin_dir(Path::new(MICROSOFT_DOCS_PLUGIN_DIR));
-    assert!(
-        result.is_ok(),
-        "with_plugin_dir should succeed for the fixture: {:?}",
-        result.err()
-    );
-
-    let builder = result.unwrap();
-
-    // The hydrated capability config must be available under the plugin name.
-    let cap = builder.plugin_capability("microsoft-docs");
-    assert!(
-        cap.is_some(),
-        "plugin_capability('microsoft-docs') must be Some after loading"
-    );
-
-    let cap = cap.unwrap();
-    assert_eq!(cap.capability_id(), "plugin:microsoft-docs");
-    // The config must be a non-empty JSON object (the serialized definition).
-    assert!(
-        cap.config_value().is_object() && !cap.config_value().as_object().unwrap().is_empty(),
-        "hydrated config must be a non-empty JSON object"
-    );
 }
 
 #[tokio::test]

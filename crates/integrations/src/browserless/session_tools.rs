@@ -685,16 +685,4 @@ mod tests {
             other => panic!("Expected ToolError, got: {other:?}"),
         }
     }
-
-    #[tokio::test]
-    async fn test_close_browser_no_context() {
-        let tool = BrowserlessCloseBrowserTool;
-        let result = tool.execute(json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
 }

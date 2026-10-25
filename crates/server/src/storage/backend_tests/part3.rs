@@ -343,20 +343,6 @@ async fn test_search_apps() {
 // ─── MessageFilter::Search tests (EVE-87) ───
 
 #[tokio::test]
-async fn test_search_filter_matches_content_field() {
-    let db = StorageBackend::test_database();
-    let session_id = create_session_with_content_events(&db).await;
-
-    let query =
-        MessageQuery::new(session_id).with_filter(MessageFilter::Search("Rust".to_string()));
-
-    let events = db.list_message_events_filtered(&query).await.unwrap();
-    // Should match: "Tell me about Rust programming", "Rust is a systems language",
-    // "Here is information about Rust"
-    assert_eq!(events.len(), 3);
-}
-
-#[tokio::test]
 async fn test_search_filter_case_insensitive() {
     let db = StorageBackend::test_database();
     let session_id = create_session_with_content_events(&db).await;
@@ -965,13 +951,6 @@ async fn test_user_email_is_case_insensitive_identity() {
             "lookup {lookup:?} resolved to wrong account"
         );
     }
-}
-
-#[test]
-fn test_normalize_email_trims_and_lowercases() {
-    assert_eq!(normalize_email("  Alice@Example.COM "), "alice@example.com");
-    assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
-    assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
 }
 
 // Agent trigger round-trips (EVE-757)

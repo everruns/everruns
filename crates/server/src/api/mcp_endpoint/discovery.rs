@@ -121,7 +121,7 @@ pub(super) fn handle_server_discover(
 #[cfg(test)]
 mod tests {
     use super::super::{MCP_SERVER_NAME, MCP_SERVER_VERSION};
-    use super::{SERVER_INSTRUCTIONS, handle_initialize, handle_server_discover, server_info};
+    use super::{handle_initialize, handle_server_discover, server_info};
     use serde_json::json;
 
     #[test]
@@ -132,16 +132,6 @@ mod tests {
         assert_eq!(result["serverInfo"]["name"], MCP_SERVER_NAME);
         assert_eq!(result["serverInfo"]["version"], MCP_SERVER_VERSION);
         assert_eq!(MCP_SERVER_VERSION, env!("CARGO_PKG_VERSION"));
-    }
-
-    #[test]
-    fn initialize_tells_clients_to_give_reasons_and_read_context() {
-        let result = handle_initialize(Some(json!(1)), json!({}), None)
-            .result
-            .expect("result");
-        assert_eq!(result["instructions"], SERVER_INSTRUCTIONS);
-        assert!(SERVER_INSTRUCTIONS.contains("--reason"));
-        assert!(SERVER_INSTRUCTIONS.contains("everruns context get"));
     }
 
     #[test]

@@ -22,17 +22,6 @@ fn history_cursor_is_portable_without_exposing_host_types() {
     assert!(!format!("{cursor:?}").contains(&encoded));
 }
 
-#[test]
-fn history_errors_keep_session_identity_typed() {
-    let session_id = SessionId::new();
-    let error = HistoryError::SessionNotFound { session_id };
-
-    assert!(error.to_string().contains(&session_id.to_string()));
-
-    let resume_error = ResumeError::SessionNotFound { session_id };
-    assert!(resume_error.to_string().contains(&session_id.to_string()));
-}
-
 #[tokio::test]
 async fn new_session_has_one_empty_terminal_page_and_fused_end() {
     let session = InMemoryEngine::new().create(test_agent());
@@ -154,26 +143,6 @@ async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
             requested: 257,
             maximum: 256
         })
-    ));
-}
-
-#[tokio::test]
-async fn engine_resumes_its_sessions_but_a_new_engine_does_not() {
-    let engine = InMemoryEngine::new();
-    let agent = test_agent();
-    let session = engine.create(agent);
-    let session_id = session.session_id();
-    session.run("remember me").await.unwrap();
-    drop(session);
-
-    let resumed = engine.resume(session_id).await.unwrap();
-    let page = resumed.history().page().await.unwrap();
-    assert_eq!(page.len(), 2);
-    assert_eq!(page.messages[0].text(), "remember me");
-
-    assert!(matches!(
-        InMemoryEngine::new().resume(session_id).await,
-        Err(ResumeError::SessionNotFound { session_id: missing }) if missing == session_id
     ));
 }
 

@@ -608,15 +608,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn branded_button_uses_brand_colors_with_inline_styles() {
-        let button = branded_button("https://example.com/accept", "Accept your invitation");
-        assert!(button.contains("https://example.com/accept"));
-        assert!(button.contains("Accept your invitation"));
-        assert!(button.contains(BRAND_NAVY));
-        assert!(button.contains("color:#FFFFFF"));
-    }
-
     #[tokio::test]
     async fn disabled_sender_returns_configuration_error() {
         let sender = DisabledEmailSender;

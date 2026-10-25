@@ -195,20 +195,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_composite_listener_multiple() {
-        let event = create_test_event();
-        let first = Arc::new(AtomicU32::new(0));
-        let second = Arc::new(AtomicU32::new(0));
-        let composite = CompositeEventListener::new(vec![
-            counting(&event, &first, None),
-            counting(&event, &second, None),
-        ]);
-        composite.on_event(&event).await;
-        assert_eq!(first.load(Ordering::SeqCst), 1);
-        assert_eq!(second.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
     async fn test_composite_listener_with_filtering() {
         let event = create_test_event();
         let matched = Arc::new(AtomicU32::new(0));

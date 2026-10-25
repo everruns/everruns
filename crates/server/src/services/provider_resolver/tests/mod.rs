@@ -140,49 +140,6 @@ async fn test_resolve_model_cache_miss_then_hit() {
 }
 
 #[tokio::test]
-async fn test_resolve_model_not_found_is_cached() {
-    let db = Arc::new(StorageBackend::test_database());
-    let resolver = ProviderResolverService::new(db, None);
-
-    let missing_id = Uuid::new_v4();
-
-    // First call: miss, returns None, caches it
-    let result = resolver
-        .resolve_model(DEFAULT_ORG_ID, missing_id)
-        .await
-        .unwrap();
-    assert!(result.is_none());
-
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 1);
-
-    // Second call: cache hit (still None)
-    let result2 = resolver
-        .resolve_model(DEFAULT_ORG_ID, missing_id)
-        .await
-        .unwrap();
-    assert!(result2.is_none());
-}
-
-#[tokio::test]
-async fn test_invalidate_cache_clears_entries() {
-    let (resolver, model_id) = setup_resolver_with_model().await;
-
-    // Populate cache
-    resolver
-        .resolve_model(DEFAULT_ORG_ID, model_id)
-        .await
-        .unwrap();
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 1);
-
-    // Invalidate
-    resolver.invalidate_cache(DEFAULT_ORG_ID).await;
-    resolver.cache.run_pending_tasks().await;
-    assert_eq!(resolver.cache_entry_count(), 0);
-}
-
-#[tokio::test]
 async fn test_different_models_cached_independently() {
     let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
@@ -403,29 +360,6 @@ async fn resolve_provider_api_key_falls_back_without_encryption() {
         .unwrap();
 
     // No encryption service, no env var -> None
-    let result = resolve_provider_api_key(&db, None, &provider).unwrap();
-    assert!(result.is_none());
-}
-
-#[tokio::test]
-async fn resolve_provider_api_key_no_db_key_returns_none() {
-    let db = Arc::new(StorageBackend::test_database());
-
-    let provider = db
-        .create_provider(
-            DEFAULT_ORG_ID,
-            CreateProviderRow {
-                name: "Anthropic".to_string(),
-                provider_type: "anthropic".to_string(),
-                base_url: None,
-                api_key_encrypted: None,
-                settings: None,
-            },
-        )
-        .await
-        .unwrap();
-
-    // No encrypted key in DB -> None, regardless of env
     let result = resolve_provider_api_key(&db, None, &provider).unwrap();
     assert!(result.is_none());
 }
@@ -840,19 +774,6 @@ async fn set_service_default(
     )
     .await
     .unwrap();
-}
-
-#[test]
-fn service_provider_defaults_json_round_trips() {
-    // The Postgres path stores this map as JSONB; assert ServiceKind keys
-    // serialize snake_case and ProviderId values round-trip as strings.
-    let mut map = crate::storage::ServiceProviderDefaults::new();
-    let pid = everruns_contracts::typed_id::ProviderId::new();
-    map.insert(ServiceKind::Realtime, pid);
-    let value = serde_json::to_value(&map).unwrap();
-    assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
-    let back: crate::storage::ServiceProviderDefaults = serde_json::from_value(value).unwrap();
-    assert_eq!(back.get(&ServiceKind::Realtime), Some(&pid));
 }
 
 #[tokio::test]

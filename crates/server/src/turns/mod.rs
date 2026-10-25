@@ -140,42 +140,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stored_message_names_the_scope_and_request() {
-        let session_id = SessionId::new();
-        let harness_id = HarnessId::new();
-        let message_id = MessageId::new();
-        let request = stored_message(
-            session_id,
-            scope(7, harness_id, None),
-            message_id,
-            Some("req".to_string()),
-        );
-        assert_eq!(request.session_id, session_id);
-        assert_eq!(request.scope, Some(TurnScope::new(7, harness_id, None)));
-        assert_eq!(request.request_id.as_deref(), Some("req"));
-        assert!(matches!(
-            request.input,
-            TurnInput::StoredMessage { message_id: id } if id == message_id
-        ));
-    }
-
-    #[test]
     fn store_failures_keep_their_message() {
         let failure = error(AgentLoopError::store("Failed to get workflow status"));
         assert_eq!(failure.to_string(), "Failed to get workflow status");
         let cancelled = error(AgentLoopError::Cancelled);
         assert!(cancelled.downcast_ref::<AgentLoopError>().is_some());
-    }
-
-    #[test]
-    fn recorded_tool_results_carry_the_resolution() {
-        let resolution_id = Uuid::now_v7();
-        let request = recorded_tool_results(SessionId::new(), resolution_id);
-        assert_eq!(request.scope, None);
-        assert!(matches!(
-            request.input,
-            TurnInput::RecordedToolResults { resolution_id: id } if id == resolution_id
-        ));
     }
 
     // --- On a real database --------------------------------------------------

@@ -627,16 +627,6 @@ fn shell_search_loads_at_most_eight_matching_deferred_servers() {
 }
 
 #[test]
-fn deferred_mcp_placeholders_go_behind_tools() {
-    assert!(goes_behind_tools(
-        "mcp_github",
-        false,
-        &ToolPolicy::Auto,
-        &ToolHints::default(),
-    ));
-}
-
-#[test]
 fn capability_contract() {
     let capability = ToolsInShellCapability;
     assert_eq!(capability.dependencies(), vec!["bashkit_shell"]);

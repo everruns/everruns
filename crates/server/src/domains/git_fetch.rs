@@ -203,47 +203,6 @@ fn parse_ls_refs(body: &[u8], branch: &str) -> Result<String> {
     bail!("branch '{branch}' was not found on the remote")
 }
 
-/// Extracts packfile bytes from a v2 `fetch` response.
-///
-/// After the `packfile` section header every data line is sideband-multiplexed:
-/// band 1 carries pack data, band 2 progress, band 3 a fatal error.
-#[cfg(test)]
-fn extract_packfile(body: &[u8]) -> Result<Vec<u8>> {
-    let mut pack = Vec::new();
-    let mut in_packfile_section = false;
-
-    for line in parse_pkt_lines(body)? {
-        let PktLine::Data(data) = line else {
-            // A delimiter ends the current section; the next data line names
-            // the section that follows.
-            in_packfile_section = false;
-            continue;
-        };
-
-        if !in_packfile_section {
-            if data.starts_with(b"packfile") {
-                in_packfile_section = true;
-            }
-            continue;
-        }
-
-        let Some((band, payload)) = data.split_first() else {
-            continue;
-        };
-        match band {
-            1 => pack.extend_from_slice(payload),
-            2 => {} // progress; suppressed by `no-progress` but tolerated
-            3 => bail!("remote error: {}", String::from_utf8_lossy(payload).trim()),
-            other => bail!("unknown sideband {other} in packfile section"),
-        }
-    }
-
-    if pack.is_empty() {
-        bail!("remote returned no packfile");
-    }
-    Ok(pack)
-}
-
 /// Appends the smart-HTTP endpoint to a repository URL.
 fn endpoint(url: &str, path: &str) -> String {
     format!("{}/{path}", url.trim_end_matches('/'))
@@ -674,46 +633,6 @@ mod tests {
         body.extend_from_slice(b"0000");
         let error = parse_ls_refs(&body, "release").unwrap_err().to_string();
         assert!(error.contains("release"), "{error}");
-    }
-
-    #[test]
-    fn extracts_pack_data_from_sideband_one() {
-        let mut body = data("packfile\n");
-        body.extend(data("\x01PACK-part-one"));
-        body.extend(data("\x02resolving deltas"));
-        body.extend(data("\x01-part-two"));
-        body.extend_from_slice(b"0000");
-
-        assert_eq!(extract_packfile(&body).unwrap(), b"PACK-part-one-part-two");
-    }
-
-    #[test]
-    fn skips_sections_before_the_packfile() {
-        let mut body = data("acknowledgments\n");
-        body.extend(data("NAK\n"));
-        body.extend_from_slice(b"0001");
-        body.extend(data("packfile\n"));
-        body.extend(data("\x01PACK"));
-        body.extend_from_slice(b"0000");
-
-        assert_eq!(extract_packfile(&body).unwrap(), b"PACK");
-    }
-
-    #[test]
-    fn surfaces_remote_errors_from_sideband_three() {
-        let mut body = data("packfile\n");
-        body.extend(data("\x03repository not found"));
-        body.extend_from_slice(b"0000");
-
-        let error = extract_packfile(&body).unwrap_err().to_string();
-        assert!(error.contains("repository not found"), "{error}");
-    }
-
-    #[test]
-    fn empty_packfile_is_an_error() {
-        let mut body = data("packfile\n");
-        body.extend_from_slice(b"0000");
-        assert!(extract_packfile(&body).is_err());
     }
 
     #[test]

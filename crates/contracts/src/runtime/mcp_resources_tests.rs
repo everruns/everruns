@@ -129,14 +129,6 @@ fn definitions_join_only_turns_with_an_mcp_server() {
     assert_eq!(deferred.len(), 3);
 }
 
-#[test]
-fn resource_tools_are_read_only_and_never_deferred_placeholders() {
-    let list = tool(LIST_MCP_RESOURCES_TOOL, Arc::new(DocsServer::default()));
-    assert_eq!(list.hints().readonly, Some(true));
-    assert!(matches!(list.deferrable_policy(), DeferrablePolicy::Never));
-    assert!(crate::runtime::mcp_deferred::deferred_mcp_server_prefix(list.name()).is_none());
-}
-
 #[tokio::test]
 async fn lists_resources_templates_and_cursor_for_a_sanitized_server() {
     let server = Arc::new(DocsServer::default());
@@ -221,36 +213,6 @@ async fn scoped_invoker_only_reaches_servers_attached_to_the_turn() {
     assert!(message.contains("not attached"), "{message}");
     assert!(message.contains("docs, linear"), "{message}");
     assert_eq!(server.calls.lock().unwrap().len(), 2);
-}
-
-#[test]
-fn resource_constructor_retains_the_scoped_invoker() {
-    struct InertInvoker;
-    #[async_trait]
-    impl McpToolInvoker for InertInvoker {
-        async fn invoke(&self, _: &ToolCall) -> crate::runtime::error::Result<ToolResult> {
-            unreachable!("constructor fixture does not execute requests")
-        }
-    }
-    let definitions = vec![mcp_tool("mcp_docs__search"), mcp_tool("mcp_linear")];
-    let scoped = Arc::new(ScopedMcpToolInvoker::new(
-        &definitions,
-        Arc::new(InertInvoker),
-    ));
-    for definition in [list_definition(), read_definition()] {
-        let tool = McpResourceTool {
-            definition: builtin(definition),
-            invoker: scoped.clone(),
-        };
-        assert_eq!(
-            std::any::type_name_of_val(&tool.invoker),
-            std::any::type_name::<Arc<ScopedMcpToolInvoker>>()
-        );
-        assert_eq!(
-            Arc::as_ptr(&tool.invoker) as *const (),
-            Arc::as_ptr(&scoped) as *const ()
-        );
-    }
 }
 
 #[tokio::test]

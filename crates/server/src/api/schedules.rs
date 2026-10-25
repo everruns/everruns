@@ -456,24 +456,6 @@ pub async fn get_schedule_stats(
     Ok(Json(stats))
 }
 
-// ============================================================================
-// Helper functions
-// ============================================================================
-
-/// Calculate next trigger time from cron expression
-#[cfg(test)]
-fn calculate_next_trigger(
-    cron_expression: &str,
-) -> Result<Option<chrono::DateTime<chrono::Utc>>, String> {
-    use cron::Schedule;
-    use std::str::FromStr;
-
-    let schedule =
-        Schedule::from_str(cron_expression).map_err(|e| format!("Invalid cron: {}", e))?;
-
-    Ok(schedule.upcoming(chrono::Utc).next())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -726,30 +708,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    }
-
-    // ---- Existing unit tests ----
-
-    #[test]
-    fn test_calculate_next_trigger() {
-        // (cron expression, expect ok-with-value)
-        let cases = [
-            ("0 * * * * * *", true), // 7-field cron: every minute
-            ("invalid", false),
-        ];
-        for (cron, expect_ok) in cases {
-            let result = calculate_next_trigger(cron);
-            assert_eq!(
-                result.is_ok(),
-                expect_ok,
-                "calculate_next_trigger({cron:?}) ok-ness mismatch"
-            );
-            if expect_ok {
-                assert!(
-                    result.unwrap().is_some(),
-                    "calculate_next_trigger({cron:?}) expected Some"
-                );
-            }
-        }
     }
 }

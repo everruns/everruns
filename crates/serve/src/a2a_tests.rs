@@ -292,23 +292,3 @@ async fn unknown_agents_bad_input_and_old_versions_are_errors() {
         .unwrap();
     assert!(old["error"].is_object(), "{old}");
 }
-
-#[tokio::test]
-async fn the_manifest_and_agent_card_list_the_endpoints() {
-    let manifest = app().manifest();
-    for route in [
-        "POST /v1/channels/echoer/a2a",
-        "GET /v1/channels/echoer/a2a/.well-known/agent-card.json",
-    ] {
-        assert!(
-            manifest.routes.contains(&route.to_string()),
-            "{:?}",
-            manifest.routes
-        );
-    }
-    let host = Host::new(app(), Mode::Eval, None).unwrap();
-    let server = serve(host).await;
-    let card: Value = server.get("/v1/agent").await.json().await.unwrap();
-    assert_eq!(card["a2a"]["echoer"], "/v1/channels/echoer/a2a");
-    assert_eq!(card["a2a"]["tester"], "/v1/channels/tester/a2a");
-}

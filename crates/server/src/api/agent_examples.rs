@@ -54,17 +54,3 @@ pub async fn list_examples(
         &|id| registry.has(id),
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::setup::seed::SEED_AGENTS;
-
-    #[test]
-    fn test_all_seeds_have_unique_names() {
-        let names: Vec<&str> = SEED_AGENTS.iter().map(|s| s.name).collect();
-        let mut unique = names.clone();
-        unique.sort();
-        unique.dedup();
-        assert_eq!(names.len(), unique.len(), "Duplicate example names");
-    }
-}

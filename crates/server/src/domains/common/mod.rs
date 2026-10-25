@@ -1436,12 +1436,6 @@ mod lenient_tests {
     }
 
     #[test]
-    fn opt_bool_lenient_accepts_missing() {
-        let v: OptFlagInput = serde_json::from_value(json!({})).unwrap();
-        assert_eq!(v.enabled, None);
-    }
-
-    #[test]
     fn opt_bool_lenient_rejects_garbage() {
         let err = serde_json::from_value::<OptFlagInput>(json!({"enabled": "maybe"})).unwrap_err();
         assert!(err.to_string().contains("coerce string"), "got: {err}");

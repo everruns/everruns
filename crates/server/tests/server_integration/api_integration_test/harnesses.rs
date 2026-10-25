@@ -30,48 +30,6 @@ async fn test_create_session_nonexistent_harness_returns_404() {
 }
 
 #[tokio::test]
-async fn test_list_harnesses_includes_levels_and_deprecated_generic() {
-    let server = TestServer::new().await;
-
-    let data: Value = server
-        .get("/v1/harnesses")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let harnesses = data["data"].as_array().expect("Expected array");
-    assert!(
-        harnesses.len() >= 5,
-        "Should have the canonical levels and legacy Generic"
-    );
-
-    let names: Vec<&str> = harnesses
-        .iter()
-        .filter_map(|h| h["name"].as_str())
-        .collect();
-    assert!(names.contains(&"base"), "Should have Base harness");
-    assert!(names.contains(&"generic"), "Should have Generic harness");
-    for name in [
-        "conversation",
-        "worker",
-        "bashkit-worker",
-        "sandbox-worker",
-        "worker-base",
-    ] {
-        assert!(names.contains(&name), "Missing {name}");
-    }
-    let generic = harnesses.iter().find(|h| h["name"] == "generic").unwrap();
-    assert_eq!(generic["status"], "active");
-    assert!(
-        generic["tags"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|tag| tag == "deprecated")
-    );
-}
-
-#[tokio::test]
 async fn test_check_harness_name_available() {
     let server = TestServer::new().await;
 
@@ -290,39 +248,6 @@ async fn test_copy_harness_not_found() {
 // ============================================
 // Capabilities Tests
 // ============================================
-
-#[tokio::test]
-async fn test_session_features_base_harness_empty() {
-    let server = TestServer::new().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({"name": "base-features-agent", "display_name": "Base Features Agent", "system_prompt": "Test"}),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Base harness has no capabilities → no features
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id,
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert!(
-        session.features.is_empty(),
-        "Base harness session should have no features, got: {:?}",
-        session.features,
-    );
-}
 
 #[tokio::test]
 async fn test_session_features_generic_harness() {

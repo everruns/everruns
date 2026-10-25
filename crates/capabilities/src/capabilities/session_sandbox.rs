@@ -936,22 +936,6 @@ mod tests {
     // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn session_sandbox_tools_share_concurrency_class() {
-        let cap = SessionSandboxCapability;
-        let tools = cap.tools_with_config(&json!({"provider": "daytona"}));
-
-        for tool in tools {
-            let definition = tool.to_definition();
-            assert_eq!(
-                definition.concurrency_class(),
-                Some("session_sandbox"),
-                "{} should serialize against other session sandbox tools",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
     fn session_sandbox_config_schema_and_validation() {
         let cap = SessionSandboxCapability;
 

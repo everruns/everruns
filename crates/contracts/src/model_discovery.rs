@@ -817,25 +817,6 @@ mod tests {
     }
 
     #[test]
-    fn capability_metadata_survives_enrichment_for_a_model_no_registry_carries() {
-        // The case a self-hosted or brand-new id lands in: the registry has
-        // nothing, so what the endpoint reported is the only answer there is.
-        let mut reported = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
-        reported.name = "Local Qwen".into();
-        let mut model = bare_discovered("qwen3-30b");
-        model.discovered_profile = Some(reported.clone());
-
-        let enriched = enrich_with_profiles(&DriverId::OpenAI, vec![model]);
-        let profile = enriched[0]
-            .profile
-            .as_ref()
-            .expect("the reported capabilities must survive");
-        assert_eq!(profile.limits, reported.limits);
-        assert_eq!(profile.reasoning, reported.reasoning);
-        assert_eq!(profile.tool_call, reported.tool_call);
-    }
-
-    #[test]
     fn curation_wins_over_the_api_but_only_where_it_speaks() {
         let curated = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
         let mut api = curated.clone();

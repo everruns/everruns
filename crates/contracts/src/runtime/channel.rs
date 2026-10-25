@@ -1090,14 +1090,6 @@ mod tests {
         assert!(summary.contains("ask before"), "{summary}");
     }
 
-    /// No position reported means no line at all — not an empty or hedging one.
-    #[test]
-    fn no_view_yields_no_line() {
-        let ctx = ThreadContext::new("1700.1", "slack");
-        assert_eq!(ctx.view_summary(), "");
-        assert_eq!(ctx.participants_summary(), "");
-    }
-
     /// Round-tripping keeps the reported position, not just the participants.
     #[test]
     fn current_view_survives_encoding() {

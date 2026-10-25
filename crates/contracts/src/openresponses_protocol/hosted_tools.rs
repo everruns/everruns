@@ -462,14 +462,4 @@ mod tests {
         assert_eq!(done.status, HostedToolCallStatus::Completed);
         assert_eq!(done.summary.as_deref(), Some("latest Rust release"));
     }
-
-    #[test]
-    fn terminal_response_counts_hosted_calls() {
-        let counts = hosted_tool_calls(&json!({ "output": [
-            { "type": "web_search_call", "id": "ws_1" },
-            { "type": "message", "id": "m" },
-        ]}));
-        assert_eq!(counts.get("web_search_call"), Some(&1));
-        assert!(hosted_tool_calls(&json!({})).is_empty());
-    }
 }

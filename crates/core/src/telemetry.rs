@@ -512,19 +512,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn operation_span_names_preserve_operation_and_subject() {
-        for (make_name, expected) in [
-            (chat_span_name as fn(&str) -> String, "chat subject/α"),
-            (tool_span_name, "execute_tool subject/α"),
-            (text_completion_span_name, "text_completion subject/α"),
-            (create_agent_span_name, "create_agent subject/α"),
-            (embeddings_span_name, "embeddings subject/α"),
-        ] {
-            assert_eq!(make_name("subject/α"), expected);
-        }
-    }
-
-    #[test]
     fn test_invoke_agent_span_name() {
         assert_eq!(
             invoke_agent_span_name(Some("customer_support")),

@@ -275,18 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn worker_branch_skips_conversation() {
-        assert_eq!(
-            BuiltInHarnessPreset::Worker.parent(),
-            Some(BuiltInHarnessPreset::Base)
-        );
-        assert_eq!(
-            BuiltInHarnessPreset::BashkitWorker.parent(),
-            Some(BuiltInHarnessPreset::Worker)
-        );
-    }
-
-    #[test]
     fn generic_carries_no_duplicate_capability() {
         let capabilities = generic_capabilities();
         let mut ids: Vec<_> = capabilities

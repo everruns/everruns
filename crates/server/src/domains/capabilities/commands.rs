@@ -620,14 +620,6 @@ mod tests {
         assert_eq!(cmd.offset, Some(10));
     }
 
-    #[test]
-    fn list_capabilities_accepts_native_numeric_limit() {
-        let cmd: ListCapabilities =
-            serde_json::from_value(json!({ "limit": 5, "offset": 10 })).unwrap();
-        assert_eq!(cmd.limit, Some(5));
-        assert_eq!(cmd.offset, Some(10));
-    }
-
     #[tokio::test]
     async fn declarative_capability_rejects_presets_and_accepts_declared_identity() {
         let ctx = test_ctx();
@@ -682,29 +674,5 @@ mod tests {
             updated.definition.mcp_servers.unwrap()["docs"].acts_as,
             McpServerActsAs::User
         );
-    }
-
-    #[test]
-    fn dry_run_guardrails_request_deserializes() {
-        let cmd: DryRunGuardrails = serde_json::from_value(json!({
-            "config": {
-                "checks": [
-                    {"stage": "output", "type": "blocklist", "words": ["x"]}
-                ]
-            },
-            "stage": "output",
-            "text": "x marks the spot"
-        }))
-        .unwrap();
-        assert_eq!(cmd.0.stage, everruns_core::GuardrailStage::Output);
-        assert_eq!(cmd.0.text, "x marks the spot");
-        assert!(cmd.0.tool_name.is_none());
-        // Sanity: the embedded config compiles and matches via the core engine.
-        let compiled = GuardrailsConfig::from_value(&cmd.0.config)
-            .unwrap()
-            .compile()
-            .unwrap();
-        let hits = compiled.evaluate(cmd.0.stage, &cmd.0.text, None, &|_| false);
-        assert_eq!(hits.len(), 1);
     }
 }

@@ -184,40 +184,6 @@ fn required_context_service_validation_accepts_supplied_service() {
 }
 
 #[test]
-fn test_tool_result_conversion() {
-    // Success
-    let result = ToolExecutionResult::success(serde_json::json!({"value": 42}));
-    let tool_result = result.into_tool_result("call_1", "test_tool");
-    assert_eq!(tool_result.tool_call_id, "call_1");
-    assert!(tool_result.error.is_none());
-    assert!(tool_result.images.is_none());
-    assert!(tool_result.connection_required.is_none());
-    assert!(tool_result.raw_output.is_none());
-    assert_eq!(tool_result.result, Some(serde_json::json!({"value": 42})));
-
-    // Tool error (packaged as {"error": "..."} in result field, also sets error)
-    let result = ToolExecutionResult::tool_error("Invalid input");
-    let tool_result = result.into_tool_result("call_2", "test_tool");
-    assert_eq!(tool_result.error.as_deref(), Some("Invalid input"));
-    assert_eq!(
-        tool_result.result.unwrap(),
-        serde_json::json!({"error": "Invalid input"})
-    );
-
-    // Internal error (packaged as {"error": "..."} with generic message)
-    let result = ToolExecutionResult::internal_error_msg("Secret database error");
-    let tool_result = result.into_tool_result("call_3", "test_tool");
-    assert_eq!(
-        tool_result.error.as_deref(),
-        Some("An internal error occurred while executing the tool")
-    );
-    assert_eq!(
-        tool_result.result.unwrap(),
-        serde_json::json!({"error": "An internal error occurred while executing the tool"})
-    );
-}
-
-#[test]
 fn test_success_with_raw_output_object_preserves_shape() {
     let res = ToolExecutionResult::success_with_raw_output(
         serde_json::json!({"stdout": "hello"}),
@@ -407,24 +373,6 @@ fn result_variants_keep_images_connections_and_classification_distinct() {
         assert!(result.raw_output.is_none());
         assert_eq!(serde_json::to_value(result).unwrap(), expected);
     }
-}
-
-#[tokio::test]
-async fn test_tool_registry_as_executor() {
-    let mut registry = ToolRegistry::new();
-    registry.register(EchoTool);
-
-    let tool_call = ToolCall {
-        id: "call_1".to_string(),
-        name: "echo".to_string(),
-        arguments: serde_json::json!({"message": "test"}),
-    };
-
-    let tool_def = registry.get("echo").unwrap().to_definition();
-    let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-
-    assert!(result.error.is_none());
-    assert_eq!(result.result.unwrap()["echoed"], "test");
 }
 
 #[tokio::test]

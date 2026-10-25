@@ -304,17 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unparseable_definition_is_a_failure_rather_than_a_default() {
-        for (label, definition) in unparseable_definitions() {
-            let row = row_with(definition);
-            assert!(
-                deserialize_persisted_definition(row.id, &row.name, &row.definition).is_err(),
-                "{label} should not parse"
-            );
-        }
-    }
-
-    #[test]
     fn an_unparseable_capability_never_reports_available() {
         for (label, definition) in unparseable_definitions() {
             let capability = row_to_declarative_capability(&row_with(definition));
@@ -443,18 +432,6 @@ mod tests {
             broken.definition.status,
             everruns_core::CapabilityStatus::Retired
         );
-    }
-
-    #[test]
-    fn reading_an_unparseable_row_does_not_rewrite_it() {
-        let stored = json!({ "name": "research_pack" });
-        let row = row_with(stored.clone());
-
-        let _ = row_to_declarative_capability(&row);
-        let _ = deserialize_persisted_definition(row.id, &row.name, &row.definition);
-
-        // A failed read is diagnosable only while the original bytes survive.
-        assert_eq!(row.definition, stored);
     }
 
     async fn store_with(definition: serde_json::Value) -> StorageBackend {

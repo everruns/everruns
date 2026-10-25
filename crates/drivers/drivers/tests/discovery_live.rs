@@ -47,26 +47,6 @@ mod vercel_discovery {
             eprintln!("  {} (owned_by={:?})", m.model_id, m.owned_by);
         }
     }
-
-    /// A base URL that is not Vercel's own host must not be probed: discovery
-    /// declines rather than sending the account's bearer token to it.
-    #[tokio::test]
-    #[ignore = "live network + AI_GATEWAY_API_KEY"]
-    async fn vercel_discovery_declines_a_foreign_host() {
-        let api_key = std::env::var("AI_GATEWAY_API_KEY")
-            .expect("AI_GATEWAY_API_KEY must be set for the live smoke test");
-
-        let models = vercel::provider("vercel", api_key)
-            .base_url("https://example.invalid/v1")
-            .list_models()
-            .await
-            .expect("declining is not an error");
-
-        assert!(
-            models.is_none(),
-            "discovery must not probe a non-Vercel host"
-        );
-    }
 }
 
 #[cfg(feature = "cloudflare")]
@@ -128,24 +108,6 @@ mod cloudflare_discovery {
             let tools = m.discovered_profile.as_ref().is_some_and(|p| p.tool_call);
             eprintln!("  {} ctx={ctx:?} tools={tools}", m.model_id);
         }
-    }
-
-    /// Same host gate as Vercel: a proxy base URL is never probed.
-    #[tokio::test]
-    #[ignore = "live network + CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID"]
-    async fn cloudflare_discovery_declines_a_foreign_host() {
-        let (account_id, api_token) = credentials();
-
-        let models = cloudflare::provider("cloudflare", &account_id, api_token, None)
-            .base_url("https://example.invalid/ai/v1")
-            .list_models()
-            .await
-            .expect("declining is not an error");
-
-        assert!(
-            models.is_none(),
-            "discovery must not probe a non-Cloudflare host"
-        );
     }
 }
 

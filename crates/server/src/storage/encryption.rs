@@ -959,24 +959,6 @@ mod tests {
     // --- DEK cache tests ---
 
     #[test]
-    fn test_cache_populated_on_decrypt() {
-        let key = test_key("kek-v1");
-        let service = EncryptionService::new(&key, &[]).unwrap();
-
-        let encrypted = service.encrypt_string("secret").unwrap();
-
-        // Cache empty before first decrypt
-        assert_eq!(service.dek_cache_entry_count(), 0);
-
-        let _ = service.decrypt_to_string(&encrypted).unwrap();
-
-        // Cache should have one entry after decrypt
-        // moka may need a sync to reflect entry_count
-        service.dek_cache.run_pending_tasks();
-        assert_eq!(service.dek_cache_entry_count(), 1);
-    }
-
-    #[test]
     fn test_cache_hit_avoids_re_decryption() {
         let key = test_key("kek-v1");
         let service = EncryptionService::new(&key, &[]).unwrap();

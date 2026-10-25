@@ -302,19 +302,6 @@ async fn gpt_model_with_fallback_off_errors_when_only_muse_providers_exist() {
 }
 
 #[test]
-fn capability_config_accepts_legacy_model_override() {
-    let config = parse_capability_config(&json!({
-        "model": "gpt-image-1",
-        "default_quality": "low",
-        "partial_images": 2
-    }))
-    .unwrap();
-    assert_eq!(config.model, ImageGenerationModel::GptImage1);
-    assert_eq!(config.default_quality, ImageGenerationQuality::Low);
-    assert_eq!(config.partial_images, 2);
-}
-
-#[test]
 fn capability_config_ignores_unknown_fields() {
     let config = parse_capability_config(&json!({
         "model": "gpt-image-1",

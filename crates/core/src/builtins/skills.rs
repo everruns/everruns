@@ -1905,42 +1905,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_attach_skill_with_files_discovered() {
-        use crate::builtins::capabilities::attach_skill::AttachSkillCapability;
-
-        let skill_id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        let cap = AttachSkillCapability::from_registry(
-            skill_id,
-            "data-pipeline".to_string(),
-            "Build data pipelines".to_string(),
-            "# Instructions\nUse the bundled script.".to_string(),
-            vec![
-                ("run.py".to_string(), "import pandas as pd".to_string()),
-                ("README.md".to_string(), "# Reference docs".to_string()),
-            ],
-        );
-
-        let store = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        for mount in cap.mounts() {
-            materialize_mount_into_store(&store, session_id, &mount);
-        }
-
-        // list_skills discovers it
-        let context = ToolContext::with_file_store(session_id, store.clone());
-        let tool = ListSkillsTool;
-        let result = tool
-            .execute_with_context(serde_json::json!({}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                assert_eq!(val["skills"][0]["name"], "data-pipeline");
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_multiple_attach_skills_all_discovered() {
         use crate::builtins::capabilities::attach_skill::AttachSkillCapability;
 

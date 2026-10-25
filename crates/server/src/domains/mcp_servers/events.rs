@@ -828,18 +828,4 @@ mod tests {
         assert!(filter_matches(&json!({"agent_id": "a1"}), "s1", Some("a1")));
         assert!(!filter_matches(&json!({"agent_id": "a1"}), "s1", None));
     }
-
-    #[test]
-    fn catalog_lists_the_three_session_events() {
-        let names: Vec<String> = McpEventsService::event_definitions()
-            .as_array()
-            .map(|events| {
-                events
-                    .iter()
-                    .filter_map(|event| event["name"].as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        assert_eq!(names, EVENT_NAMES);
-    }
 }

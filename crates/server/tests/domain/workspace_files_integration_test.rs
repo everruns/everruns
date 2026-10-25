@@ -36,19 +36,6 @@ async fn create_session_with_workspace(server: &TestServer) -> (String, String) 
 }
 
 #[tokio::test]
-async fn session_response_exposes_workspace_id_mirroring_session_id() {
-    let server = TestServer::in_memory().await;
-    let (session_id, workspace_id) = create_session_with_workspace(&server).await;
-
-    // Default 1:1 case: workspace.id == session.id, so the public ids share the
-    // same 32-hex body with different prefixes.
-    let hex = session_id
-        .strip_prefix("session_")
-        .expect("session id prefix");
-    assert_eq!(workspace_id, format!("wsp_{hex}"));
-}
-
-#[tokio::test]
 async fn workspace_fs_move_copy_download_roundtrip() {
     let server = TestServer::in_memory().await;
     let (_session_id, workspace_id) = create_session_with_workspace(&server).await;

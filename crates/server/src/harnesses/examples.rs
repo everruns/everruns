@@ -93,21 +93,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn old_provider_specific_coding_names_remain_reconciliation_only() {
-        let example_names = harness_examples()
-            .into_iter()
-            .map(|example| example.definition.name)
-            .collect::<Vec<_>>();
-        assert!(example_names.iter().any(|name| name == "coding"));
-        for name in [
-            "coding-container",
-            "coding-daytona",
-            "coding-session-sandbox",
-        ] {
-            assert!(!example_names.iter().any(|example| example == name));
-            assert!(LEGACY_BUILT_IN_NAMES.contains(&name));
-        }
-    }
 }

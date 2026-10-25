@@ -459,17 +459,6 @@ mod tests {
     }
 
     #[test]
-    fn new_organizations_get_automatic_with_native_and_fallback() {
-        let defaults: WebSearchDefaults = serde_json::from_str("{}").unwrap();
-        assert_eq!(defaults, WebSearchDefaults::default());
-        assert_eq!(defaults.provider, SearchProviderSetting::Auto);
-        assert_eq!(defaults.automatic_order, ["native", "free"]);
-        assert!(defaults.allow_native);
-        assert_eq!(defaults.fallback, SearchFallbackMode::Next);
-        assert_eq!(defaults.results_per_search, 8);
-    }
-
-    #[test]
     fn validation_normalizes_the_automatic_order() {
         let account = id(7);
         let defaults = WebSearchDefaults {

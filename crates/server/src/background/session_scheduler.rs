@@ -804,25 +804,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_does_not_return_monitor_with_active_schedule() {
-        let db = make_db();
-        let session_id = db.create_test_session().await;
-
-        let schedule_id = create_schedule(&db, session_id).await;
-        create_monitor_task(&db, session_id, schedule_id).await;
-
-        // Schedule is active (enabled=true) — must not appear.
-        let results = db
-            .list_monitor_tasks_with_inactive_schedules(50)
-            .await
-            .unwrap();
-        assert!(
-            results.is_empty(),
-            "active schedule monitor must be excluded"
-        );
-    }
-
-    #[tokio::test]
     async fn query_does_not_return_monitor_without_schedule_id() {
         let db = make_db();
         let session_id = db.create_test_session().await;

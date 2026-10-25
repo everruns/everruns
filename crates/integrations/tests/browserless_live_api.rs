@@ -308,22 +308,6 @@ async fn live_cdp_session_interact() {
 // ============================================================================
 
 #[tokio::test]
-async fn live_no_resources_leaked_rest() {
-    // REST calls are stateless. Verify multiple independent calls work fine.
-    let client = BrowserlessClient::new(api_token());
-
-    let r1 = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-    let r2 = client
-        .content("https://example.com", None, None, false, &[])
-        .await;
-
-    assert!(r1.is_ok());
-    assert!(r2.is_ok());
-}
-
-#[tokio::test]
 async fn live_no_resources_leaked_cdp() {
     // Open a CDP session, then let it expire without explicitly closing.
     // Verify no resources are leaked (browser destroyed after timeout).

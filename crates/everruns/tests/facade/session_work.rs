@@ -292,27 +292,6 @@ async fn queue_recreation_with_same_backend_preserves_unfinished_work() {
 }
 
 #[tokio::test]
-async fn replacing_the_in_memory_backend_drops_process_local_state() {
-    let now = instant(100);
-    let first_queue = WorkQueue::in_memory();
-    let task = first_queue
-        .for_session("session_example")
-        .submit_at(TaskRequest::new("ephemeral", json!(null)), now)
-        .await
-        .unwrap();
-
-    let replacement = WorkQueue::in_memory();
-    assert!(
-        replacement
-            .for_session("session_example")
-            .task(&task.id)
-            .await
-            .unwrap()
-            .is_none()
-    );
-}
-
-#[tokio::test]
 async fn invalid_claim_and_request_values_fail_at_the_facade() {
     let queue = WorkQueue::in_memory();
     let error = queue

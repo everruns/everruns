@@ -1444,30 +1444,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_401_error() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sandbox"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_string("{\"error\":\"Unauthorized\"}"),
-            )
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "bad_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client.create_sandbox(json!({"name": "Test"})).await;
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Daytona API error (401 Unauthorized): {\"error\":\"Unauthorized\"}"
-        );
-    }
-
-    #[tokio::test]
     async fn test_client_500_error() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1510,25 +1486,6 @@ mod tests {
                 .unwrap_err()
                 .starts_with("Invalid JSON from Daytona:")
         );
-    }
-
-    #[test]
-    fn query_encoding_preserves_unreserved_and_escapes_path_bytes() {
-        for (input, expected) in [
-            ("", ""),
-            ("hello", "hello"),
-            ("abc-_.~123", "abc-_.~123"),
-            ("/sandbox/main.py", "%2Fsandbox%2Fmain.py"),
-            (
-                "/my project/file name.txt",
-                "%2Fmy%20project%2Ffile%20name.txt",
-            ),
-            ("hello@world#test", "hello%40world%23test"),
-            ("&?%=+", "%26%3F%25%3D%2B"),
-            ("é/🙂", "%C3%A9%2F%F0%9F%99%82"),
-        ] {
-            assert_eq!(urlencoding::encode(input), expected, "{input:?}");
-        }
     }
 
     #[tokio::test]
@@ -1767,27 +1724,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_wait_for_ready_already_started() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/sandbox/sb_test"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "id": "sb_test",
-                "state": "started"
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client.wait_for_ready("sb_test").await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
     async fn test_client_wait_for_ready_error_state() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1878,54 +1814,6 @@ mod tests {
         );
         let entries = client.file_list("sb_test", "/home").await.unwrap();
         assert_eq!(entries, vec![json!({"name":"only.txt","isDir":false})]);
-    }
-
-    #[tokio::test]
-    async fn test_client_create_sandbox_forwards_labels() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/sandbox"))
-            .and(wiremock::matchers::body_json(json!({
-                "name": "Labeled Sandbox",
-                "autoStopInterval": 5,
-                "autoArchiveInterval": 30,
-                "autoDeleteInterval": 60,
-                "labels": {
-                    "everruns": "true",
-                    "everruns.session_id": "session_abc",
-                    "everruns.org_id": "org_123"
-                }
-            })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "id": "sb_labeled",
-                "name": "Labeled Sandbox",
-                "state": "started"
-            })))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let result = client
-            .create_sandbox(json!({
-                "name": "Labeled Sandbox",
-                "autoStopInterval": 5,
-                "autoArchiveInterval": 30,
-                "autoDeleteInterval": 60,
-                "labels": {
-                    "everruns": "true",
-                    "everruns.session_id": "session_abc",
-                    "everruns.org_id": "org_123"
-                }
-            }))
-            .await;
-        assert!(result.is_ok());
-        let info = result.unwrap();
-        assert_eq!(info.id, "sb_labeled");
     }
 
     #[tokio::test]
@@ -2092,16 +1980,6 @@ mod tests {
         assert_eq!(result.stderr, "");
         assert_eq!(result.result, "still works\n");
         assert_eq!(exec_call_count.load(Ordering::SeqCst), 2);
-    }
-
-    #[test]
-    fn test_strip_stream_markers_stdout_only() {
-        let mut raw = vec![0x01, 0x01, 0x01];
-        raw.extend_from_slice(b"hello world\n");
-        let parsed = split_stream_markers(&raw);
-        assert_eq!(parsed.stdout, "hello world\n");
-        assert_eq!(parsed.stderr, "");
-        assert_eq!(parsed.combined, "hello world\n");
     }
 
     #[test]

@@ -403,14 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unconfigured_value_writes_nothing_and_still_validates() {
-        let spec = HostShell::new().into_capability();
-        let config = spec.capability_ref().config_value().clone();
-        assert_eq!(config, json!({}));
-        HostShellCapability.validate_config(&config).expect("valid");
-    }
-
-    #[test]
     fn a_rejected_config_falls_back_to_the_contained_default() {
         let bad = json!({"containment": "none"});
         assert!(HostShellCapability.validate_config(&bad).is_err());

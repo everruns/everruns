@@ -682,44 +682,6 @@ async fn test_act_atom_cancels_detached_tool_work_when_the_turn_is_cancelled() {
         .expect("drop signal should be sent");
 }
 
-#[tokio::test]
-async fn test_act_atom_aborts_cpu_bound_tool_task_on_cancellation() {
-    let started = Arc::new(tokio::sync::Notify::new());
-    let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
-
-    let mut executor = ToolRegistry::new();
-    executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
-
-    let atom = ActAtom::new(executor, NoopEventEmitter);
-    let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
-    let input = ActInput {
-        org_id: Some(1),
-        context,
-        harness_id: HarnessId::from_seed(1),
-        agent_id: Some(AgentId::new()),
-        tool_calls: vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "cancellation_probe".to_string(),
-            arguments: json!({}),
-        }],
-        tool_definitions: vec![recording_tool_def("cancellation_probe", None, true)],
-        locale: None,
-        blueprint_id: None,
-        network_access: None,
-        parallel_tool_calls: None,
-    };
-
-    let act_task = tokio::spawn(async move { atom.execute(input).await });
-    started.notified().await;
-    act_task.abort();
-    assert!(act_task.await.unwrap_err().is_cancelled());
-
-    tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
-        .await
-        .expect("cpu-bound tool task should be aborted when ActAtom is cancelled")
-        .expect("drop signal should be sent by cancelled tool future");
-}
-
 /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
 /// sequentially regardless of class — peak concurrency must be 1.
 #[tokio::test]

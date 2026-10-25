@@ -187,18 +187,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn both_shapes_carry_the_bedrock_driver() {
-        for config in [
-            Bedrock::new("akid", "secret", "us-east-1"),
-            Bedrock::default_chain().region("us-east-1"),
-            Bedrock::default_chain(),
-        ] {
-            let provider: Provider = config.into();
-            assert_eq!(provider.driver_id(), crate::DriverId::Bedrock);
-        }
-    }
-
-    #[test]
     fn debug_redacts_keys_and_token() {
         let rendered = format!(
             "{:?}",

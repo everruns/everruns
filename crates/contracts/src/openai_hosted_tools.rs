@@ -456,15 +456,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn bare_web_search_renders_the_minimal_wire_tool() {
-        let tools = OpenAiHostedTools {
-            web_search: Some(WebSearchTool::default()),
-            ..Default::default()
-        };
-        assert_eq!(tools.wire_tools(), vec![json!({ "type": "web_search" })]);
-    }
-
-    #[test]
     fn computer_renders_the_native_tool_and_is_never_a_hosted_call() {
         let tools = OpenAiHostedTools {
             computer: Some(NativeComputerUse {

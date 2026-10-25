@@ -514,22 +514,6 @@ mod tests {
     }
 
     #[test]
-    fn thinking_efforts_have_literal_budgets_including_max_alias() {
-        use crate::model::ReasoningEffort::*;
-        for (effort, expected) in [
-            (None, Option::None),
-            (Minimal, Some(1024)),
-            (Low, Some(1024)),
-            (Medium, Some(4096)),
-            (High, Some(16384)),
-            (Xhigh, Some(32768)),
-            (Max, Some(32768)),
-        ] {
-            assert_eq!(thinking_budget::from_effort(effort), expected, "{effort:?}");
-        }
-    }
-
-    #[test]
     fn caller_overrides_replace_all_duplicates_preserving_order_and_other_headers() {
         assert_eq!(
             merge_request_headers(

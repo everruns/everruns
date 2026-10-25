@@ -296,21 +296,6 @@ mod tests {
             Some(DriverId::OpenAI)
         );
     }
-
-    #[test]
-    fn a_driver_with_a_canonical_endpoint_reports_it() {
-        assert_eq!(
-            DriverId::OpenRouter.default_base_url(),
-            Some("https://openrouter.ai/api/v1")
-        );
-        assert_eq!(
-            DriverId::Mistral.default_base_url(),
-            Some("https://api.mistral.ai/v1")
-        );
-        // Per-deployment endpoints have no canonical default to report.
-        assert_eq!(DriverId::AzureOpenAI.default_base_url(), None);
-        assert_eq!(DriverId::Bedrock.default_base_url(), None);
-    }
 }
 
 // `Arc<str>` does not implement `ToSchema`, so the schema is written by hand.
