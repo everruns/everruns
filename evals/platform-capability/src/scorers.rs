@@ -1015,8 +1015,12 @@ mod tests {
             json!("model_2");
         assert!(!operation_state().score(&sample, &collateral).await.pass);
         let mut wrong_id = transcript.clone();
-        wrong_id.metadata.get_mut("control_plane_state").unwrap()["operations"][1]["arguments"]["id"] =
-            json!("agent_other");
+        wrong_id.metadata.get_mut("control_plane_state").unwrap()["operations"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|operation| operation["name"] == "update_agent")
+            .unwrap()["arguments"]["id"] = json!("agent_other");
         assert!(!operation_state().score(&sample, &wrong_id).await.pass);
         let mut extra = transcript.clone();
         extra.metadata.get_mut("control_plane_state").unwrap()["operations"].as_array_mut().unwrap().push(json!({"name":"delete_agent","arguments":{"id":"agent_other"},"read_only":false,"status":"completed","attempted":true}));
