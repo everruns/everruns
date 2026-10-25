@@ -4,7 +4,8 @@
 
 * **Local setup.** `everruns docker up` runs the self-hosted Platform through
   Docker Compose with a converging, re-runnable setup and a sign-in question;
-  Kubernetes gets a Helm chart rather than an operator. See
+  Kubernetes gets a Helm chart rather than an operator. `upgrade` backs up the
+  database before migrations; `reset` is the only command that deletes data. See
   [Local Setup and Kubernetes](operations/local-setup.md).
 
 ## 2026-10-24

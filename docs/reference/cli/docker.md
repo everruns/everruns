@@ -18,6 +18,8 @@ Run Everruns on this machine with Docker.
 | [`docker logs`](#docker-logs) | Show the containers' logs. |
 | [`docker open`](#docker-open) | Open the local UI in the browser. |
 | [`docker doctor`](#docker-doctor) | Check that Docker is installed, running and new enough. |
+| [`docker upgrade`](#docker-upgrade) | Move the instance to this CLI's version (or --image-tag), backing up the database first. |
+| [`docker reset`](#docker-reset) | Delete the instance: containers, database and settings. |
 
 ## docker up
 
@@ -104,4 +106,34 @@ everruns docker doctor [OPTIONS]
 | Flag | Description |
 |---|---|
 | `--name <NAME>` | Instance name, for more than one local Everruns. |
+
+
+## docker upgrade
+
+Move the instance to this CLI's version (or --image-tag), backing up the database first.
+
+```bash
+everruns docker upgrade [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Instance name, for more than one local Everruns. |
+| `--image-tag <IMAGE_TAG>` | Image tag to move to, such as v0.49.0 or latest (default: this CLI's version) |
+| `--no-backup` | Skip the database backup taken before the upgrade. |
+| `-y`, `--yes` | Do not ask, also when the move is to an older version. |
+
+
+## docker reset
+
+Delete the instance: containers, database and settings. Asks first.
+
+```bash
+everruns docker reset [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Instance name, for more than one local Everruns. |
+| `-y`, `--yes` | Do not ask for the instance name (for scripts) |
 
