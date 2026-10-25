@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke test for OpenRouter chat + session tracking.
 //!
 //! Exercises a real streamed chat completion through `OpenRouterChatDriver`,
@@ -6,9 +5,6 @@
 //! routing controls. Confirms OpenRouter accepts the decorated request and
 //! streams back a non-empty response — the live counterpart to the wiremock
 //! request-contract tests.
-//!
-//! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features openrouter --test openrouter_chat_live -- --ignored --nocapture`
 
 use everruns_contracts::driver_registry::{LlmCallConfig, LlmStreamEvent, Message, MessageRole};
 use everruns_contracts::model::ReasoningEffort;
@@ -19,7 +15,6 @@ use everruns_drivers::openrouter::provider;
 use futures::StreamExt;
 
 #[tokio::test]
-#[ignore = "live network + OPENROUTER_API_KEY"]
 async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let api_key = std::env::var("OPENROUTER_API_KEY")
         .expect("OPENROUTER_API_KEY must be set for the live smoke test");
@@ -29,7 +24,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
 
-    let mut config = LlmCallConfig::new("openai/gpt-5.6-luna");
+    let mut config = LlmCallConfig::new("openai/gpt-6-luna");
     config.max_tokens = Some(128);
     config.reasoning_effort = Some(ReasoningEffort::Low);
     config.metadata = metadata;
@@ -38,8 +33,8 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         &mut config.driver_options,
         &OpenRouterRoutingConfig {
             models: vec![
-                "openai/gpt-5.6-luna".to_string(),
-                "openai/gpt-5.6-terra".to_string(),
+                "openai/gpt-6-luna".to_string(),
+                "openai/gpt-6.1-sol".to_string(),
             ],
             route: Some(OpenRouterRoute::Fallback),
             ..Default::default()

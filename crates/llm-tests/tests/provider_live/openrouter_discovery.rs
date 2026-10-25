@@ -1,17 +1,12 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live smoke test for OpenRouter model discovery.
 //!
 //! Exercises the real `OpenRouterChatDriver::list_models` path against
 //! OpenRouter's `/models` endpoint: HTTP fetch, deserialization, and capability
 //! profiling.
-//!
-//! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features openrouter --test openrouter_discovery_live -- --ignored --nocapture`
 
 use everruns_drivers::openrouter::provider;
 
 #[tokio::test]
-#[ignore = "live network + OPENROUTER_API_KEY"]
 async fn openrouter_discovers_nemotron_reasoning_profile() {
     let api_key = std::env::var("OPENROUTER_API_KEY")
         .expect("OPENROUTER_API_KEY must be set for the live smoke test");

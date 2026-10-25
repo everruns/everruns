@@ -1,6 +1,6 @@
 use super::*;
 use everruns_contracts::knowledge::{IndexMode, KnowledgeQuery};
-use serde_json::json;
+use serde_json::{Value, json};
 use types::*;
 
 fn fixture() -> KnowledgeService {
@@ -1018,9 +1018,12 @@ async fn grep_reports_oversized_text_instead_of_false_no_matches() {
     assert!(error.to_string().contains("scan budget"));
 }
 
+/// A catalog page must come off the path index, not a scan and sort of the whole
+/// collection: on a million files the difference is milliseconds against
+/// seconds. The weekly `knowledge_catalog` bench times that size; this pins the
+/// plan on a catalog small enough for every run.
 #[tokio::test]
-#[ignore = "capacity qualification: million-file catalog, run explicitly"]
-async fn knowledge_million_file_catalog_qualification() {
+async fn files_page_reads_the_path_index() {
     let s = fixture();
     let c = create(&s, IndexMode::Off).await;
     let source: Uuid =
@@ -1029,31 +1032,65 @@ async fn knowledge_million_file_catalog_qualification() {
             .fetch_one(s.db.pool())
             .await
             .unwrap();
-    let started = std::time::Instant::now();
-    sqlx::query("INSERT INTO knowledge_files(id,org_id,collection_id,source_id,path) SELECT gen_random_uuid(),$1,$2,$3,'/docs/'||lpad(n::text,7,'0')||'.md' FROM generate_series(1,1000000) n").bind(c.org_id).bind(c.id).bind(source).execute(s.db.pool()).await.unwrap();
+    sqlx::query("INSERT INTO knowledge_files(id,org_id,collection_id,source_id,path) SELECT gen_random_uuid(),$1,$2,$3,'/docs/'||lpad(n::text,7,'0')||'.md' FROM generate_series(1,20000) n").bind(c.org_id).bind(c.id).bind(source).execute(s.db.pool()).await.unwrap();
     sqlx::query("INSERT INTO knowledge_versions(id,org_id,file_id,content_hash,size_bytes,mime_type,raw_key,raw_parts,metadata,extraction_status,source_uri) SELECT gen_random_uuid(),org_id,id,'hash',0,'text/markdown','knowledge/test/empty',1,'{}','ready','test://' FROM knowledge_files WHERE collection_id=$1").bind(c.id).execute(s.db.pool()).await.unwrap();
     sqlx::query("UPDATE knowledge_files f SET current_version=v.id FROM knowledge_versions v WHERE v.file_id=f.id AND f.collection_id=$1").bind(c.id).execute(s.db.pool()).await.unwrap();
-    eprintln!("million-file catalog loaded in {:?}", started.elapsed());
-    for after in ["", "/docs/0500000.md", "/docs/0999500.md"] {
-        let started = std::time::Instant::now();
-        let page = s
-            .files_page(
-                &c,
-                &PageQuery {
-                    after: Some(after.into()),
-                    limit: Some(100),
-                    ..Default::default()
-                },
-            )
-            .await
-            .unwrap();
-        assert_eq!(page["data"].as_array().unwrap().len(), 100);
-        assert!(serde_json::to_vec(&page).unwrap().len() < 200_000);
-        eprintln!(
-            "bounded catalog page after {after}: {:?}",
-            started.elapsed()
-        );
+    sqlx::raw_sql("ANALYZE knowledge_files; ANALYZE knowledge_versions")
+        .execute(s.db.pool())
+        .await
+        .unwrap();
+
+    // A constant prefix on a constant query: no input reaches the SQL text.
+    let explain = format!("EXPLAIN (FORMAT JSON) {}", repository::FILES_PAGE_SQL);
+    let plan: Value = sqlx::query_scalar(sqlx::AssertSqlSafe(explain))
+        .bind(c.org_id)
+        .bind(c.id)
+        .bind("/docs/0010000.md")
+        .bind("/")
+        .bind(101_i64)
+        .fetch_one(s.db.pool())
+        .await
+        .unwrap();
+    fn nodes(plan: &Value, out: &mut Vec<(String, String)>) {
+        out.push((
+            plan["Node Type"].as_str().unwrap_or_default().to_string(),
+            plan["Relation Name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+        ));
+        for child in plan["Plans"].as_array().into_iter().flatten() {
+            nodes(child, out);
+        }
     }
+    let mut found = Vec::new();
+    nodes(&plan[0]["Plan"], &mut found);
+    assert!(
+        found
+            .iter()
+            .any(|(node, relation)| node.starts_with("Index") && relation == "knowledge_files"),
+        "{plan:#}"
+    );
+    assert!(
+        !found.iter().any(|(node, _)| node == "Sort"),
+        "a page must not sort the collection: {plan:#}"
+    );
+
+    let page = s
+        .files_page(
+            &c,
+            &PageQuery {
+                after: Some("/docs/0010000.md".into()),
+                limit: Some(100),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let data = page["data"].as_array().unwrap();
+    assert_eq!(data.len(), 100);
+    assert_eq!(data[0]["path"], "/docs/0010001.md");
+    assert_eq!(page["next_cursor"], "/docs/0010100.md");
 }
 
 #[tokio::test]

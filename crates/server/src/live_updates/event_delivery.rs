@@ -546,11 +546,11 @@ mod tests {
         );
     }
 
-    /// End-to-end check of EVERRUNS-32 against a real JetStream server:
-    /// `EVERRUNS_TEST_NATS_URL=nats://127.0.0.1:4222 cargo test -p
-    /// everruns-server --lib oversize_generation_reaches_nats -- --ignored`
+    /// End-to-end check of EVERRUNS-32 against the real JetStream server
+    /// named by `EVERRUNS_TEST_NATS_URL`; the weekly `Integration Live Sweep`
+    /// starts one (feature `live-tests`).
+    #[cfg(feature = "live-tests")]
     #[tokio::test]
-    #[ignore = "needs a NATS JetStream server in EVERRUNS_TEST_NATS_URL"]
     async fn oversize_generation_reaches_nats_subscribers() {
         let url = std::env::var("EVERRUNS_TEST_NATS_URL").expect("EVERRUNS_TEST_NATS_URL");
         let nats = NatsEventDelivery::connect(&url).await.unwrap();

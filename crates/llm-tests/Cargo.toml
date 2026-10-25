@@ -47,11 +47,16 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 
-everruns-core = { path = "../core", default-features = false, features = ["builtins", "engine", "host"] }
+everruns-core = { path = "../core", default-features = false, features = ["builtins", "engine", "host", "openai-agents-api"] }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["raw_value"] }
 wiremock = "0.6"
+# `provider_live`: streamed responses, and the file-search test's own vector
+# store (multipart upload).
+futures.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true

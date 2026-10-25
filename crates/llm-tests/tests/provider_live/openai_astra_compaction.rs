@@ -1,7 +1,4 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live acceptance gate for Astra configuration updates and explicit compaction.
-//! Run only after the account has credits:
-//! doppler run --project everruns-dev --config dev -- cargo test -p everruns-drivers --features openai --test openai_astra_compaction_live -- --ignored --nocapture
 
 use everruns_contracts::compact::{CompactRequest, messages_to_compact_input};
 use everruns_contracts::driver_registry::{
@@ -12,7 +9,6 @@ use everruns_contracts::{ProviderEndpoint, ReasoningEffort};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "requires funded OpenAI API credentials; blocked by credit_balance_exhausted"]
 async fn astra_compaction_preserves_facts_constraints_and_continuation() {
     let key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is required");
     let provider = everruns_drivers::openai::provider("openai", key);
