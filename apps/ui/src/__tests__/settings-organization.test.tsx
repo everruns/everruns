@@ -104,7 +104,7 @@ jest.mock("@/components/models/model-picker", () => ({
     disabled?: boolean;
   }) => (
     <select
-      aria-label="Default Model"
+      aria-label="Default model"
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
@@ -167,10 +167,13 @@ describe("OrganizationPage", () => {
   it("renders accessible organizations separately from general settings", () => {
     render(<OrganizationPage />);
 
+    // Nothing was edited, so no section claims to have saved anything.
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+
     expect(screen.getByRole("heading", { name: "Organization" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Harnesses" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Default Model")).toBeInTheDocument();
+    expect(screen.getByLabelText("Default model")).toBeInTheDocument();
     expect(screen.getByLabelText("Select default harness")).toBeInTheDocument();
     expect(screen.getByLabelText("Select base harness")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Organizations" })).toBeInTheDocument();
@@ -199,8 +202,8 @@ describe("OrganizationPage", () => {
       expect(
         screen.getByText(/Only organization owners and admins can change these settings/),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Organization Name")).toHaveAttribute("readonly");
-      expect(screen.getByLabelText("Default Model")).toBeDisabled();
+      expect(screen.getByLabelText("Organization name")).toHaveAttribute("readonly");
+      expect(screen.getByLabelText("Default model")).toBeDisabled();
       expect(screen.getByLabelText("Select default harness")).toBeDisabled();
       expect(screen.getByLabelText("Select base harness")).toBeDisabled();
       // The idle "Saved" badge is misleading when the viewer cannot save at all.
@@ -217,7 +220,7 @@ describe("OrganizationPage", () => {
 
       render(<OrganizationPage />);
 
-      fireEvent.change(screen.getByLabelText("Organization Name"), {
+      fireEvent.change(screen.getByLabelText("Organization name"), {
         target: { value: "Renamed Org" },
       });
 
@@ -283,7 +286,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -308,7 +311,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
 
@@ -329,7 +332,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "" },
     });
 
@@ -353,7 +356,7 @@ describe("OrganizationPage", () => {
     mockUpdateOrganization.mockRejectedValueOnce(error);
 
     render(<OrganizationPage />);
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
 
@@ -381,7 +384,7 @@ describe("OrganizationPage", () => {
     });
 
     render(<OrganizationPage />);
-    fireEvent.change(screen.getByLabelText("Default Model"), {
+    fireEvent.change(screen.getByLabelText("Default model"), {
       target: { value: "model-2" },
     });
     fireEvent.change(screen.getByLabelText("Select default harness"), {
@@ -426,7 +429,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -455,7 +458,7 @@ describe("OrganizationPage", () => {
 
     const { rerender } = render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organization Name"), {
+    fireEvent.change(screen.getByLabelText("Organization name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -479,7 +482,7 @@ describe("OrganizationPage", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByLabelText("Organization Name")).toHaveValue("Second Org");
+    expect(screen.getByLabelText("Organization name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
   });
