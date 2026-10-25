@@ -1,15 +1,10 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for OpenAI hosted tools through the Responses driver (EVE-1115)
 //! against the real OpenAI API.
 //!
 //! Proves OpenAI accepts each rendered hosted tool, runs it inside the
 //! response, and that the stream reports the call as hosted-call progress plus
 //! a per-call count in the completion metadata, never as an agent tool call.
-//!
-//! Ignored by default (requires network + `OPENAI_API_KEY`; file search also
-//! needs `OPENAI_TEST_VECTOR_STORE_ID`, a vector store holding any document);
-//! run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features openai --test openai_hosted_tools_live -- --ignored --nocapture`
+//! File search creates its own vector store for the run and deletes it after.
 
 use everruns_contracts::driver_registry::{
     HostedToolCallStatus, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
@@ -23,7 +18,7 @@ use everruns_contracts::tool_types::ToolCall;
 use everruns_drivers::openai::provider;
 use futures::StreamExt;
 
-const LIVE_MODEL: &str = "gpt-5.6-luna";
+const LIVE_MODEL: &str = "gpt-6-luna";
 
 /// Stream one prompt with `tools` and check the named hosted call completed.
 async fn assert_hosted_call(tools: OpenAiHostedTools, prompt: &str, tool: &str, item: &str) {
@@ -68,7 +63,6 @@ async fn assert_hosted_call(tools: OpenAiHostedTools, prompt: &str, tool: &str, 
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_runs_hosted_web_search() {
     let tools = OpenAiHostedTools {
         web_search: Some(WebSearchTool {
@@ -82,7 +76,6 @@ async fn openai_runs_hosted_web_search() {
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_runs_hosted_code_interpreter() {
     let tools = OpenAiHostedTools {
         code_interpreter: Some(ContainerTool::default()),
@@ -93,7 +86,6 @@ async fn openai_runs_hosted_code_interpreter() {
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_runs_hosted_shell() {
     let tools = OpenAiHostedTools {
         shell: Some(ContainerTool::default()),
@@ -104,21 +96,129 @@ async fn openai_runs_hosted_shell() {
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY + OPENAI_TEST_VECTOR_STORE_ID"]
 async fn openai_runs_hosted_file_search() {
-    let Ok(store) = std::env::var("OPENAI_TEST_VECTOR_STORE_ID") else {
-        eprintln!("skipping: OPENAI_TEST_VECTOR_STORE_ID is not set");
-        return;
-    };
+    let store = VectorStore::create().await;
     let tools = OpenAiHostedTools {
         file_search: Some(FileSearchTool {
-            vector_store_ids: vec![store],
+            vector_store_ids: vec![store.id.clone()],
             max_num_results: Some(3),
         }),
         ..Default::default()
     };
-    let prompt = "Search the files: what does the document say? Answer in one line.";
-    assert_hosted_call(tools, prompt, "file_search", "file_search_call").await;
+    let prompt = "Search the files: what is the code word in the document? Answer in one line.";
+    let outcome = tokio::spawn(assert_hosted_call(
+        tools,
+        prompt,
+        "file_search",
+        "file_search_call",
+    ))
+    .await;
+    // Delete the store and file even when the assertion failed.
+    store.delete().await;
+    if let Err(error) = outcome {
+        std::panic::resume_unwind(error.into_panic());
+    }
+}
+
+/// A vector store holding one small document, made for one run: the test needs
+/// no store kept in the account between runs.
+struct VectorStore {
+    id: String,
+    file_id: String,
+    client: reqwest::Client,
+    key: String,
+}
+
+impl VectorStore {
+    const API: &str = "https://api.openai.com/v1";
+
+    async fn create() -> Self {
+        let key =
+            std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test");
+        let client = reqwest::Client::new();
+        let form = reqwest::multipart::Form::new()
+            .text("purpose", "assistants")
+            .part(
+                "file",
+                reqwest::multipart::Part::text("The code word for this test is PERIWINKLE.\n")
+                    .file_name("everruns-file-search-live.txt")
+                    .mime_str("text/plain")
+                    .unwrap(),
+            );
+        let file: serde_json::Value = client
+            .post(format!("{}/files", Self::API))
+            .bearer_auth(&key)
+            .multipart(form)
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .expect("upload the test document")
+            .json()
+            .await
+            .unwrap();
+        let file_id = file["id"].as_str().unwrap().to_string();
+        let store: serde_json::Value = client
+            .post(format!("{}/vector_stores", Self::API))
+            .bearer_auth(&key)
+            .json(&serde_json::json!({
+                "name": "everruns-file-search-live",
+                "file_ids": [file_id],
+                "expires_after": {"anchor": "last_active_at", "days": 1},
+            }))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .expect("create the vector store")
+            .json()
+            .await
+            .unwrap();
+        let store = Self {
+            id: store["id"].as_str().unwrap().to_string(),
+            file_id,
+            client,
+            key,
+        };
+        // Search finds nothing until the file is indexed.
+        for _ in 0..60 {
+            let status: serde_json::Value = store
+                .client
+                .get(format!("{}/vector_stores/{}", Self::API, store.id))
+                .bearer_auth(&store.key)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            if status["file_counts"]["completed"].as_u64() == Some(1) {
+                return store;
+            }
+            assert_eq!(
+                status["file_counts"]["failed"].as_u64(),
+                Some(0),
+                "{status}"
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        store.delete().await;
+        panic!("the vector store did not index its file within a minute");
+    }
+
+    async fn delete(&self) {
+        for path in [
+            format!("vector_stores/{}", self.id),
+            format!("files/{}", self.file_id),
+        ] {
+            let _ = self
+                .client
+                .delete(format!("{}/{path}", Self::API))
+                .bearer_auth(&self.key)
+                .send()
+                .await;
+        }
+    }
 }
 
 /// Stream one request and return its text, tool calls, finish reason and
@@ -153,7 +253,6 @@ async fn run(
 /// Remote MCP with approval: the first response stops at an approval request,
 /// surfaced as a synthetic call; replaying the approval runs the MCP tool.
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_remote_mcp_pauses_for_approval_and_resumes() {
     let mut config = LlmCallConfig::new(LIVE_MODEL);
     config.reasoning_effort = Some(ReasoningEffort::Low);

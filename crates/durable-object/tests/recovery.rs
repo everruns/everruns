@@ -1,4 +1,8 @@
 //! Actual workerd authority + native executor process crash. See README for setup.
+//!
+//! Needs the local workerd authority on port 8789, so the target requires the
+//! `workerd-tests` feature; `worker/test/run-recovery.sh` starts the authority
+//! and runs it (`npm run test:recovery`, in `durable-object.yml`).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use everruns::{Agent, FunctionTool, LlmSimConfig, Model, ToolCall};
@@ -30,7 +34,11 @@ impl Drop for Process {
 fn spawn(mode: &str, effect: &std::path::Path, build: &str) -> Process {
     Process(
         Command::new(std::env::current_exe().unwrap())
-            .args(["--ignored", "--exact", "fixture_server", "--nocapture"])
+            .args([
+                "--exact",
+                "a_killed_native_executor_recovers_from_do_without_resending_input",
+                "--nocapture",
+            ])
             .env("DO_TEST_BUILD", build)
             .env("DO_TEST_MODE", mode)
             .env("DO_TEST_EFFECT", effect)
@@ -42,11 +50,9 @@ fn spawn(mode: &str, effect: &std::path::Path, build: &str) -> Process {
     )
 }
 
-/// Test-only executable fixture: scripted providers stay outside runnable examples.
-#[tokio::test]
-#[ignore = "spawned by the recovery test"]
-async fn fixture_server() {
-    let mode = std::env::var("DO_TEST_MODE").expect("test fixture mode");
+/// The native executor the recovery test runs in a child copy of this
+/// executable. Test-only: scripted providers stay outside runnable examples.
+async fn executor_server(mode: String) {
     let effect = std::env::var("DO_TEST_EFFECT").unwrap();
     let tool = FunctionTool::new(
         "mutate",
@@ -105,8 +111,13 @@ async fn fixture_server() {
 }
 
 #[tokio::test]
-#[ignore = "requires the local workerd authority on port 8789"]
 async fn a_killed_native_executor_recovers_from_do_without_resending_input() {
+    // The test is its own child: run with this variable, it serves as the
+    // native executor instead. It is the parent-to-child channel, not a switch
+    // that skips anything; the parent always runs.
+    if let Ok(mode) = std::env::var("DO_TEST_MODE") {
+        return executor_server(mode).await;
+    }
     let build = SessionBinding {
         agent: "recovery-test".into(),
         build_id: uuid::Uuid::new_v4().to_string(),

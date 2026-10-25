@@ -309,9 +309,10 @@ async fn the_judge_uses_the_agents_current_purpose() {
     assert_eq!(context["agent"]["name"], "invoice-agent");
 }
 
-/// Run explicitly with the deployment-owned UTILITY_TYPESAFE_API_KEY.
+/// Needs the deployment-owned UTILITY_TYPESAFE_API_KEY; runs in the weekly
+/// `Integration Live Sweep` (feature `live-tests`).
+#[cfg(feature = "live-tests")]
 #[tokio::test]
-#[ignore = "requires a live TypeSafe utility key"]
 async fn live_jev_relevance_matches_intent_examples() {
     let service = everruns_integrations::typesafe::SystemDecisionsConfig::from_env()
         .into_driver()

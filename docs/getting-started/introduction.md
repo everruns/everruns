@@ -17,7 +17,7 @@ events) and differ in what you operate.
 | **You operate** | Your application process. No server, database, or worker | The Platform: API server, workers, PostgreSQL, UI | Nothing. Everruns runs the Platform at [app.everruns.com](https://app.everruns.com) |
 | **You talk to it through** | The `everruns` Rust crate, in process | The REST API, SDKs, CLI, UI, and MCP | The REST API, SDKs, CLI, UI, and MCP |
 | **Cost** | Free and open source (MIT). You pay your model provider | Free and open source (MIT). You pay for your infrastructure and model providers | Prepaid credit for the built-in model provider, with $5 of starter credit. Your own provider keys are optional |
-| **First page** | [Framework quickstart](/framework/quickstart/) | [Docker Compose](/getting-started/docker-compose/) | [Everruns Cloud quickstart](/getting-started/cloud/) |
+| **First page** | [Framework quickstart](/framework/quickstart/) | [On your machine](/getting-started/run-locally/), [Docker Compose](/getting-started/docker-compose/) or [Kubernetes](/getting-started/kubernetes/) | [Everruns Cloud quickstart](/getting-started/cloud/) |
 
 Pages across these docs carry an **Applies to** row under the title that names
 which of the three the page covers.
@@ -50,10 +50,16 @@ brew install everruns/tap/everruns
 everruns docker up     # UI and API on http://localhost:9300
 ```
 
-Next: [Run Everruns on your machine](/getting-started/run-locally/) for what
-`everruns docker up` asks and keeps, or [Docker Compose](/getting-started/docker-compose/)
-to set up the same stack by hand on a server. Operators continue with
-[Environment variables](/sre/environment-variables/).
+Pick the page for where it runs:
+
+- [On your machine](/getting-started/run-locally/): `everruns docker up` asks a
+  few questions, starts the Platform in Docker and signs the CLI in.
+- [Docker Compose](/getting-started/docker-compose/): the same stack set up by
+  hand on a server.
+- [Kubernetes](/getting-started/kubernetes/): the official Helm chart, with your
+  own PostgreSQL and workers that can scale on queue depth.
+
+Operators continue with [Environment variables](/sre/environment-variables/).
 
 ## Everruns Cloud
 

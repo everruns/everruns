@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live check that an output cap reaches OpenAI Chat Completions.
 //!
 //! OpenAI deprecated `max_tokens` and current models reject it outright:
@@ -11,12 +10,6 @@
 //! The protocol driver sends `max_completion_tokens` to OpenAI-family hosts for
 //! that reason. Only a live request proves it, because the failure is the
 //! vendor rejecting a field name — a mock would answer whatever it was told to.
-//!
-//! Ignored by default (network + `OPENAI_API_KEY`); run manually:
-//!
-//! ```text
-//! doppler run -- cargo test -p everruns-openai --test completions_max_tokens_live -- --ignored --nocapture
-//! ```
 
 use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_drivers::openai::completions_provider;
@@ -24,7 +17,6 @@ use everruns_drivers::openai::completions_provider;
 /// A capped request must succeed and be capped — not rejected for naming the
 /// deprecated field, and not silently uncapped.
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn a_capped_completion_is_accepted_and_honoured() {
     let api_key =
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test");

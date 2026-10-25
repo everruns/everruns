@@ -141,6 +141,65 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- bash scripts/run-live-examples.sh
 
+  # Server tests that need an outside service: github.com for the Git fetch
+  # and knowledge source checks, a TypeSafe key for the Slack relevance
+  # classifier, a NATS JetStream server for live event delivery. They sit
+  # behind the server's `live-tests` feature, so PR builds never compile them,
+  # and fail here when a service is missing instead of skipping.
+  server-live-tests:
+    name: Server Live Tests
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # A debug build of the server's lib tests is most of the time.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Doppler CLI
+        id: doppler_install
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+
+      - name: Start NATS with JetStream
+        run: |
+          docker run -d --name live-nats -p 4222:4222 \
+            mirror.gcr.io/library/nats:2-alpine --jetstream
+          for _ in $(seq 30); do
+            docker logs live-nats 2>&1 | grep -q 'Server is ready' && exit 0
+            sleep 1
+          done
+          docker logs live-nats
+          exit 1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: "server-live"
+
+      - name: Run server live tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          EVERRUNS_TEST_NATS_URL: nats://127.0.0.1:4222
+        run: |
+          doppler run -- bash -c 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}" \
+            cargo test --locked -p everruns-server --lib --features live-tests -- --exact --nocapture \
+              channels::slack::events::response_policy::tests::live_jev_relevance_matches_intent_examples \
+              domains::git_fetch::tests::fetches_a_real_repository \
+              domains::knowledge_indexes::source_sync::tests::live_stored_github_url_retry_reads_bashkit_knowledge_root \
+              live_updates::event_delivery::tests::oversize_generation_reaches_nats_subscribers'
+
   duckduckgo-integration-test:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest

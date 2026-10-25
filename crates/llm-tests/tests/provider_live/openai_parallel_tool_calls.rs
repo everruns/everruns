@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for the request-level `parallel_tool_calls` preference against the
 //! real OpenAI API (Responses).
 //!
@@ -6,9 +5,6 @@
 //! - `Some(false)` (avoid) is accepted and the provider returns at most one tool
 //!   call in a single completion.
 //! - `Some(true)` (prefer) is accepted and the provider returns tool calls.
-//!
-//! Ignored by default (requires network + `OPENAI_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features openai --test openai_parallel_tool_calls_live -- --ignored --nocapture`
 
 use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_contracts::model::ReasoningEffort;
@@ -17,7 +13,7 @@ use everruns_contracts::tool_types::{
 };
 use everruns_drivers::openai::provider;
 
-const LIVE_MODEL: &str = "gpt-5.6-luna";
+const LIVE_MODEL: &str = "gpt-6-luna";
 
 fn api_key() -> String {
     std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test")
@@ -73,7 +69,6 @@ async fn tool_call_count(parallel: Option<bool>) -> usize {
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_avoid_caps_tool_calls_at_one() {
     let count = tool_call_count(Some(false)).await;
     eprintln!("openai avoid: {count} tool call(s)");
@@ -84,7 +79,6 @@ async fn openai_avoid_caps_tool_calls_at_one() {
 }
 
 #[tokio::test]
-#[ignore = "live network + OPENAI_API_KEY"]
 async fn openai_prefer_is_accepted_and_calls_tools() {
     let count = tool_call_count(Some(true)).await;
     eprintln!("openai prefer: {count} tool call(s)");

@@ -43,7 +43,8 @@ boundaries and retries snapshots; it does not resume in the middle of a file.
 Automated orphan cleanup, remote generation GC, aggregate organization storage
 quotas, streaming extraction above the current per-file budget, provider-profile
 change notifications and representative end-to-end throughput qualification remain extension
-work. Catalog qualification uses a synthetic million-file corpus; streaming and
+work. Catalog qualification uses a synthetic million-file corpus (the weekly
+`knowledge_catalog` bench, with a per-page time budget); streaming and
 extraction budgets are tested independently of embedding costs. Configuring a collection for another model/account advances its generation;
 provider model edits outside that workflow do not automatically enqueue rebuilds.
 

@@ -1,26 +1,16 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-
 //! Live smoke tests for gateway model discovery.
 //!
 //! These exercise the real `list_models` path — HTTP fetch, deserialization,
 //! filtering, and capability profiling — against each gateway's own API. The
 //! wire tests in `chat_wire.rs` pin the request shape against wiremock; only a
 //! live run can catch a vendor changing the response.
-//!
-//! Ignored by default (network + credentials); run manually:
-//!
-//! ```text
-//! doppler run -- cargo test -p everruns-drivers --features drivers --test drivers_discovery_live --all-features -- --ignored --nocapture
-//! ```
 
-#[cfg(feature = "vercel")]
 mod vercel_discovery {
     use everruns_drivers::vercel;
 
     /// Vercel serves a full catalog, so discovery must return a non-empty list
     /// of namespaced ids.
     #[tokio::test]
-    #[ignore = "live network + AI_GATEWAY_API_KEY"]
     async fn vercel_discovers_namespaced_models() {
         let api_key = std::env::var("AI_GATEWAY_API_KEY")
             .expect("AI_GATEWAY_API_KEY must be set for the live smoke test");
@@ -49,7 +39,6 @@ mod vercel_discovery {
     }
 }
 
-#[cfg(feature = "cloudflare")]
 mod cloudflare_discovery {
     use everruns_drivers::cloudflare;
 
@@ -66,7 +55,6 @@ mod cloudflare_discovery {
     /// `@cf/` one, and the text-generation filter must have excluded the
     /// embedding/speech/image models the same endpoint returns.
     #[tokio::test]
-    #[ignore = "live network + CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID"]
     async fn cloudflare_discovers_workers_ai_chat_models() {
         let (account_id, api_token) = credentials();
 
@@ -111,9 +99,7 @@ mod cloudflare_discovery {
     }
 }
 
-#[cfg(feature = "gemini")]
 #[tokio::test]
-#[ignore = "live network + GEMINI_API_KEY; validates Argon accepts a long-decode budget"]
 async fn gemini_argon_accepts_long_decode_configuration() {
     use everruns_contracts::{LlmCallConfig, Message, MessageRole, ReasoningEffort};
     let key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY required");

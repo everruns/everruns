@@ -1,11 +1,13 @@
 ---
 title: Live event delivery recovers after a NATS restart
-description: JetStream-backed session streaming restores its replay stream without restarting the API.
+description: Session streaming restores its JetStream replay buffer after a broker restart, without an API restart or duplicate retries after uncertain acknowledgements.
 date: 2026-10-25
 kind: fix
 significance: minor
 products: [platform]
 surfaces: [api, ui]
+links:
+  prs: [everruns/everruns#4918]
 ---
 
 Live session updates resume after a NATS restart without requiring an API restart.

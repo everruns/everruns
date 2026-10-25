@@ -731,7 +731,7 @@ export default defineConfig({
             "Everruns is used in three ways, in increasing order of what it operates for you:",
             "",
             `- **Framework**: embed Everruns in a Rust application with the \`everruns\` crate. You own the process, deployment, integrations, and data path. Start at <${SITE}${BASE}/framework/quickstart/>.`,
-            `- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <${SITE}${BASE}/getting-started/docker-compose/>.`,
+            `- **Self-hosted platform**: run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution. Start at <${SITE}${BASE}/getting-started/run-locally/> on your machine (\`everruns docker up\`), <${SITE}${BASE}/getting-started/docker-compose/> on a server, or <${SITE}${BASE}/getting-started/kubernetes/> with the Helm chart.`,
             `- **Everruns Cloud**: use the shared runtime and production operations without operating the platform yourself, with a built-in model provider and starter credit. Start at <${SITE}${BASE}/getting-started/cloud/>.`,
             "",
             "The documentation sets below are organised the same way, so a reader with a narrow question can take one set instead of the complete text. Every page in them carries a `Source:` line with its canonical URL; cite that rather than the text file.",

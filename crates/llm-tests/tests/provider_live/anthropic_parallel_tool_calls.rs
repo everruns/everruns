@@ -1,4 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Live tests for the request-level `parallel_tool_calls` preference against the
 //! real Anthropic Messages API.
 //!
@@ -7,9 +6,6 @@
 //! - `Some(false)` (avoid) is accepted and the provider returns at most one tool
 //!   call in a single completion.
 //! - `Some(true)` (prefer) is accepted and the provider returns tool calls.
-//!
-//! Ignored by default (requires network + `ANTHROPIC_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-drivers --features anthropic --test anthropic_parallel_tool_calls_live -- --ignored --nocapture`
 
 use everruns_contracts::driver_registry::{LlmCallConfig, Message, MessageRole};
 use everruns_contracts::tool_types::{
@@ -73,7 +69,6 @@ async fn tool_call_count(parallel: Option<bool>) -> usize {
 }
 
 #[tokio::test]
-#[ignore = "live network + ANTHROPIC_API_KEY"]
 async fn anthropic_avoid_caps_tool_calls_at_one() {
     let count = tool_call_count(Some(false)).await;
     eprintln!("anthropic avoid: {count} tool call(s)");
@@ -84,7 +79,6 @@ async fn anthropic_avoid_caps_tool_calls_at_one() {
 }
 
 #[tokio::test]
-#[ignore = "live network + ANTHROPIC_API_KEY"]
 async fn anthropic_prefer_is_accepted_and_calls_tools() {
     let count = tool_call_count(Some(true)).await;
     eprintln!("anthropic prefer: {count} tool call(s)");

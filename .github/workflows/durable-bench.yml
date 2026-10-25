@@ -31,6 +31,10 @@
 # same-day runners, which found the per-turn steps and their timings
 # unchanged). Summary lines carry `cpu`, and `--top` prints the slowest turns'
 # slow steps, so a gate failure can be told apart from a slow runner.
+#
+# The same job then runs `crates/server/benches/knowledge_catalog.rs`: catalog
+# pages on a million-file knowledge collection, failing over a fixed per-page
+# time budget.
 name: Durable Benchmarks
 
 on:
@@ -241,6 +245,13 @@ jobs:
             crates/server/benches/turn_latency_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
           bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Same release build as turn_latency. Catalog pages on a million-file
+      # knowledge collection, in the bench's own embedded PostgreSQL; the bench
+      # exits non-zero when a page is over its time budget.
+      - name: Run knowledge_catalog
+        if: ${{ !cancelled() }}
+        run: cargo bench -p everruns-server --bench knowledge_catalog | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: PostgreSQL stalls
         if: always()

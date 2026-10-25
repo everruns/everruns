@@ -83,8 +83,10 @@ fn stored_github_url_resolves_to_canonical_anonymous_clone() {
     assert!(source.auth_token.is_none());
 }
 
+/// Needs anonymous network access to github.com; runs in the weekly
+/// `Integration Live Sweep` (feature `live-tests`).
+#[cfg(feature = "live-tests")]
 #[test]
-#[ignore = "requires anonymous network access to github.com"]
 fn live_stored_github_url_retry_reads_bashkit_knowledge_root() {
     let source = ResolvedGitSource::from_github(
         GithubSourceConfig {

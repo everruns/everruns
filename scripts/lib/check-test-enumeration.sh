@@ -215,4 +215,4 @@ if [ "${#violations[@]}" -gt 0 ]; then
   exit 1
 fi
 
-echo "✅ all ${drivers} driver libraries and ${checked} crate test targets are covered by a workflow or allowlisted (ignored cases remain opt-in)"
+echo "✅ all ${drivers} driver libraries and ${checked} crate test targets are covered by a workflow or allowlisted"

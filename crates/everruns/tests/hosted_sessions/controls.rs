@@ -783,10 +783,11 @@ async fn native_startup_discovers_a_parked_approval_deadline_without_client_wake
     supervisor.await.unwrap().unwrap();
 }
 
+/// One process of `native_process_loss_preserves_admission_and_finalization`
+/// (frontend, owner or replacement), run by that test in a child copy of this
+/// executable.
 #[cfg(feature = "local")]
-#[tokio::test]
-#[ignore = "subprocess fixture for native_process_loss_preserves_admission_and_finalization"]
-async fn native_process_fixture() {
+async fn native_process_role() {
     let directory =
         std::path::PathBuf::from(std::env::var("EVERRUNS_PROCESS_FIXTURE_DIR").unwrap());
     let mode = std::env::var("EVERRUNS_PROCESS_FIXTURE_MODE").unwrap();
@@ -842,6 +843,12 @@ async fn native_process_fixture() {
 #[cfg(feature = "local")]
 #[tokio::test]
 async fn native_process_loss_preserves_admission_and_finalization() {
+    // The test is its own child: run with this variable, it plays one of the
+    // processes instead. It is the parent-to-child channel, not a switch that
+    // skips anything; the parent always runs.
+    if std::env::var_os("EVERRUNS_PROCESS_FIXTURE_MODE").is_some() {
+        return native_process_role().await;
+    }
     struct Child(std::process::Child);
     impl Drop for Child {
         fn drop(&mut self) {
@@ -857,9 +864,8 @@ async fn native_process_loss_preserves_admission_and_finalization() {
         Child(
             std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
-                    "--ignored",
                     "--exact",
-                    "controls::native_process_fixture",
+                    "controls::native_process_loss_preserves_admission_and_finalization",
                     "--nocapture",
                 ])
                 .env("EVERRUNS_PROCESS_FIXTURE_DIR", directory.path())

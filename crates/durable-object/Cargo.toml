@@ -16,6 +16,9 @@ readme = "README.md"
 default = ["native"]
 native = ["dep:axum", "dep:reqwest", "dep:subtle", "tokio/rt-multi-thread", "tokio/net"]
 wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
+# Test targets that need the local workerd authority on port 8789; only
+# `worker/test/run-recovery.sh`, which starts it, turns this on.
+workerd-tests = ["native"]
 
 [dependencies]
 everruns = { path = "../everruns", default-features = false }
@@ -56,3 +59,11 @@ debug = 0
 [[example]]
 name = "native"
 required-features = ["native"]
+
+[[test]]
+name = "recovery"
+required-features = ["workerd-tests"]
+
+[[test]]
+name = "conformance"
+required-features = ["workerd-tests"]

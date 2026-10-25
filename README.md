@@ -91,7 +91,7 @@ loop explicit and embeddable:
 
 | Framework | Self-hosted platform | Everruns Cloud |
 | --- | --- | --- |
-| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[Docker Compose quickstart →](https://everruns.com/docs/getting-started/docker-compose/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
+| Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[On your machine →](https://everruns.com/docs/getting-started/run-locally/) · [Docker Compose →](https://everruns.com/docs/getting-started/docker-compose/) · [Kubernetes →](https://everruns.com/docs/getting-started/kubernetes/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) | Use the shared runtime and production operations without operating the platform yourself.<br><br>[Everruns Cloud quickstart →](https://everruns.com/docs/getting-started/cloud/) · [Open app.everruns.com →](https://app.everruns.com) |
 
 ### Platform capabilities
 
@@ -108,7 +108,8 @@ Full documentation lives at **[everruns.com/docs](https://everruns.com/docs)**.
 
 - [Everruns Framework](https://everruns.com/docs/framework/) — build and run agents inside a Rust application
 - [Framework quickstart](https://everruns.com/docs/framework/quickstart/) — install the crate and configure a provider
-- [Docker Compose quickstart](https://everruns.com/docs/getting-started/docker-compose/) — run the full platform stack
+- [Run on your machine](https://everruns.com/docs/getting-started/run-locally/) — `everruns docker up` starts the full Platform in Docker
+- [Docker Compose](https://everruns.com/docs/getting-started/docker-compose/) and [Kubernetes](https://everruns.com/docs/getting-started/kubernetes/) — run it on a server or a cluster
 - [How-to guides](https://everruns.com/docs/how-to/) — give agents tools, stream events, publish to Slack, and enforce budgets
 - [API reference](https://everruns.com/docs/api/) — OpenAPI 3.0
 - [SDKs](https://everruns.com/docs/features/sdk/) — Rust, Python, and TypeScript clients
