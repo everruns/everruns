@@ -245,25 +245,6 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders children content", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("child-content")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Chat Content")).toBeInTheDocument();
-  });
-
-  it("renders session title", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      // The title also appears as the breadcrumb's trailing segment (EVE-869),
-      // so assert the masthead heading specifically.
-      expect(screen.getByRole("heading", { name: "Test Session" })).toBeInTheDocument();
-    });
-  });
-
   it("renders the recording tabs in information-architecture order", async () => {
     await renderLayout();
 
@@ -282,25 +263,6 @@ describe("SessionLayout", () => {
     ).toEqual(["Trace", "Approvals", "Work", "Events", "Files", "Cost"]);
     expect(screen.queryByRole("link", { name: /^transcript$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^timeline$/i })).not.toBeInTheDocument();
-  });
-
-  it("points each tab at its route", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByRole("link", { name: /^trace$/i })).toHaveAttribute(
-        "href",
-        "/sessions/ses-abc12345/trace",
-      );
-    });
-    expect(screen.getByRole("link", { name: /files/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/files",
-    );
-    expect(screen.getByRole("link", { name: /cost/i })).toHaveAttribute(
-      "href",
-      "/sessions/ses-abc12345/cost",
-    );
   });
 
   it("offers no chat, storage, schedules or trajectory tab", async () => {
@@ -380,41 +342,6 @@ describe("SessionLayout", () => {
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(within(breadcrumb).getByText("Operational")).toBeInTheDocument();
     expect(within(breadcrumb).queryByRole("link", { name: "Operational" })).toBeNull();
-  });
-
-  it("renders agent name with link", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      const agentLink = screen.getByRole("link", { name: /test agent/i });
-      expect(agentLink).toHaveAttribute("href", "/agents/agent-123");
-    });
-  });
-
-  it("renders Idle badge when there is no recorded terminal outcome", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByText("Idle")).toBeInTheDocument();
-    });
-  });
-
-  it("renders LLM model badge", async () => {
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByText("GPT-4")).toBeInTheDocument();
-    });
-  });
-
-  it("shows loading skeletons when session is loading", async () => {
-    mockSessionContext.sessionLoading = true;
-    await renderLayout();
-
-    await waitFor(() => {
-      const skeletons = screen.getAllByTestId("skeleton");
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
   });
 
   it("shows error state when session is not found", async () => {

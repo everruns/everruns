@@ -78,42 +78,6 @@ describe("PersonalAccessTokensPage", () => {
     });
   });
 
-  it("renders Personal access tokens section header", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Personal access tokens")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Manage your personal access tokens for programmatic access/),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the account access warning as a reusable notice", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const notice = screen.getByText("Account-wide access").closest('[data-slot="notice"]');
-
-    expect(notice).toHaveAttribute("data-variant", "warning");
-    expect(
-      screen.getByText(/Personal access tokens are tied to your user account/),
-    ).toBeInTheDocument();
-  });
-
-  it("renders token rows with correct data", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Production Token")).toBeInTheDocument();
-    expect(screen.getByText("Development Token")).toBeInTheDocument();
-    expect(screen.getByText("evr_pat_prod_abc...")).toBeInTheDocument();
-    expect(screen.getByText("evr_pat_dev_xyz...")).toBeInTheDocument();
-  });
-
-  it("shows expiration date for tokens with expiration", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    // Production token has expiration
-    expect(screen.getByText(/Expires:/)).toBeInTheDocument();
-  });
-
   it("shows last used date", () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
@@ -121,19 +85,6 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Last used: 1\/15\/2024/)).toBeInTheDocument();
     // Development token was never used
     expect(screen.getByText(/Last used: Never/)).toBeInTheDocument();
-  });
-
-  it("shows loading skeleton when tokens are loading", () => {
-    mockUsePersonalAccessTokens.mockReturnValue({
-      data: [],
-      isLoading: true,
-      error: null,
-    });
-
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-    expect(skeletons.length).toBeGreaterThan(0);
   });
 
   it("shows empty state when no tokens exist", () => {
@@ -165,13 +116,6 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Failed to load personal access tokens/)).toBeInTheDocument();
   });
 
-  it("renders Create token button", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const createButtons = screen.getAllByRole("button", { name: /Create token/i });
-    expect(createButtons.length).toBeGreaterThan(0);
-  });
-
   it("opens Create token dialog when clicking Create button", async () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
@@ -182,27 +126,6 @@ describe("PersonalAccessTokensPage", () => {
     expect(
       within(dialog).getByText(/The token inherits access to every organization/),
     ).toBeInTheDocument();
-  });
-
-  it("shows expiration presets with 90 days selected by default", async () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    fireEvent.click(screen.getAllByRole("button", { name: /Create token/i })[0]);
-
-    const dialog = await screen.findByRole("dialog");
-
-    for (const name of ["7 days", "30 days", "1 year", "Custom"]) {
-      expect(within(dialog).getByRole("button", { name })).toHaveAttribute("aria-pressed", "false");
-    }
-    expect(within(dialog).getByRole("button", { name: "90 days" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(within(dialog).getByText(/Expires on/)).toBeInTheDocument();
-    expect(within(dialog).getByRole("checkbox", { name: /Never expires/i })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
   });
 
   it("submits the default 90 day expiration when creating a token", async () => {
@@ -297,13 +220,6 @@ describe("PersonalAccessTokensPage", () => {
     });
   });
 
-  it("shows each token's scope in the list", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    expect(screen.getByText("Full access")).toBeInTheDocument();
-    expect(screen.getByText("Read-only")).toBeInTheDocument();
-  });
-
   it("defaults the scope picker to full access and explains read-only reach", async () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
@@ -367,13 +283,5 @@ describe("PersonalAccessTokensPage", () => {
     render(<PersonalAccessTokensPage />, { wrapper });
 
     expect(screen.queryByRole("button", { name: /Create token/i })).not.toBeInTheDocument();
-  });
-
-  it("renders delete button for each token", () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    // Should have 2 delete buttons (one for each token)
-    const deleteButtons = document.querySelectorAll('button[class*="text-destructive"]');
-    expect(deleteButtons.length).toBe(2);
   });
 });

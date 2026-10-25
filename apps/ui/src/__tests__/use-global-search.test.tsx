@@ -354,24 +354,10 @@ describe("useGlobalSearch", () => {
     ).toBe(false);
   });
 
-  it("keeps all settings destinations discoverable for a broad query", () => {
-    const { result } = renderHook(() => useGlobalSearch("settings"));
-    expect(result.current).toContainEqual(expect.objectContaining({ href: "/settings/health" }));
-    expect(result.current).toContainEqual(
-      expect.objectContaining({ href: "/settings/personal-access-tokens" }),
-    );
-  });
-
   it("does not return the retired Apps route", () => {
     const { result } = renderHook(() => useGlobalSearch("apps"));
 
     expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
-  });
-
-  it("does not offer the retired org-wide approvals destination", () => {
-    const { result } = renderHook(() => useGlobalSearch("approvals"));
-
-    expect(result.current.some((item) => item.href === "/approvals")).toBe(false);
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {

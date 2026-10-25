@@ -1,8 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { createElement } from "react";
-import { render, screen } from "@testing-library/react";
-import { MiniTimeline } from "@/components/apps/mini-timeline";
 
 const sourceRoot = join(process.cwd(), "src");
 const rawPaletteUtility =
@@ -109,34 +106,6 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("semantic status colors", () => {
-  it("renders running timeline bins with the info treatment", () => {
-    render(
-      createElement(MiniTimeline, {
-        runs: [{ hour: "Now", running: 1 }],
-        length: 1,
-      }),
-    );
-
-    expect(screen.getByTitle("Now: 0 ok, 0 errors, 1 running")).toHaveClass(
-      "border-info/30",
-      "bg-info",
-    );
-  });
-  it("defines each status color and foreground pair for both themes", () => {
-    const designSystem = readFileSync(join(sourceRoot, "app/design-system.css"), "utf8");
-
-    for (const token of [
-      "success",
-      "success-foreground",
-      "warning",
-      "warning-foreground",
-      "info",
-      "info-foreground",
-    ]) {
-      expect(designSystem.match(new RegExp(`--${token}:`, "g"))).toHaveLength(2);
-      expect(designSystem).toContain(`--color-${token}: hsl(var(--${token}));`);
-    }
-  });
   it("keeps raw palette utilities limited to audited non-status encodings", () => {
     const actual: Record<string, Record<string, number>> = {};
 

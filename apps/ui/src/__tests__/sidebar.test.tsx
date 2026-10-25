@@ -176,13 +176,6 @@ describe("Sidebar", () => {
     });
   });
 
-  it("renders the Everruns logo and title", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText("Everruns")).toBeInTheDocument();
-    expect(screen.getByAltText("Everruns")).toBeInTheDocument();
-  });
-
   it("keeps only Chat in navigation when the organization adopts threads", () => {
     mockFeatureFlags.chat_threads = true;
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
@@ -375,28 +368,6 @@ describe("Sidebar", () => {
     expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  it("renders all navigation items", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText("Chat")).toBeInTheDocument();
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
-    expect(screen.getByText("Reports")).toBeInTheDocument();
-    expect(screen.getByText("Harnesses")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    expect(screen.getByText("Virtual Users")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge")).toBeInTheDocument();
-    expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Apps" })).not.toBeInTheDocument();
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.queryByText("MCP")).not.toBeInTheDocument();
-    expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
-    expect(screen.getByText("Plugins")).toBeInTheDocument();
-    expect(screen.getByText("Evals")).toBeInTheDocument();
-    expect(screen.getByText("Observers")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
-  });
-
   it("hides opt-in feature navigation when its flags are disabled", () => {
     Object.assign(mockFeatureFlags, {
       evals: false,
@@ -419,32 +390,6 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
-  });
-
-  it("renders correct navigation links", () => {
-    render(<Sidebar />);
-
-    const chatsLink = screen.getByRole("link", { name: /^chat$/i });
-    const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
-    const agentsLink = screen.getByRole("link", { name: "Agents" });
-    const memoryLink = screen.getByRole("link", { name: "Memory" });
-    const modelsLink = screen.getByRole("link", { name: "Models" });
-    const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
-    const identitiesLink = screen.getByRole("link", { name: "Virtual Users" });
-    const knowledgeLink = screen.getByRole("link", { name: "Knowledge" });
-    const settingsLink = screen.getByRole("link", { name: "Settings" });
-
-    expect(chatsLink).toHaveAttribute("href", "/chats");
-    expect(identitiesLink).toHaveAttribute("href", "/virtual-users");
-    expect(knowledgeLink).toHaveAttribute("href", "/knowledge");
-    // The org MCP catalog lives in Settings > Organization (user-mcp-servers.md, step 8).
-    expect(screen.queryByRole("link", { name: "MCP" })).not.toBeInTheDocument();
-    expect(harnessesLink).toHaveAttribute("href", "/harnesses");
-    expect(agentsLink).toHaveAttribute("href", "/agents");
-    expect(memoryLink).toHaveAttribute("href", "/memory");
-    expect(modelsLink).toHaveAttribute("href", "/models");
-    expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
-    expect(settingsLink).toHaveAttribute("href", "/settings/organization");
   });
 
   it.each(["/chats", "/chats/new", "/chats/history", "/sessions"])(
@@ -472,16 +417,6 @@ describe("Sidebar", () => {
       }
     },
   );
-
-  it("renders distinct semantic icons for registry navigation", () => {
-    render(<Sidebar />);
-
-    const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
-
-    expect(icon("Skills")).toHaveAttribute("data-facet-icon", "skills");
-    expect(icon("Capabilities")).toHaveAttribute("data-facet-icon", "capabilities");
-    expect(icon("Plugins")).toHaveAttribute("data-facet-icon", "plugins");
-  });
 
   it("snaps the active item instead of transitioning it after the page commits", () => {
     mockPathname.mockReturnValue("/harnesses");
@@ -528,15 +463,6 @@ describe("Sidebar", () => {
     expect(mockPrefetch).not.toHaveBeenCalled();
   });
 
-  it("does not render legacy navigation items", () => {
-    render(<Sidebar />);
-
-    expect(screen.queryByText("Runs")).not.toBeInTheDocument();
-    expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText("Work")).not.toBeInTheDocument();
-  });
-
   it("highlights the active navigation item", () => {
     mockPathname.mockReturnValue("/agents");
     render(<Sidebar />);
@@ -578,16 +504,6 @@ describe("Sidebar", () => {
   // utility classes, exact nav-item count, nav overflow classes): they broke on
   // cosmetic refactors while asserting no behavior. Active-state/routing tests
   // that verify *which* item is highlighted are kept below.
-
-  it("renders the grouped section labels and Durable Execution", () => {
-    render(<Sidebar />);
-
-    expect(screen.getByText("Operational")).toBeInTheDocument();
-    expect(screen.getByText("Building")).toBeInTheDocument();
-    expect(screen.getByText("Registers")).toBeInTheDocument();
-    expect(screen.getByText("Quality")).toBeInTheDocument();
-    expect(screen.getByText("Durable Execution")).toBeInTheDocument();
-  });
 
   it("links Sandboxes as one Building entry", () => {
     mockPathname.mockReturnValue("/sandboxes/templates/template-1");

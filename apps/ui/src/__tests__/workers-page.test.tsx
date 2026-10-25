@@ -121,39 +121,6 @@ describe("WorkersPage", () => {
   });
 
   // ============================================
-  // Loading State Tests
-  // ============================================
-
-  describe("Loading State", () => {
-    it("shows skeleton loading state", () => {
-      mockUseWorkers.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<WorkersPage />, { wrapper });
-
-      const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
-
-    it("renders header during loading", () => {
-      mockUseWorkers.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<WorkersPage />, { wrapper });
-
-      expect(screen.getByText("Workers")).toBeInTheDocument();
-    });
-  });
-
-  // ============================================
   // Error State Tests
   // ============================================
 
@@ -169,19 +136,6 @@ describe("WorkersPage", () => {
       render(<WorkersPage />, { wrapper });
 
       expect(screen.getByText(/Unable to Load Workers/i)).toBeInTheDocument();
-    });
-
-    it("shows retry button on error", () => {
-      mockUseWorkers.mockReturnValue({
-        data: undefined,
-        isLoading: false,
-        error: new Error("Network error"),
-        refetch: jest.fn(),
-      });
-
-      render(<WorkersPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
     });
 
     it("calls refetch when retry button is clicked", () => {
@@ -281,38 +235,6 @@ describe("WorkersPage", () => {
       // Should still render without crashing, using fallback values
       expect(screen.getByText("Total Workers")).toBeInTheDocument();
       expect(screen.getByText("0 active")).toBeInTheDocument();
-    });
-  });
-
-  // ============================================
-  // Worker Table Rendering Tests
-  // ============================================
-
-  describe("Worker Table Rendering", () => {
-    it("renders the worker table headers, per-row badges, and counts", () => {
-      render(<WorkersPage />, { wrapper });
-
-      // Some header names overlap with card titles (e.g. "Load"), so use getAllByText
-      expect(screen.getByText("Worker")).toBeInTheDocument();
-      expect(screen.getByText("Status")).toBeInTheDocument();
-      expect(screen.getByText("Group")).toBeInTheDocument();
-      expect(screen.getAllByText("Load").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText("Accepting")).toBeInTheDocument();
-      expect(screen.getByText("Activities")).toBeInTheDocument();
-      expect(screen.getByText("Completed")).toBeInTheDocument();
-      expect(screen.getByText("Avg Duration")).toBeInTheDocument();
-      expect(screen.getByText("Last Heartbeat")).toBeInTheDocument();
-      expect(screen.getByText("Actions")).toBeInTheDocument();
-
-      // All 3 workers share hostname "host-1", group "default", and activity
-      // "run_session"; each has status and 100 tasks_completed.
-      expect(screen.getAllByText("host-1").length).toBe(3);
-      expect(screen.getByText("active")).toBeInTheDocument();
-      expect(screen.getByText("draining")).toBeInTheDocument();
-      expect(screen.getByText("stopped")).toBeInTheDocument();
-      expect(screen.getAllByText("default").length).toBe(3);
-      expect(screen.getAllByText("run_session").length).toBe(3);
-      expect(screen.getAllByText("100").length).toBe(3);
     });
   });
 

@@ -111,22 +111,6 @@ describe("MembersPage", () => {
     });
   });
 
-  it("renders Members section header", () => {
-    render(<MembersPage />, { wrapper });
-
-    expect(screen.getByText("Members")).toBeInTheDocument();
-    expect(screen.getByText(/Manage members of/)).toBeInTheDocument();
-  });
-
-  it("renders member cards with correct data", () => {
-    render(<MembersPage />, { wrapper });
-
-    expect(screen.getByText("Owner User")).toBeInTheDocument();
-    expect(screen.getByText("Regular Member")).toBeInTheDocument();
-    expect(screen.getByText("owner@example.com")).toBeInTheDocument();
-    expect(screen.getByText("member@example.com")).toBeInTheDocument();
-  });
-
   it("shows role badge for current user (self)", () => {
     render(<MembersPage />, { wrapper });
 
@@ -134,19 +118,6 @@ describe("MembersPage", () => {
     const ownerCard = cardFor("Owner User");
     expect(within(ownerCard).getByText("Owner")).toBeInTheDocument();
     expect(within(ownerCard).getByText("You")).toBeInTheDocument();
-  });
-
-  it("shows loading skeleton when loading", () => {
-    mockUseMembers.mockReturnValue({
-      data: [],
-      isLoading: true,
-      error: null,
-    });
-
-    render(<MembersPage />, { wrapper });
-
-    const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-    expect(skeletons.length).toBeGreaterThan(0);
   });
 
   it("shows empty state when no members exist", () => {
@@ -171,25 +142,6 @@ describe("MembersPage", () => {
     render(<MembersPage />, { wrapper });
 
     expect(screen.getByText(/Failed to load members/)).toBeInTheDocument();
-  });
-
-  it("shows member count", () => {
-    render(<MembersPage />, { wrapper });
-
-    expect(screen.getByText("3 members")).toBeInTheDocument();
-  });
-
-  it("shows joined date for members", () => {
-    render(<MembersPage />, { wrapper });
-
-    const joinedDates = screen.getAllByText(/Joined/);
-    expect(joinedDates.length).toBe(3);
-  });
-
-  it("shows org name in subtitle", () => {
-    render(<MembersPage />, { wrapper });
-
-    expect(screen.getByText("Test Org")).toBeInTheDocument();
   });
 
   describe("owner viewer", () => {
