@@ -18,9 +18,9 @@
 //! `verify_owned_external_resource_if_available`. It is leased like any
 //! `daytona_create_sandbox` sandbox, so session cleanup deletes it.
 //!
-//! Security: egress is the Daytona sandbox's own network policy, the same as
-//! `daytona_create_sandbox`. The session network access list does not apply
-//! inside the desktop.
+//! Security: egress is the Daytona sandbox's network policy, the same as
+//! `daytona_create_sandbox`: Daytona enforces the session network access list
+//! for every process on the desktop (`network.rs`, TM-DAYTONA-015).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -858,8 +858,8 @@ impl Capability for DaytonaDesktopComputerUseCapability {
     fn description(&self) -> &str {
         "Let the agent see and operate a full Linux desktop in a Daytona sandbox the way a person \
          does: it takes screenshots and clicks, types, scrolls, and presses keys at screen \
-         coordinates, in any desktop app. Works with any model that accepts images. The sandbox \
-         has Daytona's network access, not the session's network access list. Cannot be combined \
+         coordinates, in any desktop app. Works with any model that accepts images. Daytona \
+         limits the sandbox to the session's network access list. Cannot be combined \
          with another computer use capability: each provides the `computer` tool."
     }
 

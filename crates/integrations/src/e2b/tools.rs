@@ -185,9 +185,19 @@ impl Tool for E2BCreateSandboxTool {
             .cloned()
             .unwrap_or_else(|| json!({}));
 
+        let egress = match super::network::tool_rules(context) {
+            Ok(rules) => super::network::E2BEgress::from_rules(&rules),
+            Err(error) => return error,
+        };
         let client = E2BClient::new(api_key);
         let create = match client
-            .create_sandbox(template, timeout_seconds, json!(metadata), env_vars)
+            .create_sandbox_with_egress(
+                template,
+                timeout_seconds,
+                json!(metadata),
+                env_vars,
+                &egress,
+            )
             .await
         {
             Ok(create) => create,

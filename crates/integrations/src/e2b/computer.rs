@@ -22,10 +22,9 @@
 //! `verify_owned_external_resource_if_available`. It is leased like any
 //! `e2b_create_sandbox` sandbox, so session cleanup deletes it.
 //!
-//! Security: egress is the E2B sandbox's own network policy, the same as
-//! `e2b_create_sandbox` (TM-AGENT-019). This backend adds no bypass and no
-//! extra filter: unlike the Browserless backend, the session network access
-//! list does not apply inside the desktop (TM-E2B-005).
+//! Security: egress is the E2B sandbox's network policy, the same as
+//! `e2b_create_sandbox`: E2B enforces the session network access list for
+//! every process on the desktop, browser included (`network.rs`, TM-E2B-005).
 //!
 //! Decision: the pointer lives where xdotool keeps it, in the X server, so
 //! clicks without a coordinate need no stored cursor.
@@ -533,13 +532,17 @@ async fn desktop_sandbox(
         json!(context.session_id.to_string()),
     );
     metadata.insert("everruns.purpose".to_string(), json!("computer_use"));
-    // Same create call, and so the same network policy, as e2b_create_sandbox.
+    // Same network policy as e2b_create_sandbox: the session access list,
+    // enforced by E2B.
+    let egress =
+        crate::e2b::network::E2BEgress::from_rules(&crate::e2b::network::tool_rules(context)?);
     let created = client
-        .create_sandbox(
+        .create_sandbox_with_egress(
             E2B_DESKTOP_TEMPLATE,
             E2B_DEFAULT_TIMEOUT_SECS,
             Value::Object(metadata),
             json!({}),
+            &egress,
         )
         .await
         .map_err(ToolExecutionResult::tool_error)?;
@@ -781,8 +784,8 @@ impl Capability for E2BDesktopComputerUseCapability {
     fn description(&self) -> &str {
         "Let the agent see and operate a full Linux desktop in an E2B sandbox the way a person \
          does: it takes screenshots and clicks, types, scrolls, and presses keys at screen \
-         coordinates, in any desktop app. Works with any model that accepts images. The sandbox \
-         has E2B's network access, not the session's network access list. Cannot be combined with \
+         coordinates, in any desktop app. Works with any model that accepts images. E2B limits \
+         the sandbox to the session's network access list. Cannot be combined with \
          Computer Use: both provide the `computer` tool."
     }
 

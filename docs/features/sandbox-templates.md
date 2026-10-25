@@ -83,14 +83,16 @@ state.
 
 ## Outbound network
 
-Daytona and Modal templates can limit what the Sandbox reaches on the network. Under
+Daytona, E2B and Modal templates can limit what the Sandbox reaches on the network. Under
 **Outbound network**, choose **Open**, **Only listed domains** (one per line, `*.example.com` for
 subdomains), or **Blocked**. The provider enforces the rule on its own network, so it holds for
-every process in the Sandbox. E2B templates are open for now.
+every process in the Sandbox.
 
-The Session's network access list narrows the rule further: a Daytona Sandbox reaches only hosts
-both allow, and a Sandbox resumed later follows the Session's current list. Daytona filters by
-host, so a URL rule such as `https://pypi.org/simple/` opens all of `pypi.org` inside the Sandbox.
+On Daytona and E2B the Session's network access list narrows the rule further: the Sandbox
+reaches only hosts both allow, and a Sandbox resumed later follows the Session's current list.
+Sandboxes the agent creates with the provider's own tools, desktops included, get the Session's
+list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/` opens all of
+`pypi.org` inside the Sandbox.
 
 ```json
 {
