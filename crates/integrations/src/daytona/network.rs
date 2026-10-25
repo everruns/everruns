@@ -47,6 +47,15 @@ pub(crate) fn tool_egress_rules(
     rules_from(None, context.network_access.as_ref())
 }
 
+/// Apply the [`tool_egress_rules`] to a create body.
+pub(crate) fn apply_tool_rules(
+    context: &ToolContext,
+    body: &mut CreateSandbox,
+) -> Result<(), ToolExecutionResult> {
+    apply_to_create(body, &tool_egress_rules(context)?);
+    Ok(())
+}
+
 fn rules_from(
     template_network: Option<&Value>,
     access: Option<&NetworkAccessList>,

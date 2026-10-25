@@ -42,7 +42,6 @@ use tracing::{debug, warn};
 use super::client::DaytonaClient;
 use super::git_auth::get_github_token;
 use super::naming::{create_body, create_sandbox_with_unique_name};
-use super::network;
 use super::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
     release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
@@ -310,26 +309,21 @@ impl Tool for DaytonaCreateSandboxTool {
         };
 
         let mut create_body = create_body(&labels, auto_stop);
-        match network::tool_egress_rules(context) {
-            Ok(rules) => network::apply_to_create(&mut create_body, &rules),
-            Err(error) => return error,
+        if let Err(error) = super::network::apply_tool_rules(context, &mut create_body) {
+            return error;
         }
         // Resolve snapshot: explicit snapshot > size tier > default (small)
         let explicit_snapshot = arguments
             .get("snapshot")
             .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.to_string());
+            .filter(|s| !s.trim().is_empty());
         let size = arguments.get("size").and_then(|v| v.as_str());
-
-        let snapshot_name = if let Some(snap) = &explicit_snapshot {
-            snap.clone()
-        } else {
-            let sz = size.unwrap_or("small");
-            match snapshot_for_size(sz) {
+        let snapshot_name = match explicit_snapshot {
+            Some(snap) => snap.to_string(),
+            None => match snapshot_for_size(size.unwrap_or("small")) {
                 Ok(name) => name.to_string(),
                 Err(e) => return ToolExecutionResult::tool_error(&e),
-            }
+            },
         };
 
         create_body.snapshot = Some(snapshot_name);
