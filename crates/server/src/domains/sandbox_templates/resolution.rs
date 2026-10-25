@@ -203,6 +203,14 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
     if authored.lifecycle.idle_after_seconds > 86_400 {
         return Err("lifecycle.idle_after_seconds may not exceed 86400".to_string());
     }
+    if let Some(seconds) = authored.lifecycle.delete_after_seconds
+        && !(3_600..=90 * 86_400).contains(&seconds)
+    {
+        return Err(
+            "lifecycle.delete_after_seconds must be between 3600 and 7776000, or null to keep paused Sandboxes"
+                .to_string(),
+        );
+    }
 
     let mut target = authored.target.clone();
     if target.kind == SandboxTargetKind::Managed

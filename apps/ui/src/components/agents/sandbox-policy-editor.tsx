@@ -110,6 +110,27 @@ function recoveryDescription(durability: string | null | undefined): string {
   }
 }
 
+// Paused Sandboxes still cost provider storage, so the server deletes them after
+// a retention period (three days unless the template says otherwise). "Never"
+// is an explicit null; "Default" leaves the field out so the server default applies.
+const RETENTION_CHOICES: {
+  value: string;
+  label: string;
+  seconds?: number | null;
+}[] = [
+  { value: "default", label: "Default (3 days)" },
+  { value: "1d", label: "1 day", seconds: 86_400 },
+  { value: "3d", label: "3 days", seconds: 3 * 86_400 },
+  { value: "7d", label: "7 days", seconds: 7 * 86_400 },
+  { value: "30d", label: "30 days", seconds: 30 * 86_400 },
+  { value: "never", label: "Never", seconds: null },
+];
+
+function retentionChoice(seconds: number | null | undefined): string {
+  if (seconds === undefined) return "default";
+  return RETENTION_CHOICES.find((option) => option.seconds === seconds)?.value ?? "custom";
+}
+
 export function createSandboxTemplateSpec(target: SandboxTargetDescriptor): SandboxTemplateSpec {
   return {
     target: {
@@ -492,9 +513,11 @@ function TemplateSpecEditor({
     (account) => account.provider === spec.target.provider,
   );
   const lifecycle = {
+    ...spec.lifecycle,
     idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
     idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
   };
+  const retention = retentionChoice(spec.lifecycle?.delete_after_seconds);
 
   const setOption = (key: string, value: unknown) => {
     const next = targetOptions(spec);
@@ -830,7 +853,7 @@ function TemplateSpecEditor({
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor={`sandbox-idle-action-${name}`}>When idle</Label>
           <Select
@@ -875,6 +898,37 @@ function TemplateSpecEditor({
             }
             disabled={disabled || lifecycle.idle_action === "keep_running"}
           />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`sandbox-delete-after-${name}`}>Delete after paused</Label>
+          <Select
+            value={retention}
+            onValueChange={(choice) => {
+              const next: SandboxTemplateSpec["lifecycle"] = { ...lifecycle };
+              if (choice === "custom") return;
+              const seconds = RETENTION_CHOICES.find((option) => option.value === choice)?.seconds;
+              if (seconds === undefined) delete next.delete_after_seconds;
+              else next.delete_after_seconds = seconds;
+              onChange({ ...spec, lifecycle: next });
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger id={`sandbox-delete-after-${name}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RETENTION_CHOICES.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+              {retention === "custom" ? (
+                <SelectItem value="custom">
+                  {`${Math.round((spec.lifecycle?.delete_after_seconds ?? 0) / 3_600)} hours`}
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

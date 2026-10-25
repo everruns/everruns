@@ -2182,6 +2182,16 @@
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -8103,6 +8113,16 @@
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -19558,6 +19578,16 @@
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."
@@ -25364,6 +25394,16 @@
         "SandboxLifecycle": {
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
+            "delete_after_seconds": {
+              "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+              "example": 259200,
+              "format": "int64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "idle_action": {
               "$ref": "#/$defs/SandboxIdleAction",
               "description": "Action Everruns requests after the idle interval."

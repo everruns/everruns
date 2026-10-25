@@ -59792,6 +59792,16 @@
         "type": "object",
         "description": "Control-plane lifecycle intent. Providers do not own these timers.",
         "properties": {
+          "delete_after_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a paused Sandbox is kept, counted from its last activity,\nbefore Everruns deletes it with its files. The Session stays; its next\nSandbox call provisions a fresh one. `null` keeps paused Sandboxes\nuntil their Session is deleted.",
+            "example": 259200,
+            "minimum": 0
+          },
           "idle_action": {
             "$ref": "#/components/schemas/SandboxIdleAction",
             "description": "Action Everruns requests after the idle interval."

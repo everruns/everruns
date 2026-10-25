@@ -136,6 +136,20 @@ impl SessionSandboxService {
         Ok(true)
     }
 
+    /// Delete a session's paused sandbox that has outlived its template's
+    /// `delete_after_seconds` (`background::sandbox_idle_sweep`). Returns
+    /// whether a sandbox was deleted.
+    pub async fn delete_expired(&self, session_id: SessionId) -> anyhow::Result<bool> {
+        let Some(config) = self.config_for_session(session_id).await? else {
+            return Ok(false);
+        };
+        self.cancel_idle_pause(session_id).await;
+        let context = self.tool_context(session_id);
+        everruns_capabilities::session_sandbox::delete_session_sandbox(&context, &config)
+            .await
+            .map_err(|err| anyhow::anyhow!("{err:?}"))
+    }
+
     async fn ensure_started(
         &self,
         session_id: SessionId,

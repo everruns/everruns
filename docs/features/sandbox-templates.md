@@ -81,6 +81,29 @@ new Sessions only. Open the Session's **Workspace** tab to inspect the primary S
 template revision, target, containment, capabilities, recovery class, generation, and lifecycle
 state.
 
+## Idle and retention
+
+**When idle** and **Idle after** decide what happens to a running Sandbox nobody is using:
+**Checkpoint and stop** or **Stop** pauses it, **Keep running** leaves it on. A paused Sandbox
+resumes on the next command.
+
+Paused Sandboxes still use provider storage, so Everruns deletes them after **Delete after
+paused**: three days by default, or 1, 7, or 30 days, or **Never**. Deleting removes the
+Sandbox and its files, not the Session. If the Session runs again, it gets a fresh Sandbox from
+the same template.
+
+```json
+{
+  "lifecycle": {
+    "idle_after_seconds": 900,
+    "idle_action": "checkpoint_and_stop",
+    "delete_after_seconds": 604800
+  }
+}
+```
+
+Set `delete_after_seconds` to `null` to keep paused Sandboxes until the Session is deleted.
+
 ## Outbound network
 
 Daytona, E2B and Modal templates can limit what the Sandbox reaches on the network. Under

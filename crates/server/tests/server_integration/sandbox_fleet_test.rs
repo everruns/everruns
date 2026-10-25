@@ -13,7 +13,9 @@ use everruns_contracts::session_sandbox::{
 };
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::background::sandbox_history_retention::purge_deleted_sandboxes;
-use everruns_server::background::sandbox_idle_sweep::overdue_idle_sandbox_sessions;
+use everruns_server::background::sandbox_idle_sweep::{
+    expired_paused_sandbox_sessions, overdue_idle_sandbox_sessions,
+};
 use everruns_server::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
@@ -360,6 +362,12 @@ async fn idle_sweep_selects_running_sandboxes_past_their_limit() {
 
     set("UPDATE sessions SET status = 'active' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
     assert!(!overdue().await, "a running turn keeps its Sandbox");
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '7 hours' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(
+        overdue().await,
+        "a turn that left the Sandbox unused for hours is stale"
+    );
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '10 minutes' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
     set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
 
     set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,idle_action}', '\"keep_running\"') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
@@ -369,4 +377,72 @@ async fn idle_sweep_selects_running_sandboxes_past_their_limit() {
     set("UPDATE sandboxes SET observed_state = 'paused' WHERE id = $1 AND $2::uuid IS NOT NULL")
         .await;
     assert!(!overdue().await, "a paused Sandbox is done");
+}
+
+/// The retention sweep picks a paused Sandbox past its lifecycle's
+/// `delete_after_seconds` (three days when the snapshot predates the field),
+/// and never one whose template keeps paused Sandboxes.
+#[tokio::test]
+async fn retention_sweep_selects_paused_sandboxes_past_their_limit() {
+    let (pool, backend, session_id) = setup("fleet-retention-sweep").await;
+    let pinned = backend
+        .pin_primary_sandbox(session_id, "build", &managed_spec())
+        .await
+        .expect("pin");
+    PgSandboxCheckpointStore::new(pool.clone())
+        .save_state(
+            session_id,
+            &state("fleet-retention", SessionSandboxStatus::Paused, None),
+            None,
+        )
+        .await
+        .expect("pause");
+    let expired = || async {
+        expired_paused_sandbox_sessions(&pool, 1000)
+            .await
+            .expect("retention query")
+            .contains(&session_id.uuid())
+    };
+    let set = |sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query(sql)
+                .bind(pinned.id)
+                .bind(session_id.uuid())
+                .execute(&pool)
+                .await
+                .expect("update");
+        }
+    };
+    set("UPDATE sandboxes SET observed_state = 'paused' WHERE id = $1 AND $2::uuid IS NOT NULL")
+        .await;
+    set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '2 days' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(!expired().await, "two days is within the default three");
+
+    set("UPDATE sandboxes SET last_activity_at = now() - interval '4 days' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(expired().await, "past the default retention");
+
+    set("UPDATE sandboxes SET profile_snapshot = profile_snapshot #- '{lifecycle,delete_after_seconds}' WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(
+        expired().await,
+        "a snapshot without the field gets the default"
+    );
+
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,delete_after_seconds}', 'null') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(!expired().await, "null keeps paused Sandboxes");
+
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,delete_after_seconds}', '864000') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    assert!(!expired().await, "a ten-day template keeps it");
+
+    set("UPDATE sandboxes SET profile_snapshot = jsonb_set(profile_snapshot, '{lifecycle,delete_after_seconds}', '3600') WHERE id = $1 AND $2::uuid IS NOT NULL").await;
+    set("UPDATE sessions SET status = 'active' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+    assert!(!expired().await, "a running turn keeps its Sandbox");
+    set("UPDATE sessions SET status = 'idle' WHERE id = $2 AND $1::uuid IS NOT NULL").await;
+    assert!(expired().await);
+
+    set("UPDATE sandboxes SET observed_state = 'ready' WHERE id = $1 AND $2::uuid IS NOT NULL")
+        .await;
+    assert!(!expired().await, "a running Sandbox is the idle sweep's");
 }
