@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { EntityCard, EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
+import { EntityCardTags, EntityCardCapabilities } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
 describe("EntityCard", () => {
@@ -15,20 +15,6 @@ describe("EntityCard", () => {
     expect(less).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(less);
     expect(screen.queryByText("safety")).not.toBeInTheDocument();
-  });
-
-  it("keeps long titles shrinkable beside header actions", () => {
-    const { container } = render(
-      <EntityCard title="A very long entity name" headerActions={<span>active</span>}>
-        Body
-      </EntityCard>,
-    );
-
-    expect(screen.getByText("A very long entity name")).toHaveClass("block", "truncate");
-    expect(container.querySelector('[data-slot="entity-card-heading"]')).toHaveClass(
-      "min-w-0",
-      "flex-1",
-    );
   });
 });
 

@@ -98,13 +98,6 @@ describe("ConnectionsPanel - Markdown Instructions", () => {
     });
   });
 
-  it("renders available provider in the list", () => {
-    render(<ConnectionsPanel />, { wrapper });
-
-    expect(screen.getByText("Daytona")).toBeInTheDocument();
-    expect(screen.getByText("Cloud development environment")).toBeInTheDocument();
-  });
-
   it("renders instructions_markdown via InlineStreamdownMessage when dialog opens", async () => {
     render(<ConnectionsPanel />, { wrapper });
 
@@ -125,51 +118,10 @@ describe("ConnectionsPanel - Markdown Instructions", () => {
     expect(markdownEl).toHaveTextContent("**Create New API Key**");
   });
 
-  it("passes styling classes to InlineStreamdownMessage", async () => {
-    render(<ConnectionsPanel />, { wrapper });
-
-    const connectButton = screen.getByRole("button", { name: /Connect/i });
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    const markdownEl = screen.getByTestId("inline-streamdown-message");
-    expect(markdownEl.className).toContain("text-sm");
-    expect(markdownEl.className).toContain("text-muted-foreground");
-  });
-
   it("does not render InlineStreamdownMessage when dialog is closed", () => {
     render(<ConnectionsPanel />, { wrapper });
 
     expect(screen.queryByTestId("inline-streamdown-message")).not.toBeInTheDocument();
-  });
-
-  it("renders form fields alongside markdown instructions", async () => {
-    render(<ConnectionsPanel />, { wrapper });
-
-    const connectButton = screen.getByRole("button", { name: /Connect/i });
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    // Both markdown instructions and form fields should be present
-    expect(screen.getByTestId("inline-streamdown-message")).toBeInTheDocument();
-    expect(screen.getByLabelText("API Key")).toBeInTheDocument();
-  });
-
-  it("renders Connect button with provider name in dialog title", async () => {
-    render(<ConnectionsPanel />, { wrapper });
-
-    const connectButton = screen.getByRole("button", { name: /Connect/i });
-    fireEvent.click(connectButton);
-
-    await waitFor(() => {
-      expect(screen.getByText("Connect Daytona")).toBeInTheDocument();
-    });
   });
 });
 

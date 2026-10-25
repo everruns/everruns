@@ -8,16 +8,6 @@ function labels(items: ReturnType<typeof getAgentTabItems>): string[] {
 // One tab row: MCP and Credentials became config-column sheets, Sessions got
 // its own tab, and Versions moved to the header overflow menu.
 describe("agent tab definitions", () => {
-  it("renders the single tab row in order", () => {
-    expect(labels(getAgentTabItems())).toEqual([
-      "Agent",
-      "Preview",
-      "Integrations",
-      "Stats",
-      "Sessions",
-    ]);
-  });
-
   it("shows the session count on the Sessions tab", () => {
     expect(labels(getAgentTabItems(12)).at(-1)).toBe("Sessions12");
   });

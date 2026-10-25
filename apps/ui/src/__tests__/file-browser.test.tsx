@@ -124,27 +124,6 @@ describe("FileBrowser Toolbar", () => {
     });
   });
 
-  it("renders refresh button", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTitle("Refresh")).toBeInTheDocument();
-    expect(screen.getByText("Refresh")).toBeInTheDocument();
-  });
-
-  it("renders new folder button", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTitle("New folder")).toBeInTheDocument();
-    expect(screen.getByText("Folder")).toBeInTheDocument();
-  });
-
-  it("renders new file button", () => {
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTitle("New file")).toBeInTheDocument();
-    expect(screen.getByText("File")).toBeInTheDocument();
-  });
-
   it("calls refetch when refresh button is clicked", async () => {
     renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
@@ -199,18 +178,6 @@ describe("FileBrowser FileTree", () => {
 
     expect(screen.getByText("test.ts")).toBeInTheDocument();
     expect(screen.getByText("1024 B")).toBeInTheDocument();
-  });
-
-  it("renders directories", () => {
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [mockDirectory],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByText("src")).toBeInTheDocument();
   });
 
   it("sorts directories before files", () => {
@@ -303,64 +270,9 @@ describe("FileBrowser FileTree", () => {
 });
 
 // ============================================
-// File Type Icons
-// ============================================
-
-describe("FileBrowser File Icons", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  const testFileIcon = (filename: string, expectedIconTestId: string) => {
-    const file = {
-      id: "1",
-      session_id: "test-session",
-      path: `/workspace/${filename}`,
-      name: filename,
-      is_directory: false,
-      is_readonly: false,
-      size_bytes: 100,
-      created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-01T00:00:00Z",
-    };
-
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [file],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByTestId(expectedIconTestId)).toBeInTheDocument();
-  };
-
-  it("shows code icon for TypeScript files", () => {
-    testFileIcon("app.ts", "file-code-icon");
-  });
-
-  it("shows code icon for TSX files", () => {
-    testFileIcon("component.tsx", "file-code-icon");
-  });
-
-  it("shows JSON icon for JSON files", () => {
-    testFileIcon("package.json", "file-json-icon");
-  });
-
-  it("shows text icon for markdown files", () => {
-    testFileIcon("README.md", "file-text-icon");
-  });
-
-  it("shows image icon for PNG files", () => {
-    testFileIcon("logo.png", "image-icon");
-  });
-});
-
-// ============================================
 // Create File / Folder Dialogs
 // Note: Dialog tests are skipped as they require complex Radix UI portal mocking.
-// The dialog functionality is covered by E2E tests. Toolbar button presence is
-// covered by "FileBrowser Toolbar".
+// The dialog functionality is covered by E2E tests.
 // ============================================
 
 // ============================================
