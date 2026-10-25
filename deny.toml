@@ -52,6 +52,10 @@ exceptions = [
     # license. Covers the embedded CPython 3.14 interpreter payload shipped
     # inside bashkit-cpython-wasm for the bash `python3` builtin.
     { allow = ["Python-2.0"], crate = "bashkit-cpython-wasm" },
+    # Unicode-DFS-2016: the standard Unicode Data Files license. Covers
+    # unicode_names2 (pulled in by Monty, the scripted-tools Python
+    # interpreter): character name tables.
+    { allow = ["Unicode-DFS-2016"], crate = "unicode_names2" },
     # Apache-2.0 WITH LLVM-exception: Apache-2.0 plus LLVM's patent/attribution
     # exception (same terms the LLVM, Swift, and rustc-llvm projects ship
     # under). Covers the wasmtime 48 execution engine and its cranelift codegen

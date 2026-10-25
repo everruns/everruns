@@ -29,4 +29,12 @@ async-trait = "0.1"
 # The real shell, so the v2 arm runs the model's script rather than a splitter's
 # guess at it: loops, pipes, redirection and `jq` are the interpreter's, and
 # `everruns` is a builtin in it exactly as the harness ships it.
-bashkit = { version = "0.19.0", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
+bashkit = { version = "0.19.0", default-features = false, features = ["cpython", "jq", "tzdata", "aws-lc-rs"] }
+
+# Mirror the root workspace: published Bashkit 0.19.0 pins vulnerable
+# Wasmtime 48.0.6. Use the reviewed upstream 48.0.7 fix at an immutable
+# revision.
+[patch.crates-io]
+bashkit = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }
+bashkit-scripted-tool = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }
+bashkit-cpython-wasm = { git = "https://github.com/everruns/bashkit", rev = "05c6e01c99f513775e0afd89ca1d7938aa9956c2" }

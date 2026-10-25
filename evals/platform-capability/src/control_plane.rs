@@ -565,6 +565,7 @@ fn build_shell(catalog: Arc<Vec<Value>>, store: Arc<Mutex<Store>>) -> bashkit::B
         .fs(Arc::new(fs))
         .cwd("/workspace")
         .builtin("everruns", Box::new(EverrunsBuiltin { catalog, store }))
+        .cpython()
         .build()
 }
 

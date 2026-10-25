@@ -546,3 +546,17 @@ impl Tool for ToolsMarkerTool {
 
 #[cfg(test)]
 mod tests;
+
+/// Pre-compile the embedded CPython payload once per process so the first
+/// `python3` shell call doesn't pay WASM compilation latency (~19ms first
+/// call, ~4.4ms after, per upstream measurements). Idempotent: call at startup
+/// from every binary that executes bash tools. Never fails startup — a
+/// warm-up failure only means the first `python3` call compiles on demand.
+pub fn ensure_cpython_warm() {
+    static WARMED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    WARMED.get_or_init(|| {
+        if let Err(err) = bashkit::CPython::warm_up() {
+            tracing::warn!(error = %err, "cpython warm-up failed");
+        }
+    });
+}

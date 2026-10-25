@@ -55,6 +55,8 @@ async fn main() -> Result<()> {
     }
     telemetry_config.service_version = Some(env!("CARGO_PKG_VERSION").to_string());
     let _telemetry_guard = init_telemetry(telemetry_config);
+    // Pre-compile the embedded CPython payload (see ensure_cpython_warm).
+    everruns_integrations::bashkit::tools_in_shell::ensure_cpython_warm();
 
     // Load server config from environment
     let mut config = ServerConfig::from_env();
