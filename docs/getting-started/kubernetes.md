@@ -1,6 +1,6 @@
 ---
 title: Kubernetes
-description: Install the self-hosted Everruns Platform on Kubernetes with the official Helm chart, with your own PostgreSQL, a proxy with the same routes as Docker Compose, and kept secrets.
+description: Install the self-hosted Everruns Platform on Kubernetes with the official Helm chart, using your own PostgreSQL and secrets kept across upgrades.
 sidebar:
   label: "Self-hosted: Kubernetes"
 appliesTo: [platform]

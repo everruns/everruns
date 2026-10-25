@@ -1,6 +1,6 @@
 ---
-title: Helm chart for Kubernetes
-description: An official Helm chart installs the self-hosted Platform on Kubernetes, published with every release as an OCI chart.
+title: Install the self-hosted Platform on Kubernetes with Helm
+description: An official Helm chart installs the self-hosted Platform on Kubernetes, ships as an OCI chart with each release, and keeps its secrets across upgrades.
 date: 2026-10-25
 kind: feature
 significance: notable
