@@ -8,7 +8,7 @@ products: [platform]
 surfaces: [cli]
 links:
   docs: [/getting-started/run-locally/]
-  prs: [everruns/everruns#4895, everruns/everruns#4904]
+  prs: [everruns/everruns#4895, everruns/everruns#4904, everruns/everruns#4906]
 ---
 
 `everruns docker up` starts the self-hosted Platform on your computer. It checks
