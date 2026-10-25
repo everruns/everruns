@@ -183,11 +183,41 @@ impl BoundedSurface {
         let mut loaded = Vec::new();
         let mut omitted = 0usize;
         let mut selected_bytes = 2;
-        let output = |matches: &Vec<Value>, loaded: &Vec<String>, omitted: usize| {
-            json!({"query":query,"tools":matches,"loaded":loaded,"bounded":true,
+        let output = |matches: &[Value],
+                      loaded: &[String],
+                      omitted: usize,
+                      omitted_tools: &[String]| {
+            let mut result = json!({"query":query,"tools":matches,"loaded":loaded,"bounded":true,
                 "omitted_for_byte_budget":omitted,
-                "message":"Selected schemas become native functions next step. Refine source-only or oversized matches; older operations may leave the active view."})
+                "message":"Selected schemas become native functions next step. Refine source-only or oversized matches; older operations may leave the active view."});
+            if !omitted_tools.is_empty() {
+                result["omitted_tools"] = json!(omitted_tools);
+                result["message"] = json!(
+                    "Selected schemas become native functions next step. Search one omitted_tools name exactly to load its schema. After loading a server, search again for its operation."
+                );
+            }
+            result
         };
+        let mut omitted_tools: Vec<_> = hits
+            .iter()
+            .take(self.max_tools.min(MAX_RESULTS))
+            .filter(|hit| {
+                hit.tool_match
+                    && self.allowed.contains(&hit.name)
+                    && self.definitions.contains_key(&hit.name)
+            })
+            .map(|hit| hit.name.clone())
+            .collect();
+        // Mirror production omission hints. Exact single-candidate searches
+        // lose their provisional hint when admitted, retaining the full budget.
+        while !omitted_tools.is_empty() {
+            let mut preview = output(&[], &[], MAX_RESULTS, &omitted_tools);
+            preview["available_servers"] = json!([]);
+            if bytes(&preview) <= self.result_bytes {
+                break;
+            }
+            omitted_tools.pop();
+        }
         for hit in hits.into_iter().take(self.max_tools.min(MAX_RESULTS)) {
             if !hit.tool_match || !self.allowed.contains(&hit.name) {
                 continue;
@@ -206,15 +236,24 @@ impl BoundedSurface {
             loaded.push(hit.name.clone());
             // Reserve the largest possible omission count while accepting each
             // match, as production does, so the final count cannot overflow.
-            if bytes(&output(&matches, &loaded, MAX_RESULTS)) > self.result_bytes {
+            let mut remaining_omitted_tools = omitted_tools.clone();
+            remaining_omitted_tools.retain(|name| name != &hit.name);
+            if bytes(&output(
+                &matches,
+                &loaded,
+                MAX_RESULTS,
+                &remaining_omitted_tools,
+            )) > self.result_bytes
+            {
                 matches.pop();
                 loaded.pop();
                 omitted += 1;
             } else {
                 selected_bytes += size;
+                omitted_tools = remaining_omitted_tools;
             }
         }
-        let mut result = output(&matches, &loaded, omitted);
+        let mut result = output(&matches, &loaded, omitted, &omitted_tools);
         if matches.is_empty() {
             // One simulated platform source; never dump the operation inventory.
             result["available_servers"] = json!(if self.allowed.is_empty() {
@@ -318,6 +357,20 @@ mod tests {
         );
         surface.request_tools(3);
         assert!(surface.callable("update_agent"));
+        let output = result(&mut surface, "update agent description");
+        assert!(bytes(&output) <= MAX_RESULT_BYTES);
+        let named = |field: &str| {
+            output[field]
+                .as_array()
+                .is_some_and(|names| names.iter().any(|name| name == "update_agent"))
+        };
+        assert!(
+            named("loaded") || named("omitted_tools"),
+            "a schema omission must retain an exact refinement identity: {output}"
+        );
+        let refined = result(&mut surface, "update_agent");
+        assert_eq!(refined["loaded"], json!(["update_agent"]));
+        assert!(refined.get("omitted_tools").is_none());
     }
 
     #[test]

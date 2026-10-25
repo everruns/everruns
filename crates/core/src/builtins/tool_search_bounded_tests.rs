@@ -268,6 +268,144 @@ async fn oversized_schema_is_not_reported_as_loaded() {
 }
 
 #[tokio::test]
+async fn byte_omitted_operation_names_enable_exact_refinement_without_leaking_scope() {
+    let definitions = vec![
+        builtin(
+            "update_agent_script",
+            "Update an agent description.",
+            json!({"type":"object","description":"x".repeat(3000)}),
+        ),
+        builtin(
+            "update_agent",
+            "Update an agent.",
+            json!({"type":"object","description":"x".repeat(31000)}),
+        ),
+        builtin(
+            "update_private_agent",
+            "Update an agent description.",
+            json!({"type":"object"}),
+        ),
+    ];
+    let mut context = context(&definitions);
+    context.visible_tool_names = Some(Arc::new(HashSet::from([
+        "update_agent_script".to_owned(),
+        "update_agent".to_owned(),
+    ])));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"update agent description"}), &context)
+        .await
+    else {
+        panic!("search failed")
+    };
+    assert_eq!(result["loaded"], json!(["update_agent_script"]));
+    assert_eq!(result["omitted_for_byte_budget"], 1);
+    assert_eq!(result["omitted_tools"], json!(["update_agent"]));
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 32768);
+    assert!(
+        !serde_json::to_string(&result)
+            .unwrap()
+            .contains("update_private_agent")
+    );
+
+    let ToolExecutionResult::Success(refined) = tool
+        .execute_with_context(json!({"query":result["omitted_tools"][0]}), &context)
+        .await
+    else {
+        panic!("exact refinement failed")
+    };
+    assert_eq!(refined["loaded"], json!(["update_agent"]));
+    assert_eq!(
+        refined["tools"][0]["parameters"],
+        definitions[1].full_parameters().clone()
+    );
+    assert!(refined.get("omitted_tools").is_none());
+    assert!(serde_json::to_vec(&refined).unwrap().len() <= 32768);
+}
+
+#[tokio::test]
+async fn exact_schema_at_result_byte_boundary_keeps_its_entire_budget() {
+    let name = "edge_record";
+    let description = "Read a record.";
+    let mut schema = json!({"type":"object","description":""});
+    let envelope = json!({
+        "query":name,"tools":[{"name":name,"description":description,
+            "parameters":schema,"server_match":false,"operation_match":true}],
+        "loaded":[name],"bounded":true,"loading_mcp_servers":[],"omitted_for_byte_budget":0,
+        "message":"Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
+    });
+    schema["description"] = json!("x".repeat(32768 - serde_json::to_vec(&envelope).unwrap().len()));
+    let context = context(&[builtin(name, description, schema.clone())]);
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":name}), &context)
+        .await
+    else {
+        panic!("exact schema at the byte boundary should fit")
+    };
+    assert_eq!(result["loaded"], json!([name]));
+    assert_eq!(result["tools"][0]["parameters"], schema);
+    assert!(result.get("omitted_tools").is_none());
+    assert_eq!(serde_json::to_vec(&result).unwrap().len(), 32768);
+}
+
+#[tokio::test]
+async fn omitted_name_hints_are_bounded_complete_utf8_identities_from_the_current_scope() {
+    let definitions: Vec<_> = (0..20)
+        .map(|position| {
+            builtin(
+                format!("lookup_{}_{position:02}", "界".repeat(60)),
+                "Look up a record.",
+                json!({"type":"object","description":"x".repeat(2000)}),
+            )
+        })
+        .collect();
+    let mut context = context(&definitions);
+    let allowed: HashSet<_> = definitions
+        .iter()
+        .skip(1)
+        .map(|definition| definition.name().to_owned())
+        .collect();
+    context.visible_tool_names = Some(Arc::new(allowed.clone()));
+    let tool = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 1024,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"lookup"}), &context)
+        .await
+    else {
+        panic!("bounded name hints should fit")
+    };
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    assert_eq!(result["omitted_for_byte_budget"], MAX_SEARCH_RESULTS);
+    let hints = result["omitted_tools"].as_array().unwrap();
+    assert!(!hints.is_empty());
+    assert!(hints.len() <= MAX_SEARCH_RESULTS);
+    for name in hints {
+        assert!(allowed.contains(name.as_str().unwrap()));
+    }
+}
+
+#[tokio::test]
 async fn server_description_only_search_browses_source_without_promoting_arbitrary_operations() {
     let mut definitions = definitions(600);
     for (index, definition) in definitions.iter_mut().enumerate() {

@@ -48,4 +48,4 @@ results with incidental matches. See [Large MCP catalogs and tool surfaces](/fea
 ## Update 2026-10-24
 
 Verbose schemas no longer bury name matches. Exact names also accept spaces,
-hyphens or underscores.
+hyphens or underscores. Byte-omitted candidates include names for exact refinement.

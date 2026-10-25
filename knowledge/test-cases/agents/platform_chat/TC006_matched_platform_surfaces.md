@@ -55,6 +55,8 @@ Production Platform Chat remains CLI-only.
    results and active optional schemas obey their recorded byte/count bounds;
    a function cannot execute until a later request actually advertises it.
    Disclosed schemas must equal the eager invocation schemas.
+   If a candidate is byte-omitted, verify its bounded `omitted_tools` identity can
+   be refined by exact search without counting the name itself as disclosure.
 6. Run the two large-result diagnostics separately. Check the aggregation returns
    100 agents per model and the targeted lookup returns Scale Agent 0200 with
    `model_01muse`. Inspect result bytes and provider input tokens; retain failed

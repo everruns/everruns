@@ -208,6 +208,8 @@ to 32 operations and 64 KiB, with recent disclosures preferred and definitions
 emitted in stable order. A call is admitted only if its schema was actually
 advertised in that model request; discovery in the same tool-call batch cannot
 make an unadvertised call valid. Eager and bounded native schemas are identical.
+Byte-omitted candidates retain bounded `omitted_tools` names with exact-search
+guidance, sharing the same response budget. An omitted name is not a disclosure.
 
 This subject's Chat Completions transport sends the current tools at the top level.
 It preserves earlier messages and records positioned additions/removals, but a

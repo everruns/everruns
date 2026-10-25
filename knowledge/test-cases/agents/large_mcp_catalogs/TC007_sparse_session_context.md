@@ -38,11 +38,17 @@ Verify a session uses a few operations from a large catalog while native schemas
 4. Run the staged rollback. Verify state from the fixture and count actual model calls separately from MCP operations.
 5. Activate an unrelated plugin on the native agent, continue without selecting it, then search for and use its harmless operation. Compare request baseline definitions and prompt transitions before and after selection.
 6. Recompute usage from generation records once per reasoning iteration. Compare against request counts, cache coverage, and the largest request; exclude turn/session rollups.
+7. Search a workflow whose second-ranked operation has a near-limit schema and
+   cannot fit beside the first result. Verify `omitted_tools` names that authorized
+   candidate, then search its exact name and call it. The initial omission must
+   not disclose the schema or make it callable, and both results obey the byte cap.
 
 ## Expected Result
 
 - Complete discovery remains available to the runtime; the model's initial surface excludes unselected MCP schemas.
 - Exact-name search returns matching authorized identities without incidental result padding. Cross-server ambiguity remains explicit.
+- A verbose schema does not suppress strong name/description matches. Byte-omitted
+  names support exact refinement without leaking operations outside current access.
 - Root/server help stays within 64 entries and 12 KiB, remains valid UTF-8, and explicitly counts omitted entries. Leaf help supplies the selected input schema.
 - Native selected schemas remain within the configured optional count/byte budgets. Plugin activation makes an operation searchable before selection without advertising its schema. Incremental prompt notes and baseline tools preserve the existing cache contract.
 - Actual operation evidence and final fixture state prove the task. Provider input/cache/output are counted once; missing usage/capture is visible, and cache hits are observations rather than guarantees.

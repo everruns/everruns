@@ -223,8 +223,12 @@ response. `max_result_bytes` may be configured from 1 KiB through 64 KiB.
 1 through 128; `max_active_bytes` defaults to 64 KiB and may be set from 1 KiB
 through 1 MiB. These two active limits account for optional disclosed schemas;
 eager, client-side and `Never` tools remain in the model list separately.
-Results that do not fit are omitted with an explicit count/refinement hint;
-no-match responses browse at most 16 authorized server sources instead of
+Results that do not fit are omitted with an explicit count/refinement hint.
+Bounded `omitted_tools` identities let the model refine a byte-omitted candidate
+by exact name without treating it as disclosed. These identities share the
+existing result byte budget, include only authorized top candidates, and vanish
+when their schema is admitted, preserving the single-schema boundary budget.
+No-match responses browse at most 16 authorized server sources instead of
 listing every operation. Bounded mode uses the default `reveal: redefine`
 behavior so selected schemas become callable typed native tools on the next
 step.

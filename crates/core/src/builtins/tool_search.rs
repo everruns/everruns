@@ -681,20 +681,45 @@ impl ToolSearchTool {
         let mut omitted = 0usize;
         let mut active_bytes = 2usize;
         let mut matching_sources = std::collections::BTreeSet::new();
-        let output = |matches: &Vec<Value>,
-                      loaded: &Vec<String>,
+        let output = |matches: &[Value],
+                      loaded: &[String],
                       omitted,
-                      servers: &Vec<String>| {
-            json!({
+                      servers: &[String],
+                      omitted_tools: &[String]| {
+            let mut result = json!({
                 "query": query, "tools": matches, "loaded": loaded, "bounded": true,
                 "loading_mcp_servers": servers, "omitted_for_byte_budget": omitted,
                 "message": "Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
-            })
+            });
+            if !omitted_tools.is_empty() {
+                result["omitted_tools"] = json!(omitted_tools);
+                result["message"] = json!(
+                    "Selected schemas become native functions next step. Search one omitted_tools name exactly to load its schema. After loading a server, search again for its operation."
+                );
+            }
+            result
         };
-        for hit in hits
-            .into_iter()
-            .take(limits.active_tools.min(MAX_SEARCH_RESULTS))
-        {
+        let considered = limits.active_tools.min(MAX_SEARCH_RESULTS);
+        let mut omitted_tools: Vec<_> = hits
+            .iter()
+            .take(considered)
+            .filter(|hit| hit.tool_match && registry.get(&hit.name).is_some())
+            .map(|hit| hit.name.clone())
+            .collect();
+        // Reserve canonical-name refinement hints before admitting schemas.
+        // Trim whole identities if even the hints exceed the response budget.
+        // A loaded name leaves this list, so a single exact schema retains its
+        // entire previous budget instead of paying for duplicate metadata.
+        while !omitted_tools.is_empty() {
+            let mut preview = output(&[], &[], MAX_SEARCH_RESULTS, &[], &omitted_tools);
+            // An all-omitted result also carries the source-browse envelope.
+            preview["available_servers"] = json!([]);
+            if serialized_size(&preview, limits.result_bytes).is_some() {
+                break;
+            }
+            omitted_tools.pop();
+        }
+        for hit in hits.into_iter().take(considered) {
             let Some(tool) = registry.get(&hit.name) else {
                 continue;
             };
@@ -728,8 +753,16 @@ impl ToolSearchTool {
                 .iter()
                 .filter_map(|name| crate::deferred_mcp_server_prefix(name).map(str::to_string))
                 .collect();
+            let mut remaining_omitted_tools = omitted_tools.clone();
+            remaining_omitted_tools.retain(|name| name != &hit.name);
             if serialized_size(
-                &output(&matches, &loaded, MAX_SEARCH_RESULTS, &pending),
+                &output(
+                    &matches,
+                    &loaded,
+                    MAX_SEARCH_RESULTS,
+                    &pending,
+                    &remaining_omitted_tools,
+                ),
                 limits.result_bytes,
             )
             .is_none()
@@ -739,10 +772,11 @@ impl ToolSearchTool {
                 omitted += 1;
             } else {
                 active_bytes += size + separator;
+                omitted_tools = remaining_omitted_tools;
             }
         }
         let servers = reveal_deferred_servers(context, &loaded).await;
-        let mut result = output(&matches, &loaded, omitted, &servers);
+        let mut result = output(&matches, &loaded, omitted, &servers, &omitted_tools);
         if matches.is_empty() {
             // Bounded source browse, never a fallback listing every operation.
             let sources: std::collections::BTreeSet<_> = if matching_sources.is_empty() {
