@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/features/sandbox-templates/]
-  prs: [everruns/everruns#4912]
+  prs: [everruns/everruns#4913]
 ---
 
 Daytona Sandbox Templates now offer **Outbound network**: open, only listed domains, or blocked.
