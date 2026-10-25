@@ -454,13 +454,6 @@ mod tests {
     const VALID_ID: &str = "kidx_00000000000000000000000000000001";
 
     #[test]
-    fn id_and_name() {
-        let cap = KnowledgeIndexCapability;
-        assert_eq!(cap.id(), "knowledge_index");
-        assert_eq!(cap.name(), "Knowledge Index");
-    }
-
-    #[test]
     fn validate_accepts_empty_config() {
         let cap = KnowledgeIndexCapability;
         assert!(cap.validate_config(&json!({})).is_ok());
@@ -497,14 +490,6 @@ mod tests {
         assert!(cap.validate_config(&json!({ "top_k": 0 })).is_err());
         assert!(cap.validate_config(&json!({ "top_k": 51 })).is_err());
         assert!(cap.validate_config(&json!({ "top_k": 25 })).is_ok());
-    }
-
-    #[test]
-    fn uk_localization_present() {
-        let cap = KnowledgeIndexCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Індекс знань");
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

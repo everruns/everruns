@@ -482,11 +482,7 @@ mod tests {
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::Request;
-    use chrono::Utc;
     use everruns_core::OrgRole;
-    use everruns_durable::{
-        ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleRow, ScheduleTargetType,
-    };
     use tower::ServiceExt;
 
     use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
@@ -755,58 +751,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn test_schedule_response_from_row() {
-        let row = ScheduleRow {
-            id: Uuid::now_v7(),
-            name: "test-schedule".to_string(),
-            description: Some("A test".to_string()),
-            cron_expression: "0 * * * * * *".to_string(),
-            timezone: "UTC".to_string(),
-            target_type: ScheduleTargetType::Workflow,
-            target_name: "my-workflow".to_string(),
-            target_input: serde_json::json!({"key": "value"}),
-            enabled: true,
-            max_concurrent: Some(2),
-            catch_up_missed: false,
-            max_catch_up: None,
-            retry_policy: None,
-            last_triggered_at: None,
-            next_trigger_at: Some(Utc::now()),
-            claimed_by: None,
-            claimed_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        let response = ScheduleResponse::from(row);
-        assert_eq!(response.name, "test-schedule");
-        assert_eq!(response.target.target_type, "workflow");
-        assert_eq!(response.target.name, "my-workflow");
-        assert!(response.enabled);
-    }
-
-    #[test]
-    fn test_execution_response_from_row() {
-        let row = ScheduleExecutionRow {
-            id: Uuid::now_v7(),
-            schedule_id: Uuid::now_v7(),
-            scheduled_at: Utc::now(),
-            started_at: Utc::now(),
-            completed_at: Some(Utc::now()),
-            status: ScheduleExecutionStatus::Completed,
-            workflow_id: Some(Uuid::now_v7()),
-            task_id: None,
-            error: None,
-            duration_ms: Some(150),
-            created_at: Utc::now(),
-        };
-
-        let response = ScheduleExecutionResponse::from(row);
-        assert_eq!(response.status, "completed");
-        assert!(response.workflow_id.is_some());
-        assert_eq!(response.duration_ms, Some(150));
     }
 }

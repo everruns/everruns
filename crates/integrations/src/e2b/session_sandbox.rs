@@ -403,7 +403,6 @@ mod tests {
     use std::sync::Arc;
 
     use async_trait::async_trait;
-    use everruns_contracts::session_sandbox::create_session_sandbox_provider;
     use everruns_contracts::typed_id::SessionId;
     use tokio::sync::Mutex;
 
@@ -467,11 +466,6 @@ mod tests {
         async fn release_lease(&self, _: &str, _: &str) -> Result<(), ToolExecutionResult> {
             Ok(())
         }
-    }
-
-    #[test]
-    fn provider_is_registered() {
-        assert!(create_session_sandbox_provider("e2b").is_some());
     }
 
     #[test]

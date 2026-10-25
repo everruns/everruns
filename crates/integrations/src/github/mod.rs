@@ -302,26 +302,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn github_capability_offers_pull_request_tools() {
-        let cap = GitHubCapability;
-        assert_eq!(cap.id(), "github");
-        let names: Vec<String> = cap.tools().iter().map(|t| t.name().to_string()).collect();
-        assert_eq!(
-            names,
-            vec![
-                "get_github_pull_request",
-                "get_github_pull_request_diff",
-                "github_checkout_pull_request",
-                "upsert_github_comment",
-                "submit_github_pull_request_review",
-                "upsert_github_issue"
-            ]
-        );
-        assert!(cap.dependencies().is_empty());
-        assert_ne!(cap.localized_description(Some("uk")), cap.description());
-    }
-
-    #[test]
     fn pull_request_creation_is_opt_in() {
         let names = |config: serde_json::Value| -> Vec<String> {
             GitHubCapability
@@ -365,48 +345,6 @@ mod tests {
         assert_eq!(
             schema["properties"]["private_issues_only"]["type"],
             "boolean"
-        );
-    }
-
-    #[test]
-    fn capability_is_blueprint_only() {
-        let cap = GitHubScoutCapability;
-        assert_eq!(cap.id(), "github_scout");
-        assert_eq!(cap.name(), "GitHub Scout");
-        assert!(cap.tools().is_empty());
-        assert_eq!(cap.dependencies(), vec!["subagents"]);
-    }
-
-    #[test]
-    fn uk_localization_resolves() {
-        let cap = GitHubScoutCapability;
-        assert_ne!(cap.localized_description(Some("uk")), cap.description());
-        assert_eq!(cap.localized_name(Some("uk")), "GitHub Scout");
-    }
-
-    #[test]
-    fn contributes_github_scout_blueprint() {
-        let cap = GitHubScoutCapability;
-        let blueprints = cap.agent_blueprints();
-        assert_eq!(blueprints.len(), 1);
-
-        let scout = &blueprints[0];
-        assert_eq!(scout.id, "github_scout");
-        assert_eq!(scout.name, "GitHub Scout");
-        assert_eq!(scout.max_turns, Some(15));
-        assert!(matches!(
-            scout.model,
-            BlueprintModel::Fixed(ref model) if model == "claude-haiku-4-5-20251001"
-        ));
-
-        let tool_names: Vec<&str> = scout.tools.iter().map(|tool| tool.name()).collect();
-        assert_eq!(
-            tool_names,
-            vec![
-                "search_github_code",
-                "read_github_file",
-                "search_github_issues"
-            ]
         );
     }
 

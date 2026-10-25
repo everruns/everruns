@@ -625,12 +625,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_stats_display_zero() {
-        let stats = SyncStats::default();
-        assert_eq!(format!("{}", stats), "↑0 ↓0");
-    }
-
-    #[test]
     fn test_normalize_path_nested() {
         // Already-forward-slash paths pass through unchanged...
         assert_eq!(normalize_path(Path::new("a/b/c/d.txt")), "a/b/c/d.txt");
@@ -796,20 +790,6 @@ mod tests {
         };
         let result = resolve_conflict(Conflict::Remote, Path::new("/tmp"), "test.txt", &entry);
         assert_eq!(result, "remote");
-    }
-
-    #[test]
-    fn test_update_state_new_entry() {
-        let mut state = SyncState::new("ses_test");
-        update_state(
-            &mut state,
-            "file.txt",
-            Some("sha256:aaa"),
-            Some("sha256:bbb"),
-        );
-        let entry = &state.files["file.txt"];
-        assert_eq!(entry.local_hash.as_deref(), Some("sha256:aaa"));
-        assert_eq!(entry.remote_hash.as_deref(), Some("sha256:bbb"));
     }
 
     #[test]

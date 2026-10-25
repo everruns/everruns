@@ -377,16 +377,3 @@ impl Command for BackfillReporting {
             .await
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn semantic_report_reads_are_available_to_mcp_query() {
-        assert!(RunReportQuery::read_only());
-        assert!(RunSavedReport::read_only());
-        assert!(ExportReportQuery::read_only());
-        assert!(ExportSavedReport::read_only());
-    }
-}

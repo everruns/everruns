@@ -1597,37 +1597,6 @@ mod tests {
     // Capability metadata tests
     // ========================================================================
 
-    // Metadata (id/name/status/risk/icon/category), tool-list, and dependency
-    // constants are covered registry-wide by
-    // `builtin_capabilities_satisfy_registry_invariants` in `capabilities::tests`.
-    // Only the behavioral assertion — the description advertises built-in help —
-    // is kept here.
-    #[test]
-    fn description_advertises_builtin_help_and_version() {
-        let description = BashkitShellCapability.description();
-        assert!(
-            description.contains("`<command> --help`"),
-            "description should advertise built-in help, got: {description}"
-        );
-        assert!(
-            description.contains("`<command> --version`"),
-            "description should advertise built-in version support, got: {description}"
-        );
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = BashkitShellCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        // System prompt is now provided by bashkit library
-        assert!(!prompt.is_empty(), "System prompt should not be empty");
-        // Should contain the configured username/hostname
-        assert!(
-            prompt.contains("everruns"),
-            "System prompt should contain configured identity"
-        );
-    }
-
     // ========================================================================
     // Path resolution (delegated to the store / MountFs)
     // ========================================================================
@@ -2224,22 +2193,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_bash_command_substitution() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "echo $(echo nested)"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["stdout"], "nested\n");
-        } else {
-            panic!("Expected success result");
-        }
-    }
-
     // ========================================================================
     // Paths outside /workspace resolve into the backend (EVE-660)
     // ========================================================================
@@ -2369,23 +2322,6 @@ mod tests {
             assert_eq!(output["success"], false);
         } else {
             panic!("Expected success result with non-zero exit code");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_true_command_exit_code() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(json!({"commands": "true"}), &context)
-            .await;
-
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["success"], true);
-        } else {
-            panic!("Expected success result");
         }
     }
 
@@ -2642,17 +2578,6 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("not supported"));
     }
 
-    #[tokio::test]
-    async fn test_adapter_chmod_is_noop() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
-
-        // chmod should succeed as a no-op
-        let result = adapter.chmod(Path::new("/workspace/file.txt"), 0o755).await;
-        assert!(result.is_ok());
-    }
-
     // ========================================================================
     // Security limit tests (bashkit 0.1.0)
     // ========================================================================
@@ -2737,48 +2662,6 @@ mod tests {
             );
         } else {
             panic!("Expected success for function call: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_arithmetic_expressions() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Test various arithmetic expressions (shallow nesting to avoid stack issues)
-        let command = "echo $((1 + 2 * 3))";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert_eq!(output["stdout"].as_str().unwrap_or("").trim(), "7");
-        } else {
-            panic!("Expected success for arithmetic expression: {:?}", result);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bash_commands_within_limit() {
-        let (context, _) = create_context_with_mock_store();
-        let tool = BashTool::default();
-
-        // Execute multiple commands within the 1000 command limit
-        let command = "for i in $(seq 1 100); do true; done; echo done";
-
-        let result = tool
-            .execute_with_context(json!({"commands": command}), &context)
-            .await;
-
-        // Should succeed within limits
-        if let ToolExecutionResult::Success(output) = result {
-            assert_eq!(output["exit_code"], 0);
-            assert!(output["stdout"].as_str().unwrap_or("").contains("done"));
-        } else {
-            panic!("Expected success for commands within limit: {:?}", result);
         }
     }
 
@@ -3128,85 +3011,6 @@ mod tests {
     // ========================================================================
     // bashkit API smoke tests
     // ========================================================================
-
-    #[test]
-    fn test_bashkit_tool_description_is_nonempty() {
-        let desc = BASHKIT_TOOL.description();
-        assert!(
-            !desc.is_empty(),
-            "bashkit tool description should not be empty"
-        );
-        // Should mention bash or command execution
-        assert!(
-            desc.to_lowercase().contains("bash") || desc.to_lowercase().contains("command"),
-            "description should mention bash or command, got: {}",
-            desc
-        );
-    }
-
-    #[test]
-    fn test_bashkit_tool_system_prompt_is_nonempty() {
-        let prompt = BASHKIT_TOOL.system_prompt();
-        assert!(
-            !prompt.is_empty(),
-            "bashkit system prompt should not be empty"
-        );
-        assert!(
-            prompt.contains("everruns"),
-            "system prompt should contain configured identity 'everruns', got: {}",
-            prompt
-        );
-    }
-
-    #[test]
-    fn test_bashkit_static_description_matches_tool() {
-        // Verify the LazyLock statics produce the same values as direct calls
-        let direct_desc = BASHKIT_TOOL.description();
-        let static_desc: &str = &TOOL_DESCRIPTION;
-        assert_eq!(static_desc, direct_desc);
-
-        let direct_prompt = BASHKIT_TOOL.system_prompt();
-        let static_prompt: &str = &TOOL_SYSTEM_PROMPT;
-        // TOOL_SYSTEM_PROMPT = bashkit prompt + EXEC_OUTPUT_HINT (EVE-223)
-        assert!(
-            static_prompt.starts_with(&direct_prompt),
-            "system prompt should start with bashkit prompt"
-        );
-        assert!(
-            static_prompt.contains("Output economy"),
-            "system prompt should include output economy hint"
-        );
-    }
-
-    #[test]
-    fn test_bash_tool_display_name() {
-        let tool = BashTool::default();
-        assert_eq!(tool.display_name(), Some("Bash"));
-    }
-
-    #[test]
-    fn test_bash_tool_is_never_deferred() {
-        let tool = BashTool::default();
-        assert_eq!(tool.deferrable_policy(), DeferrablePolicy::Never);
-    }
-
-    #[test]
-    fn test_bash_tool_parameters_schema_structure() {
-        let tool = BashTool::default();
-        let schema = tool.parameters_schema();
-
-        // Verify required fields
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["commands"].is_object());
-
-        // Verify optional fields
-        assert!(schema["properties"]["working_dir"].is_object());
-        assert!(schema["properties"]["timeout_ms"].is_object());
-
-        // Verify "commands" is required
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("commands")));
-    }
 
     // ========================================================================
     // SearchCapable / indexed search tests

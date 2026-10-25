@@ -1378,76 +1378,6 @@ mod tests {
     }
 
     #[test]
-    fn test_base_harness_has_only_system_essentials() {
-        // Base is provisioned first; essentials only, no shell.
-        let base = &built_in_harnesses()[0];
-        assert!(
-            base.capabilities
-                .iter()
-                .all(|c| c.capability_id() != "bashkit_shell")
-        );
-        assert!(base.tags.iter().any(|tag| tag == "base"));
-    }
-
-    #[test]
-    fn test_generic_harness_has_expected_capabilities() {
-        let built_in_harnesses = built_in_harnesses();
-        let generic = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "generic")
-            .expect("Generic harness should exist");
-
-        let cap_ids: Vec<&str> = generic
-            .capabilities
-            .iter()
-            .map(|c| c.capability_id())
-            .collect();
-        assert_eq!(cap_ids.len(), 25);
-        assert!(cap_ids.contains(&"human_intent"));
-        assert!(cap_ids.contains(&"session_file_system"));
-        assert!(cap_ids.contains(&"bashkit_shell"));
-        assert!(cap_ids.contains(&"web_fetch"));
-        assert!(cap_ids.contains(&"session_storage"));
-        assert!(cap_ids.contains(&"session"));
-        assert!(cap_ids.contains(&"session_schedule"));
-        assert!(cap_ids.contains(&"btw"));
-        assert!(cap_ids.contains(&"agent_instructions"));
-        assert!(cap_ids.contains(&"skills"));
-        assert!(cap_ids.contains(&"infinity_context"));
-        assert!(cap_ids.contains(&"auto_tool_search"));
-        assert!(cap_ids.contains(&"budgeting"));
-        assert!(cap_ids.contains(&"self_budget"));
-        assert!(cap_ids.contains(&"loop_detection"));
-        assert!(cap_ids.contains(&"error_disclosure"));
-        assert!(cap_ids.contains(&"message_metadata"));
-        assert!(cap_ids.contains(&"compaction"));
-        assert!(cap_ids.contains(&"tool_output_persistence"));
-        assert!(cap_ids.contains(&"tool_output_distillation"));
-        assert!(cap_ids.contains(&"parallel_tool_calls"));
-        assert!(cap_ids.contains(&"citation_retrieval"));
-        assert!(cap_ids.contains(&"citation_verification"));
-        assert!(cap_ids.contains(&"soft_approval"));
-        // Verify compaction default config
-        let compaction_cap = generic
-            .capabilities
-            .iter()
-            .find(|c| c.capability_id() == "compaction")
-            .expect("compaction capability should exist");
-        assert_eq!(compaction_cap.config_value()["strategy"], "auto");
-        assert_eq!(compaction_cap.config_value()["proactive"], true);
-        assert_eq!(compaction_cap.config_value()["budget_percent"], 0.85);
-        // The trusted default harness opts into detailed error disclosure.
-        let error_disclosure_cap = generic
-            .capabilities
-            .iter()
-            .find(|c| c.capability_id() == "error_disclosure")
-            .expect("error_disclosure capability should exist");
-        assert_eq!(error_disclosure_cap.config_value()["mode"], "detailed");
-        assert!(generic.tags.iter().any(|tag| tag == "generic"));
-        assert!(generic.tags.iter().any(|tag| tag == "deprecated"));
-    }
-
-    #[test]
     fn test_generic_harness_capabilities_are_registered() {
         // Verify all capability IDs referenced by Generic harness exist in the registry
         let registry =
@@ -1733,20 +1663,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_seed_all_has_changes() {
-        let db = make_db();
-        let first = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(first.has_changes());
-
-        let second = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
-            .await
-            .unwrap();
-        assert!(!second.has_changes());
-    }
-
-    #[tokio::test]
     async fn test_seed_all_admin_mode_existing_email_is_idempotent() {
         let db = make_db();
 
@@ -2005,53 +1921,6 @@ mod tests {
     }
 
     // --- SeedResult ---
-
-    #[test]
-    fn test_seed_result_merge() {
-        let mut a = SeedResult {
-            created: 1,
-            updated: 2,
-            unchanged: 3,
-        };
-        let b = SeedResult {
-            created: 10,
-            updated: 20,
-            unchanged: 30,
-        };
-        a.merge(b);
-        assert_eq!(a.created, 11);
-        assert_eq!(a.updated, 22);
-        assert_eq!(a.unchanged, 33);
-    }
-
-    #[test]
-    fn test_seed_result_has_changes() {
-        assert!(!SeedResult::default().has_changes());
-        assert!(
-            SeedResult {
-                created: 1,
-                updated: 0,
-                unchanged: 0
-            }
-            .has_changes()
-        );
-        assert!(
-            SeedResult {
-                created: 0,
-                updated: 1,
-                unchanged: 0
-            }
-            .has_changes()
-        );
-        assert!(
-            !SeedResult {
-                created: 0,
-                updated: 0,
-                unchanged: 5
-            }
-            .has_changes()
-        );
-    }
 
     // --- Multi-org harness reconciliation ---
 

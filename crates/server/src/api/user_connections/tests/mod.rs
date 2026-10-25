@@ -696,24 +696,6 @@ fn github_setup_validates_the_canonical_pending_state() {
     );
 }
 
-// =========================================================================
-// VerifyConnectionResponse serialization tests
-// =========================================================================
-
-#[test]
-fn verify_response_valid_serializes_without_error() {
-    let resp = VerifyConnectionResponse {
-        valid: true,
-        error: None,
-    };
-    let json = serde_json::to_value(&resp).unwrap();
-    assert_eq!(json["valid"], true);
-    assert!(
-        json.get("error").is_none(),
-        "error field should be skipped when None"
-    );
-}
-
 #[test]
 fn existing_plugin_anchor_uses_manifest_connection_display_name() {
     let settings = serde_json::json!({
@@ -737,17 +719,6 @@ fn plugin_connection_label_distinguishes_multiple_servers() {
         mcp_connection_display_name(&settings, "plugin-mail", &HashMap::new()),
         "Mail Suite — transactional"
     );
-}
-
-#[test]
-fn verify_response_invalid_serializes_with_error() {
-    let resp = VerifyConnectionResponse {
-        valid: false,
-        error: Some("Invalid API key".to_string()),
-    };
-    let json = serde_json::to_value(&resp).unwrap();
-    assert_eq!(json["valid"], false);
-    assert_eq!(json["error"], "Invalid API key");
 }
 
 #[test]

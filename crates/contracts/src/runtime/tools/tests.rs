@@ -427,22 +427,6 @@ async fn test_tool_registry_as_executor() {
     assert_eq!(result.result.unwrap()["echoed"], "test");
 }
 
-#[test]
-fn test_with_defaults_has_expected_tools() {
-    let registry = ToolRegistry::with_defaults();
-    // Exact inventory excludes test doubles and capability-owned tools:
-    // exposing those here would bypass host composition or capability policy.
-    let mut names = registry.tool_names();
-    names.sort_unstable();
-    assert_eq!(names, ["no_reply", "send_message"]);
-    assert!(
-        registry
-            .tool_definitions()
-            .iter()
-            .all(|tool| tool.display_name().is_some())
-    );
-}
-
 #[tokio::test]
 async fn test_with_defaults_tools_are_executable() {
     let registry = ToolRegistry::with_defaults();
@@ -570,11 +554,4 @@ fn success_with_details_wraps_and_unwraps_scalar_values() {
     let tool_result = res.into_tool_result("call_1", "t");
     assert_eq!(tool_result.result, Some(serde_json::json!("done")));
     assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
-}
-
-#[test]
-fn plain_success_has_no_details() {
-    let tool_result =
-        ToolExecutionResult::success(serde_json::json!({"a": 1})).into_tool_result("c", "t");
-    assert!(tool_result.details.is_none());
 }

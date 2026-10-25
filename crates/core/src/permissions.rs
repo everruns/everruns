@@ -948,19 +948,6 @@ mod tests {
 
     // -- ResourceConfigResponse serialization --
 
-    #[test]
-    fn resource_config_response_serializes() {
-        let mut policies = HashMap::new();
-        policies.insert("harness.manage".to_string(), true);
-        policies.insert("harness.dangerous".to_string(), false);
-        let response = ResourceConfigResponse { policies };
-        let json = serde_json::to_value(&response).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({"policies":{"harness.manage":true,"harness.dangerous":false}})
-        );
-    }
-
     // -- Skill permission rules --
 
     #[test]

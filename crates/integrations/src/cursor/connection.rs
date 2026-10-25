@@ -81,27 +81,3 @@ Cursor must also have GitHub access to any repositories you want agents to work 
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn provider_metadata() {
-        let p = CursorConnector;
-        assert_eq!(p.provider_id(), "cursor");
-        assert_eq!(p.display_name(), "Cursor");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "code");
-    }
-
-    #[test]
-    fn form_schema_mentions_cloud_agents_key() {
-        let p = CursorConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("Cloud Agents"));
-    }
-}

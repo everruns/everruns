@@ -1017,39 +1017,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn registered_descriptor_declares_aws_credential_fields() {
-        let mut registry = DriverRegistry::new();
-        super::register_driver(&mut registry);
-
-        let descriptor = registry.descriptor(&DriverId::Bedrock).unwrap();
-        assert_eq!(descriptor.display_name, "AWS Bedrock");
-        let names: Vec<&str> = descriptor
-            .credential_schema
-            .fields
-            .iter()
-            .map(|f| f.name.as_str())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                "access_key_id",
-                "secret_access_key",
-                "region",
-                "session_token"
-            ]
-        );
-        // Region (defaulted to us-east-1 at parse time) and session token are
-        // optional; the key pair is required.
-        let required: Vec<bool> = descriptor
-            .credential_schema
-            .fields
-            .iter()
-            .map(|f| f.required)
-            .collect();
-        assert_eq!(required, [true, true, false, false]);
-    }
-
     use super::*;
 
     #[test]

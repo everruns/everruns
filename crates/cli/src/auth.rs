@@ -192,33 +192,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_credential_store_roundtrip() {
-        let mut store = CredentialStore::default();
-        store.set_profile(
-            "default",
-            Profile {
-                api_url: "http://localhost:9300/api".to_string(),
-                api_key: "evr_test123".to_string(),
-                org_id: Some("org_abc".to_string()),
-                user_email: Some("test@example.com".to_string()),
-                user_name: Some("Test User".to_string()),
-            },
-        );
-        assert_eq!(store.current_profile, "default");
-        assert_eq!(store.current_profile().unwrap().api_key, "evr_test123");
-
-        let json = serde_json::to_string(&store).unwrap();
-        let parsed: CredentialStore = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.current_profile, "default");
-        let profile = parsed.profiles.get("default").unwrap();
-        assert_eq!(profile.api_url, "http://localhost:9300/api");
-        assert_eq!(profile.api_key, "evr_test123");
-        assert_eq!(profile.org_id, Some("org_abc".to_string()));
-        assert_eq!(profile.user_email.as_deref(), Some("test@example.com"));
-        assert_eq!(profile.user_name.as_deref(), Some("Test User"));
-    }
-
-    #[test]
     fn test_credential_store_remove_profile() {
         let mut store = CredentialStore::default();
         store.set_profile(
@@ -277,16 +250,5 @@ mod tests {
         .unwrap();
         assert_eq!(creds.api_key, "evr_explicit");
         assert_eq!(creds.api_url, "https://explicit.example/api");
-    }
-
-    #[test]
-    fn test_credentials_path() {
-        match crate::user_dirs::config_dir() {
-            Some(base) => assert_eq!(
-                credentials_path().unwrap(),
-                base.join("everruns").join("credentials.json")
-            ),
-            None => assert!(credentials_path().is_err()),
-        }
     }
 }

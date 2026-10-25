@@ -1183,26 +1183,6 @@ async fn equivalent_search_requests_keep_cache_key_and_complete_tool_payload() {
     assert_eq!(bodies[0]["prompt_cache_key"], bodies[1]["prompt_cache_key"]);
 }
 
-#[test]
-fn file_part_serializes_to_input_file() {
-    let part = ResponsesContentPart::InputFile {
-        r#type: "input_file".to_string(),
-        input_file: ResponsesInputFile {
-            file_data: Some("data:application/pdf;base64,JVBERi0=".to_string()),
-            file_url: None,
-            filename: Some("report.pdf".to_string()),
-        },
-    };
-    let v = serde_json::to_value(&part).unwrap();
-    assert_eq!(v["type"], serde_json::json!("input_file"));
-    assert_eq!(
-        v["input_file"]["file_data"],
-        serde_json::json!("data:application/pdf;base64,JVBERi0=")
-    );
-    assert_eq!(v["input_file"]["filename"], serde_json::json!("report.pdf"));
-    assert!(v["input_file"].get("file_url").is_none());
-}
-
 #[tokio::test]
 async fn strict_optional_nulls_become_omitted_tool_arguments() {
     use wiremock::matchers::method;

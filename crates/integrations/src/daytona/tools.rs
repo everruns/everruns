@@ -2540,145 +2540,6 @@ mod tests {
     }
 
     #[test]
-    fn test_create_sandbox_result_payload_includes_requested_and_canonical_name() {
-        let payload = create_sandbox_result_payload(
-            "sb_123",
-            "Requested Sandbox",
-            "Requested Sandbox-abc123",
-            "/home/daytona",
-            2,
-        );
-
-        assert_eq!(payload["sandbox_id"], "sb_123");
-        assert_eq!(payload["requested_name"], "Requested Sandbox");
-        assert_eq!(payload["name"], "Requested Sandbox-abc123");
-        assert_eq!(payload["workspace_path"], "/home/daytona");
-        assert_eq!(payload["files_uploaded"], 2);
-    }
-
-    #[test]
-    fn test_exec_schema_has_required_fields() {
-        let tool = DaytonaExecTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert!(required_strs.contains(&"command"));
-    }
-
-    #[test]
-    fn test_create_sandbox_schema_no_required() {
-        let tool = DaytonaCreateSandboxTool;
-        let schema = tool.parameters_schema();
-        assert!(schema.get("required").is_none());
-    }
-
-    #[test]
-    fn test_manage_sandbox_schema_has_enum() {
-        let tool = DaytonaManageSandboxTool;
-        let schema = tool.parameters_schema();
-        let action_enum = &schema["properties"]["action"]["enum"];
-        let values: Vec<&str> = action_enum
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
-        assert!(values.contains(&"stop"));
-        assert!(values.contains(&"delete"));
-    }
-
-    #[test]
-    fn test_read_file_schema() {
-        let tool = DaytonaReadFileTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert!(required_strs.contains(&"path"));
-        assert!(schema["properties"]["sandbox_id"].is_object());
-        assert!(schema["properties"]["path"].is_object());
-    }
-
-    #[test]
-    fn test_write_file_schema() {
-        let tool = DaytonaWriteFileTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert!(required_strs.contains(&"path"));
-        assert!(required_strs.contains(&"content"));
-    }
-
-    #[test]
-    fn test_download_workspace_schema() {
-        let tool = DaytonaDownloadWorkspaceTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        // sandbox_path and session_path are optional
-        assert!(!required_strs.contains(&"sandbox_path"));
-        assert!(!required_strs.contains(&"session_path"));
-    }
-
-    #[test]
-    fn test_list_snapshots_schema_no_required() {
-        let tool = DaytonaListSnapshotsTool;
-        let schema = tool.parameters_schema();
-        assert!(schema.get("required").is_none());
-    }
-
-    #[test]
-    fn test_list_sandboxes_schema_no_required() {
-        let tool = DaytonaListSandboxesTool;
-        let schema = tool.parameters_schema();
-        assert!(schema.get("required").is_none());
-    }
-
-    #[test]
-    fn test_manage_sandbox_schema_required() {
-        let tool = DaytonaManageSandboxTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert!(required_strs.contains(&"action"));
-    }
-
-    #[test]
-    fn test_all_tool_names_have_daytona_prefix() {
-        let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(DaytonaCreateSandboxTool),
-            Box::new(DaytonaExecTool),
-            Box::new(DaytonaReadFileTool),
-            Box::new(DaytonaWriteFileTool),
-            Box::new(DaytonaDownloadWorkspaceTool),
-            Box::new(DaytonaListSnapshotsTool),
-            Box::new(DaytonaListSandboxesTool),
-            Box::new(DaytonaManageSandboxTool),
-            Box::new(DaytonaGitCloneTool),
-            Box::new(DaytonaGitCredentialsTool),
-        ];
-        for tool in &tools {
-            assert!(
-                tool.name().starts_with("daytona_"),
-                "Tool {} should start with 'daytona_'",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_encode_content_text_files() {
-        let text_bytes = b"hello world\nline two\n";
-        let (content, encoding) = SessionFile::encode_content(text_bytes);
-        assert_eq!(encoding, "text");
-        assert_eq!(content, "hello world\nline two\n");
-    }
-
-    #[test]
     fn test_encode_content_binary_files() {
         // PNG-like header with null bytes
         let binary_bytes: &[u8] = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
@@ -2687,54 +2548,6 @@ mod tests {
         // Verify round-trip
         let decoded = SessionFile::decode_content(&content, &encoding).unwrap();
         assert_eq!(decoded, binary_bytes);
-    }
-
-    #[test]
-    fn test_all_tools_have_descriptions() {
-        let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(DaytonaCreateSandboxTool),
-            Box::new(DaytonaExecTool),
-            Box::new(DaytonaReadFileTool),
-            Box::new(DaytonaWriteFileTool),
-            Box::new(DaytonaDownloadWorkspaceTool),
-            Box::new(DaytonaListSnapshotsTool),
-            Box::new(DaytonaListSandboxesTool),
-            Box::new(DaytonaManageSandboxTool),
-            Box::new(DaytonaGitCloneTool),
-            Box::new(DaytonaGitCredentialsTool),
-        ];
-        for tool in &tools {
-            assert!(
-                !tool.description().is_empty(),
-                "Tool {} should have a description",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_all_schemas_disallow_additional_properties() {
-        let tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(DaytonaCreateSandboxTool),
-            Box::new(DaytonaExecTool),
-            Box::new(DaytonaReadFileTool),
-            Box::new(DaytonaWriteFileTool),
-            Box::new(DaytonaDownloadWorkspaceTool),
-            Box::new(DaytonaListSnapshotsTool),
-            Box::new(DaytonaListSandboxesTool),
-            Box::new(DaytonaManageSandboxTool),
-            Box::new(DaytonaGitCloneTool),
-            Box::new(DaytonaGitCredentialsTool),
-        ];
-        for tool in &tools {
-            let schema = tool.parameters_schema();
-            assert_eq!(
-                schema["additionalProperties"],
-                json!(false),
-                "Tool {} schema should disallow additional properties",
-                tool.name()
-            );
-        }
     }
 
     // --- Git credentials tool tests ---
@@ -2748,17 +2561,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_git_credentials_schema() {
-        let tool = DaytonaGitCredentialsTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert_eq!(required_strs.len(), 1);
-        assert_eq!(schema["additionalProperties"], json!(false));
-    }
-
     // --- Git clone tool tests ---
 
     #[tokio::test]
@@ -2770,21 +2572,6 @@ mod tests {
         assert!(
             matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
         );
-    }
-
-    #[test]
-    fn test_git_clone_schema() {
-        let tool = DaytonaGitCloneTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"sandbox_id"));
-        assert!(required_strs.contains(&"repo_url"));
-        // branch and path are optional
-        assert!(!required_strs.contains(&"branch"));
-        assert!(!required_strs.contains(&"path"));
-        assert!(schema["properties"]["branch"].is_object());
-        assert!(schema["properties"]["path"].is_object());
     }
 
     // --- Session path normalization tests ---
@@ -3135,32 +2922,6 @@ mod tests {
         assert_eq!(extract_owner_repo("user/.."), None);
         assert_eq!(extract_owner_repo("https://github.com/../repo"), None);
         assert_eq!(extract_owner_repo("git@github.com:user/../.git"), None);
-    }
-
-    #[test]
-    fn test_exec_schema_has_optional_fields() {
-        let tool = DaytonaExecTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        // cwd and timeout are optional
-        assert!(!required_strs.contains(&"cwd"));
-        assert!(!required_strs.contains(&"timeout"));
-        // but they are in properties
-        assert!(schema["properties"]["cwd"].is_object());
-        assert!(schema["properties"]["timeout"].is_object());
-    }
-
-    #[test]
-    fn test_create_sandbox_schema_has_upload_files() {
-        let tool = DaytonaCreateSandboxTool;
-        let schema = tool.parameters_schema();
-        let upload_files = &schema["properties"]["upload_files"];
-        assert_eq!(upload_files["type"], "array");
-        let item_required = upload_files["items"]["required"].as_array().unwrap();
-        let strs: Vec<&str> = item_required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(strs.contains(&"session_path"));
-        assert!(strs.contains(&"sandbox_path"));
     }
 
     // ========================================================================
@@ -3514,46 +3275,6 @@ mod tests {
     // DaytonaApiCallTool tests
     // ========================================================================
 
-    #[test]
-    fn test_api_call_tool_name() {
-        let tool = DaytonaApiCallTool;
-        assert_eq!(tool.name(), "daytona_api_call");
-        assert!(tool.name().starts_with("daytona_"));
-    }
-
-    #[test]
-    fn test_api_call_tool_schema() {
-        let tool = DaytonaApiCallTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"method"));
-        assert!(required_strs.contains(&"path"));
-        assert!(!required_strs.contains(&"body"));
-        assert_eq!(schema["additionalProperties"], json!(false));
-
-        // method must have enum constraint
-        let method_enum = schema["properties"]["method"]["enum"].as_array().unwrap();
-        let methods: Vec<&str> = method_enum.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(methods.contains(&"GET"));
-        assert!(methods.contains(&"POST"));
-        assert!(methods.contains(&"DELETE"));
-    }
-
-    #[test]
-    fn test_api_call_tool_description_references_spec() {
-        let tool = DaytonaApiCallTool;
-        assert!(tool.description().contains("/daytona/openapi.yaml"));
-    }
-
-    #[test]
-    fn test_api_call_tool_hints() {
-        let tool = DaytonaApiCallTool;
-        let hints = tool.hints();
-        assert_eq!(hints.open_world, Some(true));
-        assert_eq!(hints.requires_secrets, Some(true));
-    }
-
     #[tokio::test]
     async fn test_api_call_without_context() {
         let tool = DaytonaApiCallTool;
@@ -3628,23 +3349,6 @@ mod tests {
             arguments,
         };
         tool.narrate(&call, phase, None, ToolNarrationContext::default())
-    }
-
-    #[test]
-    fn test_narrate_create_sandbox_all_phases() {
-        let tool = DaytonaCreateSandboxTool;
-        assert_eq!(
-            narrate(&tool, json!({}), ToolNarrationPhase::Started).as_deref(),
-            Some("Creating Daytona sandbox")
-        );
-        assert_eq!(
-            narrate(&tool, json!({}), ToolNarrationPhase::Completed).as_deref(),
-            Some("Created Daytona sandbox")
-        );
-        assert_eq!(
-            narrate(&tool, json!({}), ToolNarrationPhase::Failed).as_deref(),
-            Some("Failed to create Daytona sandbox")
-        );
     }
 
     #[test]

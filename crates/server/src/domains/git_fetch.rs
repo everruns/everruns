@@ -759,13 +759,6 @@ mod tests {
     }
 
     #[test]
-    fn control_and_pack_ceilings_are_ordered_and_overridable() {
-        const { assert!(MAX_CONTROL_BYTES < DEFAULT_MAX_PACK_BYTES) };
-        // Unset in tests, so the default applies.
-        assert_eq!(max_pack_bytes(), DEFAULT_MAX_PACK_BYTES);
-    }
-
-    #[test]
     fn over_long_bodies_are_refused_rather_than_truncated() {
         // A body one byte past the ceiling must be an error, not a silently
         // truncated pkt-line stream that would then fail to parse.

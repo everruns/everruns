@@ -316,14 +316,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_required_str_present() {
-        let args = serde_json::json!({"name": "test_value"});
-        let result = required_str(&args, "name");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test_value");
-    }
-
-    #[test]
     fn test_required_str_missing() {
         let args = serde_json::json!({"other": "value"});
         let result = required_str(&args, "name");
@@ -342,21 +334,6 @@ mod tests {
         let args = serde_json::json!({"name": 42});
         let result = required_str(&args, "name");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_sprite_info_without_url() {
-        let json = r#"{"name": "headless", "status": "stopped"}"#;
-        let info: SpriteInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.url, None);
-    }
-
-    #[test]
-    fn test_checkpoint_info_without_timestamp() {
-        let json = r#"{"id": "cp_xyz"}"#;
-        let info: CheckpointInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.id, "cp_xyz");
-        assert_eq!(info.created_at, None);
     }
 
     #[test]

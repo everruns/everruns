@@ -232,13 +232,6 @@ fn test_has_initial_files_globs_without_strings() {
 }
 
 #[test]
-fn test_has_initial_files_globs_toml() {
-    let content = "name = \"test\"\ninitial_files = [\".\", \".agents/*\"]\n";
-    let agent = parse_agent_file_as_json(Path::new("agent.toml"), content).unwrap();
-    assert!(initial_files_has_globs(&agent));
-}
-
-#[test]
 fn test_expand_initial_files_globs_directory() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("hello.txt"), "world").unwrap();

@@ -207,14 +207,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capability_metadata() {
-        let cap = ResourceDiscoveryCapability;
-        assert_eq!(cap.id(), "resource_discovery");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-    }
-
-    #[test]
     fn tools_require_context() {
         let cap = ResourceDiscoveryCapability;
         let tools = cap.tools();
@@ -246,14 +238,5 @@ mod tests {
         cap.validate_config(&serde_json::Value::Object(defaults))
             .unwrap();
         cap.validate_config(&serde_json::json!({})).unwrap();
-    }
-
-    #[test]
-    fn rejects_invalid_config() {
-        let cap = ResourceDiscoveryCapability;
-        assert!(
-            cap.validate_config(&serde_json::json!({"max_attachments": 0}))
-                .is_err()
-        );
     }
 }

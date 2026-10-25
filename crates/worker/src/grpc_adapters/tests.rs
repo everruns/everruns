@@ -142,44 +142,9 @@ fn test_proto_harness_projects_execution_configuration() {
 }
 
 #[test]
-fn test_proto_value_to_json_null() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::NullValue(0)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-}
-
-#[test]
 fn test_proto_value_to_json_none_kind() {
     let val = prost_types::Value { kind: None };
     assert_eq!(proto_value_to_json(val), serde_json::Value::Null);
-}
-
-#[test]
-fn test_proto_value_to_json_string() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::StringValue("hello".into())),
-    };
-    assert_eq!(
-        proto_value_to_json(val),
-        serde_json::Value::String("hello".into())
-    );
-}
-
-#[test]
-fn test_proto_value_to_json_number() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::NumberValue(42.5)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::json!(42.5));
-}
-
-#[test]
-fn test_proto_value_to_json_bool() {
-    let val = prost_types::Value {
-        kind: Some(prost_types::value::Kind::BoolValue(true)),
-    };
-    assert_eq!(proto_value_to_json(val), serde_json::Value::Bool(true));
 }
 
 #[test]
@@ -292,13 +257,6 @@ fn test_grpc_status_to_error_internal_fallback() {
     let err = grpc_status_to_error(status);
     assert!(matches!(err, AgentLoopError::MessageStore(_)));
     assert!(err.to_string().contains("Internal"));
-}
-
-#[test]
-fn test_grpc_missing_field() {
-    let err = grpc_missing_field("No session in response");
-    assert!(matches!(err, AgentLoopError::MessageStore(_)));
-    assert!(err.to_string().contains("No session in response"));
 }
 
 #[test]

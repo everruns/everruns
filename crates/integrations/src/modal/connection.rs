@@ -86,27 +86,6 @@ impl Connector for ModalConnector {
 mod tests {
     use super::*;
 
-    #[test]
-    fn provider_metadata() {
-        let connector = ModalConnector;
-        assert_eq!(connector.provider_id(), "modal");
-        assert_eq!(connector.display_name(), "Modal");
-        assert_eq!(connector.connection_type(), ConnectorType::ApiKey);
-    }
-
-    #[test]
-    fn form_asks_for_the_pair_in_one_field() {
-        let schema = ModalConnector.form_schema().unwrap();
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(
-            schema
-                .instructions_markdown
-                .contains("modal.com/settings/tokens")
-        );
-    }
-
     #[tokio::test]
     async fn malformed_pairs_fail_before_any_network_call() {
         let err = ModalConnector

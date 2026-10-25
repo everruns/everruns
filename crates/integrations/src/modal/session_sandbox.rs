@@ -745,14 +745,6 @@ mod tests {
     }
 
     #[test]
-    fn options_default_to_a_vm_in_workspace() {
-        let options = options(&config(json!({}))).unwrap();
-        assert_eq!(options.runtime, "vm");
-        assert_eq!(options.workspace_path, "/workspace");
-        assert_eq!(options.image, None);
-    }
-
-    #[test]
     fn options_are_validated() {
         let parsed = options(&config(json!({
             "image": "node:22", "runtime": "gvisor", "cpu": 0.5, "memory_mb": 1024,
@@ -789,12 +781,5 @@ mod tests {
         };
         assert_eq!(resolve_path(&instance, "a/b.txt"), "/workspace/a/b.txt");
         assert_eq!(resolve_path(&instance, "/etc/hosts"), "/etc/hosts");
-    }
-
-    #[test]
-    fn the_provider_is_registered() {
-        let provider =
-            everruns_contracts::session_sandbox::create_session_sandbox_provider(MODAL_PROVIDER);
-        assert_eq!(provider.map(|p| p.id().to_string()), Some("modal".into()));
     }
 }

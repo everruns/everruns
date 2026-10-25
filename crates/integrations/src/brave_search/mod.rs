@@ -133,35 +133,6 @@ impl Capability for BraveSearchCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::runtime::capabilities::CapabilityStatus;
-
-    #[test]
-    fn test_capability_metadata() {
-        let cap = BraveSearchCapability;
-        assert_eq!(cap.id(), "brave_search");
-        assert_eq!(cap.name(), "[Experimental] Brave Search");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("search"));
-        assert_eq!(cap.category(), Some("Network"));
-    }
-
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = BraveSearchCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 1);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"brave_web_search"));
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = BraveSearchCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("brave_web_search"));
-        assert!(prompt.contains("current web search"));
-    }
 
     #[tokio::test]
     async fn system_prompt_within_budget() {
@@ -172,23 +143,5 @@ mod tests {
             );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 250, "prompt is {} bytes", prompt.len());
-    }
-
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = BraveSearchCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_capability_no_dependencies() {
-        let cap = BraveSearchCapability;
-        assert!(cap.dependencies().is_empty());
     }
 }

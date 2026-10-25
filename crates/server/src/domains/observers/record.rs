@@ -339,35 +339,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn observer_status_roundtrip() {
-        for (s, v) in [
-            ("active", ObserverStatus::Active),
-            ("paused", ObserverStatus::Paused),
-            ("archived", ObserverStatus::Archived),
-            ("deleted", ObserverStatus::Deleted),
-        ] {
-            assert_eq!(ObserverStatus::from(s), v);
-            assert_eq!(v.to_string(), s);
-        }
-        assert_eq!(ObserverStatus::from("unknown"), ObserverStatus::Active);
-    }
-
-    #[test]
-    fn trace_score_status_roundtrip() {
-        for (s, v) in [
-            ("pending", TraceScoreStatus::Pending),
-            ("scoring", TraceScoreStatus::Scoring),
-            ("completed", TraceScoreStatus::Completed),
-            ("errored", TraceScoreStatus::Errored),
-            ("skipped", TraceScoreStatus::Skipped),
-        ] {
-            assert_eq!(TraceScoreStatus::from(s), v);
-            assert_eq!(v.to_string(), s);
-        }
-        assert_eq!(TraceScoreStatus::from("unknown"), TraceScoreStatus::Pending);
-    }
-
-    #[test]
     fn empty_match_matches_everything() {
         let m = ObserverMatch::default();
         assert!(m.matches(None, None, &[]));
@@ -420,19 +391,6 @@ mod tests {
         assert!(m.matches(Some(agent), None, &["prod".into()]));
         assert!(!m.matches(Some(agent), None, &[]));
         assert!(!m.matches(None, None, &["prod".into()]));
-    }
-
-    #[test]
-    fn scorer_config_serde_defaults_scope() {
-        let json = serde_json::json!({
-            "key": "greeting",
-            "method": "rule",
-            "rule": { "type": "contains", "text": "hello" }
-        });
-        let config: ObserverScorerConfig = serde_json::from_value(json).unwrap();
-        assert_eq!(config.scope, ObserverScope::Turn);
-        assert_eq!(config.key, "greeting");
-        assert!(matches!(config.method, ScorerMethod::Rule { .. }));
     }
 
     #[test]

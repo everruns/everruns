@@ -381,13 +381,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn id_and_name() {
-        let cap = KnowledgeBaseCapability;
-        assert_eq!(cap.id(), "knowledge_base");
-        assert_eq!(cap.name(), "Knowledge Base");
-    }
-
-    #[test]
     fn validate_accepts_empty_config() {
         let cap = KnowledgeBaseCapability;
         assert!(cap.validate_config(&json!({})).is_ok());

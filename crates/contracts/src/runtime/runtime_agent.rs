@@ -1024,25 +1024,6 @@ mod tests {
     }
 
     #[test]
-    fn prompt_cache_config_is_preserved_for_driver_resolution() {
-        for model in ["gpt-5.4", "gemini-3-pro", "custom-model"] {
-            for enabled in [false, true] {
-                let config = PromptCacheConfig {
-                    retention: Default::default(),
-                    enabled,
-                    strategy: crate::runtime::driver_registry::PromptCacheStrategy::Auto,
-                    gemini_cached_content: Some("cachedContents/review-fixture".into()),
-                };
-                let agent = RuntimeAgentBuilder::new()
-                    .model(model)
-                    .prompt_cache(config.clone())
-                    .build();
-                assert_eq!(agent.prompt_cache, Some(config));
-            }
-        }
-    }
-
-    #[test]
     fn deduplication_keeps_complete_last_definition_and_survivor_order() {
         let mut first = echo_definition();
         if let ToolDefinition::Builtin(t) = &mut first {

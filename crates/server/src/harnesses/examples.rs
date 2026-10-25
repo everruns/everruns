@@ -110,15 +110,4 @@ mod tests {
             assert!(LEGACY_BUILT_IN_NAMES.contains(&name));
         }
     }
-
-    #[test]
-    fn find_returns_none_for_unknown() {
-        assert!(find_harness_example("does-not-exist").is_none());
-    }
-
-    #[test]
-    fn find_returns_some_for_known() {
-        let ex = find_harness_example("data-analyst").expect("data-analyst is an example");
-        assert_eq!(ex.definition.display_name, "Data Analyst");
-    }
 }

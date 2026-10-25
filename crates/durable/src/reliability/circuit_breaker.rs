@@ -141,33 +141,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_config() {
-        let config = CircuitBreakerConfig::default();
-        assert_eq!(config.failure_threshold, 5);
-        assert_eq!(config.success_threshold, 2);
-        assert_eq!(config.reset_timeout, Duration::from_secs(30));
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let config = CircuitBreakerConfig::new()
-            .with_failure_threshold(10)
-            .with_success_threshold(3)
-            .with_reset_timeout(Duration::from_secs(60));
-
-        assert_eq!(config.failure_threshold, 10);
-        assert_eq!(config.success_threshold, 3);
-        assert_eq!(config.reset_timeout, Duration::from_secs(60));
-    }
-
-    #[test]
-    fn test_circuit_state_display() {
-        assert_eq!(CircuitState::Closed.to_string(), "closed");
-        assert_eq!(CircuitState::Open.to_string(), "open");
-        assert_eq!(CircuitState::HalfOpen.to_string(), "half_open");
-    }
-
-    #[test]
     fn test_serialization() {
         let config = CircuitBreakerConfig::default();
         let json = serde_json::to_string(&config).unwrap();

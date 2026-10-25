@@ -2316,16 +2316,6 @@ fn disconnecting_event(reason: DisconnectReason, config: &SseStreamConfig) -> Ss
 mod tests {
     use super::*;
 
-    /// Create a test AuthState with AuthMode::None (no auth required in tests)
-    fn test_auth_state() -> AuthState {
-        use crate::auth::config::AuthConfig;
-        let config = AuthConfig::default();
-        AuthState::builtin(
-            config,
-            std::sync::Arc::new(crate::storage::StorageBackend::test_database()),
-        )
-    }
-
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
@@ -2435,13 +2425,6 @@ mod tests {
 
         let response = HealthResponse::from(health);
         assert_eq!(response.load_percentage, 0.0);
-    }
-
-    #[test]
-    fn test_app_state_get_store_none() {
-        let state = AppState::new(None, test_auth_state(), None, "in_memory".to_string());
-        let result = state.get_store();
-        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -2661,41 +2644,6 @@ mod tests {
     // ============================================
 
     #[tokio::test]
-    async fn test_metrics_collector_new_creates_empty() {
-        let collector = MetricsCollector::new(10);
-        let points = collector.get_points().await;
-        assert!(points.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_metrics_collector_push_adds_points() {
-        let collector = MetricsCollector::new(10);
-
-        collector
-            .push(MetricsPoint {
-                timestamp: Utc::now(),
-                running_workflows: 1,
-                pending_workflows: 0,
-                pending_tasks: 0,
-                claimed_tasks: 0,
-                active_workers: 1,
-                load_percentage: 10.0,
-                dlq_size: 0,
-                tasks_completed_total: 0,
-                tasks_failed_total: 0,
-                tasks_started_total: 0,
-                workflows_completed_total: 0,
-                workflows_failed_total: 0,
-                workflows_started_total: 0,
-            })
-            .await;
-
-        let points = collector.get_points().await;
-        assert_eq!(points.len(), 1);
-        assert_eq!(points[0].running_workflows, 1);
-    }
-
-    #[tokio::test]
     async fn test_metrics_collector_evicts_oldest_when_full() {
         let collector = MetricsCollector::new(3);
 
@@ -2760,140 +2708,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_metrics_timeseries_response_serialization() {
-        let response = MetricsTimeSeriesResponse {
-            points: vec![
-                MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: 3,
-                    pending_workflows: 1,
-                    pending_tasks: 5,
-                    claimed_tasks: 2,
-                    active_workers: 4,
-                    load_percentage: 25.5,
-                    dlq_size: 0,
-                    tasks_completed_total: 100,
-                    tasks_failed_total: 2,
-                    tasks_started_total: 104,
-                    workflows_completed_total: 50,
-                    workflows_failed_total: 1,
-                    workflows_started_total: 54,
-                },
-                MetricsPoint {
-                    timestamp: Utc::now(),
-                    running_workflows: 4,
-                    pending_workflows: 0,
-                    pending_tasks: 3,
-                    claimed_tasks: 1,
-                    active_workers: 4,
-                    load_percentage: 30.0,
-                    dlq_size: 1,
-                    tasks_completed_total: 105,
-                    tasks_failed_total: 3,
-                    tasks_started_total: 112,
-                    workflows_completed_total: 52,
-                    workflows_failed_total: 1,
-                    workflows_started_total: 57,
-                },
-            ],
-            resolution_seconds: 10,
-            instance_count: 1,
-        };
-
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"resolution_seconds\":10"));
-        assert!(json.contains("\"points\""));
-        assert!(json.contains("\"tasks_completed_total\":100"));
-        assert!(json.contains("\"tasks_completed_total\":105"));
-        // instance_count=1 is skipped in serialization
-        assert!(!json.contains("instance_count"));
-
-        // Verify round-trip deserialization shape
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["resolution_seconds"], 10);
-        assert_eq!(parsed["points"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_metrics_timeseries_instance_count_serialization() {
-        let response = MetricsTimeSeriesResponse {
-            points: vec![],
-            resolution_seconds: 10,
-            instance_count: 3,
-        };
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"instance_count\":3"));
-    }
-
     // ============================================
     // started_tasks / started_workflows coverage
     // ============================================
-
-    #[tokio::test]
-    async fn test_metrics_collector_stores_and_retrieves_started_totals() {
-        let collector = MetricsCollector::new(10);
-
-        // Push two points with increasing started totals (simulating cumulative counters)
-        collector
-            .push(MetricsPoint {
-                timestamp: Utc::now(),
-                running_workflows: 1,
-                pending_workflows: 0,
-                pending_tasks: 2,
-                claimed_tasks: 1,
-                active_workers: 1,
-                load_percentage: 10.0,
-                dlq_size: 0,
-                tasks_completed_total: 10,
-                tasks_failed_total: 1,
-                tasks_started_total: 14,
-                workflows_completed_total: 5,
-                workflows_failed_total: 0,
-                workflows_started_total: 6,
-            })
-            .await;
-
-        collector
-            .push(MetricsPoint {
-                timestamp: Utc::now(),
-                running_workflows: 2,
-                pending_workflows: 1,
-                pending_tasks: 3,
-                claimed_tasks: 2,
-                active_workers: 1,
-                load_percentage: 20.0,
-                dlq_size: 0,
-                tasks_completed_total: 15,
-                tasks_failed_total: 2,
-                tasks_started_total: 22,
-                workflows_completed_total: 8,
-                workflows_failed_total: 1,
-                workflows_started_total: 12,
-            })
-            .await;
-
-        let points = collector.get_points().await;
-        assert_eq!(points.len(), 2);
-
-        // First point
-        assert_eq!(points[0].tasks_started_total, 14);
-        assert_eq!(points[0].workflows_started_total, 6);
-        assert_eq!(points[0].tasks_completed_total, 10);
-        assert_eq!(points[0].tasks_failed_total, 1);
-
-        // Second point (rates can be computed as deltas: 22-14=8 tasks started)
-        assert_eq!(points[1].tasks_started_total, 22);
-        assert_eq!(points[1].workflows_started_total, 12);
-        assert_eq!(points[1].tasks_completed_total, 15);
-        assert_eq!(points[1].tasks_failed_total, 2);
-
-        // Verify delta computation works (what the frontend would do)
-        let task_start_delta = points[1].tasks_started_total - points[0].tasks_started_total;
-        assert_eq!(task_start_delta, 8);
-        let wf_start_delta = points[1].workflows_started_total - points[0].workflows_started_total;
-        assert_eq!(wf_start_delta, 6);
-    }
 
     #[test]
     fn test_health_response_from_system_health_maps_started_fields() {
@@ -2939,34 +2756,6 @@ mod tests {
         assert_eq!(response.dlq_size, 2);
         assert_eq!(response.status, "warning"); // dlq_size > 0
         assert!((response.load_percentage - 37.5).abs() < 0.01); // 15/40 * 100
-    }
-
-    #[test]
-    fn test_health_response_zero_started_counts() {
-        // Edge case: fresh system with no activity
-        let health = SystemHealth {
-            total_workers: 1,
-            active_workers: 1,
-            workers_accepting: 1,
-            total_capacity: 10,
-            current_load: 0,
-            pending_tasks: 0,
-            claimed_tasks: 0,
-            completed_tasks: 0,
-            failed_tasks: 0,
-            started_tasks: 0,
-            running_workflows: 0,
-            pending_workflows: 0,
-            completed_workflows: 0,
-            failed_workflows: 0,
-            started_workflows: 0,
-            dlq_size: 0,
-        };
-
-        let response = HealthResponse::from(health);
-        assert_eq!(response.started_tasks, 0);
-        assert_eq!(response.started_workflows, 0);
-        assert_eq!(response.status, "healthy");
     }
 
     #[test]

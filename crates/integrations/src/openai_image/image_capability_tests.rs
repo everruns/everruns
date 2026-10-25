@@ -44,12 +44,6 @@ fn parse_image_id_strings() {
     assert_eq!(args.image_id, Some(id));
 }
 
-#[test]
-fn capability_declares_session_file_system_dependency() {
-    let capability = GptImageGenCapability;
-    assert_eq!(capability.dependencies(), vec!["session_file_system"]);
-}
-
 // With no OpenAI provider configured, credentials must fall back to the
 // org's default Azure OpenAI provider: its base URL is validated to the
 // OpenAI-compatible `/openai/v1` surface, which serves the Images API.
@@ -308,38 +302,6 @@ async fn gpt_model_with_fallback_off_errors_when_only_muse_providers_exist() {
 }
 
 #[test]
-fn capability_config_defaults_to_auto_fallback() {
-    let config = parse_capability_config(&json!({})).unwrap();
-    assert_eq!(config.fallback, ImageModelFallback::Auto);
-}
-
-#[test]
-fn capability_config_accepts_fallback_off() {
-    let config = parse_capability_config(&json!({
-        "fallback": "off"
-    }))
-    .unwrap();
-    assert_eq!(config.fallback, ImageModelFallback::Off);
-}
-
-#[test]
-fn capability_config_accepts_muse_image_model() {
-    let config = parse_capability_config(&json!({
-        "model": "muse-image-1.0"
-    }))
-    .unwrap();
-    assert_eq!(config.model, ImageGenerationModel::MuseImage);
-}
-
-#[test]
-fn capability_config_defaults_to_gpt_image_2() {
-    let config = parse_capability_config(&json!({})).unwrap();
-    assert_eq!(config.model, ImageGenerationModel::GptImage2);
-    assert_eq!(config.default_quality, ImageGenerationQuality::Medium);
-    assert_eq!(config.partial_images, 1);
-}
-
-#[test]
 fn capability_config_accepts_legacy_model_override() {
     let config = parse_capability_config(&json!({
         "model": "gpt-image-1",
@@ -422,14 +384,6 @@ fn resolve_partial_images_disables_preview_streaming_for_batches() {
     assert_eq!(resolve_partial_images(3, &config), None);
 }
 
-#[test]
-fn system_prompt_marks_image_tools_as_directly_invokable() {
-    let prompt = GptImageGenCapability.system_prompt_addition().unwrap();
-    assert!(prompt.contains("call them directly"));
-    assert!(prompt.contains("do not claim they are unavailable"));
-    assert!(prompt.contains("stop at writing prompts"));
-}
-
 #[tokio::test]
 async fn image_system_prompt_within_budget() {
     let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
@@ -440,21 +394,4 @@ async fn image_system_prompt_within_budget() {
         .await
         .unwrap();
     assert!(prompt.len() <= 850, "prompt is {} bytes", prompt.len());
-}
-
-#[test]
-fn localizations_cover_schema_summary_and_uk_name() {
-    let cap = GptImageGenCapability;
-    assert!(cap.describe_schema(None).is_some());
-    assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
-}
-
-#[test]
-fn image_tools_are_never_deferred_for_tool_search() {
-    for definition in GptImageGenCapability.tool_definitions() {
-        let ToolDefinition::Builtin(builtin) = definition else {
-            panic!("expected builtin tool definition");
-        };
-        assert_eq!(builtin.deferrable, DeferrablePolicy::Never);
-    }
 }

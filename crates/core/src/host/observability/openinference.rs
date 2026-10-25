@@ -302,15 +302,4 @@ mod tests {
             Some(r#"{"ok":true}"#)
         );
     }
-
-    #[test]
-    fn providers_map_to_openinference_vocabulary() {
-        assert_eq!(provider_and_system("openai"), ("openai", Some("openai")));
-        assert_eq!(
-            provider_and_system("azure_openai"),
-            ("azure", Some("openai"))
-        );
-        assert_eq!(provider_and_system("gemini"), ("google", Some("vertexai")));
-        assert_eq!(provider_and_system("openrouter"), ("openrouter", None));
-    }
 }

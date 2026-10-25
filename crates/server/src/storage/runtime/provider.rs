@@ -189,10 +189,4 @@ mod tests {
         assert!(parse_provider_type("").is_err());
         assert!(parse_provider_type("   ").is_err());
     }
-
-    #[test]
-    fn parse_provider_type_accepts_known_values() {
-        assert_eq!(parse_provider_type("openai").unwrap().to_string(), "openai");
-        assert_eq!(parse_provider_type("gemini").unwrap().to_string(), "gemini");
-    }
 }

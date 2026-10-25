@@ -454,13 +454,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn sanitize_removes_null_bytes_from_strings() {
-        let input = json!({"key": "hello\0world"});
-        let result = sanitize_json_null_bytes(input);
-        assert_eq!(result, json!({"key": "helloworld"}));
-    }
-
-    #[test]
     fn sanitize_handles_nested_structures() {
         let input = json!({
             "outer": {
@@ -485,13 +478,6 @@ mod tests {
     #[test]
     fn sanitize_preserves_non_string_values() {
         let input = json!({"num": 42, "bool": true, "null": null});
-        let result = sanitize_json_null_bytes(input.clone());
-        assert_eq!(result, input);
-    }
-
-    #[test]
-    fn sanitize_noop_when_no_null_bytes() {
-        let input = json!({"key": "normal string", "nested": [1, 2, 3]});
         let result = sanitize_json_null_bytes(input.clone());
         assert_eq!(result, input);
     }

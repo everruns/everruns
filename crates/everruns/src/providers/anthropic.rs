@@ -170,13 +170,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_is_environment_free_and_sets_no_base_url() {
-        let (api_key, base_url) = Anthropic::new("sk-ant-explicit").into_parts();
-        assert_eq!(api_key, "sk-ant-explicit");
-        assert_eq!(base_url, None);
-    }
-
-    #[test]
     fn from_lookup_reads_the_key_and_ignores_the_sdk_base_url() {
         let (api_key, base_url) = Anthropic::from_lookup(|name| match name {
             "ANTHROPIC_API_KEY" => Some("sk-ant-env".to_string()),

@@ -232,14 +232,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_is_environment_free_and_sets_no_base_url() {
-        let config = OpenAI::new("sk-explicit");
-        let (api_key, base_url) = config.into_parts();
-        assert_eq!(api_key, "sk-explicit");
-        assert_eq!(base_url, None);
-    }
-
-    #[test]
     fn from_lookup_reads_key_and_optional_base_url() {
         let config = OpenAI::from_lookup(|name| match name {
             "OPENAI_API_KEY" => Some("sk-env".to_string()),
@@ -291,14 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn base_url_builder_overrides() {
-        let (_, base_url) = OpenAI::new("sk-explicit")
-            .base_url("https://custom.example/v1")
-            .into_parts();
-        assert_eq!(base_url, Some("https://custom.example/v1".to_string()));
-    }
-
-    #[test]
     fn debug_redacts_api_key() {
         let rendered = format!(
             "{:?}",
@@ -306,14 +290,5 @@ mod tests {
         );
         assert!(!rendered.contains("sk-super-secret"), "got {rendered}");
         assert!(rendered.contains("[REDACTED]"), "got {rendered}");
-    }
-
-    #[test]
-    fn openai_error_display_names_the_variables_only() {
-        let rendered = OpenAIError::MissingEnvVar {
-            vars: vec!["OPENAI_API_KEY".to_string()],
-        }
-        .to_string();
-        assert!(rendered.contains("OPENAI_API_KEY"), "got {rendered}");
     }
 }

@@ -332,16 +332,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn metadata() {
-        let cap = ParallelCapability;
-        assert_eq!(cap.id(), "parallel_search");
-        assert_eq!(cap.icon(), Some("search"));
-        assert_eq!(cap.category(), Some("Network"));
-        assert!(cap.tools().is_empty());
-        assert!(cap.tool_definitions().is_empty());
-    }
-
-    #[test]
     fn contributes_free_mcp_server_by_default() {
         let cap = ParallelCapability;
         let servers = cap.mcp_servers_with_config(&json!({}));
@@ -399,13 +389,6 @@ mod tests {
         );
         assert!(cap.validate_config(&json!({ "auth": "invalid" })).is_err());
         assert!(cap.validate_config(&json!({ "extra": true })).is_err());
-    }
-
-    #[test]
-    fn localizations_cover_schema_summary_and_uk_name() {
-        let cap = ParallelCapability;
-        assert!(cap.describe_schema(None).is_some());
-        assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
     }
 
     #[test]

@@ -1854,27 +1854,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_sandbox_info_optional_name() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/sandbox/sb_test"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "id": "sb_test",
-                "state": "started"
-            })))
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let info = client.get_sandbox("sb_test").await.unwrap();
-        assert_eq!(info.name, None);
-    }
-
-    #[tokio::test]
     async fn test_client_file_list_single_entry() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))

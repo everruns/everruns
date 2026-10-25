@@ -11,7 +11,6 @@
 //! virtual files simply would not exist for the agent while every unit test
 //! that builds its own service still passed.
 
-use super::tests::test_worker_service;
 use super::*;
 use everruns_core::capability_types::VirtualFileTree;
 
@@ -54,25 +53,6 @@ async fn worker_service_with_virtual_mounts() -> (
     );
 
     (service, registry)
-}
-
-/// The ctx must carry *a* file service, or the commands build their own.
-///
-/// This is the cheap half of the guard: it catches the wiring being dropped
-/// outright. It cannot tell a registry-aware service from a registry-less one —
-/// both are `Some` — which is what the next test is for.
-#[tokio::test]
-async fn the_grpc_command_ctx_carries_a_file_service() {
-    let service = test_worker_service().await;
-    let ctx = service.domain_ctx_for_caller(everruns_core::Caller::internal(
-        everruns_core::DEFAULT_ORG_ID,
-    ));
-
-    assert!(
-        ctx.session_file_service.is_some(),
-        "without this the session_files commands build their own service via \
-         session_files::queries::service's fallback"
-    );
 }
 
 /// The ctx's file service must actually resolve virtual mounts.

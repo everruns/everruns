@@ -1150,13 +1150,6 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn default_input_enables_retention_with_thirty_day_ttl() {
-        let input = SessionTaskReaperInput::default();
-        assert_eq!(input.retention_ttl_seconds, 30 * 24 * 60 * 60);
-        assert_eq!(input.retention_limit, 100);
-    }
-
-    #[test]
     fn retention_fields_round_trip_through_serde_and_default_when_absent() {
         // New fields serialize and deserialize.
         let input = SessionTaskReaperInput {

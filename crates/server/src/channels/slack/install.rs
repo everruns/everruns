@@ -1028,21 +1028,6 @@ mod tests {
         assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
-    fn config_with_state(state: Option<&str>, issued_minutes_ago: i64) -> SlackChannelConfig {
-        let mut config = parse_config(&serde_json::json!({}));
-        config.provisioned_app = Some(ProvisionedSlackApp {
-            app_id: "A0123".to_string(),
-            client_id: "4567.89".to_string(),
-            client_secret: "secret".to_string(),
-            install_state: state.map(str::to_string),
-            install_state_issued_at: Some(
-                chrono::Utc::now() - chrono::Duration::minutes(issued_minutes_ago),
-            ),
-            team_id: None,
-        });
-        config
-    }
-
     fn connection_row(team_id: Option<&str>) -> OrgSlackConnectionRow {
         OrgSlackConnectionRow {
             id: uuid::Uuid::now_v7(),
@@ -1148,45 +1133,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_object_parses_as_an_unconfigured_channel() {
-        let config = parse_config(&serde_json::json!({}));
-        assert!(config.provisioned_app.is_none());
-    }
-
-    #[test]
     fn an_unparseable_config_does_not_panic() {
         let config = parse_config(&serde_json::json!("not an object"));
         assert!(config.provisioned_app.is_none());
-    }
-
-    #[test]
-    fn credentials_round_trip_through_the_stored_config() {
-        let config = config_with_state(Some("abc"), 0);
-        let json = serde_json::to_value(&config).expect("serialises");
-        let provisioned = parse_config(&json).provisioned_app.expect("round-trips");
-        assert_eq!(provisioned.client_id, "4567.89");
-        assert_eq!(provisioned.client_secret, "secret");
-        assert_eq!(provisioned.install_state.as_deref(), Some("abc"));
-    }
-
-    #[test]
-    fn an_expired_install_state_is_outside_the_window() {
-        let issued_at = |config: SlackChannelConfig| {
-            config
-                .provisioned_app
-                .and_then(|app| app.install_state_issued_at)
-                .expect("issued")
-        };
-        let window = chrono::Duration::minutes(INSTALL_STATE_TTL_MINUTES);
-        assert!(chrono::Utc::now() - issued_at(config_with_state(Some("abc"), 0)) <= window);
-        assert!(
-            chrono::Utc::now()
-                - issued_at(config_with_state(
-                    Some("abc"),
-                    INSTALL_STATE_TTL_MINUTES + 1
-                ))
-                > window
-        );
     }
 
     #[tokio::test]

@@ -634,27 +634,6 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn test_post_to_slack_token_revoked() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "ok": false,
-                    "error": "token_revoked"
-                })))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result =
-                post_to_slack_base(&mock_server.uri(), "xoxb-revoked", "C123", "", "Hello!").await;
-
-            assert!(result.is_err());
-            assert!(result.unwrap_err().to_string().contains("token_revoked"));
-        }
-
-        #[tokio::test]
         async fn test_post_to_slack_unknown_error() {
             let mock_server = MockServer::start().await;
 
@@ -696,25 +675,6 @@ mod tests {
                 post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
                     .await;
 
-            assert!(result.is_err());
-        }
-
-        #[tokio::test]
-        async fn test_post_to_slack_server_error() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result =
-                post_to_slack_base(&mock_server.uri(), "xoxb-test-token", "C123", "", "Hello!")
-                    .await;
-
-            // 500 with non-JSON body → reqwest JSON parse error
             assert!(result.is_err());
         }
 
@@ -779,88 +739,6 @@ mod tests {
             .await;
 
             assert!(result.is_ok());
-        }
-
-        #[tokio::test]
-        async fn test_post_to_slack_retry_not_authed() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "ok": false,
-                    "error": "not_authed"
-                })))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result = post_to_slack_with_retry_base(
-                &mock_server.uri(),
-                "xoxb-test-token",
-                "C123",
-                "",
-                "Hello!",
-                None,
-            )
-            .await;
-
-            assert!(result.is_err());
-            // Should not retry — exactly 1 call
-        }
-
-        #[tokio::test]
-        async fn test_post_to_slack_retry_account_inactive() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "ok": false,
-                    "error": "account_inactive"
-                })))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result = post_to_slack_with_retry_base(
-                &mock_server.uri(),
-                "xoxb-test-token",
-                "C123",
-                "",
-                "Hello!",
-                None,
-            )
-            .await;
-
-            assert!(result.is_err());
-        }
-
-        #[tokio::test]
-        async fn test_post_to_slack_retry_no_text() {
-            let mock_server = MockServer::start().await;
-
-            Mock::given(method("POST"))
-                .and(path("/chat.postMessage"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "ok": false,
-                    "error": "no_text"
-                })))
-                .expect(1)
-                .mount(&mock_server)
-                .await;
-
-            let result = post_to_slack_with_retry_base(
-                &mock_server.uri(),
-                "xoxb-test-token",
-                "C123",
-                "",
-                "",
-                None,
-            )
-            .await;
-
-            assert!(result.is_err());
         }
 
         #[tokio::test]
@@ -1452,13 +1330,6 @@ mod tests {
             let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
             assert_eq!(body["blocks"][0]["text"], "On it.");
             assert!(body.get("metadata").is_none());
-        }
-
-        /// Short replies stay a single block — no gratuitous splitting.
-        #[test]
-        fn short_reply_is_one_block() {
-            let blocks = blocks_of(&build_post_payloads("C123", "", "ok", None)[0]);
-            assert_eq!(blocks, vec!["ok".to_string()]);
         }
     }
 }

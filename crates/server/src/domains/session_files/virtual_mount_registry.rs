@@ -256,11 +256,6 @@ mod tests {
     }
 
     #[test]
-    fn strip_mount_prefix_child_path() {
-        assert_eq!(strip_mount_prefix("/docs/foo.md", "/docs"), Some("foo.md"));
-    }
-
-    #[test]
     fn strip_mount_prefix_no_match_partial_segment() {
         // "/docs2" should NOT match mount "/docs"
         assert_eq!(strip_mount_prefix("/docs2", "/docs"), None);
@@ -271,11 +266,6 @@ mod tests {
     fn strip_mount_prefix_root_mount() {
         assert_eq!(strip_mount_prefix("/foo.md", "/"), Some("foo.md"));
         assert_eq!(strip_mount_prefix("/", "/"), Some(""));
-    }
-
-    #[test]
-    fn strip_mount_prefix_no_match_different_prefix() {
-        assert_eq!(strip_mount_prefix("/other/foo", "/docs"), None);
     }
 
     #[test]

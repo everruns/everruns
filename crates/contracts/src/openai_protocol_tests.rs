@@ -138,23 +138,6 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
     assert!(e.is_none(), "tool calls must only be emitted once");
 }
 
-/// Non-empty content deltas are still emitted and counted as output tokens.
-#[test]
-fn test_non_empty_content_is_emitted() {
-    let mut total_tokens = 0u32;
-    let mut acc = StreamToolCallAccumulator::new();
-    let mut finish_reason: Option<String> = None;
-
-    let e = single_event(
-        &choice(r#"{"delta":{"content":"hello"},"finish_reason":null}"#),
-        &mut total_tokens,
-        &mut acc,
-        &mut finish_reason,
-    );
-    assert!(matches!(e, Some(LlmStreamEvent::TextDelta(s)) if s == "hello"));
-    assert_eq!(total_tokens, 1);
-}
-
 /// EVE-636: streamed tool-call arguments must concatenate exactly across
 /// many small chunks (accumulated as a raw string, parsed zero times
 /// mid-stream) and be parsed exactly once at the `tool_calls` finish chunk.
@@ -872,24 +855,6 @@ fn models_status_error_classifies_auth_separately_from_outage() {
         models_api_status_error(reqwest::StatusCode::SERVICE_UNAVAILABLE).llm_error_kind(),
         Some(LlmErrorKind::Unavailable)
     );
-}
-
-#[test]
-fn file_part_serializes_to_openai_file() {
-    let part = OpenAiContentPart::File {
-        r#type: "file".to_string(),
-        file: OpenAiFile {
-            filename: Some("report.pdf".to_string()),
-            file_data: "data:application/pdf;base64,JVBERi0=".to_string(),
-        },
-    };
-    let v = serde_json::to_value(&part).unwrap();
-    assert_eq!(v["type"], serde_json::json!("file"));
-    assert_eq!(
-        v["file"]["file_data"],
-        serde_json::json!("data:application/pdf;base64,JVBERi0=")
-    );
-    assert_eq!(v["file"]["filename"], serde_json::json!("report.pdf"));
 }
 
 #[tokio::test]

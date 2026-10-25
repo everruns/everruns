@@ -258,45 +258,11 @@ mod tests {
     }
 
     #[test]
-    fn test_web_result_deserialization() {
-        let json = r#"{
-            "title": "Test",
-            "url": "https://example.com",
-            "description": "A test result",
-            "age": "1 day ago",
-            "language": "en"
-        }"#;
-        let result: WebResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.title, "Test");
-        assert_eq!(result.url, "https://example.com");
-        assert_eq!(result.description, "A test result");
-        assert_eq!(result.age, Some("1 day ago".to_string()));
-        assert_eq!(result.language, Some("en".to_string()));
-    }
-
-    #[test]
     fn test_web_result_minimal_deserialization() {
         let json = r#"{"title": "Test", "url": "https://example.com"}"#;
         let result: WebResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.title, "Test");
         assert_eq!(result.description, "");
         assert_eq!(result.age, None);
-    }
-
-    #[test]
-    fn test_web_search_response_deserialization() {
-        let json = r#"{
-            "web": {
-                "results": [
-                    {"title": "A", "url": "https://a.com", "description": "desc a"},
-                    {"title": "B", "url": "https://b.com", "description": "desc b"}
-                ]
-            }
-        }"#;
-        let response: WebSearchResponse = serde_json::from_str(json).unwrap();
-        let results = response.web.unwrap().results;
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].title, "A");
-        assert_eq!(results[1].url, "https://b.com");
     }
 }

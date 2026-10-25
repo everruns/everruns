@@ -683,32 +683,6 @@ mod tests {
     }
 
     #[test]
-    fn query_builder_preserves_filter_and_window_settings() {
-        let session = SessionId::new();
-        let query = MessageQuery::new(session)
-            .with_filter(MessageFilter::Search("needle".into()))
-            .with_filters([MessageFilter::EventTypes(vec!["input.message".into()])])
-            .with_limit(50)
-            .with_offset(10)
-            .with_keep_head(2)
-            .after_sequence(7);
-        assert_eq!(query.session_id, session);
-        assert!(
-            matches!(&query.filters[..], [MessageFilter::Search(s), MessageFilter::EventTypes(k)]
-            if s == "needle" && k == &["input.message"])
-        );
-        assert_eq!(
-            (
-                query.limit,
-                query.offset,
-                query.keep_head,
-                query.after_sequence
-            ),
-            (Some(50), Some(10), Some(2), Some(7))
-        );
-    }
-
-    #[test]
     fn filter_classification_handles_empty_db_custom_and_mixed_queries() {
         let session = SessionId::new();
         let empty = MessageQuery::new(session);

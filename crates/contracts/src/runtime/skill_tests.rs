@@ -177,20 +177,6 @@ Explore $ARGUMENTS.
 }
 
 #[test]
-fn test_parse_context_inline_explicit() {
-    let content = r#"---
-name: my-skill
-description: A skill.
-context: inline
----
-
-Body.
-"#;
-    let parsed = parse_skill_md(content).unwrap();
-    assert_eq!(parsed.context, SkillContext::Inline);
-}
-
-#[test]
 fn test_parse_context_invalid_value() {
     let content = r#"---
 name: my-skill
@@ -387,12 +373,6 @@ fn test_expand_dollar_followed_by_multi_digit() {
 }
 
 #[test]
-fn test_split_skill_args_basic() {
-    let args = split_skill_args("a b c");
-    assert_eq!(args, vec!["a", "b", "c"]);
-}
-
-#[test]
 fn test_split_skill_args_quoted() {
     let args = split_skill_args("\"hello world\" foo 'bar baz'");
     assert_eq!(args, vec!["hello world", "foo", "bar baz"]);
@@ -455,16 +435,6 @@ impl CommandExecutor for MockExecutor {
                 exit_code: 127,
             })
     }
-}
-
-#[tokio::test]
-async fn test_preprocess_single_command() {
-    let mut exec = MockExecutor::new();
-    exec.add_response("echo hello", "hello\n", 0);
-
-    let content = "Output: !`echo hello`";
-    let result = preprocess_command_injections(content, &exec).await;
-    assert_eq!(result, "Output: hello");
 }
 
 #[tokio::test]

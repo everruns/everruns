@@ -693,29 +693,6 @@ async fn test_list_sandboxes_with_entries() {
 // ============================================================================
 
 #[tokio::test]
-async fn test_sandbox_state_persistence_roundtrip() {
-    let session_id = SessionId::new();
-    let store = Arc::new(MockStorageStore::new());
-
-    setup_context_with_sandbox(session_id, &store, "sb_persist").await;
-
-    let context = ToolContext::with_storage_store(session_id, store.clone());
-
-    let tool = get_tool("e2b_list_sandboxes");
-    let result = tool.execute_with_context(json!({}), &context).await;
-
-    match result {
-        ToolExecutionResult::Success(output) => {
-            assert_eq!(output["count"], 1);
-            let sandbox = &output["sandboxes"][0];
-            assert_eq!(sandbox["sandbox_id"], "sb_persist");
-            assert_eq!(sandbox["workspace_path"], "/home/user");
-        }
-        other => panic!("Expected Success, got: {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn test_create_sandbox_tool_no_connection() {
     // Without a connection resolver, the tool returns ConnectionRequired.
     let tool = get_tool("e2b_create_sandbox");

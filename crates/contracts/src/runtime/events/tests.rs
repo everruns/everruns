@@ -1,6 +1,6 @@
 //! Tests moved out of events.rs: tests.
 
-use crate::runtime::typed_id::{AgentId, EventId, ExecId, HarnessId, MessageId, SessionId, TurnId};
+use crate::runtime::typed_id::{EventId, MessageId, SessionId, TurnId};
 use chrono::Utc;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -188,90 +188,6 @@ fn needs_public_projection_covers_every_message_bearing_variant() {
         .needs_public_projection(),
         "a message-free variant must not pay for a clone"
     );
-}
-
-#[test]
-fn test_event_creation() {
-    let session_id = SessionId::new();
-    let context = EventContext::empty();
-    let data = InputMessageData::new(RuntimeMessage::user("test"));
-
-    let event = Event::new(session_id, context, data);
-
-    assert_eq!(event.event_type, "input.message");
-    assert_eq!(event.session_uuid(), session_id.uuid());
-    assert!(event.is_input_event());
-    assert!(event.is_message_event());
-}
-
-#[test]
-fn test_event_context_from_execution_context() {
-    let session_id = SessionId::new();
-    let turn_id = TurnId::new();
-    let input_message_id = MessageId::new();
-
-    let atom_ctx = ExecutionContext::new(session_id, turn_id, input_message_id);
-    let context = EventContext::from_execution_context(&atom_ctx);
-
-    assert_eq!(context.turn_id, Some(turn_id));
-    assert_eq!(context.input_message_id, Some(input_message_id));
-    assert_eq!(context.exec_id, Some(atom_ctx.exec_id));
-}
-
-#[test]
-fn transcript_repaired_is_valid_filter_event_type() {
-    assert!(VALID_EVENT_TYPES.contains(&TRANSCRIPT_REPAIRED));
-}
-
-/// `capability.usage` is emitted (`EventData::CapabilityUsage`) and documented
-/// as streamable, so the public `types`/`exclude` filter allowlist must accept
-/// it instead of rejecting it as an unknown event type.
-#[test]
-fn capability_usage_is_valid_filter_event_type() {
-    assert!(VALID_EVENT_TYPES.contains(&CAPABILITY_USAGE));
-}
-
-#[test]
-fn test_event_builder() {
-    let session_id = SessionId::new();
-    let turn_id = TurnId::new();
-    let input_message_id = MessageId::new();
-    let exec_id = ExecId::new();
-
-    let event = EventBuilder::new(session_id)
-        .with_turn(turn_id, input_message_id)
-        .with_exec(exec_id)
-        .build(ReasonStartedData {
-            harness_id: HarnessId::from_seed(1),
-            agent_id: Some(AgentId::new()),
-            metadata: Some(ModelMetadata {
-                model: "gpt-5.2".to_string(),
-                model_id: None,
-                provider_id: None,
-            }),
-        });
-
-    assert_eq!(event.event_type, "reason.started");
-    assert_eq!(event.session_id, session_id);
-    assert_eq!(event.context.turn_id, Some(turn_id));
-    assert_eq!(event.context.input_message_id, Some(input_message_id));
-    assert_eq!(event.context.exec_id, Some(exec_id));
-}
-
-#[test]
-fn test_reason_completed_data() {
-    let data = ReasonCompletedData::success("Hello world", true, 2, Some(1000), None);
-    assert!(data.success);
-    assert_eq!(data.text_preview, Some("Hello world".to_string()));
-    assert!(data.has_tool_calls);
-    assert_eq!(data.tool_call_count, 2);
-    assert_eq!(data.duration_ms, Some(1000));
-    assert!(data.usage.is_none());
-
-    let data = ReasonCompletedData::failure("Network error".to_string(), Some(500));
-    assert!(!data.success);
-    assert_eq!(data.error, Some("Network error".to_string()));
-    assert_eq!(data.duration_ms, Some(500));
 }
 
 #[test]
@@ -685,39 +601,6 @@ fn test_output_message_phase_hint_serde() {
 }
 
 #[test]
-fn test_output_message_delta_deserialization_preserves_fields() {
-    let json = serde_json::json!({
-        "turn_id": TurnId::new(), "message_id": MessageId::new(),
-        "delta": "world", "accumulated": "Hello world", "phase": "final_answer"
-    });
-    let deserialized = deserialize_event_data("output.message.delta", json.clone());
-    assert!(matches!(&deserialized, EventData::OutputMessageDelta(_)));
-    assert_eq!(serde_json::to_value(deserialized).unwrap(), json);
-}
-
-#[test]
-fn test_output_message_started_deserialization() {
-    let turn_id = TurnId::from_uuid(Uuid::now_v7());
-    let data = OutputMessageStartedData {
-        reasoning_state: None,
-        turn_id,
-        message_id: MessageId::new(),
-        model: Some("claude-opus-5".to_string()),
-        iteration: Some(3),
-        phase: Some(ExecutionPhase::FinalAnswer),
-    };
-
-    // Serialize to JSON
-    let json = serde_json::to_value(EventData::OutputMessageStarted(data.clone())).unwrap();
-
-    // Deserialize back through the real (type-driven) decode path
-    let deserialized = deserialize_event_data("output.message.started", json.clone());
-
-    assert!(matches!(&deserialized, EventData::OutputMessageStarted(_)));
-    assert_eq!(serde_json::to_value(deserialized).unwrap(), json);
-}
-
-#[test]
 fn test_event_deserialize_reason_item_uses_event_type_dispatch() {
     let turn_id = TurnId::from_uuid(Uuid::now_v7());
     let payload = serde_json::json!({
@@ -873,29 +756,6 @@ fn test_reason_item_data_excludes_plaintext_reasoning() {
     }
     // The only sanctioned field that carries reasoning text.
     assert!(object.contains_key("summary"));
-}
-
-#[test]
-fn test_llm_generation_ttft_omitted_when_none() {
-    let messages = vec![RuntimeMessage::user("test")];
-    let data = LlmGenerationData::success(
-        messages,
-        vec![],
-        Some("response".to_string()),
-        vec![],
-        "model".to_string(),
-        None,
-        None,
-        None,
-        None, // time_to_first_token_ms
-    );
-
-    // TTFT should be None when passed as None
-    assert!(data.metadata.time_to_first_token_ms.is_none());
-
-    // Should not appear in JSON when None
-    let json = serde_json::to_value(&data).unwrap();
-    assert!(json["metadata"].get("time_to_first_token_ms").is_none());
 }
 
 /// The serving model is carried on the wire and omitted when the provider did

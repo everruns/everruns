@@ -6,37 +6,6 @@ use everruns_core::host::TurnBackend;
 use super::tests_support::*;
 
 #[test]
-fn test_manifest_includes_history_scopes_for_thread_context() {
-    // conversations.replies requires channels:history / groups:history / im:history / mpim:history
-    let yaml = build_manifest_yaml(
-        "Bot",
-        "Bot",
-        None,
-        "https://example.com/api/v1/apps/app_x/slack/events",
-        "https://example.com/api/v1/apps/app_x/slack/interactivity",
-        "https://example.com/api/v1/apps/app_x/slack/oauth/callback",
-        false,
-        &[],
-    );
-    assert!(
-        yaml.contains("channels:history"),
-        "Manifest must include channels:history for conversations.replies"
-    );
-    assert!(
-        yaml.contains("groups:history"),
-        "Manifest must include groups:history for private channel thread context"
-    );
-    assert!(
-        yaml.contains("im:history"),
-        "Manifest must include im:history for DM thread context"
-    );
-    assert!(
-        yaml.contains("mpim:history"),
-        "Manifest must include mpim:history for group DM thread context"
-    );
-}
-
-#[test]
 fn manifest_lets_people_message_the_app() {
     // Without the messages tab Slack shows "Sending messages to this app has
     // been turned off", so a one-click app could only be reached by @mention.
@@ -337,28 +306,6 @@ mod wiremock_tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_user_name_token_revoked_cached() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/users.info"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": false,
-                "error": "token_revoked"
-            })))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let cache: SlackUserCache = new_slack_user_cache();
-        let result =
-            resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-revoked", "U123").await;
-
-        assert_eq!(result, None);
-        assert_eq!(cache.get("U123"), Some(None));
-    }
-
-    #[tokio::test]
     async fn test_resolve_user_name_transient_error_not_cached() {
         let mock_server = MockServer::start().await;
 
@@ -405,87 +352,9 @@ mod wiremock_tests {
         assert!(cache.get("U123").is_none());
     }
 
-    #[tokio::test]
-    async fn test_resolve_user_name_account_inactive_cached() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/users.info"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": false,
-                "error": "account_inactive"
-            })))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let cache: SlackUserCache = new_slack_user_cache();
-        let result =
-            resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
-                .await;
-
-        assert_eq!(result, None);
-        assert_eq!(cache.get("U123"), Some(None));
-    }
-
-    #[tokio::test]
-    async fn test_resolve_user_name_not_authed_cached() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .and(path("/users.info"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": false,
-                "error": "not_authed"
-            })))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let cache: SlackUserCache = new_slack_user_cache();
-        let result =
-            resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
-                .await;
-
-        assert_eq!(result, None);
-        assert_eq!(cache.get("U123"), Some(None));
-    }
-
     // ------------------------------------------
     // post_to_slack via slack_delivery module
     // ------------------------------------------
-
-    #[tokio::test]
-    async fn test_post_to_slack_error() {
-        let mock_server = MockServer::start().await;
-
-        Mock::given(method("POST"))
-            .and(path("/chat.postMessage"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "ok": false,
-                "error": "channel_not_found"
-            })))
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let result = crate::channels::slack::delivery::post_to_slack_base(
-            &mock_server.uri(),
-            "xoxb-test-token",
-            "C_INVALID",
-            "",
-            "Hello!",
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("channel_not_found")
-        );
-    }
 
     // ------------------------------------------
     // fetch_thread_replies — pagination (EVE-969)

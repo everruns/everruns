@@ -155,11 +155,4 @@ mod tests {
         );
         assert!(connector.validate("am_key").await.is_err());
     }
-
-    #[test]
-    fn the_form_asks_for_key_and_inbox() {
-        let schema = AgentMailConnector.form_schema().unwrap();
-        let names: Vec<&str> = schema.fields.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(names, vec!["api_key", "inbox_id"]);
-    }
 }

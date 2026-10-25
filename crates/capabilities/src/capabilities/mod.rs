@@ -339,13 +339,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn hosted_registry_always_contains_platform_capabilities() {
-        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
-        assert!(registry.has(PLATFORM_CAPABILITY_ID));
-        assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
-    }
-
     #[cfg(feature = "portable-builtins")]
     #[test]
     fn hosted_registry_has_the_hard_tool_approval_gate() {

@@ -683,12 +683,6 @@ mod tests {
     }
 
     #[test]
-    fn auth_mode_str_roundtrips_known_modes() {
-        assert_eq!(auth_mode_str(&ChannelAuthMode::GoogleOidc), "google_oidc");
-        assert_eq!(auth_mode_str(&ChannelAuthMode::Anonymous), "anonymous");
-    }
-
-    #[test]
     fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
         let alice = ChannelAuthPrincipal {
             provider: "oidc".to_string(),

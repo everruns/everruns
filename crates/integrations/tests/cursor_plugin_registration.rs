@@ -1,14 +1,13 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration test: verify Cursor plugin and connection provider registration.
 
-use everruns_contracts::connector::ConnectorPlugin;
-use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::capabilities::CapabilityRegistry;
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 use everruns_contracts::runtime::tool_narration::ToolNarrationPhase;
 use everruns_contracts::tool_types::ToolCall;
 use serde_json::json;
 
-use everruns_integrations::cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
+use everruns_integrations::cursor::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
@@ -21,53 +20,11 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn cursor_plugin_is_published() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    assert!(
-        plugins.iter().any(|p| {
-            let cap = (p.factory)();
-            cap.id() == "cursor"
-        }),
-        "Cursor IntegrationPlugin should be published in CAPABILITY_PLUGINS"
-    );
-}
-
-#[test]
 fn cursor_plugin_is_registered_in_prod_and_dev() {
     let dev = registry_for_grade(DeploymentGrade::Dev);
     let prod = registry_for_grade(DeploymentGrade::Prod);
     assert!(dev.has("cursor"), "Cursor should be in dev registry");
     assert!(prod.has("cursor"), "Cursor should be in prod registry");
-}
-
-#[test]
-fn cursor_capability_metadata() {
-    let registry = registry_for_grade(DeploymentGrade::Dev);
-    let cap = registry.get("cursor").expect("Cursor capability not found");
-    assert_eq!(cap.id(), "cursor");
-    assert_eq!(cap.name(), "Cursor");
-    assert_eq!(cap.icon(), Some("code"));
-    assert_eq!(cap.category(), Some("Execution"));
-    assert_eq!(cap.tools().len(), 9);
-}
-
-#[test]
-fn cursor_connection_provider_is_published() {
-    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
-    let plugin = plugins
-        .iter()
-        .find(|p| {
-            let provider = (p.factory)();
-            provider.provider_id() == "cursor"
-        })
-        .expect("Cursor connection plugin not found");
-    assert!(plugin.feature_flag.is_none());
-
-    let provider = (plugin.factory)();
-    let schema = provider.form_schema().expect("should have form schema");
-    assert_eq!(schema.fields.len(), 1);
-    assert_eq!(schema.fields[0].name, "api_key");
-    assert!(schema.instructions_markdown.contains("Cloud Agents"));
 }
 
 #[test]

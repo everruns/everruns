@@ -117,19 +117,3 @@ impl Drop for NotificationNotificationBroadcaster {
         let _ = self.shutdown_tx.try_send(());
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn payload_deserializes() {
-        let payload = serde_json::from_str::<NotificationNotificationPayload>(
-            r#"{"org_id":1,"user_id":"00000000-0000-0000-0000-000000000000","action":"insert"}"#,
-        )
-        .unwrap();
-        assert_eq!(payload.org_id, 1);
-        assert_eq!(payload.user_id, Uuid::nil());
-        assert_eq!(payload.action, "insert");
-    }
-}

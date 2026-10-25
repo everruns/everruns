@@ -308,17 +308,6 @@ mod tests {
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let capability = StatelessTodoListCapability;
-
-        let system_prompt = capability.system_prompt_addition().unwrap();
-        assert!(system_prompt.contains("Task Management"));
-        assert!(system_prompt.contains("write_todos"));
-        assert!(system_prompt.contains("in_progress"));
-        assert!(system_prompt.contains("completed"));
-    }
-
     #[tokio::test]
     async fn test_write_todos_tool_valid_input() {
         let tool = WriteTodosTool;

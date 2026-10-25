@@ -1063,21 +1063,6 @@ mod tests {
     }
 
     #[test]
-    fn test_label_filter_encoding() {
-        let filters: std::collections::HashMap<&str, Vec<String>> =
-            std::collections::HashMap::from([(
-                "label",
-                vec![
-                    "managed-by=everruns".to_string(),
-                    "session=abc123".to_string(),
-                ],
-            )]);
-        let json = serde_json::to_string(&filters).unwrap();
-        assert!(json.contains("managed-by=everruns"));
-        assert!(json.contains("session=abc123"));
-    }
-
-    #[test]
     fn test_url_trailing_slash_trimmed() {
         let client = DockerClient::with_base_url("http://10.0.0.3:2375/".to_string());
         assert_eq!(

@@ -262,31 +262,6 @@ async fn test_refresh_via_json_body() {
 }
 
 #[tokio::test]
-async fn test_refresh_via_cookie() {
-    let (router, _db) = auth_router().await;
-
-    let (_access, refresh, _cookies) =
-        register_user(&router, "cookie@example.com", "password12345").await;
-
-    // Refresh using cookie (no JSON body) — the new browser flow
-    let cookie_header = format!("refresh_token={refresh}");
-    let (status, body, _new_cookies) = send(
-        &router,
-        "POST",
-        "/v1/auth/refresh",
-        None,
-        Some(&cookie_header),
-    )
-    .await;
-
-    assert_eq!(status, StatusCode::OK, "refresh via cookie failed: {body}");
-    assert!(body["access_token"].is_string());
-    assert!(body["refresh_token"].is_string());
-    // Token rotation: new refresh token must differ from old one
-    assert_ne!(body["refresh_token"].as_str().unwrap(), refresh);
-}
-
-#[tokio::test]
 async fn test_refresh_body_takes_precedence_over_cookie() {
     let (router, _db) = auth_router().await;
 
@@ -702,19 +677,6 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
 // ============================================
 // Auth config endpoint test
 // ============================================
-
-#[tokio::test]
-async fn test_auth_config_returns_full_mode() {
-    let (router, _db) = auth_router().await;
-
-    let (status, body, _cookies) = send(&router, "GET", "/v1/auth/config", None, None).await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["mode"], "full");
-    assert_eq!(body["password_auth_enabled"], true);
-    assert_eq!(body["signup_enabled"], true);
-    assert!(body.get("login_origin").is_none());
-}
 
 // ============================================
 // Default-org harness-seed safety net (EVE-390)

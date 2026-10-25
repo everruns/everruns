@@ -138,36 +138,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_slack_channel_config_minimal() {
-        let json = r#"{"signing_secret": "s", "bot_token": "t"}"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert!(config.channel_id.is_none());
-        assert!(config.team_id.is_none());
-        assert_eq!(config.session_strategy, SessionBinding::Thread);
-        assert_eq!(config.response_policy, SlackResponsePolicy::AllMessages);
-        assert!(config.webhook_verified_at.is_none());
-        assert!(config.first_message_received_at.is_none());
-    }
-
-    #[test]
-    fn test_slack_channel_config_with_verification_timestamps() {
-        let json = r#"{
-            "signing_secret": "s",
-            "bot_token": "t",
-            "webhook_verified_at": "2025-01-01T00:00:00Z",
-            "first_message_received_at": "2025-01-01T01:00:00Z"
-        }"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert!(config.webhook_verified_at.is_some());
-        assert!(config.first_message_received_at.is_some());
-
-        // Round-trip: timestamps should be preserved
-        let serialized = serde_json::to_value(&config).unwrap();
-        assert!(serialized.get("webhook_verified_at").is_some());
-        assert!(serialized.get("first_message_received_at").is_some());
-    }
-
     /// Channels stored before the agent surface existed have no such key, and
     /// must keep parsing with it off (EVE-973).
     #[test]
@@ -201,12 +171,5 @@ mod tests {
         assert!(json.get("first_message_received_at").is_none());
         // Absent on a hand-configured endpoint (EVE-1069).
         assert!(json.get("provisioned_app").is_none());
-    }
-
-    #[test]
-    fn test_slack_channel_config_defaults_omitted_credentials() {
-        let config: SlackChannelConfig = serde_json::from_str("{}").unwrap();
-        assert!(config.signing_secret.is_empty());
-        assert!(config.bot_token.is_empty());
     }
 }

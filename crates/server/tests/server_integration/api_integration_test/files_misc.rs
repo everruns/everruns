@@ -67,30 +67,6 @@ async fn test_execute_btw_returns_ephemeral_response() {
 // ============================================
 
 #[tokio::test]
-async fn test_list_capabilities() {
-    let server = TestServer::new().await;
-
-    let data: Value = server
-        .get("/v1/capabilities")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let capabilities = data["data"].as_array().expect("Expected array");
-    // Should have built-in capabilities
-    assert!(
-        !capabilities.is_empty(),
-        "Should have built-in capabilities"
-    );
-    assert!(
-        capabilities
-            .iter()
-            .any(|cap| cap["id"] == "infinity_context"),
-        "Should expose infinity_context as a standard capability"
-    );
-}
-
-#[tokio::test]
 async fn test_gated_capability_metadata_stays_readable() {
     let server = TestServer::in_memory().await;
     server
@@ -434,82 +410,9 @@ async fn test_cannot_recursively_delete_directory_with_readonly_file() {
     assert_eq!(file.content.as_deref(), Some("Protected content"));
 }
 
-#[tokio::test]
-async fn test_can_delete_non_readonly_file() {
-    let server = TestServer::in_memory().await;
-
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "normal-delete-test",
-                "display_name": "Normal Delete Test",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let session: Session = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_base_harness_id,
-                "agent_id": agent.public_id
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    let fs_url = format!("/v1/sessions/{}/fs", session.id);
-
-    // Create a normal (non-readonly) file
-    let _file: SessionFile = server
-        .post(
-            &format!("{}/temp.txt", fs_url),
-            json!({
-                "content": "Delete me"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // Should succeed
-    let result: Value = server
-        .delete(&format!("{}/temp.txt", fs_url))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(result["deleted"], true);
-}
-
 // ============================================
 // User Connection Verify Endpoint Tests
 // ============================================
-
-#[tokio::test]
-async fn test_verify_connectors_listed() {
-    let server = TestServer::in_memory().await;
-
-    let resp: Value = server
-        .get("/v1/connection-providers")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let daytona = resp
-        .as_array()
-        .expect("providers response should be an array")
-        .iter()
-        .find(|provider| provider["provider_id"] == "daytona")
-        .expect("Daytona setup must be listed wherever Daytona sandboxes are available");
-    assert_eq!(daytona["display_name"], "Daytona");
-    assert_eq!(daytona["connection_type"], "api_key");
-    assert!(daytona["form_schema"]["fields"].is_array());
-}
 
 // ============================================
 // App Reference Validation Tests

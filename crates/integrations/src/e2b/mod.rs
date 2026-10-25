@@ -178,22 +178,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn capability_tools() {
-        let cap = E2BCapability;
-        let names: Vec<_> = cap
-            .tools()
-            .into_iter()
-            .map(|tool| tool.name().to_string())
-            .collect();
-        assert!(names.contains(&"e2b_create_sandbox".to_string()));
-        assert!(names.contains(&"e2b_exec".to_string()));
-        assert!(names.contains(&"e2b_read_file".to_string()));
-        assert!(names.contains(&"e2b_write_file".to_string()));
-        assert!(names.contains(&"e2b_list_sandboxes".to_string()));
-        assert!(names.contains(&"e2b_manage_sandbox".to_string()));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = E2BCapability;

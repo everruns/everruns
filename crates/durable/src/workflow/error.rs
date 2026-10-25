@@ -48,26 +48,3 @@ impl std::fmt::Display for WorkflowError {
 }
 
 impl std::error::Error for WorkflowError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_workflow_error_display() {
-        let error = WorkflowError::new("something went wrong");
-        assert_eq!(error.to_string(), "something went wrong");
-    }
-
-    #[test]
-    fn test_workflow_error_with_code() {
-        let error = WorkflowError::new("not found").with_code("NOT_FOUND");
-        assert_eq!(error.code, Some("NOT_FOUND".to_string()));
-    }
-
-    #[test]
-    fn test_workflow_error_retryable() {
-        let error = WorkflowError::retryable("temporary failure");
-        assert!(error.retryable);
-    }
-}

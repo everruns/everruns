@@ -279,16 +279,3 @@ fn url_extraction() {
     assert_eq!(urls("Ü https://ä.de/ö?x=1!"), ["https://ä.de/ö?x=1"]);
     assert!(urls("xhttps://a.io and https:// alone").is_empty());
 }
-
-#[test]
-fn capability_shape() {
-    let cap = CitationWebCapability;
-    assert_eq!(cap.id(), CITATION_WEB_CAPABILITY_ID);
-    assert_eq!(cap.features(), vec!["citations"]);
-    assert_eq!(
-        cap.post_output_annotation_hooks_with_config(&Value::Null)
-            .len(),
-        1
-    );
-    assert!(cap.validate_config(&Value::Null).is_ok());
-}

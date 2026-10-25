@@ -1415,12 +1415,6 @@ mod tests {
     }
 
     #[test]
-    fn test_truncate_helper_short() {
-        let s = "hello".to_string();
-        assert_eq!(OutputHardLimitHook::truncate(s.clone()), s);
-    }
-
-    #[test]
     fn test_truncate_helper_over() {
         let s = "a".repeat(MAX_TOOL_RESULT_BYTES + 100);
         let t = OutputHardLimitHook::truncate(s);

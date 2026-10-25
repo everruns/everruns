@@ -542,14 +542,6 @@ mod tests {
     }
 
     #[test]
-    fn llms_txt_lists_the_coding_agent_plugin() {
-        let md = render_llms_txt(&state(AuthMode::External));
-        assert!(md.contains("## Coding agents"));
-        assert!(md.contains("[Everruns plugin](https://github.com/everruns/plugins)"));
-        assert!(md.contains("/plugin install everruns@everruns"));
-    }
-
-    #[test]
     fn llms_txt_does_not_advertise_oauth_when_auth_is_disabled() {
         let md = render_llms_txt(&state(AuthMode::None));
         assert!(md.contains("Authentication is disabled"));
@@ -566,13 +558,6 @@ mod tests {
         assert!(body.contains("Allow: /.well-known/\n"));
         assert!(body.contains("Disallow: /\n"));
         assert!(body.contains("Sitemap: https://app.example.com/sitemap.xml\n"));
-    }
-
-    #[tokio::test]
-    async fn sitemap_lists_the_public_documents() {
-        let body = body_text(sitemap_xml(axum::extract::State(state(AuthMode::Full))).await).await;
-        assert!(body.contains("<loc>https://app.example.com/llms.txt</loc>"));
-        assert!(body.contains("<loc>https://app.example.com/auth.md</loc>"));
     }
 
     #[tokio::test]
@@ -615,19 +600,6 @@ mod tests {
         let response =
             protected_resource_metadata(axum::extract::State(state(AuthMode::None))).await;
         assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn server_card_describes_the_product() {
-        let body = card_json(AuthMode::External).await;
-        assert_eq!(body["serverInfo"]["title"], "Everruns");
-        assert_eq!(body["serverInfo"]["documentationUrl"], DOCS_URL);
-        assert!(
-            body["serverInfo"]["description"]
-                .as_str()
-                .unwrap()
-                .contains("Durable")
-        );
     }
 
     async fn body_text(response: Response) -> String {

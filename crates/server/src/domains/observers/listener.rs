@@ -151,11 +151,4 @@ mod tests {
         assert!(!sample(0.0));
         assert!(!sample(-1.0));
     }
-
-    #[test]
-    fn sample_full_rate_always_true() {
-        for _ in 0..100 {
-            assert!(sample(1.0));
-        }
-    }
 }

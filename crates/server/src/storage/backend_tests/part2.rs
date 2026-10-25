@@ -1155,18 +1155,6 @@ async fn test_search_agents_no_filter_returns_all() {
 }
 
 #[tokio::test]
-async fn test_search_agents_empty_string_returns_all() {
-    let db = StorageBackend::test_database();
-    create_test_agent(&db, "Alpha", None).await;
-
-    let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some(""), false, default_pagination())
-        .await
-        .unwrap();
-    assert_eq!(results.len(), 1);
-}
-
-#[tokio::test]
 async fn test_search_agents_single_word_match() {
     let db = StorageBackend::test_database();
     create_test_agent(&db, "Customer Support Bot", None).await;

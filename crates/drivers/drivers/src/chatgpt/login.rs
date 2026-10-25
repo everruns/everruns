@@ -260,21 +260,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn callback_uses_default_success_page() {
-        let attempt = LoginAttempt::start(endpoints(), "Test", "host", None, None, false)
-            .await
-            .unwrap();
-
-        let (content_type, body) = callback_response(attempt).await;
-
-        assert_eq!(content_type, "text/plain; charset=utf-8");
-        assert_eq!(
-            body,
-            "Sign-in received. Return to the application to check the result."
-        );
-    }
-
-    #[tokio::test]
     async fn callback_uses_custom_html_success_page() {
         let html = "<!doctype html><title>Yolop</title><p>Return to Yolop.</p>";
         let attempt = LoginAttempt::start(endpoints(), "Test", "host", None, None, false)

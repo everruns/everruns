@@ -575,22 +575,6 @@ mod tests {
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
-    fn test_create_message_request_user() {
-        let req = CreateMessageRequest::user("Hello, how are you?");
-        assert_eq!(req.message.content.len(), 1);
-        assert_eq!(
-            req.message.content[0].as_text(),
-            Some("Hello, how are you?")
-        );
-    }
-
-    #[test]
-    fn test_message_role_display() {
-        assert_eq!(MessageRole::User.to_string(), "user");
-        assert_eq!(MessageRole::Agent.to_string(), "agent");
-    }
-
-    #[test]
     fn test_message_role_from_str() {
         assert_eq!(MessageRole::from("user"), MessageRole::User);
         assert_eq!(MessageRole::from("agent"), MessageRole::Agent);

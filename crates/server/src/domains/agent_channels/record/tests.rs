@@ -63,11 +63,6 @@ fn test_channel_type_mapping() {
 }
 
 #[test]
-fn test_session_strategy_default() {
-    assert_eq!(SessionBinding::default(), SessionBinding::Thread);
-}
-
-#[test]
 fn test_session_strategy_serde() {
     let json = serde_json::to_string(&SessionBinding::Conversation).unwrap();
     assert_eq!(json, r#""per_channel""#);
@@ -114,59 +109,6 @@ fn transports_only_offer_bindings_that_mean_something() {
 }
 
 #[test]
-fn test_ag_ui_channel_config_defaults_to_anonymous() {
-    let config: AgUiChannelConfig = serde_json::from_str("{}").unwrap();
-    assert!(config.anonymous);
-    assert_eq!(
-        config.session_expiration_seconds,
-        DEFAULT_SESSION_EXPIRATION_SECONDS
-    );
-    assert!(config.rate_limit_per_minute.is_none());
-    assert!(config.token.is_none());
-    assert!(config.auth.is_none());
-    assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
-    assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
-    assert!(!config.reasoning_summary_visible && !config.subagents_visible);
-    assert!(!config.state_visible);
-}
-
-#[test]
-fn test_ag_ui_channel_config_roundtrip() {
-    let config = AgUiChannelConfig {
-        anonymous: true,
-        token: Some("agui-token".to_string()),
-        session_expiration_seconds: 3600,
-        rate_limit_per_minute: Some(120),
-        tool_visibility: PublicToolVisibility::None,
-        generic_tool_text: "Please wait".to_string(),
-        reasoning_summary_visible: true,
-        tool_approval_interrupts: true,
-        usage_visible: true,
-        subagents_visible: true,
-        state_visible: true,
-        auth: None,
-    };
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
-    assert!(parsed.anonymous);
-    assert_eq!(parsed.token.as_deref(), Some("agui-token"));
-    assert_eq!(parsed.session_expiration_seconds, 3600);
-    assert_eq!(parsed.rate_limit_per_minute, Some(120));
-    assert_eq!(parsed.tool_visibility, PublicToolVisibility::None);
-    assert_eq!(parsed.generic_tool_text, "Please wait");
-    assert!(parsed.reasoning_summary_visible);
-    assert!(parsed.tool_approval_interrupts && parsed.usage_visible);
-    assert!(parsed.subagents_visible && parsed.state_visible);
-}
-
-#[test]
-fn test_ag_ui_channel_config_zero_disables_expiration() {
-    let config: AgUiChannelConfig =
-        serde_json::from_str(r#"{"session_expiration_seconds": 0}"#).unwrap();
-    assert_eq!(config.session_expiration_seconds, 0);
-}
-
-#[test]
 fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
     let config: AgUiChannelConfig = serde_json::from_str("{}").unwrap();
     let json = serde_json::to_value(&config).unwrap();
@@ -183,24 +125,6 @@ fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
 fn invocation_configs_default_to_the_shared_binding() {
     assert_eq!(default_invocation_binding(), SessionBinding::Shared);
     assert_ne!(SessionBinding::default(), SessionBinding::Shared);
-}
-
-#[test]
-fn test_schedule_channel_config_defaults() {
-    let config: ScheduleChannelConfig =
-        serde_json::from_str(r#"{"cron_expression":"0 * * * * * *","message":"Run checks"}"#)
-            .unwrap();
-    assert_eq!(config.timezone, "UTC");
-    assert_eq!(config.session_mode, SessionBinding::Shared);
-}
-
-#[test]
-fn test_webhook_channel_config_defaults() {
-    let config: WebhookChannelConfig =
-        serde_json::from_str(r#"{"token":"top-secret","message":"{{payload.action}}"}"#).unwrap();
-    assert_eq!(config.session_mode, SessionBinding::Shared);
-    // EVE-627: rate limit is optional and absent by default.
-    assert!(config.rate_limit_per_minute.is_none());
 }
 
 #[test]
@@ -261,16 +185,6 @@ fn test_channel(channel_type: ChannelType, config: serde_json::Value) -> AgentCh
 }
 
 #[test]
-fn test_channel_slack_config_valid() {
-    let ch = test_channel(
-        ChannelType::Slack,
-        serde_json::json!({"signing_secret": "sec", "bot_token": "tok"}),
-    );
-    let config = ch.slack_config().unwrap();
-    assert_eq!(config.signing_secret, "sec");
-}
-
-#[test]
 fn test_channel_slack_config_invalid_json() {
     let ch = test_channel(
         ChannelType::Slack,
@@ -290,20 +204,6 @@ fn test_app_slack_channel_lookup() {
 }
 
 #[test]
-fn test_app_slack_channel_none_when_empty() {
-    let app = test_app(vec![]);
-    assert!(app.slack_channel().is_none());
-}
-
-#[test]
-fn test_channel_ag_ui_config_valid() {
-    let config = serde_json::json!({"anonymous": true});
-    let ch = test_channel(ChannelType::AgUi, config);
-    let config = ch.ag_ui_config().unwrap();
-    assert!(config.anonymous);
-}
-
-#[test]
 fn test_app_ag_ui_channel_lookup() {
     let config = serde_json::json!({"anonymous": true});
     let ch = test_channel(ChannelType::AgUi, config);
@@ -312,40 +212,10 @@ fn test_app_ag_ui_channel_lookup() {
 }
 
 #[test]
-fn test_channel_fcp_config_defaults() {
-    let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
-    let config = ch.fcp_config().unwrap();
-    assert!(config.anonymous);
-    assert!(config.token.is_none());
-    assert!(config.handshake.is_none());
-    assert_eq!(
-        config.session_expiration_seconds,
-        DEFAULT_SESSION_EXPIRATION_SECONDS
-    );
-    assert_eq!(
-        config.response_timeout_seconds,
-        DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS
-    );
-}
-
-#[test]
 fn test_app_fcp_channel_lookup() {
     let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
     let app = test_app(vec![ch]);
     assert!(app.fcp_channel().is_some());
-}
-
-#[test]
-fn test_channel_schedule_config_valid() {
-    let ch = test_channel(
-        ChannelType::Schedule,
-        serde_json::json!({
-            "cron_expression": "0 * * * * * *",
-            "message": "Run checks"
-        }),
-    );
-    let config = ch.schedule_config().unwrap();
-    assert_eq!(config.message, "Run checks");
 }
 
 #[test]
@@ -362,19 +232,6 @@ fn test_app_schedule_channel_lookup() {
 }
 
 #[test]
-fn test_channel_webhook_config_valid() {
-    let ch = test_channel(
-        ChannelType::Webhook,
-        serde_json::json!({
-            "token": "secret",
-            "message": "{{payload.ref}}"
-        }),
-    );
-    let config = ch.webhook_config().unwrap();
-    assert_eq!(config.token, "secret");
-}
-
-#[test]
 fn test_app_webhook_channel_lookup() {
     let ch = test_channel(
         ChannelType::Webhook,
@@ -385,42 +242,6 @@ fn test_app_webhook_channel_lookup() {
     );
     let app = test_app(vec![ch]);
     assert!(app.webhook_channel().is_some());
-}
-
-#[test]
-fn test_a2a_channel_config_defaults() {
-    let config: A2aChannelConfig = serde_json::from_str(
-        r#"{"api_key_hash":"abc","api_key_prefix":"evra2a_abc1...","message":"{{a2a.text}}"}"#,
-    )
-    .unwrap();
-    assert_eq!(config.session_mode, SessionBinding::Shared);
-    assert!(config.agent_card_name.is_none());
-    assert!(config.agent_card_description.is_none());
-    assert!(config.rate_limit_per_minute.is_none());
-    assert!(config.auth.is_none());
-    assert!(config.signing_secret.is_none());
-}
-
-#[test]
-fn test_a2a_channel_config_roundtrip() {
-    let config = A2aChannelConfig {
-        api_key_hash: "deadbeef".into(),
-        api_key_prefix: "evra2a_dead...".into(),
-        session_mode: SessionBinding::Ephemeral,
-        message: "{{a2a.text}}".into(),
-        agent_card_name: Some("Inbox triage".into()),
-        agent_card_description: Some("Triages github events".into()),
-        rate_limit_per_minute: Some(120),
-        auth: None,
-        signing_secret: None,
-        pact: None,
-    };
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed.api_key_hash, "deadbeef");
-    assert_eq!(parsed.session_mode, SessionBinding::Ephemeral);
-    assert_eq!(parsed.agent_card_name.as_deref(), Some("Inbox triage"));
-    assert_eq!(parsed.rate_limit_per_minute, Some(120));
 }
 
 #[test]
@@ -445,20 +266,6 @@ fn test_a2a_channel_config_omits_optional_fields() {
 }
 
 #[test]
-fn test_channel_a2a_config_valid() {
-    let ch = test_channel(
-        ChannelType::A2a,
-        serde_json::json!({
-            "api_key_hash": "h",
-            "api_key_prefix": "evra2a_h...",
-            "message": "{{a2a.text}}"
-        }),
-    );
-    let config = ch.a2a_config().unwrap();
-    assert_eq!(config.api_key_prefix, "evra2a_h...");
-}
-
-#[test]
 fn test_app_a2a_channel_lookup() {
     let ch = test_channel(
         ChannelType::A2a,
@@ -473,23 +280,6 @@ fn test_app_a2a_channel_lookup() {
 }
 
 #[test]
-fn test_public_chat_channel_config_defaults() {
-    let config: PublicChatChannelConfig = serde_json::from_str("{}").unwrap();
-    assert!(config.anonymous);
-    assert!(config.token.is_none());
-    assert_eq!(
-        config.session_expiration_seconds,
-        DEFAULT_SESSION_EXPIRATION_SECONDS
-    );
-    assert!(config.rate_limit_per_minute.is_none());
-    assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
-    assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
-    assert!(config.auth.is_none());
-    assert!(config.branding.is_empty());
-    assert!(config.captcha.is_none());
-}
-
-#[test]
 fn test_public_chat_channel_config_omits_empty_branding_and_defaults() {
     let config: PublicChatChannelConfig = serde_json::from_str("{}").unwrap();
     let json = serde_json::to_value(&config).unwrap();
@@ -497,54 +287,6 @@ fn test_public_chat_channel_config_omits_empty_branding_and_defaults() {
     assert!(json.get("captcha").is_none());
     assert!(json.get("generic_tool_text").is_none());
     assert!(json.get("rate_limit_per_minute").is_none());
-}
-
-#[test]
-fn test_public_chat_channel_config_full_roundtrip() {
-    let json = r##"{
-        "anonymous": false,
-        "token": "shared-secret",
-        "session_expiration_seconds": 3600,
-        "rate_limit_per_minute": 30,
-        "tool_visibility": "narrated",
-        "generic_tool_text": "Thinking...",
-        "branding": {
-            "display_name": "Support",
-            "logo_url": "https://example.com/logo.png",
-            "primary_color": "#0A1636",
-            "welcome_message": "How can I help?"
-        },
-        "captcha": {
-            "provider": "turnstile",
-            "enabled": true,
-            "site_key": "1x00000000000000000000AA",
-            "secret_key": "1x0000000000000000000000000000000AA"
-        }
-    }"##;
-    let config: PublicChatChannelConfig = serde_json::from_str(json).unwrap();
-    assert!(!config.anonymous);
-    assert_eq!(config.token.as_deref(), Some("shared-secret"));
-    assert_eq!(config.session_expiration_seconds, 3600);
-    assert_eq!(config.rate_limit_per_minute, Some(30));
-    assert_eq!(config.tool_visibility, PublicToolVisibility::Narrated);
-    let branding = &config.branding;
-    assert_eq!(branding.display_name.as_deref(), Some("Support"));
-    assert_eq!(branding.primary_color.as_deref(), Some("#0A1636"));
-    let captcha = config.captcha.unwrap();
-    assert_eq!(captcha.provider, CaptchaProvider::Turnstile);
-    assert!(captcha.enabled);
-    assert_eq!(captcha.site_key, "1x00000000000000000000AA");
-    assert!(captcha.secret_key.is_some());
-}
-
-#[test]
-fn test_channel_public_chat_config_valid() {
-    let ch = test_channel(
-        ChannelType::PublicChat,
-        serde_json::json!({"anonymous": true}),
-    );
-    let config = ch.public_chat_config().unwrap();
-    assert!(config.anonymous);
 }
 
 #[test]

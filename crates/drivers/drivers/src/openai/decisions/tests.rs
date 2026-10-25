@@ -342,19 +342,6 @@ async fn a_label_the_question_did_not_offer_is_an_error() {
 }
 
 #[test]
-fn debug_never_renders_the_key() {
-    assert!(!format!("{:?}", OpenAIDecisionDriver::new()).contains("sk-secret"));
-}
-
-#[test]
-fn capabilities_declare_every_primitive_native_and_calibrated() {
-    let caps = OpenAIDecisionDriver::new().capabilities();
-    assert_eq!(caps.native, NativePrimitives::ALL);
-    assert!(caps.calibrated);
-    assert_eq!(caps.max_score_levels, Some(10));
-}
-
-#[test]
 fn the_catalog_id_goes_out_as_gpt_6_luna_and_answers_decode() {
     let request = DecisionRequest::new("Refund me now")
         .model(CATALOG_MODEL_ID)

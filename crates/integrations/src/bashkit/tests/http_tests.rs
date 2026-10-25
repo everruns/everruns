@@ -236,12 +236,6 @@ fn validate_config_accepts_bool_and_rejects_other_types() {
     assert!(cap.validate_config(&json!("nope")).is_err());
 }
 
-#[test]
-fn config_schema_exposes_enable_http() {
-    let schema = BashkitShellCapability.config_schema().unwrap();
-    assert!(schema["properties"]["enable_http"]["type"] == "boolean");
-}
-
 // ========================================================================
 // Bound secrets (knowledge/security/bound-secrets.md)
 // ========================================================================

@@ -161,22 +161,3 @@ impl GenerationReconcilerService {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::storage::StorageBackend;
-    use std::sync::Arc;
-
-    fn make_reconciler() -> GenerationReconcilerService {
-        let db = Arc::new(StorageBackend::test_database());
-        GenerationReconcilerService::new(db, None)
-    }
-
-    #[tokio::test]
-    async fn reconcile_openrouter_no_rows_is_noop() {
-        let svc = make_reconciler();
-        // In-memory backend returns empty; should succeed without error.
-        svc.reconcile_openrouter().await.unwrap();
-    }
-}

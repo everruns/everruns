@@ -2,12 +2,6 @@
 
 use super::*;
 
-#[test]
-fn test_listener_creation() {
-    let listener = BraintrustListener::new(test_config()).unwrap();
-    assert_eq!(listener.name(), "BraintrustListener");
-}
-
 /// Telemetry init must never panic the host process. `new` returns a
 /// `Result` so a misconfigured TLS/proxy environment disables Braintrust
 /// instead of aborting the process. With no env config, `from_env` yields
@@ -28,36 +22,6 @@ fn test_init_never_panics_and_disables_on_missing_config() {
             "from_env should disable Braintrust when no API key is configured"
         );
     }
-}
-
-#[test]
-fn test_event_types() {
-    let listener = BraintrustListener::new(test_config()).unwrap();
-    let types = listener.event_types().unwrap();
-    // 16 event types: 4 turn lifecycle + 4 atom lifecycle + 2 thinking + 1 llm + 2 tool + 3 session lifecycle
-    assert_eq!(types.len(), 16);
-    // Turn lifecycle
-    assert!(types.contains(&TURN_STARTED));
-    assert!(types.contains(&TURN_COMPLETED));
-    assert!(types.contains(&TURN_FAILED));
-    assert!(types.contains(&TURN_CANCELLED));
-    // Atom lifecycle
-    assert!(types.contains(&REASON_STARTED));
-    assert!(types.contains(&REASON_COMPLETED));
-    assert!(types.contains(&ACT_STARTED));
-    assert!(types.contains(&ACT_COMPLETED));
-    // Extended thinking
-    assert!(types.contains(&REASON_THINKING_STARTED));
-    assert!(types.contains(&REASON_THINKING_COMPLETED));
-    // LLM
-    assert!(types.contains(&LLM_GENERATION));
-    // Tool
-    assert!(types.contains(&TOOL_STARTED));
-    assert!(types.contains(&TOOL_COMPLETED));
-    // Session lifecycle
-    assert!(types.contains(&SESSION_STARTED));
-    assert!(types.contains(&SESSION_ACTIVATED));
-    assert!(types.contains(&SESSION_IDLED));
 }
 
 #[test]

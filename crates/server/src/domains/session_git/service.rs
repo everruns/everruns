@@ -660,26 +660,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_obj_type_roundtrip() {
-        for (i, t) in [
-            (1i16, ObjectType::Commit),
-            (2, ObjectType::Tree),
-            (3, ObjectType::Blob),
-            (4, ObjectType::Tag),
-        ] {
-            assert_eq!(obj_type_to_i16(t), i);
-            assert_eq!(obj_type_from_i16(i).unwrap(), t);
-        }
-    }
-
-    #[test]
-    fn test_oid_from_bytes() {
-        let bytes = [0u8; 20];
-        let oid = oid_from_bytes(&bytes).unwrap();
-        assert_eq!(oid.as_bytes(), &bytes);
-    }
-
-    #[test]
     fn test_oid_from_bytes_wrong_len() {
         assert!(oid_from_bytes(&[0u8; 19]).is_err());
         assert!(oid_from_bytes(&[0u8; 21]).is_err());

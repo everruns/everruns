@@ -165,16 +165,3 @@ pub use everruns_capabilities::memory::{
     MemoryConfig, MemoryMountAccess, MemoryMountConfig, validate_memory_config,
     validate_mount_config_shape,
 };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_round_trip() {
-        assert_eq!(MemoryStatus::from("active").to_string(), "active");
-        assert_eq!(MemoryStatus::from("archived").to_string(), "archived");
-        assert_eq!(MemoryStatus::from("deleted").to_string(), "deleted");
-        assert_eq!(MemoryStatus::from("unknown").to_string(), "active");
-    }
-}

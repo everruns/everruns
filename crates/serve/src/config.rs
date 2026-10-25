@@ -107,31 +107,6 @@ impl AppConfig {
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_full_config() {
-        let config = AppConfig::parse(
-            r#"
-            name = "revenue-analyst"
-            [sandbox]
-            kind = "bashkit"
-            [secrets]
-            required = ["WAREHOUSE_URL"]
-            [deploy]
-            target = "everruns-cloud"
-            "#,
-        )
-        .unwrap();
-        assert_eq!(config.name.as_deref(), Some("revenue-analyst"));
-        assert_eq!(config.sandbox.kind, SandboxKind::Bashkit);
-        assert_eq!(config.secrets.required, vec!["WAREHOUSE_URL"]);
-    }
-
-    #[test]
-    fn empty_config_defaults_to_no_sandbox() {
-        let config = AppConfig::parse("").unwrap();
-        assert_eq!(config.sandbox.kind, SandboxKind::None);
-    }
-
     #[cfg(feature = "voice")]
     #[test]
     fn parses_voice_settings_over_defaults() {

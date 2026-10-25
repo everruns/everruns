@@ -440,11 +440,6 @@ mod tests {
     }
 
     #[test]
-    fn outcomes_default_to_uncalibrated() {
-        assert!(!DecisionOutcome::default().is_calibrated());
-    }
-
-    #[test]
     fn noul_answers_have_no_separate_confidence() {
         let answer = DecisionAnswer::Noul { probability: 0.92 };
         assert_eq!(answer.probability_yes(), Some(0.92));

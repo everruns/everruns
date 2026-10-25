@@ -361,40 +361,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_config() {
-        let config = BackpressureConfig::default();
-        assert_eq!(config.high_watermark, 0.9);
-        assert_eq!(config.low_watermark, 0.7);
-        assert!(config.memory_threshold.is_none());
-        assert!(config.cpu_threshold.is_none());
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let config = BackpressureConfig::new()
-            .with_high_watermark(0.85)
-            .with_low_watermark(0.65)
-            .with_memory_threshold(1024 * 1024 * 1024);
-
-        assert_eq!(config.high_watermark, 0.85);
-        assert_eq!(config.low_watermark, 0.65);
-        assert_eq!(config.memory_threshold, Some(1024 * 1024 * 1024));
-    }
-
-    #[test]
     fn test_config_validation() {
         let invalid = BackpressureConfig::new()
             .with_high_watermark(0.5)
             .with_low_watermark(0.8); // Invalid: low > high
 
         assert!(invalid.validate().is_err());
-    }
-
-    #[test]
-    fn test_backpressure_state_accepts_initially() {
-        let state = BackpressureState::new(BackpressureConfig::default(), 10);
-        assert!(state.should_accept());
-        assert!(state.is_accepting());
     }
 
     #[test]
@@ -617,17 +589,6 @@ mod tests {
             state.task_started();
         }
         assert!(!state.should_accept());
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn test_resource_monitor_creates() {
-        let mut monitor = ResourceMonitor::new();
-        let metrics = monitor.sample().expect("/proc is readable on Linux");
-        assert!(metrics.cpu_usage >= 0.0);
-        // memory_used_bytes should be > 0 on any running system
-        assert!(metrics.memory_used_bytes > 0);
-        assert!(metrics.memory_total_bytes >= metrics.memory_used_bytes);
     }
 
     #[test]

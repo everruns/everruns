@@ -317,15 +317,6 @@ mod tests {
             "https://gw.example.com/otlp/v1/traces"
         );
     }
-
-    #[test]
-    fn test_config_defaults() {
-        let config = TelemetryConfig::default();
-        assert_eq!(config.service_name, "everruns");
-        assert!(config.otlp_endpoint.is_none());
-        assert!(config.enable_console);
-        assert!(!config.record_content);
-    }
 }
 
 #[cfg(test)]

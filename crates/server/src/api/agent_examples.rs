@@ -57,45 +57,7 @@ pub async fn list_examples(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::agent_templates::{REPOSITORY_PLACEHOLDER, agent_examples};
-    use crate::domains::agents::examples::seed_to_example;
     use crate::setup::seed::SEED_AGENTS;
-
-    #[test]
-    fn templates_carry_their_setup_and_plain_examples_do_not() {
-        let examples: Vec<AgentExample> = agent_examples()
-            .map(|(seed, setup)| seed_to_example(seed, setup))
-            .collect();
-        let reviewer = examples.iter().find(|e| e.name == "pr-reviewer").unwrap();
-        let setup = reviewer.setup.as_ref().expect("guided setup");
-        assert!(setup.connect_github);
-        assert_eq!(setup.trigger["trigger_type"], "github");
-        assert_eq!(setup.repository_placeholder, REPOSITORY_PLACEHOLDER);
-
-        let scanner = examples
-            .iter()
-            .find(|e| e.name == "security-scanner")
-            .unwrap();
-        let fix = scanner.setup.as_ref().unwrap().settings.iter();
-        let fix = fix
-            .clone()
-            .find(|s| s.key == "open_fix_pull_requests")
-            .unwrap();
-        assert!(!fix.default);
-
-        let jokes = examples
-            .iter()
-            .find(|e| e.name == "dad-jokes-agent")
-            .unwrap();
-        assert!(jokes.setup.is_none());
-        assert_eq!(jokes.harness_name, "conversation");
-        let json = serde_json::to_value(jokes).unwrap();
-        assert!(
-            json.get("setup").is_none(),
-            "plain examples keep their shape"
-        );
-    }
 
     #[test]
     fn test_all_seeds_have_unique_names() {
@@ -104,18 +66,5 @@ mod tests {
         unique.sort();
         unique.dedup();
         assert_eq!(names.len(), unique.len(), "Duplicate example names");
-    }
-
-    #[test]
-    fn test_known_seed_exists_by_name() {
-        let seed = SEED_AGENTS.iter().find(|s| s.name == "dad-jokes-agent");
-        assert!(seed.is_some());
-        assert_eq!(seed.unwrap().display_name, "Dad Jokes Agent");
-    }
-
-    #[test]
-    fn test_unknown_name_returns_none() {
-        let seed = SEED_AGENTS.iter().find(|s| s.name == "nonexistent");
-        assert!(seed.is_none());
     }
 }

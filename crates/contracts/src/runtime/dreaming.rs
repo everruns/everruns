@@ -222,13 +222,4 @@ mod tests {
             .is_err()
         );
     }
-    #[test]
-    fn defaults_roundtrip_and_facade_conversion() {
-        let c = config();
-        c.validate().unwrap();
-        let r: DreamingConfig = serde_json::from_value(serde_json::json!(c)).unwrap();
-        assert_eq!(r, c);
-        assert_eq!(c.trigger.idle_after_seconds, 60);
-        assert_eq!(c.budget.max_runs_per_day, 12);
-    }
 }

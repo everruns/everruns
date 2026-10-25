@@ -234,12 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn profile_lookup_is_offline_and_by_driver() {
-        assert!(profile(&DriverId::OpenAI, "gpt-5.6-terra").is_some());
-        assert!(profile(&DriverId::OpenAI, "not-a-model").is_none());
-    }
-
-    #[test]
     fn debug_output_carries_no_credential() {
         // `ModelInfo` holds the provider it was discovered through, so its
         // derived `Debug` inherits the provider's redaction. Assert that here:

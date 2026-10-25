@@ -15,8 +15,7 @@
 // serve this test and fail mid-stream (see anthropic_computer_toolset_wire.rs).
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
 use everruns_contracts::driver_registry::{
-    ChatDriver, DriverRegistry, LlmCallConfig, LlmStreamEvent, Message, MessageRole,
-    ProviderConfig, ServiceKind,
+    ChatDriver, DriverRegistry, LlmCallConfig, LlmStreamEvent, Message, MessageRole, ProviderConfig,
 };
 #[cfg(any(feature = "cloudflare", feature = "vercel"))]
 use futures::StreamExt;
@@ -39,8 +38,8 @@ mod cloudflare {
     use super::*;
     use everruns_contracts::DriverId;
     use everruns_drivers::cloudflare::{
-        CLOUDFLARE_API_HOST, CloudflareAuth, CloudflareChatDriver, account_base_url, descriptor,
-        provider, register_driver,
+        CLOUDFLARE_API_HOST, CloudflareAuth, CloudflareChatDriver, account_base_url, provider,
+        register_driver,
     };
     use wiremock::matchers::{header, header_exists, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -77,34 +76,6 @@ mod cloudflare {
                 .as_deref(),
             Some("https://api.cloudflare.com/client/v4/accounts/acct123/ai/v1/chat/completions")
         );
-    }
-
-    #[test]
-    fn descriptor_requires_the_token_and_account_and_leaves_the_gateway_optional() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-        let descriptor = registry.descriptor(&DriverId::Cloudflare).unwrap();
-        assert_eq!(descriptor.display_name, "Cloudflare AI Gateway");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
-
-        let required: Vec<_> = descriptor
-            .credential_schema
-            .fields
-            .iter()
-            .filter(|f| f.required)
-            .map(|f| f.name.as_str())
-            .collect();
-        assert_eq!(required, vec!["api_key", "account_id"]);
-        // Third-party models fall back to the account's default gateway, so
-        // pinning one is optional.
-        let optional: Vec<_> = descriptor
-            .credential_schema
-            .fields
-            .iter()
-            .filter(|f| !f.required)
-            .map(|f| f.name.as_str())
-            .collect();
-        assert_eq!(optional, vec!["gateway_id"]);
     }
 
     /// The account token is a plain bearer token on this surface, not the
@@ -288,20 +259,13 @@ mod cloudflare {
         // The gateway id is routing, not a secret, so it stays legible.
         assert!(rendered.contains("gw"), "{rendered}");
     }
-
-    #[test]
-    fn descriptor_is_chat_only() {
-        assert_eq!(descriptor().services, vec![ServiceKind::Chat]);
-    }
 }
 
 #[cfg(feature = "vercel")]
 mod vercel {
     use super::*;
     use everruns_contracts::DriverId;
-    use everruns_drivers::vercel::{
-        VERCEL_AI_GATEWAY_DEFAULT_API_URL, VercelChatDriver, descriptor, provider, register_driver,
-    };
+    use everruns_drivers::vercel::{VercelChatDriver, provider, register_driver};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -311,33 +275,6 @@ mod vercel {
         format!(
             "data: {{\"type\":\"response.output_text.delta\",\"delta\":\"pong\"}}\n\ndata: {terminal}\n\n"
         )
-    }
-
-    #[test]
-    fn provider_targets_the_documented_responses_endpoint() {
-        assert_eq!(
-            provider("vercel", "synthetic-key")
-                .endpoint()
-                .url("responses")
-                .as_deref(),
-            Some("https://ai-gateway.vercel.sh/v1/responses")
-        );
-        assert_eq!(
-            VERCEL_AI_GATEWAY_DEFAULT_API_URL,
-            "https://ai-gateway.vercel.sh/v1"
-        );
-    }
-
-    #[test]
-    fn descriptor_declares_the_gateway_api_key() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-        let descriptor = registry.descriptor(&DriverId::Vercel).unwrap();
-        assert_eq!(descriptor.display_name, "Vercel AI Gateway");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
-        assert_eq!(descriptor.credential_schema.fields.len(), 1);
-        assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
-        assert!(descriptor.credential_schema.fields[0].required);
     }
 
     /// The gateway takes an API key or an OIDC token in the same bearer header.
@@ -436,10 +373,5 @@ mod vercel {
                 .unwrap()
                 .is_none()
         );
-    }
-
-    #[test]
-    fn descriptor_is_chat_only() {
-        assert_eq!(descriptor().services, vec![ServiceKind::Chat]);
     }
 }

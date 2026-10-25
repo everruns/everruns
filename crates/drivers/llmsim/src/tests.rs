@@ -576,46 +576,6 @@ async fn test_empty_response() {
 }
 
 #[test]
-fn test_driver_debug() {
-    let driver = LlmSimDriver::new(LlmSimConfig::fixed("test").with_latency());
-    let debug = format!("{:?}", driver);
-
-    assert!(debug.contains("LlmSimDriver"));
-    assert!(debug.contains("simulate_latency"));
-}
-
-#[test]
-fn test_default_config() {
-    let config = LlmSimConfig::default();
-    assert!(matches!(config.response, ResponseConfig::Fixed(_)));
-    assert!(config.tool_calls.is_none());
-    assert!(!config.simulate_latency);
-}
-
-#[test]
-fn test_config_builder() {
-    let tool_call = ToolCall {
-        id: "call_1".to_string(),
-        name: "get_weather".to_string(),
-        arguments: serde_json::json!({"city": "NYC"}),
-    };
-
-    let config = LlmSimConfig::fixed("Result")
-        .with_tool_calls(vec![tool_call.clone()])
-        .with_latency()
-        .with_model("gpt-4")
-        .with_response_delay(std::time::Duration::from_secs(2));
-
-    assert!(config.tool_calls.is_some());
-    assert!(config.simulate_latency);
-    assert_eq!(config.model_name, "gpt-4");
-    assert_eq!(
-        config.response_delay,
-        Some(std::time::Duration::from_secs(2))
-    );
-}
-
-#[test]
 fn test_resolve_latency_profile_from_model_name() {
     let driver = LlmSimDriver::new(LlmSimConfig::fixed("test"));
 

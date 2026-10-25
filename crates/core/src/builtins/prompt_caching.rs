@@ -172,17 +172,6 @@ mod tests {
     }
 
     #[test]
-    fn explicit_strategy_can_be_selected_in_capability_config() {
-        let capability = PromptCachingCapability::new();
-        let config = Capability::prompt_cache_config(
-            &capability,
-            &serde_json::json!({"strategy":"explicit"}),
-        )
-        .unwrap();
-        assert_eq!(config.strategy, PromptCacheStrategy::Explicit);
-    }
-
-    #[test]
     fn retention_is_read_from_config_and_unknown_values_keep_the_constructor_value() {
         let capability =
             PromptCachingCapability::new().with_retention(PromptCacheRetention::FiveMinutes);

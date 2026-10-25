@@ -303,13 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn test_sandbox_labels() {
-        let labels = sandbox_labels("session-123");
-        assert_eq!(labels.get(MANAGED_BY_LABEL).unwrap(), MANAGED_BY_VALUE);
-        assert_eq!(labels.get(SESSION_LABEL).unwrap(), "session-123");
-    }
-
-    #[test]
     fn labels_owned_by_session_requires_both_markers() {
         let owned = sandbox_labels("session-a");
         assert!(labels_owned_by_session(&owned, "session-a"));

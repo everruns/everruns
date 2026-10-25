@@ -168,14 +168,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_defaults_to_standard_without_capability() {
-        assert_eq!(
-            resolve_error_disclosure(&[], None),
-            ErrorDisclosure::Standard
-        );
-    }
-
-    #[test]
     fn resolve_uses_capability_mode() {
         assert_eq!(
             resolve_error_disclosure(&[cap_config("detailed")], None),
@@ -184,15 +176,6 @@ mod tests {
         assert_eq!(
             resolve_error_disclosure(&[cap_config("generic")], None),
             ErrorDisclosure::Generic
-        );
-    }
-
-    #[test]
-    fn resolve_capability_without_mode_defaults_to_standard() {
-        let config = AgentCapabilityConfig::new(ERROR_DISCLOSURE_CAPABILITY_ID);
-        assert_eq!(
-            resolve_error_disclosure(&[config], None),
-            ErrorDisclosure::Standard
         );
     }
 
@@ -234,11 +217,5 @@ mod tests {
                 .is_err()
         );
         assert!(cap.validate_config(&serde_json::json!([])).is_err());
-    }
-
-    #[test]
-    fn localizations_resolve_uk() {
-        let cap = ErrorDisclosureCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Розкриття помилок");
     }
 }

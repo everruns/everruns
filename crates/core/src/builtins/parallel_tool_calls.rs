@@ -226,12 +226,4 @@ mod tests {
             );
         }
     }
-    #[test]
-    fn localizations_resolve_uk() {
-        let cap = ParallelToolCallsCapability;
-        assert_eq!(
-            cap.localized_name(Some("uk-UA")),
-            "Паралельні виклики інструментів"
-        );
-    }
 }

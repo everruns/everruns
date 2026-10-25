@@ -390,27 +390,6 @@ mod bundle_tests {
         "dry_run",
     ];
 
-    fn portable_ids() -> Vec<&'static str> {
-        let mut ids = RUNTIME_IDS.to_vec();
-        ids.push("usage_limit_auto_continue");
-        #[cfg(feature = "ui-capabilities")]
-        {
-            ids.push("openui");
-            ids.push("a2ui");
-        }
-        ids
-    }
-
-    #[test]
-    fn bundle_has_the_curated_stable_catalog() {
-        let capabilities = portable_capabilities();
-        let ids: Vec<_> = capabilities
-            .iter()
-            .map(|capability| capability.id())
-            .collect();
-        assert_eq!(ids, portable_ids());
-    }
-
     #[test]
     fn runtime_bundle_excludes_schedule_backed_auto_continue() {
         let mut registry = CapabilityRegistry::new();

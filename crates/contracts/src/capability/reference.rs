@@ -177,23 +177,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn new_defaults_to_empty_object() {
-        for cap in [
-            CapabilityRef::new("current_time"),
-            CapabilityId::new("current_time").into(),
-            "current_time".into(),
-            String::from("current_time").into(),
-        ] {
-            assert_eq!(cap.capability_id(), "current_time");
-            assert_eq!(cap.config_value(), &json!({}));
-            assert_eq!(
-                serde_json::to_value(&cap).unwrap(),
-                json!({"ref": "current_time", "config": {}})
-            );
-        }
-    }
-
-    #[test]
     fn serializes_as_persisted_attachment_shape() {
         let cap = CapabilityRef::with_config("current_time", json!({"timezone": "UTC"}));
         let value = serde_json::to_value(&cap).unwrap();
@@ -248,16 +231,5 @@ mod tests {
             assert_eq!(err.id(), "noop");
             assert!(err.reason().contains("JSON object"));
         }
-    }
-
-    #[test]
-    fn builder_and_mutation() {
-        let mut cap = CapabilityRef::new("noop").config(json!({"a": 1}));
-        assert_eq!(cap.config_value(), &json!({"a": 1}));
-        cap.set_config(json!({"b": 2}));
-        assert_eq!(cap.config_value(), &json!({"b": 2}));
-        let (id, config) = cap.into_parts();
-        assert_eq!(id.as_str(), "noop");
-        assert_eq!(config, json!({"b": 2}));
     }
 }

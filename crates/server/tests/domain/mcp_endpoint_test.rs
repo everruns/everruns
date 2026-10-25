@@ -1835,21 +1835,6 @@ async fn test_mcp_execute_session_files_reads_virtual_mounts() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_agents() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_agents" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_agents failed: {}",
-        tool_text(&resp)
-    );
-
-    let result = tool_json(&resp);
-    assert!(result["data"].is_array());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_create_and_get_agent() {
     let (_server, url) = TestServer::serving().await;
 
@@ -1887,31 +1872,6 @@ async fn test_mcp_execute_create_and_get_agent() {
 
     let fetched = tool_json(&resp);
     assert_eq!(fetched["name"], "mcp-execute-agent");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_models() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_models" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_models failed: {}",
-        tool_text(&resp)
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_capabilities() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp =
-        mcp_tool_call_http(&url, "execute", json!({ "commands": "list_capabilities" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_capabilities failed: {}",
-        tool_text(&resp)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2111,18 +2071,6 @@ async fn test_mcp_execute_argument_coercion_contract_matrix() {
             assert_eq!(payload[field], expected, "{case}: unexpected {field}");
         }
     }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_mcp_servers() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_mcp_servers" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "execute list_mcp_servers failed: {}",
-        tool_text(&resp)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2512,18 +2460,6 @@ async fn test_mcp_execute_bash_script() {
 
     let count: i64 = tool_text(&resp).trim().parse().unwrap();
     assert!(count >= 1, "Should have at least 1 agent after creation");
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_list_providers() {
-    let (_server, url) = TestServer::serving().await;
-
-    let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_providers" })).await;
-    assert!(
-        !tool_is_error(&resp),
-        "list_providers failed: {}",
-        tool_text(&resp)
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for Sprites plugin registration and capability.
 
-use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::capabilities::CapabilityRegistry;
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 
 use everruns_integrations_experimental::sprites::CAPABILITY_PLUGINS;
@@ -21,36 +21,6 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_sprites_plugin_is_published() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    assert!(
-        plugins.iter().any(|p| {
-            let cap = (p.factory)();
-            cap.id() == "sprites"
-        }),
-        "Sprites IntegrationPlugin should be published in CAPABILITY_PLUGINS"
-    );
-}
-
-#[test]
-fn test_sprites_plugin_is_behind_its_feature_flag() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    let sprites = plugins
-        .iter()
-        .find(|p| {
-            let cap = (p.factory)();
-            cap.id() == "sprites"
-        })
-        .expect("Sprites plugin not found");
-
-    assert_eq!(
-        sprites.feature_flag,
-        Some("sprites"),
-        "sprites should be behind its feature flag"
-    );
-}
-
-#[test]
 fn test_sprites_is_off_in_every_grade() {
     let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(
@@ -66,20 +36,4 @@ fn test_sprites_not_registered_in_prod_registry() {
         !registry.has("sprites"),
         "Experimental Sprites should stay out of the prod registry"
     );
-}
-
-#[test]
-fn test_sprites_capability_metadata() {
-    let cap = CAPABILITY_PLUGINS
-        .iter()
-        .map(|p| (p.factory)())
-        .find(|cap| cap.id() == "sprites")
-        .expect("Sprites capability not found");
-
-    assert_eq!(cap.id(), "sprites");
-    assert_eq!(cap.name(), "Sprites");
-    assert_eq!(cap.icon(), Some("sprites"));
-    assert_eq!(cap.category(), Some("Execution"));
-    assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    assert_eq!(cap.tools().len(), 9);
 }

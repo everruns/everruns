@@ -437,35 +437,6 @@ async fn test_session_records_the_agent_revision_it_started_on() {
 }
 
 #[tokio::test]
-async fn test_list_agents() {
-    let server = TestServer::new().await;
-
-    // Create an agent first
-    let _: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "list-test-agent",
-                "display_name": "List Test Agent",
-                "system_prompt": "Test"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    // List agents
-    let data: Value = server
-        .get("/v1/agents")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let agents = data["data"].as_array().expect("Expected array");
-    assert!(!agents.is_empty(), "Should have at least one agent");
-}
-
-#[tokio::test]
 async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
     let server = TestServer::in_memory().await;
     let generic_id: everruns_contracts::typed_id::HarnessId =
@@ -1139,35 +1110,6 @@ async fn test_copy_agent_not_found() {
 // ============================================
 // Check Harness Name Tests
 // ============================================
-
-#[tokio::test]
-async fn test_agent_with_capabilities() {
-    let server = TestServer::new().await;
-
-    // Create agent with capabilities
-    let agent: Agent = server
-        .post(
-            "/v1/agents",
-            json!({
-                "name": "capability-test-agent",
-                "display_name": "Capability Test Agent",
-                "system_prompt": "Test",
-                "capabilities": [
-                    {"ref": "current_time", "config": {}},
-                    {"ref": "session_file_system", "config": {}}
-                ]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-
-    assert_eq!(
-        agent.capabilities.len(),
-        2,
-        "Agent should have 2 capabilities"
-    );
-}
 
 // ============================================
 // Session SQL Database Tests

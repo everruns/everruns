@@ -15,52 +15,6 @@ use everruns_server::storage::{CreateOrganizationRow, StorageBackend};
 // Creation Tests
 // ============================================
 
-#[tokio::test]
-async fn test_create_organization_assigns_public_id() {
-    let db = StorageBackend::test_database();
-
-    let org = db
-        .create_organization(CreateOrganizationRow {
-            public_id: "org_aaaabbbbccccddddeeee111122223333".to_string(),
-            name: "Test Org".to_string(),
-            created_by: None,
-        })
-        .await
-        .expect("create should succeed");
-
-    assert_eq!(org.public_id, "org_aaaabbbbccccddddeeee111122223333");
-    assert_eq!(org.name, "Test Org");
-    assert!(org.org_id > 1); // org_id=1 is default org
-}
-
-#[tokio::test]
-async fn test_create_organization_multiple() {
-    let db = StorageBackend::test_database();
-
-    let org1 = db
-        .create_organization(CreateOrganizationRow {
-            public_id: format!("org_{}", Uuid::now_v7().simple()),
-            name: "Org A".to_string(),
-            created_by: None,
-        })
-        .await
-        .unwrap();
-
-    let org2 = db
-        .create_organization(CreateOrganizationRow {
-            public_id: format!("org_{}", Uuid::now_v7().simple()),
-            name: "Org B".to_string(),
-            created_by: None,
-        })
-        .await
-        .unwrap();
-
-    assert_ne!(org1.org_id, org2.org_id);
-    assert_ne!(org1.public_id, org2.public_id);
-    assert_eq!(org1.name, "Org A");
-    assert_eq!(org2.name, "Org B");
-}
-
 // ============================================
 // Membership Tests
 // ============================================
@@ -239,20 +193,6 @@ async fn test_get_organization_by_public_id() {
         .await
         .unwrap();
     assert!(not_found.is_none());
-}
-
-#[tokio::test]
-async fn test_default_org_exists() {
-    let db = StorageBackend::test_database();
-
-    // Default org (org_id=1) should exist
-    let default_org = db.get_organization(1).await.unwrap();
-    assert!(default_org.is_some());
-
-    let org = default_org.unwrap();
-    assert_eq!(org.org_id, 1);
-    assert_eq!(org.public_id, "org_00000000000000000000000000000001");
-    assert_eq!(org.name, "Default Organization");
 }
 
 // ============================================

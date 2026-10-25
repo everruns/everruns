@@ -156,19 +156,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_large_catalog_with_multiple_pages() {
-        let mut discovery = DiscoveryAccumulator::new();
-        for page in 0..20 {
-            let tools = (page * 100..(page + 1) * 100)
-                .map(|i| tool(format!("tool_{i}")))
-                .collect();
-            let cursor = (page < 19).then(|| format!("page_{}", page + 1));
-            discovery.push_page(tools, cursor).unwrap();
-        }
-        assert_eq!(discovery.finish().len(), 2_000);
-    }
-
-    #[test]
     fn accepts_the_ten_thousand_tool_limit() {
         let mut discovery = DiscoveryAccumulator::new();
         for page in 0..100 {

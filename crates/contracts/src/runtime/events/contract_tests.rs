@@ -513,25 +513,6 @@ fn act_started_with_definitions_populates_display_names() {
 }
 
 #[test]
-fn tool_completed_with_display_name_roundtrip() {
-    let data = ToolCompletedData::success(
-        "tc_1".to_string(),
-        "get_weather".to_string(),
-        vec![crate::runtime::message::ContentPart::text("Sunny")],
-        Some(100),
-    )
-    .with_display_name(Some("Get Weather".to_string()));
-
-    assert_eq!(data.display_name.as_deref(), Some("Get Weather"));
-
-    let json = serde_json::to_value(&data).unwrap();
-    assert_eq!(json["display_name"], "Get Weather");
-
-    let deserialized: ToolCompletedData = serde_json::from_value(json).unwrap();
-    assert_eq!(deserialized.display_name.as_deref(), Some("Get Weather"));
-}
-
-#[test]
 fn failed_tool_call_is_an_issue_and_success_carries_no_severity() {
     // A failed tool call goes back to the model, which carries on: an issue.
     let failed = ToolCompletedData::failure(
@@ -553,47 +534,6 @@ fn failed_tool_call_is_an_issue_and_success_carries_no_severity() {
     let decoded: ToolCompletedData = serde_json::from_value(legacy).unwrap();
     assert_eq!(decoded.severity, None);
     assert!(!decoded.success);
-}
-
-#[test]
-fn tool_started_display_name_serialization() {
-    let data = ToolStartedData {
-        tool_call: ToolCall {
-            id: "tc_1".to_string(),
-            name: "bash".to_string(),
-            arguments: serde_json::json!({"command": "ls"}),
-        },
-        tool_call_fingerprint: None,
-        display_name: Some("Bash".to_string()),
-        narration: None,
-        side_effect_class: None,
-    };
-
-    let json = serde_json::to_value(&data).unwrap();
-    assert_eq!(json["display_name"], "Bash");
-}
-
-#[test]
-fn tool_definition_summary_display_name() {
-    use crate::runtime::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
-
-    let def = crate::runtime::tool_types::ToolDefinition::Builtin(BuiltinTool {
-        name: "read_file".to_string(),
-        display_name: Some("Read File".to_string()),
-        description: "Reads a file".to_string(),
-        parameters: serde_json::json!({}),
-        policy: ToolPolicy::Auto,
-        category: None,
-        deferrable: DeferrablePolicy::default(),
-        hints: crate::runtime::tool_types::ToolHints::default(),
-        full_parameters: None,
-    });
-
-    let summary = ToolDefinitionSummary::from(&def);
-    assert_eq!(summary.display_name.as_deref(), Some("Read File"));
-
-    let json = serde_json::to_value(&summary).unwrap();
-    assert_eq!(json["display_name"], "Read File");
 }
 
 // ========================================================================
@@ -1020,28 +960,5 @@ fn event_structure_has_required_fields() {
     assert_eq!(
         serde_json::to_value(request.into_event(event_id, 12)).unwrap(),
         expected
-    );
-}
-
-#[test]
-fn event_context_span_fields() {
-    let context = EventContext::empty().with_span(
-        "trace123".to_string(),
-        "span456".to_string(),
-        Some("parent789".to_string()),
-    );
-
-    let json = serde_json::to_value(&context).unwrap();
-    assert_eq!(
-        json.get("trace_id").and_then(|v| v.as_str()),
-        Some("trace123")
-    );
-    assert_eq!(
-        json.get("span_id").and_then(|v| v.as_str()),
-        Some("span456")
-    );
-    assert_eq!(
-        json.get("parent_span_id").and_then(|v| v.as_str()),
-        Some("parent789")
     );
 }

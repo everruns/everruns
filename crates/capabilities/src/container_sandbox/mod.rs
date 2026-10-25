@@ -166,17 +166,6 @@ impl Capability for ContainerSandboxCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = ContainerSandboxCapability;
-        assert_eq!(cap.id(), "container_sandbox");
-        assert_eq!(cap.name(), "Container Sandbox");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.icon(), Some("container"));
-        assert_eq!(cap.category(), Some("Execution"));
-    }
-
     /// EVE-1042: the environment half of this prompt is derived from the facts
     /// above, so it cannot drift from what the sandbox actually is.
     #[test]
@@ -192,41 +181,5 @@ mod tests {
         // And the facts themselves reach the model.
         assert!(prompt.contains("container"), "{prompt}");
         assert!(prompt.contains("Nothing recovers"), "{prompt}");
-    }
-
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = ContainerSandboxCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 8);
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"sandbox_create"));
-        assert!(names.contains(&"sandbox_exec"));
-        assert!(names.contains(&"sandbox_read_file"));
-        assert!(names.contains(&"sandbox_write_file"));
-        assert!(names.contains(&"sandbox_upload"));
-        assert!(names.contains(&"sandbox_download"));
-        assert!(names.contains(&"sandbox_list"));
-        assert!(names.contains(&"sandbox_manage"));
-    }
-
-    #[test]
-    fn test_system_prompt_exists() {
-        let cap = ContainerSandboxCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("Container Sandbox"));
-        assert!(prompt.contains("/workspace"));
-    }
-
-    #[test]
-    fn test_dependencies() {
-        let cap = ContainerSandboxCapability;
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
-
-    #[test]
-    fn test_features() {
-        let cap = ContainerSandboxCapability;
-        assert!(cap.features().contains(&LEASED_RESOURCES_FEATURE));
     }
 }

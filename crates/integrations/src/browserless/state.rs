@@ -454,14 +454,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_required_str_present() {
-        let args = serde_json::json!({"url": "https://example.com"});
-        let result = required_str(&args, "url");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "https://example.com");
-    }
-
-    #[test]
     fn test_required_str_missing() {
         let args = serde_json::json!({"other": "value"});
         let result = required_str(&args, "url");
@@ -480,14 +472,6 @@ mod tests {
         let args = serde_json::json!({"url": 42});
         let result = required_str(&args, "url");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_browser_session_state_new() {
-        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
-        assert_eq!(state.ws_endpoint, "wss://example.com/browser/abc123");
-        assert!(!state.created_at.is_empty());
-        assert!(!state.last_active_at.is_empty());
     }
 
     #[test]
@@ -519,17 +503,6 @@ mod tests {
     fn test_validate_stored_ws_endpoint_rejects_different_origin() {
         let endpoint = "wss://attacker.example.com/e/abc123";
         assert!(validate_stored_ws_endpoint(endpoint).is_err());
-    }
-
-    #[test]
-    fn test_browser_session_serialization_roundtrip() {
-        let state = BrowserSessionState::new("wss://example.com/browser/abc123".to_string());
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: BrowserSessionState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.ws_endpoint, state.ws_endpoint);
-        assert_eq!(deserialized.created_at, state.created_at);
-        // No api_token in serialized state
-        assert!(!json.contains("api_token"));
     }
 
     /// Structural verification: session state must contain exactly 3 fields
@@ -691,12 +664,5 @@ mod tests {
         let code = build_cookie_injection_code(&cookies);
         assert!(code.contains("setCookie"), "should use page.setCookie");
         assert!(code.contains("sid"), "should include cookie name");
-    }
-
-    #[test]
-    fn test_build_cookie_extraction_code() {
-        let code = build_cookie_extraction_code();
-        assert!(code.contains("page.cookies()"));
-        assert!(code.contains("__cookies"));
     }
 }

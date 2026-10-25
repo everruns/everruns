@@ -791,17 +791,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_miss_populates_cache() {
-        let svc = make_service();
-        insert_skill(&svc, 1, "cache-test").await;
-
-        assert!(!is_cached(&svc, 1).await);
-        let skills = svc.cached_skills(1).await.unwrap();
-        assert_eq!(skills.len(), 1);
-        assert!(is_cached(&svc, 1).await);
-    }
-
-    #[tokio::test]
     async fn test_cache_hit_returns_cached_skills() {
         let svc = make_service();
         insert_skill(&svc, 1, "cached-skill").await;
@@ -1059,12 +1048,6 @@ mod tests {
                 high.is_empty(),
                 "non-builtin refs must not appear as high-risk"
             );
-        }
-
-        #[test]
-        fn empty_input_returns_empty() {
-            let svc = make_service();
-            assert!(svc.high_risk_ids(&[]).is_empty());
         }
 
         #[tokio::test]

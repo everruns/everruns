@@ -157,16 +157,6 @@ mod tests {
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn test_has_system_prompt() {
-        let cap = DataKnowledgeCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("/knowledge/{tables,business,queries}"));
-        assert!(prompt.contains("ground truth"));
-        // Framed as an OKF bundle so agents navigate it accordingly.
-        assert!(prompt.contains("Open Knowledge Format"));
-    }
-
-    #[test]
     fn test_mounts_knowledge_scaffold() {
         let cap = DataKnowledgeCapability;
         let mounts = cap.mounts();

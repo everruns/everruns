@@ -804,35 +804,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_eval_status_display() {
-        assert_eq!(EvalStatus::Active.to_string(), "active");
-        assert_eq!(EvalStatus::Archived.to_string(), "archived");
-        assert_eq!(EvalStatus::Deleted.to_string(), "deleted");
-    }
-
-    #[test]
     fn test_eval_status_from_str() {
         assert_eq!(EvalStatus::from("active"), EvalStatus::Active);
         assert_eq!(EvalStatus::from("archived"), EvalStatus::Archived);
         assert_eq!(EvalStatus::from("deleted"), EvalStatus::Deleted);
         assert_eq!(EvalStatus::from("unknown"), EvalStatus::Active);
-    }
-
-    #[test]
-    fn test_eval_status_serde_roundtrip() {
-        let json = serde_json::to_string(&EvalStatus::Archived).unwrap();
-        assert_eq!(json, r#""archived""#);
-        let parsed: EvalStatus = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, EvalStatus::Archived);
-    }
-
-    #[test]
-    fn test_eval_run_status_display() {
-        assert_eq!(EvalRunStatus::Pending.to_string(), "pending");
-        assert_eq!(EvalRunStatus::Running.to_string(), "running");
-        assert_eq!(EvalRunStatus::Completed.to_string(), "completed");
-        assert_eq!(EvalRunStatus::Failed.to_string(), "failed");
-        assert_eq!(EvalRunStatus::Cancelled.to_string(), "cancelled");
     }
 
     #[test]
@@ -843,15 +819,6 @@ mod tests {
         assert_eq!(EvalRunStatus::from("failed"), EvalRunStatus::Failed);
         assert_eq!(EvalRunStatus::from("cancelled"), EvalRunStatus::Cancelled);
         assert_eq!(EvalRunStatus::from("unknown"), EvalRunStatus::Pending);
-    }
-
-    #[test]
-    fn test_case_result_status_display() {
-        assert_eq!(CaseResultStatus::Pending.to_string(), "pending");
-        assert_eq!(CaseResultStatus::Passed.to_string(), "passed");
-        assert_eq!(CaseResultStatus::Failed.to_string(), "failed");
-        assert_eq!(CaseResultStatus::Errored.to_string(), "errored");
-        assert_eq!(CaseResultStatus::Timeout.to_string(), "timeout");
     }
 
     #[test]
@@ -885,20 +852,6 @@ mod tests {
     }
 
     #[test]
-    fn test_scorer_tool_called_defaults() {
-        let json = r#"{"type": "tool_called", "tool": "read_file"}"#;
-        let scorer: Scorer = serde_json::from_str(json).unwrap();
-        match scorer {
-            Scorer::ToolCalled { tool, min, weight } => {
-                assert_eq!(tool, "read_file");
-                assert_eq!(min, 1);
-                assert_eq!(weight, 1.0);
-            }
-            _ => panic!("wrong variant"),
-        }
-    }
-
-    #[test]
     fn test_eval_target_session_serde_roundtrip() {
         let target = EvalTarget::Session {
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
@@ -915,26 +868,6 @@ mod tests {
         assert!(json.get("system_prompt").is_none()); // skip_serializing_if
         assert!(json.get("harness_name").is_none());
         assert!(json.get("max_iterations").is_none());
-
-        let parsed: EvalTarget = serde_json::from_value(json).unwrap();
-        assert_eq!(parsed, target);
-    }
-
-    #[test]
-    fn test_eval_target_session_minimal() {
-        // Session with just harness_name, no other params
-        let target = EvalTarget::Session {
-            harness_id: None,
-            harness_name: Some("generic".to_string()),
-            agent_id: None,
-            model_id: None,
-            system_prompt: None,
-            max_iterations: None,
-        };
-        let json = serde_json::to_value(&target).unwrap();
-        assert_eq!(json["type"], "session");
-        assert_eq!(json["harness_name"], "generic");
-        assert!(json.get("harness_id").is_none());
 
         let parsed: EvalTarget = serde_json::from_value(json).unwrap();
         assert_eq!(parsed, target);

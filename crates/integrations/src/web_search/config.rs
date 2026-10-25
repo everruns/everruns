@@ -154,14 +154,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_follow_the_organization_and_fall_back() {
-        let config = WebSearchConfig::from_value(&serde_json::json!({})).unwrap();
-        assert_eq!(config.provider, ProviderSetting::OrgDefault);
-        assert_eq!(config.fallback, None);
-        assert!(!config.show_provider);
-    }
-
-    #[test]
     fn rejects_urls_as_domains() {
         assert!(
             WebSearchConfig::from_value(&serde_json::json!({

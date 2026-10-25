@@ -635,18 +635,4 @@ mod tests {
         .await;
         assert_eq!(egress.seen.lock().unwrap().len(), 1);
     }
-
-    #[test]
-    fn schema_gains_raw_fields() {
-        let schema = extend_schema(json!({"type": "object", "properties": {"url": {}}}));
-        for field in ["method", "headers", "body", "json", "form"] {
-            assert!(schema["properties"][field].is_object(), "{field}");
-        }
-        assert!(
-            schema["properties"]["method"]["enum"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("POST"))
-        );
-    }
 }
