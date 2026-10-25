@@ -27,5 +27,4 @@ describe("ArchiveFilter", () => {
     expect(onChange).toHaveBeenCalled();
     expect(onChange.mock.calls[0][0]).toBe(true);
   });
-
 });
