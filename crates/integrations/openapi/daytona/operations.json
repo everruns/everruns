@@ -1,0 +1,79 @@
+{
+  "_comment": "Daytona operations Everruns uses, by operationId. build.rs generates the client from `client` and the spec mounted for daytona_api_call from `agent`; the live drift test checks every listed operation against Daytona's current specs.",
+  "client": {
+    "management": [
+      "createSandbox",
+      "getSandbox",
+      "deleteSandbox",
+      "startSandbox",
+      "stopSandbox",
+      "setAutostopInterval",
+      "listSandboxes",
+      "createVolume",
+      "getVolume",
+      "getVolumeByName",
+      "getAllSnapshots"
+    ],
+    "toolbox": [
+      "CreateSession",
+      "DeleteSession",
+      "SessionExecuteCommand",
+      "GetSessionCommand",
+      "ListFiles",
+      "DeleteFile",
+      "CreateFolder"
+    ]
+  },
+  "raw": {
+    "toolbox": [
+      "GetSessionCommandLogs",
+      "DownloadFile",
+      "UploadFile",
+      "GetComputerUseSystemStatus",
+      "StartComputerUse",
+      "GetDisplayInfo",
+      "Click",
+      "MouseDown",
+      "MouseUp",
+      "MoveMouse",
+      "Drag",
+      "Scroll",
+      "GetMousePosition",
+      "TypeText",
+      "PressKey",
+      "KeyDown",
+      "KeyUp",
+      "TakeScreenshot",
+      "TakeRegionScreenshot"
+    ]
+  },
+  "agent": {
+    "management": [
+      "createSandbox",
+      "listSandboxes",
+      "getSandbox",
+      "deleteSandbox",
+      "startSandbox",
+      "stopSandbox",
+      "setAutostopInterval",
+      "replaceLabels"
+    ],
+    "toolbox": [
+      "ExecuteCommand",
+      "ListFiles",
+      "DeleteFile",
+      "DownloadFile",
+      "UploadFile",
+      "CreateFolder",
+      "SearchFiles",
+      "ReplaceInFiles",
+      "GetPorts",
+      "CreateSession",
+      "SessionExecuteCommand",
+      "GetSessionCommand",
+      "GetSessionCommandLogs",
+      "CloneRepository",
+      "GetStatus"
+    ]
+  }
+}

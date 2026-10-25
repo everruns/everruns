@@ -1,17 +1,43 @@
 use everruns_contracts::runtime::resource_names::{UniqueResourceName, unique_resource_name};
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use crate::daytona::api::management::types::CreateSandbox;
 use crate::daytona::client::DaytonaClient;
 use crate::daytona::state::SandboxInfo;
+use crate::daytona::{AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES};
+
+/// Create request every Everruns sandbox starts from: our labels and the
+/// stop/archive/delete intervals that bound an abandoned sandbox's cost.
+pub(crate) fn create_body(
+    labels: &serde_json::Map<String, Value>,
+    auto_stop_minutes: u64,
+) -> CreateSandbox {
+    let minutes = |value: u64| Some(i64::try_from(value).unwrap_or(i64::MAX));
+    CreateSandbox {
+        auto_stop_interval: minutes(auto_stop_minutes),
+        auto_archive_interval: minutes(AUTO_ARCHIVE_INTERVAL_MINUTES),
+        auto_delete_interval: minutes(AUTO_DELETE_INTERVAL_MINUTES),
+        labels: labels
+            .iter()
+            .map(|(key, value)| {
+                let value = value
+                    .as_str()
+                    .map_or_else(|| value.to_string(), str::to_string);
+                (key.clone(), value)
+            })
+            .collect(),
+        ..CreateSandbox::default()
+    }
+}
 
 pub(crate) async fn create_sandbox_with_unique_name(
     client: &DaytonaClient,
     requested_name: &str,
-    mut body: Value,
+    mut body: CreateSandbox,
 ) -> Result<(SandboxInfo, UniqueResourceName), String> {
     for attempt in 0..2 {
         let mut generated_name = unique_resource_name(requested_name);
-        set_create_body_name(&mut body, &generated_name.canonical_name)?;
+        body.name = Some(generated_name.canonical_name.clone());
 
         match client.create_sandbox(body.clone()).await {
             Ok(info) => {
@@ -26,16 +52,6 @@ pub(crate) async fn create_sandbox_with_unique_name(
     }
 
     unreachable!("loop returns success or error")
-}
-
-fn set_create_body_name(body: &mut Value, name: &str) -> Result<(), String> {
-    match body {
-        Value::Object(object) => {
-            object.insert("name".to_string(), json!(name));
-            Ok(())
-        }
-        _ => Err("Daytona sandbox create body must be a JSON object".to_string()),
-    }
 }
 
 fn is_daytona_name_conflict(error: &str) -> bool {
@@ -65,12 +81,21 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_object_create_body() {
-        let mut body = json!(["invalid"]);
+    fn create_body_carries_labels_and_lifecycle_intervals() {
+        let labels = serde_json::json!({"everruns": "true", "everruns.count": 3});
+        let body = create_body(labels.as_object().unwrap(), 7);
 
-        let error = set_create_body_name(&mut body, "sandbox-name").unwrap_err();
-
-        assert_eq!(error, "Daytona sandbox create body must be a JSON object");
-        assert_eq!(body, json!(["invalid"]));
+        assert_eq!(body.auto_stop_interval, Some(7));
+        assert_eq!(
+            body.auto_archive_interval,
+            Some(AUTO_ARCHIVE_INTERVAL_MINUTES as i64)
+        );
+        assert_eq!(
+            body.auto_delete_interval,
+            Some(AUTO_DELETE_INTERVAL_MINUTES as i64)
+        );
+        assert_eq!(body.labels["everruns"], "true");
+        assert_eq!(body.labels["everruns.count"], "3");
+        assert!(body.name.is_none());
     }
 }

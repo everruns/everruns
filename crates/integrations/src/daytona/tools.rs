@@ -41,15 +41,12 @@ use tracing::{debug, warn};
 
 use super::client::DaytonaClient;
 use super::git_auth::get_github_token;
-use super::naming::create_sandbox_with_unique_name;
+use super::naming::{create_body, create_sandbox_with_unique_name};
 use super::state::{
     SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, list_sandbox_states,
     release_sandbox_lease, required_str, save_sandbox_state, touch_sandbox_lease,
 };
-use super::{
-    AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
-    EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
-};
+use super::{AUTO_STOP_INTERVAL_MINUTES, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL};
 
 // Daytona REST API does not support per-sandbox resource overrides for snapshot-based creation.
 // Instead, select a pre-built snapshot that matches the desired resource tier.
@@ -311,13 +308,7 @@ impl Tool for DaytonaCreateSandboxTool {
             Err(e) => return ToolExecutionResult::tool_error(&e),
         };
 
-        let mut create_body = json!({
-            "name": requested_name,
-            "autoStopInterval": auto_stop,
-            "autoArchiveInterval": AUTO_ARCHIVE_INTERVAL_MINUTES,
-            "autoDeleteInterval": AUTO_DELETE_INTERVAL_MINUTES,
-            "labels": labels,
-        });
+        let mut create_body = create_body(&labels, auto_stop);
         // Resolve snapshot: explicit snapshot > size tier > default (small)
         let explicit_snapshot = arguments
             .get("snapshot")
@@ -336,7 +327,7 @@ impl Tool for DaytonaCreateSandboxTool {
             }
         };
 
-        create_body["snapshot"] = json!(snapshot_name);
+        create_body.snapshot = Some(snapshot_name);
 
         // Create sandbox
         let (sandbox_info, sandbox_name) =

@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tracing::debug;
 
+use crate::daytona::api::{management, toolbox};
 use crate::daytona::state::{
     ExecOutputChunk, ExecResult, ExecStream, SandboxInfo, SnapshotInfo, VolumeInfo,
 };
@@ -61,11 +62,20 @@ const SHELL_PROFILE_PREAMBLE: &str = concat!(
 // DaytonaClient - HTTP client for Daytona APIs
 // ============================================================================
 
+/// Daytona Management and Toolbox API client.
+///
+/// Decision: JSON operations go through the clients generated from Daytona's
+/// OpenAPI specs (`super::api`), so a field or path Daytona renames fails the
+/// build or the spec drift check instead of a live call. The raw requests
+/// left here are the ones the generator cannot express or that must stay
+/// untyped: multipart upload, byte downloads (files and command logs), and
+/// the agent-driven `daytona_api_call` passthrough.
 pub struct DaytonaClient {
     http: reqwest::Client,
     api_key: String,
     api_base: String,
     toolbox_base: String,
+    management: management::Client,
 }
 
 impl DaytonaClient {
@@ -78,12 +88,32 @@ impl DaytonaClient {
     }
 
     pub fn with_base_urls(api_key: String, api_base: String, toolbox_base: String) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(mut value) = reqwest::header::HeaderValue::from_str(&format!("Bearer {api_key}"))
+        {
+            value.set_sensitive(true);
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+        }
+        let http = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap_or_default();
+        let management = management::Client::new_with_client(&api_base, http.clone());
         Self {
-            http: reqwest::Client::new(),
+            http,
             api_key,
             api_base,
             toolbox_base,
+            management,
         }
+    }
+
+    /// Generated Toolbox client for one sandbox.
+    fn toolbox(&self, sandbox_id: &str) -> toolbox::Client {
+        toolbox::Client::new_with_client(
+            &format!("{}/{sandbox_id}", self.toolbox_base),
+            self.http.clone(),
+        )
     }
 
     // --- Generic request helpers ---
@@ -168,7 +198,7 @@ impl DaytonaClient {
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from sandbox: {e}"))
     }
 
-    /// Raw toolbox GET that returns bytes (for file download).
+    /// Raw toolbox GET that returns bytes (file download, command logs).
     async fn toolbox_download(&self, sandbox_id: &str, path: &str) -> Result<Vec<u8>, String> {
         let url = format!("{}/{sandbox_id}{path}", self.toolbox_base);
         let resp = self
@@ -194,7 +224,9 @@ impl DaytonaClient {
             .map_err(|e| format!("Failed to read file bytes: {e}"))
     }
 
-    /// Multipart file upload to the toolbox API.
+    /// Multipart file upload to the toolbox API (`UploadFile`, which creates
+    /// missing parent directories). Hand-written: the generator has no
+    /// multipart support.
     async fn toolbox_upload(
         &self,
         sandbox_id: &str,
@@ -203,7 +235,7 @@ impl DaytonaClient {
         filename: &str,
     ) -> Result<(), String> {
         let url = format!(
-            "{}/{sandbox_id}/files/upload?path={}",
+            "{}/{sandbox_id}/files/upload-v2?path={}",
             self.toolbox_base,
             urlencoding::encode(remote_path)
         );
@@ -268,84 +300,124 @@ impl DaytonaClient {
 
     // --- Management API ---
 
-    pub async fn create_sandbox(&self, body: Value) -> Result<SandboxInfo, String> {
-        let resp = self
-            .management_request(reqwest::Method::POST, "/sandbox", Some(body))
+    pub async fn create_sandbox(
+        &self,
+        body: management::types::CreateSandbox,
+    ) -> Result<SandboxInfo, String> {
+        let sandbox = self
+            .management
+            .create_sandbox()
+            .body(body)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
             .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse sandbox info: {e}"))
+        Ok(sandbox_info(sandbox))
     }
 
     pub async fn get_sandbox(&self, sandbox_id: &str) -> Result<SandboxInfo, String> {
-        let resp = self
-            .management_request(
-                reqwest::Method::GET,
-                &format!("/sandbox/{sandbox_id}"),
-                None,
-            )
+        let sandbox = self
+            .management
+            .get_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
             .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse sandbox info: {e}"))
+        Ok(sandbox_info(sandbox))
+    }
+
+    /// Every sandbox carrying all of `labels`, following `nextCursor` until
+    /// the last page.
+    pub async fn list_sandboxes_by_labels(
+        &self,
+        labels: &str,
+    ) -> Result<Vec<management::types::SandboxListItem>, String> {
+        let mut items = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut request = self.management.list_sandboxes().labels(labels);
+            if let Some(cursor) = &cursor {
+                request = request.cursor(cursor.as_str());
+            }
+            let page = request.send().await.or_api_error(DAYTONA).await?;
+            items.extend(page.items.unwrap_or_default());
+            match page.next_cursor.filter(|next| !next.is_empty()) {
+                // A cursor that does not move would loop forever.
+                Some(next) if cursor.as_deref() != Some(next.as_str()) => cursor = Some(next),
+                _ => return Ok(items),
+            }
+        }
     }
 
     pub async fn create_volume(&self, name: &str) -> Result<VolumeInfo, String> {
-        let resp = self
-            .management_request(
-                reqwest::Method::POST,
-                "/volumes",
-                Some(json!({ "name": name })),
-            )
+        let volume = self
+            .management
+            .create_volume()
+            .body(management::types::CreateVolume {
+                name: name.to_string(),
+            })
+            .send()
+            .await
+            .or_api_error(DAYTONA)
             .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
+        Ok(volume_info(volume))
     }
 
     pub async fn get_volume_by_name(&self, name: &str) -> Result<VolumeInfo, String> {
-        let resp = self
-            .management_request(
-                reqwest::Method::GET,
-                &format!("/volumes/by-name/{}", urlencoding::encode(name)),
-                None,
-            )
+        let volume = self
+            .management
+            .get_volume_by_name()
+            .name(name)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
             .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
+        Ok(volume_info(volume))
     }
 
     pub async fn get_volume(&self, volume_id: &str) -> Result<VolumeInfo, String> {
-        let resp = self
-            .management_request(
-                reqwest::Method::GET,
-                &format!("/volumes/{}", urlencoding::encode(volume_id)),
-                None,
-            )
+        let volume = self
+            .management
+            .get_volume()
+            .volume_id(volume_id)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
             .await?;
-        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
+        Ok(volume_info(volume))
     }
 
     pub async fn start_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
-        self.management_request(
-            reqwest::Method::POST,
-            &format!("/sandbox/{sandbox_id}/start"),
-            None,
-        )
-        .await?;
+        self.management
+            .start_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
         Ok(())
     }
 
     pub async fn stop_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
-        self.management_request(
-            reqwest::Method::POST,
-            &format!("/sandbox/{sandbox_id}/stop"),
-            None,
-        )
-        .await?;
+        self.management
+            .stop_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
         Ok(())
     }
 
     pub async fn delete_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
-        self.management_request(
-            reqwest::Method::DELETE,
-            &format!("/sandbox/{sandbox_id}"),
-            None,
-        )
-        .await?;
+        self.management
+            .delete_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
         Ok(())
     }
 
@@ -354,26 +426,42 @@ impl DaytonaClient {
         sandbox_id: &str,
         interval_minutes: u64,
     ) -> Result<(), String> {
-        self.management_request(
-            reqwest::Method::POST,
-            &format!("/sandbox/{sandbox_id}/autostop/{interval_minutes}"),
-            None,
-        )
-        .await?;
+        let interval = f64::from(u32::try_from(interval_minutes).unwrap_or(u32::MAX));
+        self.management
+            .set_autostop_interval()
+            .sandbox_id_or_name(sandbox_id)
+            .interval(interval)
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
         Ok(())
     }
 
     // --- Snapshots API ---
 
+    /// Every snapshot visible to the account, across all pages.
     pub async fn list_snapshots(&self) -> Result<Vec<SnapshotInfo>, String> {
-        let resp = self
-            .management_request(reqwest::Method::GET, "/snapshots", None)
-            .await?;
-
-        // API returns an array of snapshot objects.
-        let snapshots: Vec<SnapshotInfo> = serde_json::from_value(resp)
-            .map_err(|e| format!("Failed to parse snapshots response: {e}"))?;
-        Ok(snapshots)
+        let mut snapshots = Vec::new();
+        let mut page = 1;
+        loop {
+            let response = self
+                .management
+                .get_all_snapshots()
+                .page(std::num::NonZeroU64::new(page).unwrap_or(std::num::NonZeroU64::MIN))
+                .send()
+                .await
+                .or_api_error(DAYTONA)
+                .await?;
+            let page_items = response.items.unwrap_or_default();
+            let fetched = page_items.len();
+            snapshots.extend(page_items.into_iter().map(snapshot_info));
+            let total_pages = response.total_pages.unwrap_or(1);
+            if fetched == 0 || i64::try_from(page).unwrap_or(i64::MAX) >= total_pages {
+                return Ok(snapshots);
+            }
+            page += 1;
+        }
     }
 
     /// Wait for sandbox to reach "started" state after creation.
@@ -384,27 +472,70 @@ impl DaytonaClient {
 
     // --- Toolbox API: Process (Session-based) ---
 
-    /// Ensure a persistent shell session exists for the sandbox.
-    /// Idempotent — 409 means the session already exists.
-    async fn ensure_session(&self, sandbox_id: &str) -> Result<(), String> {
-        let url = format!("{}/{sandbox_id}/process/session", self.toolbox_base);
-        let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .json(&json!({"sessionId": EXEC_SESSION_ID}))
+    /// Create a persistent shell session in the sandbox. Idempotent: 409
+    /// means the session already exists.
+    async fn create_shell_session(&self, sandbox_id: &str, session_id: &str) -> Result<(), String> {
+        let result = self
+            .toolbox(sandbox_id)
+            .create_session()
+            .body(toolbox::types::CreateSessionRequest {
+                session_id: session_id.to_string(),
+            })
+            .send()
+            .await;
+        match result {
+            Ok(_) => Ok(()),
+            Err(error) if error.status().is_some_and(|s| s.as_u16() == 409) => Ok(()),
+            Err(error) => Err(api_error(CREATE_SESSION, error).await),
+        }
+    }
+
+    /// Start `command` asynchronously in a session and return its command id.
+    async fn start_session_command(
+        &self,
+        sandbox_id: &str,
+        session_id: &str,
+        command: String,
+    ) -> Result<String, String> {
+        self.toolbox(sandbox_id)
+            .session_execute_command()
+            .session_id(session_id)
+            .body(toolbox::types::SessionExecuteRequest {
+                command,
+                run_async: Some(true),
+                async_: None,
+                suppress_input_echo: None,
+            })
             .send()
             .await
-            .map_err(|e| format!("Failed to create session: {e}"))?;
+            .or_api_error(SANDBOX)
+            .await?
+            .cmd_id
+            .ok_or_else(|| "Missing cmdId in session exec response".to_string())
+    }
 
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 409 {
-            Ok(())
-        } else {
-            let body = resp.text().await.unwrap_or_default();
-            Err(format!("Failed to create session ({status}): {body}"))
-        }
+    /// Exit code of a session command, `None` while it still runs.
+    async fn session_command_exit_code(
+        &self,
+        sandbox_id: &str,
+        session_id: &str,
+        command_id: &str,
+    ) -> Result<Option<i64>, String> {
+        Ok(self
+            .toolbox(sandbox_id)
+            .get_session_command()
+            .session_id(session_id)
+            .command_id(command_id)
+            .send()
+            .await
+            .or_api_error(SANDBOX)
+            .await?
+            .exit_code)
+    }
+
+    /// Ensure a persistent shell session exists for the sandbox.
+    async fn ensure_session(&self, sandbox_id: &str) -> Result<(), String> {
+        self.create_shell_session(sandbox_id, EXEC_SESSION_ID).await
     }
 
     /// Probe sandbox health by running a trivial command in a **separate**
@@ -416,43 +547,20 @@ impl DaytonaClient {
     /// false "dead session" detection for long-running commands that produce
     /// no stdout. See EVE-255.
     async fn session_heartbeat(&self, sandbox_id: &str) -> bool {
-        // Ensure the heartbeat session exists (idempotent).
-        let create_url = format!("{}/{sandbox_id}/process/session", self.toolbox_base);
-        let create_resp = self
-            .http
-            .post(&create_url)
-            .bearer_auth(&self.api_key)
-            .header("Content-Type", "application/json")
-            .json(&json!({"sessionId": HEARTBEAT_SESSION_ID}))
-            .send()
-            .await;
-        match create_resp {
-            Ok(r) if r.status().is_success() || r.status().as_u16() == 409 => {}
-            _ => return false,
+        if self
+            .create_shell_session(sandbox_id, HEARTBEAT_SESSION_ID)
+            .await
+            .is_err()
+        {
+            return false;
         }
 
-        // Fire a heartbeat command in the dedicated session.
-        let resp = self
-            .toolbox_request(
-                reqwest::Method::POST,
-                sandbox_id,
-                &format!("/process/session/{HEARTBEAT_SESSION_ID}/exec"),
-                Some(json!({
-                    "command": "true",
-                    "runAsync": true
-                })),
-            )
-            .await;
-
-        let cmd_id = match resp {
-            Ok(ref v) => match v.get("cmdId").and_then(|v| v.as_str()) {
-                Some(id) => id.to_string(),
-                None => return false,
-            },
-            Err(_) => return false,
+        let Ok(cmd_id) = self
+            .start_session_command(sandbox_id, HEARTBEAT_SESSION_ID, "true".to_string())
+            .await
+        else {
+            return false;
         };
-
-        let status_path = format!("/process/session/{HEARTBEAT_SESSION_ID}/command/{cmd_id}");
 
         // Poll for up to SESSION_HEARTBEAT_TIMEOUT.
         let deadline = tokio::time::Instant::now()
@@ -460,10 +568,9 @@ impl DaytonaClient {
 
         while tokio::time::Instant::now() < deadline {
             tokio::time::sleep(EXEC_POLL_INTERVAL).await;
-            if let Ok(s) = self
-                .toolbox_request(reqwest::Method::GET, sandbox_id, &status_path, None)
+            if let Ok(Some(_)) = self
+                .session_command_exit_code(sandbox_id, HEARTBEAT_SESSION_ID, &cmd_id)
                 .await
-                && s.get("exitCode").is_some()
             {
                 return true;
             }
@@ -475,24 +582,16 @@ impl DaytonaClient {
     /// Delete the persistent session. Used to reset a dead session whose
     /// shell was terminated by a command like `exit`.
     async fn delete_session(&self, sandbox_id: &str) -> Result<(), String> {
-        let url = format!(
-            "{}/{sandbox_id}/process/session/{EXEC_SESSION_ID}",
-            self.toolbox_base
-        );
-        let resp = self
-            .http
-            .delete(&url)
-            .bearer_auth(&self.api_key)
+        match self
+            .toolbox(sandbox_id)
+            .delete_session()
+            .session_id(EXEC_SESSION_ID)
             .send()
             .await
-            .map_err(|e| format!("Failed to delete session: {e}"))?;
-
-        let status = resp.status();
-        if status.is_success() || status.as_u16() == 404 {
-            Ok(())
-        } else {
-            let body = resp.text().await.unwrap_or_default();
-            Err(format!("Failed to delete session ({status}): {body}"))
+        {
+            Ok(_) => Ok(()),
+            Err(error) if error.status().is_some_and(|s| s.as_u16() == 404) => Ok(()),
+            Err(error) => Err(api_error(DELETE_SESSION, error).await),
         }
     }
 
@@ -527,23 +626,9 @@ impl DaytonaClient {
 
         // Start async execution in the persistent session.
         // runAsync: true returns immediately with a cmdId.
-        let resp = self
-            .toolbox_request(
-                reqwest::Method::POST,
-                sandbox_id,
-                &format!("/process/session/{EXEC_SESSION_ID}/exec"),
-                Some(json!({
-                    "command": cmd,
-                    "runAsync": true
-                })),
-            )
+        let cmd_id = self
+            .start_session_command(sandbox_id, EXEC_SESSION_ID, cmd)
             .await?;
-
-        let cmd_id = resp
-            .get("cmdId")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing cmdId in session exec response")?
-            .to_string();
 
         // Poll for output and completion.
         //
@@ -559,7 +644,6 @@ impl DaytonaClient {
         let mut stale_polls: u32 = 0;
         let mut delta_parser = ExecDeltaParserState::new(ExecStream::Stdout);
         let logs_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}/logs");
-        let status_path = format!("/process/session/{EXEC_SESSION_ID}/command/{cmd_id}");
 
         loop {
             if tokio::time::Instant::now() >= deadline {
@@ -601,12 +685,10 @@ impl DaytonaClient {
 
             // Check if command completed (exitCode is present).
             let status = self
-                .toolbox_request(reqwest::Method::GET, sandbox_id, &status_path, None)
+                .session_command_exit_code(sandbox_id, EXEC_SESSION_ID, &cmd_id)
                 .await;
 
-            if let Ok(ref s) = status
-                && let Some(exit_code) = s.get("exitCode").and_then(|v| v.as_i64())
-            {
+            if let Ok(Some(exit_code)) = status {
                 // Final log fetch to capture any trailing output.
                 let final_logs = self
                     .toolbox_download(sandbox_id, &logs_path)
@@ -706,32 +788,28 @@ impl DaytonaClient {
     }
 
     pub async fn file_list(&self, sandbox_id: &str, path: &str) -> Result<Vec<Value>, String> {
-        let encoded = urlencoding::encode(path);
-        let resp = self
-            .toolbox_request(
-                reqwest::Method::GET,
-                sandbox_id,
-                &format!("/files/?path={encoded}"),
-                None,
-            )
+        let files = self
+            .toolbox(sandbox_id)
+            .list_files()
+            .path(path)
+            .send()
+            .await
+            .or_api_error(SANDBOX)
             .await?;
-
-        // Response is an array of file entries
-        match resp.as_array() {
-            Some(arr) => Ok(arr.clone()),
-            None => Ok(vec![resp]),
-        }
+        files
+            .into_iter()
+            .map(|file| serde_json::to_value(file).map_err(|e| format!("Invalid file entry: {e}")))
+            .collect()
     }
 
     pub async fn file_delete(&self, sandbox_id: &str, path: &str) -> Result<(), String> {
-        let encoded = urlencoding::encode(path);
-        self.toolbox_request(
-            reqwest::Method::DELETE,
-            sandbox_id,
-            &format!("/files?path={encoded}"),
-            None,
-        )
-        .await?;
+        self.toolbox(sandbox_id)
+            .delete_file()
+            .path(path)
+            .send()
+            .await
+            .or_api_error_ignoring_body(SANDBOX)
+            .await?;
         Ok(())
     }
 
@@ -741,16 +819,110 @@ impl DaytonaClient {
         path: &str,
         mode: &str,
     ) -> Result<(), String> {
-        let encoded_path = urlencoding::encode(path);
-        let encoded_mode = urlencoding::encode(mode);
-        self.toolbox_request(
-            reqwest::Method::POST,
-            sandbox_id,
-            &format!("/files/folder?path={encoded_path}&mode={encoded_mode}"),
-            None,
-        )
-        .await?;
+        self.toolbox(sandbox_id)
+            .create_folder()
+            .path(path)
+            .mode(mode)
+            .send()
+            .await
+            .or_api_error_ignoring_body(SANDBOX)
+            .await?;
         Ok(())
+    }
+}
+
+/// Error text prefixes, kept in the shape callers already match on
+/// (`"... error (404 Not Found): body"`).
+const DAYTONA: &str = "Daytona API error";
+const SANDBOX: &str = "Sandbox API error";
+const CREATE_SESSION: &str = "Failed to create session";
+const DELETE_SESSION: &str = "Failed to delete session";
+
+/// Turn a generated-client error into the text the tools surface. Error
+/// responses are left out of the generated specs (`build.rs`), so every
+/// non-2xx answer arrives here with its raw body.
+async fn api_error(prefix: &str, error: progenitor_client::Error) -> String {
+    match error {
+        progenitor_client::Error::UnexpectedResponse(response) => {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            format!("{prefix} ({status}): {body}")
+        }
+        progenitor_client::Error::CommunicationError(e) => {
+            format!("Failed to connect to Daytona: {e}")
+        }
+        progenitor_client::Error::InvalidResponsePayload(_, e) if prefix == SANDBOX => {
+            format!("Invalid JSON from sandbox: {e}")
+        }
+        progenitor_client::Error::InvalidResponsePayload(_, e) => {
+            format!("Invalid JSON from Daytona: {e}")
+        }
+        other => format!("{prefix}: {other}"),
+    }
+}
+
+trait ResponseExt<T> {
+    async fn or_api_error(self, prefix: &str) -> Result<T, String>;
+
+    /// Success for calls whose response body is not read: a 2xx with a body
+    /// the spec did not promise (empty, say) still means the call worked.
+    async fn or_api_error_ignoring_body(self, prefix: &str) -> Result<(), String>;
+}
+
+impl<T> ResponseExt<T> for Result<progenitor_client::ResponseValue<T>, progenitor_client::Error> {
+    async fn or_api_error(self, prefix: &str) -> Result<T, String> {
+        match self {
+            Ok(value) => Ok(value.into_inner()),
+            Err(error) => Err(api_error(prefix, error).await),
+        }
+    }
+
+    async fn or_api_error_ignoring_body(self, prefix: &str) -> Result<(), String> {
+        match self {
+            Ok(_) | Err(progenitor_client::Error::InvalidResponsePayload(..)) => Ok(()),
+            // Another 2xx than the spec lists (200 for a documented 204, say).
+            Err(progenitor_client::Error::UnexpectedResponse(response))
+                if response.status().is_success() =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(api_error(prefix, error).await),
+        }
+    }
+}
+
+fn sandbox_info(sandbox: management::types::Sandbox) -> SandboxInfo {
+    SandboxInfo {
+        id: sandbox.id.unwrap_or_default(),
+        name: sandbox.name,
+        state: sandbox.state.map(|state| state.0).unwrap_or_default(),
+    }
+}
+
+fn volume_info(volume: management::types::VolumeDto) -> VolumeInfo {
+    VolumeInfo {
+        id: volume.id.unwrap_or_default(),
+        name: volume.name.unwrap_or_default(),
+        state: volume.state.map(|state| state.0).unwrap_or_default(),
+    }
+}
+
+fn snapshot_info(snapshot: management::types::SnapshotDto) -> SnapshotInfo {
+    // Daytona reports resources as numbers that are whole in practice.
+    let whole = |value: Option<f64>| value.filter(|v| *v >= 0.0).map(|v| v as u64);
+    SnapshotInfo {
+        id: snapshot.id.unwrap_or_default(),
+        name: snapshot.name.unwrap_or_default(),
+        state: snapshot.state.map(|state| state.0).unwrap_or_default(),
+        cpu: whole(snapshot.cpu),
+        mem: whole(snapshot.mem),
+        disk: whole(snapshot.disk),
+        gpu: whole(snapshot.gpu),
+        size: snapshot.size.map(|size| format!("{size:.2}")),
+        general: snapshot.general,
+        image_name: snapshot.image_name,
+        created_at: snapshot.created_at.map(|at| at.to_rfc3339()),
+        updated_at: snapshot.updated_at.map(|at| at.to_rfc3339()),
     }
 }
 
@@ -983,6 +1155,7 @@ pub(crate) mod urlencoding {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daytona::api::management::types::CreateSandbox;
     use serde_json::json;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -996,7 +1169,9 @@ mod tests {
                 "authorization",
                 "Bearer test_key",
             ))
-            .and(wiremock::matchers::body_json(json!({"name":"Test"})))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"name":"Test"}),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "id": "sb_test123",
                 "name": "Test Sandbox",
@@ -1011,7 +1186,12 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.create_sandbox(json!({"name": "Test"})).await;
+        let result = client
+            .create_sandbox(CreateSandbox {
+                name: Some("Test".to_string()),
+                ..CreateSandbox::default()
+            })
+            .await;
         assert!(result.is_ok());
         let info = result.unwrap();
         assert_eq!(info.id, "sb_test123");
@@ -1388,7 +1568,7 @@ mod tests {
     async fn test_client_file_list() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/sb_test/files/"))
+            .and(path("/sb_test/files"))
             .and(wiremock::matchers::header(
                 "authorization",
                 "Bearer test_key",
@@ -1479,7 +1659,12 @@ mod tests {
             mock_server.uri(),
             mock_server.uri(),
         );
-        let result = client.create_sandbox(json!({"name": "Test"})).await;
+        let result = client
+            .create_sandbox(CreateSandbox {
+                name: Some("Test".to_string()),
+                ..CreateSandbox::default()
+            })
+            .await;
         assert!(result.is_err());
         assert!(
             result
@@ -1575,7 +1760,7 @@ mod tests {
                 "Bearer test_key",
             ))
             .and(wiremock::matchers::query_param("path", "/old &?#.txt"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .respond_with(ResponseTemplate::new(204))
             .expect(1)
             .mount(&mock_server)
             .await;
@@ -1600,7 +1785,7 @@ mod tests {
             ))
             .and(wiremock::matchers::query_param("path", "/src &dir"))
             .and(wiremock::matchers::query_param("mode", "0750"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .respond_with(ResponseTemplate::new(201))
             .expect(1)
             .mount(&mock_server)
             .await;
@@ -1618,7 +1803,7 @@ mod tests {
     async fn test_client_file_upload() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/sb_test/files/upload"))
+            .and(path("/sb_test/files/upload-v2"))
             .and(wiremock::matchers::header(
                 "authorization",
                 "Bearer test_key",
@@ -1771,7 +1956,7 @@ mod tests {
     async fn test_client_file_upload_error() {
         let mock_server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/sb_test/files/upload"))
+            .and(path("/sb_test/files/upload-v2"))
             .respond_with(ResponseTemplate::new(500).set_body_string("Disk full"))
             .mount(&mock_server)
             .await;
@@ -1787,33 +1972,6 @@ mod tests {
             result.unwrap_err(),
             "File upload error (500 Internal Server Error): Disk full"
         );
-    }
-
-    #[tokio::test]
-    async fn test_client_file_list_single_entry() {
-        let mock_server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/sb_test/files/"))
-            .and(wiremock::matchers::header(
-                "authorization",
-                "Bearer test_key",
-            ))
-            .and(wiremock::matchers::query_param("path", "/home"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"name": "only.txt", "isDir": false})),
-            )
-            .expect(1)
-            .mount(&mock_server)
-            .await;
-
-        let client = DaytonaClient::with_base_urls(
-            "test_key".to_string(),
-            mock_server.uri(),
-            mock_server.uri(),
-        );
-        let entries = client.file_list("sb_test", "/home").await.unwrap();
-        assert_eq!(entries, vec![json!({"name":"only.txt","isDir":false})]);
     }
 
     #[tokio::test]

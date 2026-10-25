@@ -489,6 +489,8 @@ jobs:
             daytona:
               - 'crates/integrations/src/daytona/**'
               - 'crates/integrations/tests/daytona_*.rs'
+              - 'crates/integrations/openapi/daytona/**'
+              - 'crates/integrations/build.rs'
               - '!crates/integrations/src/daytona/**/*.md'
               - 'crates/contracts/src/session_sandbox.rs'
               - 'crates/contracts/src/sandbox_checkpoint.rs'
