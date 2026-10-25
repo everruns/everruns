@@ -19,6 +19,7 @@
 //! Configure the target server and model matrix via env (see `subject.rs` and
 //! `EVERRUNS_EVAL_TARGETS`).
 
+mod bounded;
 mod control_plane;
 #[path = "../../common/everruns_usage.rs"]
 mod everruns_usage;

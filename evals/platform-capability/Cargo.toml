@@ -7,7 +7,7 @@
 name = "everruns-platform-capability"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.94.0"
 description = "Mira eval study: evaluates the everruns platform capability"
 publish = false
 
@@ -25,6 +25,9 @@ regex = "1"
 # The real contract, so an offline run parses a command line with the same
 # clap::Command the server builds rather than an approximation of it.
 everruns-cli-contract = { path = "../../crates/cli-contract" }
+# Production lexical retrieval, including current-scope filtering and source
+# metadata. Keep the eval's selection/transport adapter separate from the index.
+everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["runtime"] }
 async-trait = "0.1"
 # The real shell, so the v2 arm runs the model's script rather than a splitter's
 # guess at it: loops, pipes, redirection and `jq` are the interpreter's, and

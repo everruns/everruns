@@ -364,10 +364,10 @@ impl Subject for EverrunsServerSubject {
         }
         let started = Instant::now();
 
-        if let Some(server) = sample.metadata.get("ensure_catalog_mcp") {
-            if let Err(e) = self.ensure_catalog_mcp(server).await {
-                return Transcript::infra_error(format!("register catalog MCP server: {e}"));
-            }
+        if let Some(server) = sample.metadata.get("ensure_catalog_mcp")
+            && let Err(e) = self.ensure_catalog_mcp(server).await
+        {
+            return Transcript::infra_error(format!("register catalog MCP server: {e}"));
         }
         // A turn that parks on a card (tool approval, Connect) ends here
         // instead of timing out; approvals are answered when the case asks.
@@ -482,11 +482,11 @@ impl Subject for EverrunsServerSubject {
                     transcript.final_response = final_text;
                 }
                 summarize_events(&events).apply_to(&mut transcript);
-                if transcript.error.is_none() {
-                    if let Some(error) = extract_terminal_error(&events) {
-                        transcript.error_kind = classify(&error);
-                        transcript.error = Some(error);
-                    }
+                if transcript.error.is_none()
+                    && let Some(error) = extract_terminal_error(&events)
+                {
+                    transcript.error_kind = classify(&error);
+                    transcript.error = Some(error);
                 }
                 transcript.events = events;
                 crate::scorers::record_friction(&mut transcript);
@@ -499,13 +499,13 @@ impl Subject for EverrunsServerSubject {
             }
         }
 
-        if sample.metadata.contains_key("expect_scheduled_agent") {
-            if let Some(name) = &resource_name {
-                let state = self.capture_scheduled_agent_state(&session_id, name).await;
-                transcript
-                    .metadata
-                    .insert("platform_state".to_string(), state);
-            }
+        if sample.metadata.contains_key("expect_scheduled_agent")
+            && let Some(name) = &resource_name
+        {
+            let state = self.capture_scheduled_agent_state(&session_id, name).await;
+            transcript
+                .metadata
+                .insert("platform_state".to_string(), state);
         }
 
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;

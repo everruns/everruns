@@ -636,7 +636,7 @@ pub fn operation_state() -> Box<dyn Scorer> {
         {
             let count = ops
                 .iter()
-                .filter(|entry| entry["name"] == op["name"])
+                .filter(|entry| entry["name"] == op["name"] && entry["status"] == "completed")
                 .count();
             if count < op["min"].as_u64().unwrap_or(1) as usize {
                 failures.push(format!("missing operation {}", op["name"]));
@@ -647,9 +647,114 @@ pub fn operation_state() -> Box<dyn Scorer> {
             .get("forbid_mutations")
             .and_then(Value::as_bool)
             == Some(true)
-            && ops.iter().any(|op| op["read_only"] == false)
+            && ops
+                .iter()
+                .any(|op| op["read_only"] == false && op["attempted"] != false)
         {
             failures.push("dispatched a forbidden mutation".into());
+        }
+        let expected_mutations = sample
+            .metadata
+            .get("expect_mutations")
+            .and_then(Value::as_array);
+        if let Some(expected) = expected_mutations {
+            let actual = ops
+                .iter()
+                .filter(|op| op["read_only"] == false && op["status"] == "completed")
+                .collect::<Vec<_>>();
+            let mut remaining = actual.clone();
+            for wanted in expected {
+                let name = wanted["name"].as_str().unwrap_or_default();
+                let arguments = &wanted["arguments"];
+                let found = remaining
+                    .iter()
+                    .position(|op| op["name"] == name && op["arguments"] == *arguments);
+                let Some(index) = found else {
+                    failures.push(format!("missing exact mutation {name} {arguments}"));
+                    continue;
+                };
+                let op = remaining.remove(index);
+                let reason = op
+                    .pointer("/metadata/reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if reason.is_empty() {
+                    failures.push(format!("{name} has no change reason"));
+                }
+                if let Some(context_ref) = wanted["context_ref"].as_str() {
+                    let read = ops.iter().position(|op| {
+                        op["name"] == "get_manager_context"
+                            && op["status"] == "completed"
+                            && op.pointer("/arguments/entity_ref").and_then(Value::as_str)
+                                == Some(context_ref)
+                    });
+                    let mutation_index =
+                        ops.iter().position(|candidate| std::ptr::eq(candidate, op));
+                    match read {
+                        None => failures.push(format!(
+                            "{name} did not read manager context for {context_ref}"
+                        )),
+                        Some(read_index)
+                            if mutation_index
+                                .is_none_or(|write_index| read_index >= write_index) =>
+                        {
+                            failures.push(format!(
+                                "{name} ran before reading manager context for {context_ref}"
+                            ));
+                        }
+                        Some(_) => {
+                            let initial = t.metadata.get("initial_control_plane_state");
+                            let revision = initial
+                                .and_then(|v| v.pointer("/families/context"))
+                                .and_then(Value::as_array)
+                                .and_then(|rows| {
+                                    rows.iter().find(|row| row["entity_ref"] == context_ref)
+                                })
+                                .and_then(|row| row["revision"].as_u64());
+                            let acknowledged = op
+                                .pointer("/metadata/context_revision")
+                                .and_then(Value::as_u64);
+                            if revision.is_none() || acknowledged != revision {
+                                failures.push(format!("{name} did not acknowledge manager context revision for {context_ref}"));
+                            }
+                        }
+                    }
+                }
+                if wanted["require_entity_read"] == true {
+                    let entity_id = arguments["id"].as_str();
+                    let read_before_write = entity_id.is_some_and(|id| {
+                        ops.iter().enumerate().any(|(index, read)| {
+                            index
+                                < ops
+                                    .iter()
+                                    .position(|candidate| std::ptr::eq(candidate, op))
+                                    .unwrap_or(usize::MAX)
+                                && read["status"] == "completed"
+                                && read["name"]
+                                    .as_str()
+                                    .is_some_and(|name| name.starts_with("get_"))
+                                && read.pointer("/arguments/id").and_then(Value::as_str) == Some(id)
+                        })
+                    });
+                    if !read_before_write {
+                        failures.push(format!(
+                            "{name} did not read the target entity before writing"
+                        ));
+                    }
+                }
+            }
+            if !remaining.is_empty() {
+                failures.push(format!(
+                    "{} undeclared mutation(s) dispatched",
+                    remaining.len()
+                ));
+            }
+        } else if ops
+            .iter()
+            .any(|op| op["read_only"] == false && op["status"] == "completed")
+        {
+            failures.push("successful mutation has no declared expected mutation".into());
         }
         if let Some(families) = sample
             .metadata
@@ -661,10 +766,10 @@ pub fn operation_state() -> Box<dyn Scorer> {
                     .as_array()
                     .cloned()
                     .unwrap_or_default();
-                if let Some(count) = expected["count"].as_u64() {
-                    if rows.len() != count as usize {
-                        failures.push(format!("{family}: {} rows, expected {count}", rows.len()));
-                    }
+                if let Some(count) = expected["count"].as_u64()
+                    && rows.len() != count as usize
+                {
+                    failures.push(format!("{family}: {} rows, expected {count}", rows.len()));
                 }
                 for wanted in expected["contains"].as_array().into_iter().flatten() {
                     if !rows.iter().any(|row| includes(row, wanted)) {
@@ -672,6 +777,22 @@ pub fn operation_state() -> Box<dyn Scorer> {
                     }
                 }
             }
+        }
+        if let Some(initial) = t.metadata.get("initial_control_plane_state") {
+            if expected_mutations.is_none() {
+                if initial.get("families") != state.get("families") {
+                    failures.push("entity state changed without declared mutations".into());
+                }
+            } else if let Some(expected) = expected_mutations
+                && !families_match_expected_changes(initial, state, expected)
+            {
+                failures
+                    .push("entity state contains collateral, missing, or incorrect changes".into());
+            }
+        } else {
+            failures.push(
+                "missing initial control-plane state; cannot verify collateral changes".into(),
+            );
         }
         for term in sample
             .metadata
@@ -700,6 +821,144 @@ pub fn operation_state() -> Box<dyn Scorer> {
     })
 }
 
+fn families_match_expected_changes(
+    initial: &Value,
+    final_state: &Value,
+    expected: &[Value],
+) -> bool {
+    let mut expected_by_family: std::collections::BTreeMap<&str, Vec<&Value>> =
+        std::collections::BTreeMap::new();
+    for mutation in expected {
+        let Some(name) = mutation["name"].as_str() else {
+            return false;
+        };
+        let family = match name
+            .strip_prefix("update_")
+            .or_else(|| name.strip_prefix("create_"))
+        {
+            Some(f) => f,
+            None => return false,
+        };
+        let family = match family {
+            "agent" => "agents",
+            "harness" => "harnesses",
+            "model" => "models",
+            "provider" => "providers",
+            other => other,
+        };
+        expected_by_family.entry(family).or_default().push(mutation);
+    }
+    let before = initial["families"].as_object().cloned().unwrap_or_default();
+    let after = final_state["families"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    let keys: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).collect();
+    for family in keys {
+        let old = before
+            .get(family)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let new = after
+            .get(family)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let allowed = expected_by_family
+            .get(family.as_str())
+            .cloned()
+            .unwrap_or_default();
+        if allowed.is_empty() {
+            if old != new {
+                return false;
+            }
+            continue;
+        }
+        if old
+            .iter()
+            .any(|row| row.as_object().is_none() || row["id"].as_str().is_none())
+            || new
+                .iter()
+                .any(|row| row.as_object().is_none() || row["id"].as_str().is_none())
+        {
+            return false;
+        }
+        let mut expected_used = vec![false; allowed.len()];
+        let old_by_id: std::collections::BTreeMap<_, _> = old
+            .iter()
+            .filter_map(|row| row["id"].as_str().map(|id| (id, row)))
+            .collect();
+        let new_by_id: std::collections::BTreeMap<_, _> = new
+            .iter()
+            .filter_map(|row| row["id"].as_str().map(|id| (id, row)))
+            .collect();
+        if old_by_id.len() != old.len() || new_by_id.len() != new.len() {
+            return false;
+        }
+        for (id, old_row) in &old_by_id {
+            let Some(new_row) = new_by_id.get(id) else {
+                return false;
+            };
+            if *old_row == *new_row {
+                continue;
+            }
+            let changed = old_row
+                .as_object()
+                .into_iter()
+                .flat_map(|o| o.keys())
+                .chain(new_row.as_object().into_iter().flat_map(|o| o.keys()))
+                .collect::<std::collections::BTreeSet<_>>();
+            let changed: Vec<_> = changed
+                .into_iter()
+                .filter(|key| old_row[*key] != new_row[*key])
+                .collect();
+            let Some((index, mutation)) = allowed.iter().enumerate().find(|(i, m)| {
+                !expected_used[*i]
+                    && m["name"].as_str().is_some_and(|n| n.starts_with("update_"))
+                    && m["arguments"]["id"] == *id
+                    && changed
+                        .iter()
+                        .all(|key| m["arguments"].get(key.as_str()).is_some())
+            }) else {
+                return false;
+            };
+            if mutation["arguments"]
+                .as_object()
+                .is_none_or(|args| changed.iter().any(|key| new_row[*key] != args[*key]))
+            {
+                return false;
+            }
+            expected_used[index] = true;
+        }
+        for new_row in new
+            .iter()
+            .filter(|row| !old_by_id.contains_key(row["id"].as_str().unwrap_or_default()))
+        {
+            let Some((index, _mutation)) = allowed.iter().enumerate().find(|(i, m)| {
+                !expected_used[*i]
+                    && m["name"].as_str().is_some_and(|n| n.starts_with("create_"))
+                    && m["arguments"].as_object().is_some_and(|args| {
+                        args.iter().all(|(k, v)| new_row[k] == *v)
+                            && new_row.as_object().is_some_and(|row| {
+                                row.keys().all(|key| {
+                                    args.contains_key(key)
+                                        || matches!(key.as_str(), "id" | "ui_link")
+                                })
+                            })
+                    })
+            }) else {
+                return false;
+            };
+            expected_used[index] = true;
+        }
+        if expected_used.iter().any(|used| !used) {
+            return false;
+        }
+    }
+    true
+}
+
 fn includes(actual: &Value, wanted: &Value) -> bool {
     match wanted.as_object() {
         Some(fields) => fields
@@ -716,6 +975,105 @@ mod tests {
 
     fn sample(metadata: Value) -> Sample {
         serde_json::from_value(json!({"id":"test","input":["test"],"metadata":metadata})).unwrap()
+    }
+
+    fn update_case() -> (Sample, Transcript) {
+        let initial = json!({"families":{
+            "agents":[{"id":"agent_1","description":"before","default_model_id":"model_1"}],
+            "context":[{"entity_ref":"agent_1","revision":4}],
+            "history":[]
+        },"operations":[]});
+        let sample = sample(json!({"surface_comparison":true,
+            "expect_operations":[{"name":"get_manager_context"},{"name":"update_agent"}],
+            "expect_mutations":[{"name":"update_agent","arguments":{"id":"agent_1","description":"after"},"context_ref":"agent_1"}]
+        }));
+        let mut final_state = initial.clone();
+        final_state["families"]["agents"][0]["description"] = json!("after");
+        final_state["operations"] = json!([
+            {"name":"get_manager_context","arguments":{"entity_ref":"agent_1"},"read_only":true,"status":"completed","attempted":true},
+            {"name":"update_agent","arguments":{"id":"agent_1","description":"after"},"metadata":{"reason":"Requested by user","context_revision":4},"read_only":false,"status":"completed","attempted":true}
+        ]);
+        let mut transcript = Transcript::default();
+        transcript
+            .metadata
+            .insert("initial_control_plane_state".into(), initial);
+        transcript
+            .metadata
+            .insert("control_plane_state".into(), final_state);
+        (sample, transcript)
+    }
+
+    #[tokio::test]
+    async fn operation_state_rejects_collateral_wrong_target_and_undeclared_writes() {
+        let (sample, transcript) = update_case();
+        assert!(operation_state().score(&sample, &transcript).await.pass);
+        let mut collateral = transcript.clone();
+        collateral.metadata.get_mut("control_plane_state").unwrap()["families"]["agents"][0]["default_model_id"] =
+            json!("model_2");
+        assert!(!operation_state().score(&sample, &collateral).await.pass);
+        let mut wrong_id = transcript.clone();
+        wrong_id.metadata.get_mut("control_plane_state").unwrap()["operations"][1]["arguments"]["id"] =
+            json!("agent_other");
+        assert!(!operation_state().score(&sample, &wrong_id).await.pass);
+        let mut extra = transcript.clone();
+        extra.metadata.get_mut("control_plane_state").unwrap()["operations"].as_array_mut().unwrap().push(json!({"name":"delete_agent","arguments":{"id":"agent_other"},"read_only":false,"status":"completed","attempted":true}));
+        assert!(!operation_state().score(&sample, &extra).await.pass);
+    }
+
+    #[tokio::test]
+    async fn operation_state_requires_context_read_revision_and_clean_entity_fields() {
+        let (sample, transcript) = update_case();
+        for mutate in [0, 1, 2] {
+            let mut broken = transcript.clone();
+            match mutate {
+                0 => broken.metadata.get_mut("control_plane_state").unwrap()["operations"]
+                    .as_array_mut()
+                    .unwrap()
+                    .swap(0, 1),
+                1 => {
+                    broken.metadata.get_mut("control_plane_state").unwrap()["operations"][1]["metadata"].as_object_mut().unwrap().remove("context_revision");
+                }
+                _ => {
+                    let polluted = broken.metadata.get_mut("control_plane_state").unwrap();
+                    polluted["families"]["agents"][0]["manager_context"] = json!("revision 4");
+                }
+            }
+            assert!(
+                !operation_state().score(&sample, &broken).await.pass,
+                "mutation {mutate}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn operation_state_requires_baseline_and_rejects_create_metadata_pollution() {
+        let (sample, transcript) = update_case();
+        let mut without_baseline = transcript.clone();
+        without_baseline
+            .metadata
+            .remove("initial_control_plane_state");
+        assert!(
+            !operation_state()
+                .score(&sample, &without_baseline)
+                .await
+                .pass
+        );
+
+        let create_sample = self::sample(json!({"surface_comparison":true,
+            "expect_mutations":[{"name":"create_agent","arguments":{"name":"new","system_prompt":"brief"}}]
+        }));
+        let initial = json!({"families":{"agents":[],"context":[]},"operations":[]});
+        let final_state = json!({"families":{"agents":[{"id":"agent_2","name":"new","system_prompt":"brief","ui_link":"/agents/agent_2","reason":"metadata leaked"}],"context":[]},"operations":[
+            {"name":"create_agent","arguments":{"name":"new","system_prompt":"brief"},"metadata":{"reason":"Requested by user"},"read_only":false,"status":"completed","attempted":true}
+        ]});
+        let mut created = Transcript::default();
+        created
+            .metadata
+            .insert("initial_control_plane_state".into(), initial);
+        created
+            .metadata
+            .insert("control_plane_state".into(), final_state);
+        assert!(!operation_state().score(&create_sample, &created).await.pass);
     }
 
     #[tokio::test]

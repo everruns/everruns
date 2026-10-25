@@ -75,6 +75,15 @@
   the session read's `work` field outside `full` visibility; Slack, AG-UI and
   A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
+* **Matched platform invocation and discovery.** Corrected the offline comparison
+  to separate payloads from invocation metadata, reject missing reasons/stale
+  revisions, and grade exact mutation targets, ordered reads and unchanged state.
+  Added bounded native discovery over the same platform catalog, Rust report
+  replay and separate large-result diagnostics. Its HTTP fallback remains
+  distinct from Framework inline disclosure and hosted policy qualification.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [manual evidence case](test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
 * **Platform surface comparison review.** Marked the experimental eager-native
   comparison provisional after trace review found omitted invocation metadata,
   simulator metadata stored as entity fields, and incomplete state-preservation

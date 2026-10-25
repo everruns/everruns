@@ -135,16 +135,18 @@ historical three-tool subject remains selectable as `legacy` for comparisons;
 it is not provisioned as a product harness. See
 [the eval study](../../evals/platform-capability/README.md).
 
-A separate `surface-comparison` experiment exposes the captured platform
-operation schemas as eager native functions, against the same in-process state
-and policy prompt as CLI. It measures interface selection, arguments, operation
-evidence, state and request/usage costs; production Platform Chat remains the
-canonical shell composition. Offline fixture results do not qualify domain
-authorization or hosted persistence, and eager native is distinct from bounded
-native search over large MCP catalogs.
+A separate `surface-comparison` experiment compares CLI, eager native and bounded
+native discovery against the same captured platform catalog, in-process state
+and policy prompt. Native functions wrap canonical payloads with separate change
+reason/context-revision metadata. Completed-operation evidence, ordered reads and
+exact state differences grade mutations. Bounded discovery uses the production
+index, while its offline HTTP transport sends changing top-level tool lists;
+it does not qualify Framework durable replay or provider inline tool changes.
+Separate large-result tasks measure filtering and aggregation.
 
-The experimental eager-native comparison is provisional: its captured payload
-schemas omit the production invocation metadata envelope, and its simulated
-mutations/state assertions do not yet enforce the same contract. See the
-[recorded follow-up findings](../../evals/platform-capability/README.md#follow-up-findings-2026-10-24)
-before interpreting its fixture pass rate as production behavior or surface parity.
+Production Platform Chat remains the canonical shell composition. Offline fixture
+results do not qualify domain authorization, transactions or hosted persistence.
+The original two-arm comparison remains provisional historical evidence because
+it lacked invocation-envelope and complete state assertions; see the
+[recorded findings](../../evals/platform-capability/README.md#follow-up-findings-2026-10-24)
+and corrected runs in the study before comparing surface costs.

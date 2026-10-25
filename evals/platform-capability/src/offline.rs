@@ -22,6 +22,7 @@ use std::time::Instant;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 
+use crate::bounded::BoundedSurface;
 use crate::control_plane::{
     FakeControlPlane, Harness, comparison_prompt, system_prompt, tool_definitions,
 };
@@ -44,7 +45,7 @@ impl OfflineSubject {
     /// - `EVERRUNS_EVAL_OFFLINE_BASE_URL` (default OpenRouter)
     /// - `EVERRUNS_EVAL_HARNESS` (`platform-chat`, the default, or
     ///   `legacy`, the historical baseline)
-    /// - `EVERRUNS_EVAL_SURFACE` (`cli` or `native-eager`, overrides harness)
+    /// - `EVERRUNS_EVAL_SURFACE` (`cli`, `native-eager`, `native-bounded`, overrides harness)
     pub fn from_env() -> Self {
         Self {
             base_url: std::env::var("EVERRUNS_EVAL_OFFLINE_BASE_URL")
@@ -108,7 +109,16 @@ impl Subject for OfflineSubject {
         }
 
         let control_plane = FakeControlPlane::new(self.harness);
-        let tools = tool_definitions(self.harness);
+        if let Some(count) = sample
+            .metadata
+            .get("fixture_agent_count")
+            .and_then(Value::as_u64)
+            && let Err(error) = control_plane.seed_agents(count.min(1000) as usize)
+        {
+            return Transcript::infra_error(error);
+        }
+        let mut bounded = (self.harness == Harness::NativeBounded).then(BoundedSurface::new);
+        let fixed_tools = tool_definitions(self.harness);
         let prompt = if sample
             .metadata
             .get("surface_comparison")
@@ -122,6 +132,10 @@ impl Subject for OfflineSubject {
         let mut messages = vec![json!({ "role": "system", "content": prompt })];
         let mut events: Vec<Value> = Vec::new();
         let mut transcript = Transcript::default();
+        transcript.metadata.insert(
+            "initial_control_plane_state".into(),
+            control_plane.snapshot(),
+        );
 
         let max_iterations = sample
             .metadata
@@ -203,6 +217,10 @@ impl Subject for OfflineSubject {
                 }
                 iterations += 1;
 
+                let tools = bounded.as_mut().map_or_else(
+                    || fixed_tools.clone(),
+                    |surface| surface.request_tools(messages.len()),
+                );
                 footprint.record_request(&messages, &tools);
                 let completion = match self.completion(model, &messages, &tools).await {
                     Ok(value) => value,
@@ -268,7 +286,23 @@ impl Subject for OfflineSubject {
                     let before = control_plane.snapshot()["operations"]
                         .as_array()
                         .map_or(0, Vec::len);
-                    let output = control_plane.call(&name, &arguments).await;
+                    let output = if let Some(surface) = bounded.as_mut() {
+                        if name == "tool_search" {
+                            surface.search(&arguments)
+                        } else if surface.callable(&name) {
+                            control_plane.call(&name, &arguments).await
+                        } else {
+                            control_plane.reject_native(
+                                &name,
+                                &arguments,
+                                "operation_not_active",
+                                "Operation is unavailable in the current visible/revealed native view. Search for its schema before calling it.",
+                            )
+                        }
+                    } else {
+                        control_plane.call(&name, &arguments).await
+                    };
+                    footprint.record_tool_result(&name, &output);
                     let snapshot = control_plane.snapshot();
                     let operation_calls =
                         &snapshot["operations"].as_array().expect("operation audit")[before..];
@@ -299,10 +333,45 @@ impl Subject for OfflineSubject {
         }
 
         let snapshot = control_plane.snapshot();
+        let operations = snapshot["operations"].as_array().expect("operation audit");
+        let completed: Vec<_> = operations
+            .iter()
+            .filter(|operation| operation["status"] == "completed")
+            .collect();
+        transcript.record_metric("platform.operations", completed.len() as f64);
+        transcript.record_metric("platform.attempted_operations", operations.len() as f64);
         transcript.record_metric(
-            "platform.operations",
-            snapshot["operations"].as_array().map_or(0, Vec::len) as f64,
+            "platform.rejected_operations",
+            (operations.len() - completed.len()) as f64,
         );
+        let unique_operations: std::collections::BTreeSet<_> = completed
+            .iter()
+            .filter_map(|operation| operation["name"].as_str())
+            .collect();
+        transcript.record_metric("platform.unique_operations", unique_operations.len() as f64);
+        if let Some(surface) = &bounded {
+            surface.finish(&mut transcript);
+        } else {
+            let disclosed = if self.harness == Harness::NativeEager {
+                fixed_tools.len()
+            } else {
+                0
+            };
+            transcript.record_metric("platform.disclosed_operations", disclosed as f64);
+            transcript.record_metric("platform.unique_disclosed_operations", disclosed as f64);
+            transcript.record_metric("platform.search_calls", 0.0);
+            transcript.record_metric("platform.peak_active_operations", disclosed as f64);
+            transcript.record_metric(
+                "platform.peak_active_schema_bytes",
+                if disclosed > 0 {
+                    serde_json::to_vec(&fixed_tools)
+                        .expect("tools serialize")
+                        .len() as f64
+                } else {
+                    0.0
+                },
+            );
+        }
         transcript
             .metadata
             .insert("control_plane_state".into(), snapshot);
@@ -358,6 +427,10 @@ struct Footprint {
     peak_tool_bytes: usize,
     first_request_bytes: usize,
     peak_request_bytes: usize,
+    tool_result_bytes: usize,
+    peak_tool_result_bytes: usize,
+    discovery_result_bytes: usize,
+    peak_discovery_result_bytes: usize,
     first_context_tokens: u64,
     peak_context_tokens: u64,
     usage_calls: usize,
@@ -365,6 +438,15 @@ struct Footprint {
 }
 
 impl Footprint {
+    fn record_tool_result(&mut self, name: &str, output: &str) {
+        self.tool_result_bytes += output.len();
+        self.peak_tool_result_bytes = self.peak_tool_result_bytes.max(output.len());
+        if matches!(name, "tool_search" | "discover") {
+            self.discovery_result_bytes += output.len();
+            self.peak_discovery_result_bytes = self.peak_discovery_result_bytes.max(output.len());
+        }
+    }
+
     fn record_request(&mut self, messages: &[Value], tools: &[Value]) {
         let tool_bytes = serde_json::to_vec(tools).expect("tools serialize").len();
         let request_bytes = serde_json::to_vec(&json!({"messages": messages, "tools": tools}))
@@ -403,6 +485,13 @@ impl Footprint {
             ("peak_tool_bytes", self.peak_tool_bytes as f64),
             ("first_request_bytes", self.first_request_bytes as f64),
             ("peak_request_bytes", self.peak_request_bytes as f64),
+            ("tool_result_bytes", self.tool_result_bytes as f64),
+            ("peak_tool_result_bytes", self.peak_tool_result_bytes as f64),
+            ("discovery_result_bytes", self.discovery_result_bytes as f64),
+            (
+                "peak_discovery_result_bytes",
+                self.peak_discovery_result_bytes as f64,
+            ),
             ("first_input_tokens", self.first_context_tokens as f64),
             ("peak_input_tokens", self.peak_context_tokens as f64),
             (
@@ -488,11 +577,11 @@ mod tests {
                 Harness::NativeEager => vec![
                     vec![(
                         "get_manager_context",
-                        json!({"entity_ref":"agent_01triage"}),
+                        json!({"params":{"entity_ref":"agent_01triage"}}),
                     )],
                     vec![(
                         "update_agent",
-                        json!({"id":"agent_01triage","description":"Support intake owner"}),
+                        json!({"params":{"id":"agent_01triage","description":"Support intake owner"},"reason":"User requested the description","context_revision":3}),
                     )],
                 ],
                 _ => vec![
@@ -502,7 +591,7 @@ mod tests {
                     )],
                     vec![(
                         "bash",
-                        json!({"commands":"everruns agents update agent_01triage --description 'Support intake owner'"}),
+                        json!({"commands":"everruns agents update agent_01triage --description 'Support intake owner' --reason 'User requested the description' --context-revision 3"}),
                     )],
                 ],
             };
@@ -589,6 +678,158 @@ mod tests {
                         .contains("Support intake owner")
             }));
         }
+    }
+
+    #[tokio::test]
+    async fn bounded_http_reveals_full_schemas_and_preserves_append_only_message_prefix() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let sample = dataset
+            .samples
+            .iter()
+            .find(|sample| sample.id == "surface-update-description")
+            .unwrap();
+        let (base_url, requests, thread) = mock_provider(vec![
+            reply(vec![(
+                "tool_search",
+                json!({"query":"get_manager_context"}),
+            )]),
+            reply(vec![(
+                "get_manager_context",
+                json!({"params":{"entity_ref":"agent_01triage"}}),
+            )]),
+            reply(vec![("tool_search", json!({"query":"update_agent"}))]),
+            reply(vec![(
+                "update_agent",
+                json!({"params":{"id":"agent_01triage","description":"Support intake owner"},"reason":"User requested the description","context_revision":3}),
+            )]),
+            reply(vec![]),
+        ]);
+        let subject = OfflineSubject {
+            base_url,
+            api_key: "test-key".into(),
+            client: reqwest::Client::new(),
+            harness: Harness::NativeBounded,
+        };
+        let transcript = subject
+            .run(
+                sample,
+                &RunCx::new(mira::Target::new("test", "test", "test")),
+            )
+            .await;
+        thread.join().unwrap();
+        assert!(transcript.error.is_none(), "{:?}", transcript.error);
+        let score = crate::scorers::operation_state()
+            .score(sample, &transcript)
+            .await;
+        assert!(score.pass, "{}", score.reason);
+        assert_eq!(transcript.metrics["platform.search_calls"], 2.0);
+        assert!(transcript.metrics["platform.disclosed_operations"] >= 2.0);
+        assert_eq!(transcript.metrics["platform.unique_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.first_tool_count"], 1.0);
+        assert!(transcript.metrics["platform.peak_active_operations"] <= 32.0);
+        assert!(transcript.metrics["platform.peak_active_schema_bytes"] <= 65536.0);
+        assert_eq!(
+            transcript.metadata["bounded_native"]["inline_provider_tool_changes"],
+            false
+        );
+        assert_eq!(
+            transcript.metadata["initial_control_plane_state"]["families"]["agents"][0]["description"],
+            "Triages incoming issues."
+        );
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests[0]["tools"], json!([crate::bounded::search_tool()]));
+        for pair in requests.windows(2) {
+            let previous = pair[0]["messages"].as_array().unwrap();
+            let next = pair[1]["messages"].as_array().unwrap();
+            assert_eq!(
+                &next[..previous.len()],
+                previous,
+                "earlier model-visible messages must remain byte stable"
+            );
+            assert_eq!(
+                serde_json::to_vec(&next[..previous.len()]).unwrap(),
+                serde_json::to_vec(previous).unwrap(),
+            );
+            assert_eq!(
+                serde_json::to_vec(&pair[0]["messages"][0]).unwrap(),
+                serde_json::to_vec(&pair[1]["messages"][0]).unwrap()
+            );
+            assert_eq!(pair[0]["tools"][0], pair[1]["tools"][0]);
+        }
+        // Chat Completions fallback changes top-level tools; it cannot claim
+        // provider inline tool changes or a cache-stable tools prefix.
+        assert_ne!(requests[0]["tools"], requests[1]["tools"]);
+        let eager = tool_definitions(Harness::NativeEager);
+        for request in requests.iter() {
+            let tools = request["tools"].as_array().unwrap();
+            assert!(tools.len() <= 33);
+            assert!(serde_json::to_vec(&tools[1..]).unwrap().len() <= 65536);
+            for tool in &tools[1..] {
+                assert!(
+                    eager.contains(tool),
+                    "revealed definition must equal eager authoritative schema"
+                );
+            }
+        }
+        let changes = transcript.metadata["tool_surface_changes"]
+            .as_array()
+            .unwrap();
+        assert_eq!(changes[0]["baseline"], requests[0]["tools"]);
+        assert!(changes.windows(2).all(
+            |pair| pair[0]["message_position"].as_u64() < pair[1]["message_position"].as_u64()
+        ));
+    }
+
+    #[tokio::test]
+    async fn bounded_http_refuses_unrevealed_calls_even_after_search_in_same_batch() {
+        let dataset = mira::Dataset::from_jsonl_str(crate::DATASET).unwrap();
+        let sample = dataset
+            .samples
+            .iter()
+            .find(|sample| sample.id == "surface-update-description")
+            .unwrap();
+        let (base_url, _, thread) = mock_provider(vec![
+            reply(vec![
+                ("tool_search", json!({"query":"update_agent"})),
+                (
+                    "update_agent",
+                    json!({"params":{"id":"agent_01triage","description":"must not change"},"reason":"User requested the description","context_revision":3}),
+                ),
+                ("delete_unknown", json!({"params":{}})),
+            ]),
+            reply(vec![]),
+        ]);
+        let subject = OfflineSubject {
+            base_url,
+            api_key: "test-key".into(),
+            client: reqwest::Client::new(),
+            harness: Harness::NativeBounded,
+        };
+        let transcript = subject
+            .run(
+                sample,
+                &RunCx::new(mira::Target::new("test", "test", "test")),
+            )
+            .await;
+        thread.join().unwrap();
+        assert_eq!(
+            transcript.metadata["initial_control_plane_state"]["families"],
+            transcript.metadata["control_plane_state"]["families"]
+        );
+        let operations = transcript.metadata["control_plane_state"]["operations"]
+            .as_array()
+            .unwrap();
+        assert_eq!(operations.len(), 2);
+        assert!(
+            operations
+                .iter()
+                .all(|operation| operation["status"] == "rejected"
+                    && operation["error_code"] == "operation_not_active")
+        );
+        assert_eq!(transcript.metrics["platform.attempted_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.rejected_operations"], 2.0);
+        assert_eq!(transcript.metrics["platform.operations"], 0.0);
+        assert_eq!(transcript.metrics["platform.unique_operations"], 0.0);
     }
 
     #[tokio::test]
