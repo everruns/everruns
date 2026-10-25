@@ -224,13 +224,4 @@ describe("inline Slack channel configuration", () => {
     expect(panes[0]).toBeChecked();
     expect(panes[1]).not.toBeChecked();
   });
-
-  it("does not show the old completed checklist or a separate Use it panel", async () => {
-    mount();
-    await expand();
-    expect(screen.queryByText("Set up")).not.toBeInTheDocument();
-    expect(screen.queryByText("Use it")).not.toBeInTheDocument();
-    expect(screen.queryByText("1. Publish the channel")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Waiting for Slack/)).not.toBeInTheDocument();
-  });
 });

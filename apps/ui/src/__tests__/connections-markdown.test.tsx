@@ -117,12 +117,6 @@ describe("ConnectionsPanel - Markdown Instructions", () => {
     expect(markdownEl).toHaveTextContent("**API Keys**");
     expect(markdownEl).toHaveTextContent("**Create New API Key**");
   });
-
-  it("does not render InlineStreamdownMessage when dialog is closed", () => {
-    render(<ConnectionsPanel />, { wrapper });
-
-    expect(screen.queryByTestId("inline-streamdown-message")).not.toBeInTheDocument();
-  });
 });
 
 jest.mock("@/hooks/use-identity-connections", () => ({

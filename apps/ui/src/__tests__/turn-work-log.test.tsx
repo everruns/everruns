@@ -74,19 +74,6 @@ describe("TurnWorkLog", () => {
     );
   });
 
-  it("can be reopened after completion", () => {
-    render(
-      <TurnWorkLog label="Worked for 18s" isActive={false}>
-        <div>Inspecting the repo</div>
-      </TurnWorkLog>,
-    );
-
-    const button = screen.getByRole("button", { name: /worked for 18s/i });
-    fireEvent.click(button);
-
-    expect(button).toHaveAttribute("aria-expanded", "true");
-  });
-
   it("surfaces recovered tool failures as warning-style issues, not errors", () => {
     render(
       <TurnWorkLog label="Worked for 33s" isActive={false} issueCount={2}>

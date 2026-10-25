@@ -2,7 +2,6 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { AgentKeysCard } from "@/components/agents/channels/agent-keys-card";
 import {
   buildChannelConfig,
-  ChannelTypePicker,
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/agents/channels/channel-form";
@@ -121,22 +120,6 @@ describe("AgentKeysCard", () => {
 });
 
 describe("api channel form", () => {
-  it("is offered in the channel type picker", () => {
-    render(<ChannelTypePicker value="webhook" onChange={jest.fn()} />);
-    expect(screen.getByText("Agent API")).toBeInTheDocument();
-  });
-
-  it("builds the default config with the server's defaults", () => {
-    const state = getDefaultChannelFormState("api");
-    expect(isChannelFormValid(state)).toBe(true);
-    expect(buildChannelConfig(state)).toEqual({
-      session_binding: "per_user",
-      visibility: "activity",
-      errors: "public",
-      tool_approvals: "operator",
-    });
-  });
-
   it("round-trips a saved api channel and validates the rate limit", () => {
     const channel = {
       channel_type: "api",

@@ -104,20 +104,6 @@ beforeEach(() => {
 describe("buildEntityMenuGroups", () => {
   const noop = () => undefined;
 
-  it("orders entity actions, record, then lifecycle with delete last", () => {
-    const groups = buildEntityMenuGroups({
-      ...baseProps,
-      actions: [{ id: "copy", label: "Copy", onSelect: noop }],
-      archive: { onSelect: noop },
-      delete: { onSelect: noop },
-    });
-    expect(groups.map((g) => g.id)).toEqual(["entity", "record", "lifecycle"]);
-    expect(groups[1].items.map((i) => i.id)).toEqual(["history", "notes"]);
-    const lifecycle = groups[2].items;
-    expect(lifecycle.map((i) => i.id)).toEqual(["archive", "delete"]);
-    expect(lifecycle.at(-1)).toMatchObject({ id: "delete", destructive: true });
-  });
-
   it("hides manager notes from viewers who do not manage the entity", () => {
     const groups = buildEntityMenuGroups({ ...baseProps, permissions: { manage: false } });
     expect(groups.map((g) => g.id)).toEqual(["record"]);

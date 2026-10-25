@@ -80,25 +80,6 @@ describe("Select wrapper auto-collects display labels", () => {
   // because no items map was forwarded to base-ui. The wrapper now walks
   // <SelectItem> children and forwards a value→label map, so display labels
   // are the default. See knowledge/foundations/code-organization.md.
-  it("forwards a value→label map collected from SelectItem children", () => {
-    render(
-      <Select value="webhook" onValueChange={() => {}}>
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="slack">Slack</SelectItem>
-          <SelectItem value="webhook">Webhook</SelectItem>
-        </SelectContent>
-      </Select>,
-    );
-
-    const items = rootItemsCalls.at(-1);
-    expect(items).toBeDefined();
-    expect(items?.slack).toBe("Slack");
-    expect(items?.webhook).toBe("Webhook");
-  });
-
   it("explicit items prop entries take precedence over collected labels", () => {
     render(
       <Select

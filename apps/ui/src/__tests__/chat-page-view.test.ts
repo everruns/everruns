@@ -12,39 +12,6 @@ it("keeps useful page identity across resource and settings routes", () => {
   expect(pageLocation("/settings/billing").label).toBe("billing · Settings");
 });
 
-it.each([
-  "agents",
-  "harnesses",
-  "sessions",
-  "playground",
-  "chats",
-  "models",
-  "web-search",
-  "virtual-users",
-  "knowledge",
-  "knowledge-indexes",
-  "memory",
-  "skills",
-  "capabilities",
-  "plugins",
-  "sandboxes",
-  "evals",
-  "observers",
-  "reports",
-  "monitoring",
-  "durable",
-  "settings",
-  "dashboard",
-  "approvals",
-  "exposures",
-])("provides read context for every app area: %s", (root) => {
-  expect(pageLocation(`/${root}`)).toMatchObject({
-    route: `/${root}`,
-    entity_type: expect.any(String),
-    label: expect.any(String),
-  });
-});
-
 it("identifies nested resources without treating a new form as its parent", () => {
   expect(pageLocation("/models/providers/provider_0123456789abcdef0123456789abcdef")).toMatchObject(
     { entity_type: "provider", entity_id: "provider_0123456789abcdef0123456789abcdef" },

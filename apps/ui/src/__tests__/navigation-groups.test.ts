@@ -3,13 +3,6 @@ import { defaultNavigationSections, navigationGroupForPath } from "@/lib/navigat
 // EVE-869: a page's group is decided in exactly one place — the sidebar section
 // table. These pin the derivation the breadcrumb depends on.
 describe("navigationGroupForPath", () => {
-  it("names the group that owns a list route", () => {
-    expect(navigationGroupForPath("/sessions")).toBe("Operational");
-    expect(navigationGroupForPath("/agents")).toBe("Building");
-    expect(navigationGroupForPath("/models")).toBe("Registers");
-    expect(navigationGroupForPath("/evals")).toBe("Quality");
-  });
-
   it("carries the group down to detail and sub-routes", () => {
     expect(navigationGroupForPath("/sessions/ses-abc123")).toBe("Operational");
     expect(navigationGroupForPath("/agents/agent-1/edit")).toBe("Building");

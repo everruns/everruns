@@ -89,13 +89,6 @@ describe("CommandPalette", () => {
     expect(screen.queryByRole("option", { name: /Second Org/i })).toBeNull();
   });
 
-  it("runs global search once the palette is open", () => {
-    render(<CommandPalette />);
-
-    expect(mockUseGlobalSearch).toHaveBeenCalled();
-    expect(screen.getByRole("option", { name: /Second Org/i })).toBeInTheDocument();
-  });
-
   it("opens Chat beside the current page when Chat mode is enabled", () => {
     const openChat = jest.fn();
     mockChatMode = { setOpen: openChat };

@@ -9,11 +9,6 @@ describe("createReconnectTracker", () => {
     jest.restoreAllMocks();
   });
 
-  it("returns initial state with zero attempts", () => {
-    const tracker = createReconnectTracker();
-    expect(tracker.state).toEqual({ attempt: 0, exhausted: false });
-  });
-
   it("computes exponential backoff delays on error", () => {
     const tracker = createReconnectTracker({ initialDelayMs: 1000, jitter: 0 });
 

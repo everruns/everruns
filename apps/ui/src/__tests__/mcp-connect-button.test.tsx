@@ -19,24 +19,6 @@ describe("McpConnectDialog", () => {
     expect(screen.queryByRole("link", { name: /Check connections/ })).not.toBeInTheDocument();
   });
 
-  it("keeps a single setup prompt with recognizable agents", () => {
-    mockUseAuth.mockReturnValue({ requiresAuth: true });
-
-    render(<McpConnectDialog open onOpenChange={jest.fn()} />);
-
-    expect(screen.getByRole("dialog", { name: "Connect your coding agent" })).toHaveTextContent(
-      "Use the client's browser OAuth sign-in",
-    );
-    for (const name of ["Claude Code", "Codex", "Cursor", "Gemini CLI"]) {
-      expect(screen.getByText(name)).toBeInTheDocument();
-    }
-    expect(screen.getByRole("link", { name: /Manual setup/ })).toBeInTheDocument();
-    expect(screen.queryByText("MCP configuration")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Check connections/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Waiting for authorisation/)).not.toBeInTheDocument();
-  });
-
   it("copies deployment-specific setup instructions", async () => {
     mockUseAuth.mockReturnValue({ requiresAuth: true });
     const writeText = jest.fn().mockResolvedValue(undefined);

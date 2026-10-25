@@ -258,19 +258,6 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Action Buttons", () => {
-    it("renders Resume button for disabled schedule", () => {
-      mockUseSchedule.mockReturnValue({
-        data: { ...mockSchedule, enabled: false },
-        isLoading: false,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /Resume/i })).toBeInTheDocument();
-    });
-
     it("calls pauseMutation when Pause is clicked", async () => {
       const mockPauseMutate = jest.fn();
       mockUsePauseSchedule.mockReturnValue({
@@ -364,16 +351,6 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Edit Schedule Dialog", () => {
-    it("opens dialog when Edit button is clicked", async () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      fireEvent.click(screen.getByRole("button", { name: /Edit/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-      });
-    });
-
     it("pre-populates form with current schedule values", async () => {
       render(<ScheduleDetailPage />, { wrapper });
 

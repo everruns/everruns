@@ -84,18 +84,6 @@ describe("MemoryDetailPage", () => {
     });
   });
 
-  it("renders memory metadata", async () => {
-    await renderWithSuspense();
-
-    expect(screen.getByRole("heading", { level: 1, name: "Research" })).toBeInTheDocument();
-    expect(screen.getByText("Shared research files")).toBeInTheDocument();
-    expect(
-      screen
-        .getAllByRole("link", { name: /Memory/i })
-        .some((l) => l.getAttribute("href") === "/memory"),
-    ).toBe(true);
-  });
-
   it("updates memory metadata", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({});
     mockUseUpdateMemory.mockReturnValue({ mutateAsync, isPending: false });

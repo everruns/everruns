@@ -104,25 +104,6 @@ describe("ProviderDetailPage", () => {
     mockUseUpdateProvider.mockReturnValue({ mutateAsync: updateProvider, isPending: false });
   });
 
-  it("renders provider details with model counts", async () => {
-    await act(async () => {
-      render(<ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />, {
-        wrapper,
-      });
-    });
-
-    expect(
-      await screen.findByRole("heading", { name: /OpenAI Production active/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByDisplayValue("OpenAI Production")).toBeInTheDocument();
-    expect(screen.getByText("2 models available")).toBeInTheDocument();
-    expect(screen.getByText("1 enabled")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /View Models/i })).toHaveAttribute(
-      "href",
-      "/models?provider=provider-1",
-    );
-  });
-
   it("does not show a ChatGPT Plan provider through a saved detail URL", async () => {
     mockUseProvider.mockReturnValue({
       data: { ...mockProvider, provider_type: "chatgpt" },

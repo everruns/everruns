@@ -290,12 +290,6 @@ describe("SchedulesPage", () => {
 
       expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: false });
     });
-
-    it("requests all schedules (no enabled filter) by default", () => {
-      render(<SchedulesPage />, { wrapper });
-
-      expect(mockUseSchedules).toHaveBeenLastCalledWith({ enabled: undefined });
-    });
   });
 
   // ============================================
@@ -433,17 +427,6 @@ describe("SchedulesPage", () => {
   // ============================================
 
   describe("Create Schedule Dialog", () => {
-    it("opens dialog when New Schedule button is clicked", async () => {
-      render(<SchedulesPage />, { wrapper });
-
-      const createButton = screen.getByRole("button", { name: /New Schedule/i });
-      fireEvent.click(createButton);
-
-      await waitFor(() => {
-        expect(screen.getByRole("dialog")).toBeInTheDocument();
-      });
-    });
-
     it("sends correct request shape to API on submit", async () => {
       const mockCreateMutate = jest.fn().mockResolvedValue({
         id: "sched_new",

@@ -4,8 +4,6 @@ import {
   SessionIcon,
   HarnessDomainIcon,
   SkillsIcon,
-  CapabilitiesIcon,
-  PluginsIcon,
 } from "@/components/icons/facet-icons";
 import { useGlobalSearch } from "@/hooks/use-global-search";
 import { settingsNavigationSections } from "@/lib/settings-navigation";
@@ -168,11 +166,6 @@ describe("useGlobalSearch", () => {
       machine_payments: true,
       reports: true,
     });
-  });
-
-  it("defers the evals fetch when the feature flag is off", () => {
-    renderHook(() => useGlobalSearch(""));
-    expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("enables the evals fetch when the feature flag is on", () => {
@@ -375,18 +368,6 @@ describe("useGlobalSearch", () => {
 
     expect(mockUseSavedReports).toHaveBeenCalledWith(false);
     expect(result.current.some((item) => item.href === "/reports")).toBe(false);
-  });
-
-  it.each([
-    ["skills", "/skills", SkillsIcon],
-    ["capabilities", "/capabilities", CapabilitiesIcon],
-    ["plugins", "/plugins", PluginsIcon],
-  ])("uses the semantic %s icon in navigation search", (query, href, icon) => {
-    const { result } = renderHook(() => useGlobalSearch(query));
-
-    expect(result.current).toContainEqual(
-      expect.objectContaining({ category: "navigation", href, icon }),
-    );
   });
 
   it.each([

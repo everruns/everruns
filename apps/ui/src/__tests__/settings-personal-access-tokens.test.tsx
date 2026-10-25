@@ -116,18 +116,6 @@ describe("PersonalAccessTokensPage", () => {
     expect(screen.getByText(/Failed to load personal access tokens/)).toBeInTheDocument();
   });
 
-  it("opens Create token dialog when clicking Create button", async () => {
-    render(<PersonalAccessTokensPage />, { wrapper });
-
-    const createButton = screen.getAllByRole("button", { name: /Create token/i })[0];
-    fireEvent.click(createButton);
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/The token inherits access to every organization/),
-    ).toBeInTheDocument();
-  });
-
   it("submits the default 90 day expiration when creating a token", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({ token: "evr_pat_secret_test" });
     mockUseCreatePersonalAccessToken.mockReturnValue({

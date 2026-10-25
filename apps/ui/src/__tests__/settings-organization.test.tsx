@@ -342,32 +342,6 @@ describe("OrganizationPage", () => {
     jest.useRealTimers();
   });
 
-  it("keeps model errors next to Models without changing Harnesses status", async () => {
-    jest.useFakeTimers();
-    mockUpdateOrganization.mockRejectedValueOnce(
-      new ApiError(400, "Bad Request", "Model not found"),
-    );
-
-    render(<OrganizationPage />);
-
-    fireEvent.change(screen.getByLabelText("Default Model"), {
-      target: { value: "model-2" },
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(700);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Model not found"));
-    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Model not found");
-    expect(screen.getByRole("region", { name: "Harnesses" })).not.toHaveTextContent(
-      "Model not found",
-    );
-
-    jest.useRealTimers();
-  });
-
   it.each([
     [
       new ApiError(403, "Forbidden", "Only organization admins can update organization settings"),

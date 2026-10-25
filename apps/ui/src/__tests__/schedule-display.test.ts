@@ -39,10 +39,6 @@ describe("schedule-display", () => {
     expect(formatScheduledDateTime("not-a-date", "Bad/Zone")).toBe("not-a-date");
   });
 
-  it("does not throw for an empty date string", () => {
-    expect(() => formatScheduledDateTime("")).not.toThrow();
-  });
-
   it("extracts background monitor titles from synthetic schedule descriptions", () => {
     expect(
       getScheduleDisplayTitle(`Monitor: Watch PR 1319

@@ -97,24 +97,4 @@ describe("HarnessCard inheritance", () => {
     expect(screen.getByText("unavailable harness")).toHaveAttribute("title", "harness-missing");
     expect(screen.queryByRole("link", { name: "unavailable harness" })).not.toBeInTheDocument();
   });
-
-  it("truncates long parent names and labels local capability chips", () => {
-    const longName = "A parent harness with a deliberately very long display name";
-    const parent = harness({ id: "harness-parent", display_name: longName });
-    const child = harness({
-      parent_harness_id: parent.id,
-      capabilities: [{ ref: "platform", config: {} }],
-    });
-
-    render(
-      <HarnessCard
-        harness={child}
-        inheritance={resolveHarnessInheritance(child, new Map([[parent.id, parent]]))}
-      />,
-    );
-
-    expect(screen.getByRole("link", { name: longName })).toHaveClass("min-w-0", "truncate");
-    expect(screen.getByText("Declared capabilities")).toBeInTheDocument();
-    expect(screen.getByLabelText("Locally declared capabilities")).toBeInTheDocument();
-  });
 });

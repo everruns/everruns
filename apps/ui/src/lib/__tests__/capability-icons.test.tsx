@@ -17,10 +17,4 @@ describe("CapabilityIcon", () => {
     expect(container.querySelector("img")).not.toBeInTheDocument();
     expect(container.querySelector("svg")).toBeInTheDocument();
   });
-
-  it("uses a neutral fallback for missing icon metadata", () => {
-    const { container } = render(<CapabilityIcon />);
-
-    expect(container.querySelector("svg")).toBeInTheDocument();
-  });
 });

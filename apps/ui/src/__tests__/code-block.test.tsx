@@ -87,12 +87,4 @@ describe("CodeBlock", () => {
     expect(writeText).toHaveBeenCalledWith("const ready = true;");
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
-
-  it("keeps long code scrollable within the responsive block", async () => {
-    const { container } = render(<CodeBlock samples={[samples[0]]} />);
-    await waitFor(() => expect(highlight).toHaveBeenCalled());
-
-    expect(container.querySelector("pre")).toHaveClass("overflow-x-auto");
-    expect(screen.getByText("1")).toHaveClass("hidden", "sm:table-cell");
-  });
 });

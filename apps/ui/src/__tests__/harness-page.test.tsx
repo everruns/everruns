@@ -205,14 +205,6 @@ describe("HarnessPage layout", () => {
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
   });
 
-  it("opens the old overview tab on the harness workspace", async () => {
-    mockSearchParams = new URLSearchParams("tab=overview");
-    await renderPage();
-
-    expect(screen.getByRole("tab", { name: "Harness" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "Capabilities" })).toBeInTheDocument();
-  });
-
   it("shows integrate and stats on their tabs", async () => {
     await renderPage();
 

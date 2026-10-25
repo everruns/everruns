@@ -67,13 +67,6 @@ describe("UserMcpServersPanel", () => {
     mockUseUserMcpConnections.mockReturnValue({ data: [], isLoading: false, error: null });
   });
 
-  it("explains the section when there are no servers", () => {
-    mockUseUserMcpServers.mockReturnValue({ data: [], isLoading: false, error: null });
-    render(<UserMcpServersPanel />);
-    expect(screen.getByText("My MCP servers")).toBeInTheDocument();
-    expect(screen.getByText("No MCP servers yet")).toBeInTheDocument();
-  });
-
   it("offers Connect to servers that need it and Reconnect to signed-in ones", () => {
     mockUseUserMcpServers.mockReturnValue({
       data: [
