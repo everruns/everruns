@@ -1491,7 +1491,7 @@
   {
     "category": "agents",
     "cli": "agents source connect",
-    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "description": "Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",
     "input_schema": {
       "$defs": {
         "ConnectSourceRequest": {
@@ -1520,6 +1520,10 @@
                     "string",
                     "null"
                   ]
+                },
+                "mode": {
+                  "$ref": "#/$defs/SourceMode",
+                  "description": "Synchronization direction; two_way requires repository Contents write access."
                 }
               },
               "required": [
@@ -1555,6 +1559,14 @@
             "branch"
           ],
           "type": "object"
+        },
+        "SourceMode": {
+          "description": "Source direction. Existing bindings remain inbound-only until explicitly changed.",
+          "enum": [
+            "pull",
+            "two_way"
+          ],
+          "type": "string"
         }
       },
       "allOf": [

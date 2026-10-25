@@ -213,6 +213,15 @@ impl AgentPackage {
         entries: BTreeMap<String, Vec<u8>>,
         defaults: bool,
     ) -> Result<()> {
+        self.resolve_assets_tracked(entries, defaults, &mut BTreeMap::new())
+    }
+
+    pub(super) fn resolve_assets_tracked(
+        &mut self,
+        entries: BTreeMap<String, Vec<u8>>,
+        defaults: bool,
+        sources: &mut BTreeMap<String, String>,
+    ) -> Result<()> {
         let files_declared = self.files_declared;
         let default_skills = self
             .skill_sources(|source| entries.keys().any(|p| p.starts_with(&format!("{source}/"))))?;
@@ -276,9 +285,11 @@ impl AgentPackage {
                     Some(target) => target.clone(),
                     None => format!("/{path}"),
                 };
+                let target = workspace_path(&target)?;
+                sources.insert(target.clone(), path.clone());
                 let (content, encoding) = SessionFile::encode_content(bytes);
                 resolved.push(File::Inline(InitialFile {
-                    path: workspace_path(&target)?,
+                    path: target,
                     content,
                     encoding,
                     is_readonly: readonly,
@@ -333,9 +344,11 @@ impl AgentPackage {
                         continue;
                     }
                     if let Some(relative) = path.strip_prefix(&format!("{prefix}{dir}/")) {
+                        let target = format!("/.agents/skills/{dir}/{relative}");
+                        sources.insert(target.clone(), path.clone());
                         let (content, encoding) = SessionFile::encode_content(bytes);
                         resolved.push(File::Inline(InitialFile {
-                            path: format!("/.agents/skills/{dir}/{relative}"),
+                            path: target,
                             content,
                             encoding,
                             is_readonly: true,

@@ -1,23 +1,24 @@
 ---
 type: Spec
 title: Continuous GitHub Agent sources
-description: GitHub owns a connected Agent's portable package while the control plane continuously reconciles reviewed source into its existing identity.
+description: A GitHub branch and an Agent share a portable package through continuous inbound or opt-in two-way synchronization.
 tags: [agents, github, portability, synchronization]
 ---
 
 # Continuous GitHub Agent sources
 
 An Agent can bind its authored definition to a GitHub branch and package path.
-This is an inbound deployment of the existing [portable package](agent-packages.md),
-not a second definition format or an agent task. The control plane reads GitHub;
-repository code is never executed and credentials never enter a package.
+The existing [portable package](agent-packages.md) is shared in both directions.
+The control plane reads and optionally commits source; repository code is never
+executed and credentials never enter a package.
 
 ## Ownership
 
-Connecting applies an explicitly reviewed commit and makes the Agent's authored
-configuration read-only across every command transport. The
-[Chat mode draft adapter](../ui/chat-mode.md) inherits the same read-only state;
-Chat cannot patch a GitHub-owned definition. Binding changes and ordinary
+Connecting applies an explicitly reviewed commit. Pull mode, the default for new
+and existing bindings, makes authored configuration read-only across every command
+transport. Opting into two-way mode requires repository-scoped Contents write
+permission and permits normal authored edits through UI, API, CLI and MCP. The
+[Chat mode draft adapter](../ui/chat-mode.md) follows the selected mode. Binding changes and ordinary
 definition writes lock the same Agent row. Only a task-local scope for the exact
 organization and Agent permits reconciliation writes; no serialized request can
 claim that authority. Package-owned channel configuration follows source ownership.
@@ -28,7 +29,9 @@ Publication, credentials and omitted destination channel bindings remain local.
 The source binding stays outside package export. It captures the Agent's GitHub
 connection, installation and stable repository identity. A removed or replaced connection fails
 closed rather than silently substituting another identity. Repository access is
-scoped to contents read. For a human-configured source, reconciliation rechecks
+scoped to contents read for pull mode, and contents write only for explicitly
+selected two-way mode. Existing GitHub Apps need the owner to grant and accept
+write access; creating an App does not silently broaden its permissions. For a human-configured source, reconciliation rechecks
 live organization membership and Agent management permission, then applies the
 normal dependency, capability, feature and publication policies. An unattended
 reconciler does not inherit an internal caller's permission bypass.
@@ -53,21 +56,48 @@ over an existing source.
 
 Application, source revision and import history commit together. Binding generations
 and lease ownership fence stale work after a reconnect, disconnect or recovery.
-Errors preserve the last working definition and applied revision. Disconnect keeps
-that definition and restores local editing. Agent Files keep the existing
+Errors preserve the current local definition and last applied revision. Disconnect
+keeps the current definition and restores unrestricted local editing; it stops new
+attempts, while a GitHub request already in flight may still complete. Agent Files keep the existing
 [session seeding lifecycle](agent-packages.md#file-lifecycle).
 
 ## Boundaries and success bar
 
-Two-way writes are deferred: they need conditional repository writes, a durable
-outbox, shared base revisions, conflicts and a package editing contract that
-preserves repository authoring structure. Export remains available for connected
-Agents, and a copy is locally editable.
+Two-way synchronization compares local authored changes and the selected package
+against their shared baseline. An unrelated repository commit is retained as the
+parent of an outbound change. Concurrent package changes pause with a visible
+conflict rather than choosing a winner. Reviewing and reconnecting the GitHub
+version explicitly replaces local edits; disconnect keeps local edits without
+changing the repository.
+
+Linked skill exports serialize metadata deterministically so unchanged package
+bytes cannot create a write-back loop. Local edits queue reconciliation in their
+definition transaction. Outbound commits
+are persisted before publishing; uncertain responses recover the same commit,
+including when newer commits already descend from it. Queued retries revalidate
+current package policies before making a new branch update; acknowledgment of an
+already-delivered commit does not replay that update. Non-forced branch updates
+preserve concurrent repository commits and respect branch protection. Replaced or
+disconnected generations cannot start publishing a queued write. Intermediate
+local edits remain queued if a newer edit arrives while an earlier snapshot is
+being published.
+
+Write-back keeps the selected manifest path and format, external instruction path,
+and existing runtime asset source paths, including remapped files and legacy skill
+roots. Changed asset sets become explicit declarations; new assets can remain
+inline without claiming unrelated repository files. Unchanged manifests retain
+their bytes; manifest edits may normalize formatting and comments. Only authored
+fields changed locally are replaced, preserving values normalized by import and
+local publication decisions. Unnamed destination channels stay local. Workflows
+cannot be changed by source sync. Export and copy remain available in both modes.
 
 The [domain and reconciler](../../crates/server/src/domains/agents/source/mod.rs),
 [GitHub materializer](../../crates/server/src/domains/agents/source/github.rs),
-[lease repository](../../crates/server/src/storage/repositories/agent_sources.rs)
-and [tests](../../crates/server/src/domains/agents/source/tests.rs) own exact shapes
+[lease repository](../../crates/server/src/storage/repositories/agent_sources.rs),
+[outbound writer](../../crates/server/src/domains/agents/source/write.rs),
+[shared package editor](../../crates/core/src/agent_package/edit.rs),
+[inbound tests](../../crates/server/src/domains/agents/source/tests.rs) and
+[write regressions](../../crates/server/src/domains/agents/source/write_tests.rs) own exact shapes
 and behavior. Acceptance includes full package application, transport-independent
 edit rejection, failed-revision retention, atomic rollback, disconnect fencing,
 connection loss and tenant-scoped push routing.

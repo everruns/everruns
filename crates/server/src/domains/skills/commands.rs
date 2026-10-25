@@ -230,7 +230,9 @@ impl Command for GetSkillContent {
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
         // Reconstruct SKILL.md with frontmatter
-        let metadata: HashMap<String, serde_json::Value> =
+        // Portable package digests include these bytes. Stable metadata order
+        // prevents unchanged linked skills from queuing repeated source commits.
+        let metadata: std::collections::BTreeMap<String, serde_json::Value> =
             serde_json::from_value(row.metadata.clone()).unwrap_or_default();
         let mut frontmatter = format!("---\nname: {}\ndescription: {}", row.name, row.description);
         if let Some(ref license) = row.license {

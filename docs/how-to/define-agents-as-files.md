@@ -182,7 +182,7 @@ or resolved credentials. Diff requires
 
 ## Sync an Agent continuously from GitHub
 
-Open an existing Agent and select **More actions → Sync from GitHub**. Connect the
+Open an existing Agent and select **More actions → Sync with GitHub**. Connect the
 Agent's GitHub App in **Integrations** first, or choose an organization-linked
 Everruns App installation there. Select an accessible repository, its branch,
 and a package folder or standalone manifest. Leave the path empty for a package
@@ -217,18 +217,35 @@ Agent. Reconnecting a changed GitHub connection requires selecting the source
 again. If a human configured the source, that person must retain Agent management
 permission in the organization.
 
-While connected, authored Agent configuration and package-owned channel settings
-are read-only in the UI, API, CLI and MCP. Edit them in GitHub. Credentials and
-channel publication remain destination bindings. Sync follows the existing
-Agent Files lifecycle and never rewrites existing session files. Export is still
-available; copying creates an editable Agent. **Disconnect** stops synchronization,
-retains the current definition and restores local editing. This mode syncs from
-GitHub only.
+Choose **Sync from GitHub** to keep authored Agent configuration and package-owned
+channel settings read-only in Everruns, or **Sync with GitHub** to edit on either
+side. Two-way sync requires **Contents: Read and write** in the GitHub App settings;
+the installation must accept the updated permissions. Existing read-only bindings
+stay read-only until you change the sync direction and review the source again.
+
+In two-way mode, saved edits are queued and committed directly to the selected
+branch. Branch protection still applies: a branch that requires pull requests will
+reject direct updates, retain local edits and show an error. Use a branch that
+permits the Agent's App to commit. The Source panel shows queued edits and conflicts.
+If both sides change the package, neither version is overwritten automatically.
+**Review GitHub version** previews the incoming version; enabling sync after review
+replaces local authored changes. Export first if you want to save both versions,
+or disconnect to keep local edits without publishing them.
+
+Write-back preserves the selected manifest format, instruction-file location and
+existing asset paths. New assets can be inline. Editing a manifest may normalize
+its formatting and comments. Unrelated repository files remain untouched. Source
+sync cannot change GitHub workflows. Credentials, unnamed destination channels and
+channel publication remain local. Sync follows the existing Agent Files lifecycle
+and never rewrites existing session files. Export and copy remain available.
+**Disconnect** retains your current definition and stops new sync attempts; a
+GitHub write already in flight may still complete.
 
 The API exposes `GET`, `PUT` and `DELETE /v1/agents/{agent_id}/source`, plus
 `POST .../source/options`, `POST .../source/preview` and `POST .../source/sync`.
 Preview takes `repository`, `branch` and `path`; connecting supplies the returned
-`commit` and `agent_digest` alongside that selection. Changing an existing source
+`commit` and `agent_digest` alongside that selection. Set `mode` to `two_way` for
+write-back; omitted `mode` defaults to `pull`. Changing an existing source
 also supplies its current `expected_generation`. If the reviewed source or Agent
 changed, preview again before connecting.
 

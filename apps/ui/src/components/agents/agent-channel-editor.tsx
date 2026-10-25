@@ -78,7 +78,10 @@ export function AgentChannelEditor({
   const channel = channels.find(({ channel }) => channel.id === channelId)?.channel;
   const returnHref = `/agents/${agentId}?tab=integrations`;
   const packageName = (channel?.channel_config as { package_name?: string })?.package_name;
-  const sourceOwned = !!packageName && !!sourceQuery.data?.managed_channels.includes(packageName);
+  const sourceOwned =
+    !!packageName &&
+    sourceQuery.data?.mode !== "two_way" &&
+    !!sourceQuery.data?.managed_channels.includes(packageName);
   const canManage = !policiesLoading && can("agent.manage") && !isReadOnlyStatus(agent?.status);
   const canDangerous =
     !policiesLoading && can("agent.dangerous") && !isReadOnlyStatus(agent?.status);

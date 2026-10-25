@@ -13,6 +13,7 @@ import {
   getAgentSourceOptions,
   previewAgentSource,
   syncAgentSource,
+  type AgentSource,
   type SourceLocation,
   type SourcePreview,
   type SourceOptions,
@@ -33,6 +34,13 @@ import {
 
 function date(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Never";
+}
+function sourceStatus(source: AgentSource) {
+  if (source.status === "conflict") return "Conflict";
+  if (source.status === "error") return "Sync failed";
+  if (source.status === "syncing") return "Syncing";
+  if (source.local_dirty) return "Local changes queued";
+  return source.status === "synced" ? "Synced" : "Queued";
 }
 export function AgentSourcePanel({
   agentId,
@@ -56,6 +64,7 @@ export function AgentSourcePanel({
   const canManage = can("agent.manage") && !disabled;
   function setOpen(value: boolean) {
     if (!value) {
+      setMode("pull");
       setLocation({ repository: "", branch: "", path: "" });
       setPreview(null);
       setOptions(null);
@@ -63,6 +72,7 @@ export function AgentSourcePanel({
     }
     onOpenChange(value);
   }
+  const [mode, setMode] = useState<"pull" | "two_way">("pull");
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [location, setLocation] = useState<SourceLocation>({
     repository: "",
@@ -97,6 +107,7 @@ export function AgentSourcePanel({
     setPreview(null);
   }
   function start() {
+    setMode(source?.mode === "two_way" ? "two_way" : "pull");
     setLocation(
       source
         ? { repository: source.repository, branch: source.branch, path: source.path }
@@ -138,18 +149,12 @@ export function AgentSourcePanel({
                     {source.repository} · {source.branch} · {source.path || "/"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Managed by GitHub. Edit the repository to update this Agent.
+                    {source.mode === "two_way"
+                      ? "Two-way sync. Edit here or in GitHub; conflicting changes pause sync."
+                      : "Managed by GitHub. Edit the repository to update this Agent."}
                   </p>
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">
-                      {source.status === "synced"
-                        ? "Synced"
-                        : source.status === "error"
-                          ? "Sync failed"
-                          : source.status === "syncing"
-                            ? "Syncing"
-                            : "Queued"}
-                    </Badge>
+                    <Badge variant="outline">{sourceStatus(source)}</Badge>
                     {source.applied_commit && (
                       <span className="font-mono">{source.applied_commit.slice(0, 7)}</span>
                     )}
@@ -175,7 +180,7 @@ export function AgentSourcePanel({
                   <RefreshCw className="size-4" /> Sync now
                 </Button>
                 <Button size="sm" variant="outline" onClick={start} disabled={busy}>
-                  Change source
+                  {source.status === "conflict" ? "Review GitHub version" : "Change source"}
                 </Button>
                 <Button
                   size="sm"
@@ -200,7 +205,10 @@ export function AgentSourcePanel({
           )}
           {source?.error && (
             <p role="alert" className="break-words text-sm text-destructive">
-              {source.error} The last successfully synced definition is retained.
+              {source.error}{" "}
+              {source.mode === "two_way"
+                ? "Your local definition is retained."
+                : "The last successfully synced definition is retained."}
             </p>
           )}
           {error && !open && (
@@ -218,10 +226,12 @@ export function AgentSourcePanel({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>{source ? "Change Agent source" : "Sync from GitHub"}</DialogTitle>
+            <DialogTitle>{source ? "Change Agent source" : "Sync with GitHub"}</DialogTitle>
             <DialogDescription>
               Select a repository, branch, and package folder or manifest. Review changes before
-              enabling continuous sync. Synced fields become read-only in Everruns.
+              enabling continuous sync. Enabling applies the reviewed GitHub version and replaces
+              local authored changes. Choose whether edits can also be saved from Everruns to
+              GitHub.
             </DialogDescription>
           </DialogHeader>
           {!github?.connected ? (
@@ -238,6 +248,39 @@ export function AgentSourcePanel({
             </p>
           ) : (
             <>
+              <div className="space-y-2">
+                <Label htmlFor="source-mode">Sync direction</Label>
+                <select
+                  id="source-mode"
+                  className="h-9 w-full border bg-background px-3 text-sm"
+                  value={mode}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setMode(event.target.value as "pull" | "two_way");
+                    setPreview(null);
+                  }}
+                >
+                  <option value="pull">Sync from GitHub · read-only in Everruns</option>
+                  <option value="two_way">Sync with GitHub · edit on either side</option>
+                </select>
+                {mode === "two_way" && (
+                  <p className="text-sm text-muted-foreground">
+                    Requires Contents write permission in the GitHub App and installation. Saved
+                    edits are committed directly to the selected branch. Branch protection still
+                    applies. File paths are preserved; manifest formatting may be normalized.
+                  </p>
+                )}
+              </div>
+              {mode === "two_way" && github.app_settings_url && (
+                <a
+                  href={github.app_settings_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm underline"
+                >
+                  Open GitHub App settings <ExternalLink className="inline size-3" />
+                </a>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="source-repository">Repository</Label>
@@ -388,6 +431,7 @@ export function AgentSourcePanel({
                   if (!preview?.valid) return;
                   await connectAgentSource(agentId, {
                     ...location,
+                    mode,
                     commit: preview.commit,
                     agent_digest: preview.agent_digest,
                     ...(source ? { expected_generation: source.generation } : {}),
@@ -412,8 +456,8 @@ export function AgentSourcePanel({
           <DialogHeader>
             <DialogTitle>Disconnect source sync?</DialogTitle>
             <DialogDescription>
-              The last synced definition stays in Everruns and becomes editable. GitHub changes will
-              stop applying.
+              Your current definition stays in Everruns and remains editable. New sync attempts
+              stop. A GitHub write already in flight may still complete.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

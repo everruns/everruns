@@ -221,6 +221,7 @@ async fn changed_preview_blocks_connect_and_revoked_connection_keeps_readonly() 
     let error = ConnectAgentSource {
         agent_id: id.clone(),
         req: ConnectSourceRequest {
+            mode: SourceMode::Pull,
             location: location(),
             commit: preview["commit"].as_str().unwrap().into(),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),

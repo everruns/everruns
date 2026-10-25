@@ -2,6 +2,8 @@
 
 ## 2026-10-25
 
+- Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).
+
 * **Helm chart.** `charts/everruns` installs the self-hosted Platform on
   Kubernetes: one server replica, KEDA-scaled workers, the Compose Caddy
   routes, external PostgreSQL by default and secrets kept across upgrades. See

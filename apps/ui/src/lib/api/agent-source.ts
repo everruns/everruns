@@ -2,13 +2,15 @@ import { api } from "./client";
 import type { AgentPackagePreview } from "./agents";
 
 export interface AgentSource {
+  mode: "pull" | "two_way";
+  local_dirty: boolean;
   generation: string;
   repository: string;
   branch: string;
   path: string;
   managed_channels: string[];
   applied_commit: string | null;
-  status: "pending" | "syncing" | "synced" | "error";
+  status: "pending" | "syncing" | "synced" | "error" | "conflict";
   error: string | null;
   last_checked_at: string | null;
   last_synced_at: string | null;
@@ -50,7 +52,12 @@ export async function previewAgentSource(
 }
 export async function connectAgentSource(
   id: string,
-  body: SourceLocation & { commit: string; agent_digest: string; expected_generation?: string },
+  body: SourceLocation & {
+    mode?: "pull" | "two_way";
+    commit: string;
+    agent_digest: string;
+    expected_generation?: string;
+  },
 ): Promise<AgentSource> {
   return (await api.put<AgentSource>(route(id), body)).data;
 }

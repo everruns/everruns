@@ -20,6 +20,11 @@ pub struct AgentSourceRow {
     pub repository: String,
     pub branch: String,
     pub path: String,
+    pub mode: String,
+    pub local_digest: Option<String>,
+    pub local_package: Option<serde_json::Value>,
+    pub local_dirty: bool,
+    pub outbox: Option<serde_json::Value>,
     pub managed_channels: Vec<String>,
     pub applied_commit: Option<String>,
     pub package_digest: Option<String>,
@@ -61,15 +66,16 @@ impl Database {
                 agent_id, org_id, generation, identity_id, connection_id,
                 configured_by, configured_role, repository_id, repository, branch, path,
                 applied_commit, package_digest, managed_channels, installation_id, status,
-                last_checked_at, last_synced_at, next_sync_at
+                last_checked_at, last_synced_at, next_sync_at, mode, local_digest, local_package
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                'synced', NOW(), NOW(), NOW() + INTERVAL '60 seconds'
+                'synced', NOW(), NOW(), NOW() + INTERVAL '60 seconds', $16, $17, $18
             )
             ON CONFLICT (agent_id) DO UPDATE SET
                 generation=$3, identity_id=$4, connection_id=$5, configured_by=$6,
                 configured_role=$7, repository_id=$8, repository=$9, branch=$10, path=$11,
                 applied_commit=$12, package_digest=$13, managed_channels=$14, installation_id=$15,
+                mode=$16, local_digest=$17, local_package=$18, local_dirty=FALSE, outbox=NULL,
                 status='synced', error=NULL, last_checked_at=NOW(), last_synced_at=NOW(),
                 next_sync_at=NOW() + INTERVAL '60 seconds', lease_token=NULL, lease_until=NULL
             WHERE agent_github_sources.org_id=$2
@@ -90,8 +96,59 @@ impl Database {
         .bind(&row.package_digest)
         .bind(&row.managed_channels)
         .bind(row.installation_id)
+        .bind(&row.mode)
+        .bind(&row.local_digest)
+        .bind(&row.local_package)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    pub async fn set_agent_source_channels(
+        &self,
+        org: i64,
+        agent: Uuid,
+        names: &[String],
+    ) -> Result<()> {
+        sqlx::query("UPDATE agent_github_sources SET managed_channels=$3 WHERE org_id=$1 AND agent_id=$2 AND mode='two_way'")
+            .bind(org).bind(agent).bind(names).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn mark_agent_source_dirty(&self, org: i64, agent: Uuid) -> Result<()> {
+        sqlx::query("UPDATE agent_github_sources SET local_dirty=TRUE, next_sync_at=NOW(), status=CASE WHEN status='conflict' THEN status ELSE 'pending' END WHERE org_id=$1 AND agent_id=$2 AND mode='two_way'")
+            .bind(org).bind(agent).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn stage_agent_source_outbox(
+        &self,
+        row: &AgentSourceRow,
+        outbox: &serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agent_github_sources SET outbox=$4 WHERE org_id=$1 AND agent_id=$2 AND generation=$3 AND lease_token=$5")
+            .bind(row.org_id).bind(row.agent_id).bind(row.generation).bind(outbox).bind(row.lease_token)
+            .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn finish_agent_source_write(
+        &self,
+        row: &AgentSourceRow,
+        local_digest: &str,
+        package: &serde_json::Value,
+        dirty: bool,
+    ) -> Result<()> {
+        sqlx::query("UPDATE agent_github_sources SET local_digest=$4, local_package=$5, local_dirty=$6, outbox=NULL, next_sync_at=CASE WHEN $6 THEN NOW() ELSE next_sync_at END WHERE org_id=$1 AND agent_id=$2 AND generation=$3 AND lease_token=$7")
+            .bind(row.org_id).bind(row.agent_id).bind(row.generation).bind(local_digest).bind(package).bind(dirty).bind(row.lease_token)
+            .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn conflict_agent_source(&self, row: &AgentSourceRow, message: &str) -> Result<()> {
+        sqlx::query("UPDATE agent_github_sources SET status='conflict', error=$4, lease_token=NULL, lease_until=NULL WHERE org_id=$1 AND agent_id=$2 AND generation=$3 AND lease_token=$5")
+            .bind(row.org_id).bind(row.agent_id).bind(row.generation).bind(message).bind(row.lease_token)
+            .execute(&self.pool).await?;
         Ok(())
     }
 
@@ -157,7 +214,7 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE agent_github_sources SET
-                status=CASE WHEN $6::text IS NULL THEN 'synced' ELSE 'error' END,
+                status=CASE WHEN $6::text IS NULL THEN CASE WHEN local_dirty THEN 'pending' ELSE 'synced' END ELSE 'error' END,
                 error=$6, applied_commit=COALESCE($4,applied_commit),
                 package_digest=COALESCE($5,package_digest),
                 managed_channels=COALESCE($8,managed_channels),

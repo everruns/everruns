@@ -504,6 +504,55 @@ impl GitHubAppApi {
             .map_err(|_| anyhow::anyhow!("GitHub returned an invalid source response"))
     }
 
+    /// Source writes never surface upstream response bodies or authorization headers.
+    pub(crate) async fn write_source_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        token: &str,
+        body: &Value,
+    ) -> Result<Value> {
+        let mut response = self
+            .request(method, path)
+            .bearer_auth(token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|_| anyhow::anyhow!("Could not reach GitHub. The queued write will retry"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(match response.status().as_u16() {
+                401 | 403 =>
+                    "GitHub rejected the write. Check Contents write permission and branch protection, then retry",
+                404 => "Source repository or branch is unavailable. Check the GitHub connection",
+                409 | 422 =>
+                    "GitHub rejected the update. The branch may have changed or require pull requests. No branch was forced",
+                _ => "GitHub could not complete the write. The queued write will retry",
+            });
+        }
+        // Creating a tree can return the repository's complete root listing,
+        // even when only one small package folder changed. Match source reads'
+        // bound for that response; blob and commit acknowledgments stay small.
+        let max_response_bytes = if path.ends_with("/git/trees") {
+            everruns_core::agent_package::MAX_PACKAGE_BYTES * 3 / 2
+        } else {
+            64 * 1024
+        };
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| {
+            anyhow::anyhow!("GitHub write response was interrupted. The queued write will recover")
+        })? {
+            if bytes.len() + chunk.len() > max_response_bytes {
+                anyhow::bail!("GitHub returned an oversized write response");
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&bytes).map_err(|_| {
+            anyhow::anyhow!(
+                "GitHub returned an invalid write response. The queued write will recover"
+            )
+        })
+    }
+
     /// Whether a public App already uses `slug`. Unauthenticated: 200 is
     /// taken, 404 is free (or a private App's), anything else is an error.
     pub async fn app_slug_taken(&self, slug: &str) -> Result<bool> {
@@ -815,6 +864,55 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("exceeds 15 MiB"));
+        assert!(!error.to_string().contains("fixture-token"));
+    }
+
+    #[tokio::test]
+    async fn source_writes_accept_large_repository_trees_but_bound_other_acknowledgments() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let remote = MockServer::start().await;
+        let entries: Vec<_> = (0..1000)
+            .map(|index| {
+                json!({
+                    "path": format!("repository-file-{index:04}.txt"), "mode":"100644",
+                    "type":"blob", "sha":"a".repeat(40), "size":128,
+                })
+            })
+            .collect();
+        let value = json!({"sha":"b".repeat(40), "tree":entries, "truncated":false});
+        assert!(serde_json::to_vec(&value).unwrap().len() > 64 * 1024);
+        for endpoint in ["trees", "blobs"] {
+            Mock::given(method("POST"))
+                .and(path(format!("/repos/acme/agents/git/{endpoint}")))
+                .respond_with(ResponseTemplate::new(201).set_body_json(value.clone()))
+                .mount(&remote)
+                .await;
+        }
+        let api = GitHubAppApi::new(GitHubEndpoints {
+            api_url: remote.uri(),
+            web_url: "https://github.com".into(),
+        });
+        let tree = api
+            .write_source_json(
+                reqwest::Method::POST,
+                "/repos/acme/agents/git/trees",
+                "fixture-token",
+                &json!({}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tree["tree"].as_array().unwrap().len(), 1000);
+        let error = api
+            .write_source_json(
+                reqwest::Method::POST,
+                "/repos/acme/agents/git/blobs",
+                "fixture-token",
+                &json!({}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("oversized write response"));
         assert!(!error.to_string().contains("fixture-token"));
     }
 

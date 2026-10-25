@@ -31,10 +31,11 @@ impl UserConnectionResolver for Tokens {
     ) -> crate::kernel_imports::Result<Option<String>> {
         assert_eq!(org, DEFAULT_ORG_ID);
         assert_eq!(access.repositories, vec!["acme/agents"]);
-        assert_eq!(
-            access.permissions,
-            [("contents".into(), "read".into())].into()
-        );
+        assert_eq!(access.permissions.len(), 1);
+        assert!(matches!(
+            access.permissions.get("contents").map(String::as_str),
+            Some("read" | "write")
+        ));
         Ok(Some("source-test-token".into()))
     }
 }
@@ -181,6 +182,7 @@ pub(crate) async fn connect(ctx: &Ctx, id: &str) -> AgentSourceStatus {
     ConnectAgentSource {
         agent_id: id.into(),
         req: ConnectSourceRequest {
+            mode: SourceMode::Pull,
             location: location(),
             commit: preview["commit"].as_str().unwrap().into(),
             agent_digest: preview["agent_digest"].as_str().unwrap().into(),

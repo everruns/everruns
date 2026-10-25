@@ -83,6 +83,29 @@ async fn test_get_skill_content() {
 }
 
 #[tokio::test]
+async fn linked_skill_content_is_stable_for_package_sync() {
+    let server = TestServer::new().await;
+    let name = unique_skill_name("stable-export");
+    let content = format!(
+        "---\nname: {name}\ndescription: Stable package export\nmetadata:\n  epsilon: five\n  delta: four\n  gamma: three\n  beta: two\n  alpha: one\n---\n\nUse this skill."
+    );
+    let skill = server
+        .post("/v1/skills", json!({"skill_md":content}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let path = format!("/v1/skills/{}/content", skill["id"].as_str().unwrap());
+    let first = server.get(&path).await.assert_success().json_value()["skill_md"].clone();
+    for _ in 0..32 {
+        let current = server.get(&path).await.assert_success().json_value();
+        assert_eq!(
+            current["skill_md"], first,
+            "unchanged linked skills must not produce new package file digests"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_deleted_skill_content_returns_not_found() {
     let server = TestServer::new().await;
 

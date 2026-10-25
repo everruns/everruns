@@ -182,7 +182,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const sourceQuery = useAgentSource(agentId);
-  const sourceManaged = !!sourceQuery.data;
+  const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
   const { data: harnesses } = useHarnesses();
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
@@ -542,11 +542,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
       entityName={displayName}
       permissions={recordPermissions}
       actions={[
-        ...(!builtIn && canManage && !statusReadOnly && !sourceManaged
+        ...(!builtIn && canManage && !statusReadOnly && !sourceQuery.data
           ? [
               {
                 id: "source",
-                label: "Sync from GitHub",
+                label: "Sync with GitHub",
                 icon: <RefreshCw className="size-4" />,
                 onSelect: () => setSourceOpen(true),
                 disabled: sourceQuery.isLoading || !!sourceQuery.error,

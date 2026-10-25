@@ -1993,7 +1993,7 @@
       "source"
     ],
     "verb": "connect",
-    "description": "Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.",
+    "description": "Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.",
     "method": "PUT",
     "http_path": "/v1/agents/{agent_id}/source",
     "args": [
@@ -2030,6 +2030,17 @@
         "kind": "string",
         "required": false,
         "help": "Current binding generation when replacing a source; omit for an unbound Agent."
+      },
+      {
+        "field": "mode",
+        "long": "mode",
+        "kind": "string",
+        "required": false,
+        "help": "Source direction.",
+        "choices": [
+          "pull",
+          "two_way"
+        ]
       },
       {
         "field": "path",

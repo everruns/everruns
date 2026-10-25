@@ -19,6 +19,7 @@
 //! builders and enforce their own capability, identity and transport policy.
 
 mod assets;
+mod edit;
 #[cfg(feature = "agent-package-fs")]
 mod fs;
 pub use assets::{ALLOWED_DOT_ENTRIES, DENIED_DOT_ENTRIES};
@@ -903,7 +904,11 @@ impl AgentPackage {
                 File::Inline(file)
             })
             .collect();
-        let mut value = serde_json::to_value(&manifest).map_err(|e| error("manifest", e))?;
+        Self::render_manifest(&manifest, format)
+    }
+
+    fn render_manifest(manifest: &Manifest, format: Format) -> Result<String> {
+        let mut value = serde_json::to_value(manifest).map_err(|e| error("manifest", e))?;
         match format {
             Format::Auto | Format::Markdown => {
                 value
@@ -911,7 +916,7 @@ impl AgentPackage {
                     .ok_or_else(|| error("manifest", "expected an object"))?
                     .remove("instructions");
                 let yaml = serde_yaml::to_string(&value).map_err(|e| error("yaml", e))?;
-                Ok(format!("---\n{yaml}---\n{}", self.manifest.instructions))
+                Ok(format!("---\n{yaml}---\n{}", manifest.instructions))
             }
             Format::Json => serde_json::to_string_pretty(&value).map_err(|e| error("json", e)),
             Format::Yaml => serde_yaml::to_string(&value).map_err(|e| error("yaml", e)),
