@@ -1,7 +1,10 @@
 # sqlx 0.9's `Pool::begin` is not cancel-safe: a caller dropped while `BEGIN`
 # is in flight returns the connection to the pool inside a transaction sqlx
-# does not know about (EVERRUNS-4H). Tests, which nothing cancels, may allow it.
+# does not know about (EVERRUNS-4H). `Transaction::commit` is not either: a
+# caller dropped while `COMMIT` is in flight queues a stray `ROLLBACK` behind it
+# (EVERRUNS-35). Tests, which nothing cancels, may allow them.
 disallowed-methods = [
   { path = "sqlx_core::pool::Pool::begin", reason = "not cancel-safe: use everruns_durable::begin_transaction, or TxPool::begin in the server" },
   { path = "sqlx_core::pool::Pool::try_begin", reason = "not cancel-safe: use everruns_durable::begin_transaction, or TxPool::begin in the server" },
+  { path = "sqlx_core::transaction::Transaction::commit", reason = "not cancel-safe: use everruns_durable::commit_transaction, or DbTx::commit in the server" },
 ]

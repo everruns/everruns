@@ -24,7 +24,7 @@ mod schema;
 mod task_queue;
 mod workers;
 
-pub use begin::begin_transaction;
+pub use begin::{begin_transaction, commit_transaction};
 
 use super::db_failure::store_failure;
 use super::store::{
