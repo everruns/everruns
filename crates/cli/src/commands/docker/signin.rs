@@ -218,10 +218,10 @@ async fn login(http: &reqwest::Client, api_url: &str, creds: &Credentials<'_>) -
         );
     }
     #[derive(Deserialize)]
-    struct Session {
+    struct LoginResponse {
         access_token: String,
     }
-    let session: Session = resp.json().await.context("Failed to parse the sign-in")?;
+    let session: LoginResponse = resp.json().await.context("Failed to parse the sign-in")?;
     Ok(session.access_token)
 }
 

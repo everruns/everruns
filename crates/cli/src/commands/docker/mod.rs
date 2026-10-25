@@ -6,8 +6,6 @@
 //! starting over. Secrets are never regenerated and upgrades never happen as a
 //! side effect: moving to a new image tag runs migrations, so it is asked for
 //! explicitly with `--image-tag`.
-//!
-//! Design: knowledge/operations/local-setup.md.
 
 mod checks;
 mod settings;
@@ -81,7 +79,7 @@ pub struct UpArgs {
     /// LLM provider for the server's default key. The key comes from
     /// OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY, or a prompt
     #[arg(long, value_enum)]
-    pub provider: Option<Provider>,
+    pub provider: Option<LlmProvider>,
 
     /// Port for the UI and API on this machine (default 9300)
     #[arg(long)]
@@ -161,7 +159,7 @@ impl AuthChoice {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
-pub enum Provider {
+pub enum LlmProvider {
     Openai,
     Anthropic,
     Gemini,
@@ -169,8 +167,8 @@ pub enum Provider {
     Skip,
 }
 
-impl Provider {
-    const ALL: [Provider; 4] = [Self::Openai, Self::Anthropic, Self::Gemini, Self::Skip];
+impl LlmProvider {
+    const ALL: [LlmProvider; 4] = [Self::Openai, Self::Anthropic, Self::Gemini, Self::Skip];
 
     fn key_env(self) -> Option<&'static str> {
         match self {
@@ -300,7 +298,7 @@ async fn up(args: UpArgs) -> Result<()> {
         },
     );
     if !auth.shares_default_keys() {
-        if args.provider.is_some_and(|p| p != Provider::Skip) {
+        if args.provider.is_some_and(|p| p != LlmProvider::Skip) {
             bail!("with --auth accounts, add provider keys in the UI; drop --provider");
         }
     } else if let Some(provider) = args.provider {
@@ -607,13 +605,13 @@ fn ask_email(asker: Asker) -> Result<String> {
         .context("Failed to read the answer")
 }
 
-fn ask_provider(asker: Asker) -> Result<Provider> {
+fn ask_provider(asker: Asker) -> Result<LlmProvider> {
     // A key already in the shell is the obvious default.
-    let detected = Provider::ALL.into_iter().find(|p| p.env_key().is_some());
+    let detected = LlmProvider::ALL.into_iter().find(|p| p.env_key().is_some());
     if !asker.can_ask() {
-        return no_prompt(asker, "--provider", detected.unwrap_or(Provider::Skip));
+        return no_prompt(asker, "--provider", detected.unwrap_or(LlmProvider::Skip));
     }
-    let labels: Vec<String> = Provider::ALL
+    let labels: Vec<String> = LlmProvider::ALL
         .iter()
         .map(|p| match (p.key_env(), p.env_key()) {
             (Some(var), Some(_)) => format!("{} (use {var} from your shell)", p.label()),
@@ -621,7 +619,7 @@ fn ask_provider(asker: Asker) -> Result<Provider> {
         })
         .collect();
     let default = detected
-        .and_then(|d| Provider::ALL.iter().position(|p| *p == d))
+        .and_then(|d| LlmProvider::ALL.iter().position(|p| *p == d))
         .unwrap_or(0);
     let pick = dialoguer::Select::new()
         .with_prompt("LLM provider")
@@ -629,10 +627,10 @@ fn ask_provider(asker: Asker) -> Result<Provider> {
         .default(default)
         .interact()
         .context("Failed to read the answer")?;
-    Ok(Provider::ALL[pick])
+    Ok(LlmProvider::ALL[pick])
 }
 
-fn set_provider(s: &mut Settings, provider: Provider, asker: Asker) -> Result<()> {
+fn set_provider(s: &mut Settings, provider: LlmProvider, asker: Asker) -> Result<()> {
     if let Some(var) = provider.server_env() {
         let key = match provider.env_key() {
             Some(key) => key,
@@ -861,7 +859,7 @@ mod tests {
         };
         let mut s = Settings::default();
         // Skip needs no key and records the answer.
-        set_provider(&mut s, Provider::Skip, quiet).unwrap();
+        set_provider(&mut s, LlmProvider::Skip, quiet).unwrap();
         assert_eq!(s.value(settings::LLM_PROVIDER), Some("skip"));
     }
 

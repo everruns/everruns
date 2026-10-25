@@ -16,7 +16,8 @@ use base64::Engine;
 use rand::RngExt;
 
 /// The compose file this CLI release runs: a copy of
-/// `examples/docker-compose-full.yaml`, kept identical by a test so the guide
+/// [the documented example](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml),
+/// kept identical by a test so the guide
 /// and the CLI start the same, tested stack.
 pub const COMPOSE_FILE: &str = include_str!("../../../assets/docker-compose.yaml");
 
