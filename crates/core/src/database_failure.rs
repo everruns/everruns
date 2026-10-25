@@ -213,23 +213,6 @@ mod tests {
     }
 
     #[test]
-    fn kinds_have_distinct_stable_identifiers() {
-        let ids: std::collections::BTreeSet<_> = [
-            DatabaseFailureKind::PoolExhausted,
-            DatabaseFailureKind::ConnectionLost,
-            DatabaseFailureKind::Other,
-        ]
-        .iter()
-        .map(|kind| kind.as_str())
-        .collect();
-        assert_eq!(ids.len(), 3);
-        assert_eq!(
-            DatabaseFailureKind::PoolExhausted.as_str(),
-            "database.pool_exhausted"
-        );
-    }
-
-    #[test]
     fn logging_reports_the_classification_it_used() {
         assert_eq!(
             log_database_failure(

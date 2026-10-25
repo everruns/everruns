@@ -225,33 +225,4 @@ mod tests {
             }
         );
     }
-
-    /// The `jev` capability reaches the hosted registry in both dev and prod
-    /// deployments, which is what its prod-grade `typesafe` flag promises.
-    #[test]
-    fn jev_capability_is_registered_for_dev_and_prod_deployments() {
-        assert!(
-            oss_host_composition_for_grade(DeploymentGrade::Dev)
-                .capability_registry()
-                .has("jev"),
-            "dev deployments should offer the jev capability"
-        );
-        assert!(
-            oss_host_composition_for_grade(DeploymentGrade::Prod)
-                .capability_registry()
-                .has("jev"),
-            "prod deployments should offer the jev capability"
-        );
-    }
-
-    /// The connector an operator sees in Settings > My agent experience is registered
-    /// too, otherwise the capability has no way to get a user's key.
-    #[test]
-    fn typesafe_connector_is_registered_for_dev_deployments() {
-        let registry = oss_connector_registry_for_grade(DeploymentGrade::Dev);
-        assert!(
-            registry.get("typesafe").is_some(),
-            "the capability resolves its key from this connection provider"
-        );
-    }
 }

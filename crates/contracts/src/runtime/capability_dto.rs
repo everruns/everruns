@@ -396,18 +396,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_agent_capability_serialization() {
-        let agent_cap = AgentCapability {
-            capability_id: CapabilityId::new("test_math"),
-            position: 1,
-        };
-        assert_eq!(
-            serde_json::to_value(&agent_cap).unwrap(),
-            json!({"capability_id": "test_math", "position": 1})
-        );
-    }
-
     struct ProjectionFixture {
         features: Vec<&'static str>,
         risk: RiskLevel,

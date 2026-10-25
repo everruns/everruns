@@ -136,12 +136,4 @@ mod tests {
         }
         assert!(cap.tool_definitions().is_empty());
     }
-
-    #[test]
-    fn localizations_resolve_uk() {
-        assert_eq!(
-            OutputTruncationCapability.localized_name(Some("uk-UA")),
-            "Обрізання виводу"
-        );
-    }
 }

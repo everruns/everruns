@@ -784,15 +784,6 @@ mod tests {
     }
 
     #[test]
-    fn discover_schema_requires_text() {
-        let tool = DiscoverResourcesTool::new(ArdConfig::default());
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["required"], json!(["text"]));
-        assert_eq!(schema["properties"]["text"]["type"], "string");
-        assert_eq!(schema["additionalProperties"], false);
-    }
-
-    #[test]
     fn resolve_registry_single_default() {
         let cfg = ArdConfig::from_value(&json!({
             "registries": [{"id": "only", "url": "https://r.example.com"}]

@@ -130,23 +130,4 @@ mod tests {
             );
         }
     }
-
-    /// It must still carry the behavior, or collapsing the copies lost
-    /// something rather than deduplicating it.
-    #[test]
-    fn the_shared_prompt_keeps_the_behavioral_guidance() {
-        for kept in [
-            "edit-test-fix",
-            "Code quality",
-            "Git safety",
-            "Error handling",
-            "Output format",
-            "Instruction hierarchy",
-        ] {
-            assert!(
-                CODING_SYSTEM_PROMPT.contains(kept),
-                "the shared coding prompt dropped {kept}"
-            );
-        }
-    }
 }

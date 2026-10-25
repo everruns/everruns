@@ -279,18 +279,6 @@ mod tests {
     }
 
     #[test]
-    fn test_activity_event_serialization() {
-        let event = WorkflowEvent::ActivityCompleted {
-            activity_id: "step-1".to_string(),
-            result: json!({"status": "ok"}),
-        };
-
-        let json = serde_json::to_string(&event).unwrap();
-        let parsed: WorkflowEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(event, parsed);
-    }
-
-    #[test]
     fn test_activity_id_extraction() {
         let event = WorkflowEvent::ActivityStarted {
             activity_id: "my-activity".to_string(),

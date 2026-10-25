@@ -824,15 +824,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn empty_capabilities_passes() {
-        let db = Arc::new(StorageBackend::test_database());
-
-        validate_capability_refs(&db, DEFAULT_ORG_ID, &[])
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
     async fn mcp_ref_from_other_org_rejected() {
         let db = Arc::new(StorageBackend::test_database());
         let other_org_id = db

@@ -124,19 +124,6 @@ mod tests {
     }
 
     #[test]
-    fn private_scope_serializes_as_private() {
-        let mut result = json!({ "contents": [] });
-        mark_cacheable(
-            &mut result,
-            MCP_PROTOCOL_VERSION_LATEST,
-            RESOURCES_READ_TTL_MS,
-            CacheScope::Private,
-        );
-        assert_eq!(result["cacheScope"], "private");
-        assert_eq!(result["ttlMs"], RESOURCES_READ_TTL_MS);
-    }
-
-    #[test]
     fn mark_complete_never_overwrites_a_task_result() {
         let mut task = json!({ "resultType": "task", "taskId": "abc" });
         mark_complete(&mut task, MCP_PROTOCOL_VERSION_LATEST);

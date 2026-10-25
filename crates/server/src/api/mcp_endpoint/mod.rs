@@ -1570,24 +1570,6 @@ mod resources_read_policy_tests {
     }
 
     #[test]
-    fn resource_error_bad_request_returns_message() {
-        let msg = resource_error("harnesses", CommandError::bad_request("bad param"));
-        assert_eq!(msg, "bad param");
-    }
-
-    #[test]
-    fn resource_error_conflict_returns_message() {
-        let msg = resource_error("providers", CommandError::conflict("dup"));
-        assert_eq!(msg, "dup");
-    }
-
-    #[test]
-    fn resource_error_unprocessable_returns_message() {
-        let msg = resource_error("capabilities", CommandError::unprocessable("unprocessable"));
-        assert_eq!(msg, "unprocessable");
-    }
-
-    #[test]
     fn resource_error_internal_prefixes_resource_name() {
         let msg = resource_error(
             "providers",

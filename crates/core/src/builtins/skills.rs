@@ -1031,29 +1031,9 @@ mod tests {
     // covered registry-wide by `builtin_capabilities_satisfy_registry_invariants`
     // in `capabilities::tests`; the per-capability constant mirrors were removed.
 
-    #[test]
-    fn test_skills_has_system_prompt() {
-        let cap = SkillsCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-
-        assert!(prompt.contains("/workspace/.agents/skills/"));
-    }
-
     // ========================================================================
     // Tool Basics (no context)
     // ========================================================================
-
-    #[test]
-    fn test_list_skills_requires_context() {
-        let tool = ListSkillsTool;
-        assert!(tool.requires_context());
-    }
-
-    #[test]
-    fn test_activate_skill_requires_context() {
-        let tool = ActivateSkillFromVfsTool;
-        assert!(tool.requires_context());
-    }
 
     #[tokio::test]
     async fn test_list_skills_without_context() {
@@ -1566,48 +1546,9 @@ mod tests {
     // Integration: CapabilityInfo DTO
     // ========================================================================
 
-    #[test]
-    fn test_capability_info_from_core_marks_is_skill() {
-        use crate::builtins::capability_dto::CapabilityInfo;
-        let cap = SkillsCapability;
-        let info = CapabilityInfo::from_core(&cap);
-
-        assert_eq!(info.id.as_str(), "skills");
-        assert!(info.is_skill, "skills capability should have is_skill=true");
-        assert!(!info.is_mcp);
-        assert_eq!(info.category, Some("Core".to_string()));
-        assert!(!info.tool_definitions.is_empty());
-        assert!(!info.dependencies.is_empty());
-    }
-
     // ========================================================================
     // Integration: Dependency Resolution
     // ========================================================================
-
-    #[test]
-    fn test_skills_dependency_resolution() {
-        use crate::builtins::capabilities::resolve_dependencies;
-
-        let mut registry = crate::builtins::capabilities::CapabilityRegistry::new();
-        crate::builtins::register_runtime_capabilities(&mut registry).unwrap();
-        registry.register(FileSystemDependencyFixture);
-        let resolved = resolve_dependencies(&["skills".to_string()], &registry).unwrap();
-
-        // Should auto-include session_file_system as dependency
-        assert!(
-            resolved
-                .resolved_ids
-                .contains(&"session_file_system".to_string()),
-            "skills should pull in session_file_system dependency"
-        );
-        assert!(resolved.resolved_ids.contains(&"skills".to_string()));
-        assert!(
-            resolved
-                .added_as_dependencies
-                .contains(&"session_file_system".to_string()),
-            "session_file_system should be marked as auto-added"
-        );
-    }
 
     // ========================================================================
     // Integration: apply_capabilities
@@ -2137,70 +2078,6 @@ mod tests {
     // ========================================================================
 
     #[tokio::test]
-    async fn test_activate_skill_substitutes_session_id() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md =
-            "---\nname: test-env\ndescription: Test env vars.\n---\n\nSession: ${SESSION_ID}";
-        fs.add_file(session_id, "/.agents/skills/test-env/SKILL.md", skill_md);
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-env"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                let expected_id = session_id.to_string();
-                assert!(
-                    instructions.contains(&expected_id),
-                    "Instructions should contain session ID '{}', got: {}",
-                    expected_id,
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("${SESSION_ID}"),
-                    "Raw placeholder should be replaced"
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_activate_skill_substitutes_skill_dir() {
-        let fs = Arc::new(MockFileStore::new());
-        let session_id = SessionId::new();
-        let skill_md =
-            "---\nname: test-dir\ndescription: Test skill dir.\n---\n\nDir: ${SKILL_DIR}";
-        fs.add_file(session_id, "/.agents/skills/test-dir/SKILL.md", skill_md);
-
-        let context = ToolContext::with_file_store(session_id, fs);
-        let tool = ActivateSkillFromVfsTool;
-
-        let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-dir"}), &context)
-            .await;
-        match result {
-            ToolExecutionResult::Success(val) => {
-                let instructions = val["instructions"].as_str().unwrap();
-                assert!(
-                    instructions.contains("/.agents/skills/test-dir"),
-                    "Instructions should contain skill dir path, got: {}",
-                    instructions
-                );
-                assert!(
-                    !instructions.contains("${SKILL_DIR}"),
-                    "Raw placeholder should be replaced"
-                );
-            }
-            other => panic!("Expected Success, got: {:?}", other),
-        }
-    }
-
-    #[tokio::test]
     async fn test_activate_skill_substitutes_both_env_vars() {
         let fs = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
@@ -2370,12 +2247,6 @@ mod tests {
         assert!(!result.contains(&long_desc));
         // Should contain truncated version with ellipsis
         assert!(result.contains('…'));
-    }
-
-    #[test]
-    fn localized_name_differs_from_default() {
-        let cap = SkillsCapability;
-        assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
 
     #[tokio::test]

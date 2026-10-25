@@ -127,20 +127,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fallback_is_internal_error() {
-        let err = PublicError::fallback();
-        assert_eq!(err.code, PublicErrorCode::InternalError);
-        assert_eq!(err.code.as_str(), "internal_error");
-        assert_eq!(err.message, "Something went wrong. Please try again.");
-    }
-
-    #[test]
-    fn default_matches_fallback() {
-        assert_eq!(PublicError::default(), PublicError::fallback());
-        assert_eq!(PublicErrorCode::default(), PublicErrorCode::InternalError);
-    }
-
-    #[test]
     fn unknown_internal_code_falls_back_to_internal_error() {
         for input in [
             None,

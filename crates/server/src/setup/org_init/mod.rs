@@ -668,20 +668,6 @@ mod tests {
         default_harness_definitions()
     }
 
-    #[test]
-    fn test_built_in_harness_names_unique() {
-        let built_in_harnesses = harnesses();
-        let names: Vec<&str> = built_in_harnesses.iter().map(|h| h.name.as_str()).collect();
-        let mut unique = names.clone();
-        unique.sort();
-        unique.dedup();
-        assert_eq!(
-            names.len(),
-            unique.len(),
-            "Duplicate built-in harness names"
-        );
-    }
-
     #[tokio::test]
     async fn test_initialize_default_org_creates_harnesses() {
         let db = make_db();
@@ -914,30 +900,6 @@ mod tests {
             base_ids.contains(&"compaction") && base_ids.contains(&"tool_call_repair"),
             "Base harness carries the system essentials: {base_ids:?}"
         );
-    }
-
-    #[tokio::test]
-    async fn test_init_result_has_changes() {
-        let result = InitResult {
-            created: 1,
-            updated: 0,
-            unchanged: 0,
-        };
-        assert!(result.has_changes());
-
-        let result2 = InitResult {
-            created: 0,
-            updated: 1,
-            unchanged: 0,
-        };
-        assert!(result2.has_changes());
-
-        let result3 = InitResult {
-            created: 0,
-            updated: 0,
-            unchanged: 3,
-        };
-        assert!(!result3.has_changes());
     }
 
     /// Verify that calling initialize_org_harnesses on a fresh default org

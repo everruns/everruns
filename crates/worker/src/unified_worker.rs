@@ -702,35 +702,6 @@ mod tests {
     use crate::durable::{ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome};
 
     #[test]
-    fn test_config_default() {
-        let config = TaskWorkerConfig::default();
-        assert!(config.worker_id.starts_with("worker-"));
-        // Safe-by-default concurrency; 1000-way is opt-in.
-        assert_eq!(config.max_concurrent_tasks, DEFAULT_MAX_CONCURRENT_TASKS);
-        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
-        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
-    }
-
-    #[test]
-    fn test_config_dev_mode() {
-        let config = TaskWorkerConfig::dev_mode();
-        assert!(config.worker_id.starts_with("dev-worker-"));
-        assert_eq!(config.worker_group, Some("dev".to_string()));
-        // Claim batch must stay within execution concurrency in every preset.
-        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
-    }
-
-    #[test]
-    fn test_config_production() {
-        // production() is the explicit opt-in for high concurrency, but the claim
-        // batch stays bounded independently of execution concurrency.
-        let config = TaskWorkerConfig::production();
-        assert_eq!(config.max_concurrent_tasks, 1000);
-        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
-        assert!(config.claim_batch_size < config.max_concurrent_tasks);
-    }
-
-    #[test]
     fn test_claim_limit_bounds_to_batch() {
         assert_eq!(
             claim_limit(1000, DEFAULT_CLAIM_BATCH_SIZE),

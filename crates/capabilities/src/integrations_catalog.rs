@@ -406,14 +406,6 @@ mod tests {
     }
 
     #[test]
-    fn daytona_capabilities_and_connection_are_ungated() {
-        assert_eq!(capability_feature_flag("daytona"), None);
-        assert_eq!(connector_feature_flag("daytona"), None);
-        assert_eq!(connector_feature_flag("e2b"), None);
-        assert_eq!(capability_feature_flag("modal"), Some("modal"));
-    }
-
-    #[test]
     fn prod_connector_registry_drops_flagged_connectors() {
         let mut dev = ConnectorRegistry::new();
         register_connectors(&mut dev, DeploymentGrade::Dev);

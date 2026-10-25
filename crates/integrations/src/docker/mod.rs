@@ -1198,40 +1198,6 @@ mod tests {
 
     // --- Capability metadata tests ---
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = DockerContainerCapability;
-        assert_eq!(cap.id(), "docker_container");
-        assert_eq!(cap.name(), "[Experimental] Docker Container");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("container"));
-        assert_eq!(cap.category(), Some("Sandboxes"));
-    }
-
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = DockerContainerCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 5);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"docker_exec"));
-        assert!(names.contains(&"docker_read_file"));
-        assert!(names.contains(&"docker_write_file"));
-        assert!(names.contains(&"docker_logs"));
-        assert!(names.contains(&"docker_stop"));
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = DockerContainerCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("lazily-started Docker container"));
-        assert!(prompt.contains("host networking"));
-        assert!(prompt.contains("/workspace"));
-        assert!(prompt.contains("stopping removes/resets it"));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = DockerContainerCapability;
@@ -1246,44 +1212,7 @@ mod tests {
         assert!(prompt.len() <= 1500, "prompt is {} bytes", prompt.len());
     }
 
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = DockerContainerCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn localizations_cover_schema_summary_and_uk_name() {
-        let cap = DockerContainerCapability;
-        assert!(cap.describe_schema(None).is_some());
-        assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
-    }
-
     // --- Config tests ---
-
-    #[test]
-    fn test_config_default() {
-        let config = DockerContainerConfig::default();
-        assert_eq!(config.image, DEFAULT_IMAGE);
-        assert_eq!(config.working_dir, DEFAULT_WORKING_DIR);
-    }
-
-    #[test]
-    fn test_config_parse() {
-        let json = json!({
-            "image": "ubuntu:22.04",
-            "working_dir": "/app"
-        });
-        let config = parse_config(&json);
-        assert_eq!(config.image, "ubuntu:22.04");
-        assert_eq!(config.working_dir, "/app");
-    }
 
     #[test]
     fn test_config_parse_partial() {

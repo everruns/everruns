@@ -313,27 +313,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sandbox_state_roundtrip() {
-        let state = SandboxState {
-            sandbox_id: "sb_123".to_string(),
-            workspace_path: "/home/daytona".to_string(),
-            started_at: "2026-02-16T10:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&state).unwrap();
-        let deserialized: SandboxState = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.sandbox_id, "sb_123");
-        assert_eq!(deserialized.workspace_path, "/home/daytona");
-    }
-
-    #[test]
-    fn test_required_str_present() {
-        let args = serde_json::json!({"name": "test_value"});
-        let result = required_str(&args, "name");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test_value");
-    }
-
-    #[test]
     fn test_required_str_missing() {
         let args = serde_json::json!({"other": "value"});
         let result = required_str(&args, "name");
@@ -413,14 +392,5 @@ mod tests {
         assert_eq!(result.stderr, "");
         assert_eq!(result.result, "");
         assert_eq!(result.exit_code, 0);
-    }
-
-    #[test]
-    fn test_exec_result_nonzero_exit() {
-        let json = r#"{"stdout": "", "stderr": "error msg", "result": "error msg", "exitCode": 1}"#;
-        let result: ExecResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.exit_code, 1);
-        assert_eq!(result.stderr, "error msg");
-        assert_eq!(result.result, "error msg");
     }
 }

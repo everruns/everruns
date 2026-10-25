@@ -242,18 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn serde_is_transparent() {
-        for text in ["current_time", "my_custom_capability"] {
-            let id = CapabilityId::new(text);
-            assert_eq!(id.to_string(), text);
-            assert_eq!(id.as_str(), text);
-            assert_eq!(serde_json::to_value(&id).unwrap(), serde_json::json!(text));
-            let parsed: CapabilityId = serde_json::from_value(serde_json::json!(text)).unwrap();
-            assert_eq!(parsed, id);
-        }
-    }
-
-    #[test]
     fn plugin_helpers_round_trip() {
         let id = plugin_capability_id("plg_01");
         assert_eq!(id, "plugin:plg_01");

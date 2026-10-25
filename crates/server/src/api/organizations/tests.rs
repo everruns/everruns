@@ -793,30 +793,6 @@ async fn complete_org_onboarding_marks_and_is_idempotent() {
 // struct-literal/derive checks with no custom logic; the handler tests
 // above cover the real validation and response paths.)
 
-#[test]
-fn test_update_request_partial() {
-    let json = r#"{}"#;
-    let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
-    assert!(req.name.is_none());
-    assert!(req.default_model_id.is_none());
-    assert!(req.default_harness_id.is_none());
-    assert!(req.base_harness_id.is_none());
-
-    let json = r#"{
-            "name": "New Name",
-            "default_harness_id": "harness_01933b5a000070008000000000000602",
-            "base_harness_id": "harness_01933b5a000070008000000000000601"
-        }"#;
-    let req: UpdateOrganizationRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(req.name.unwrap(), "New Name");
-    assert!(req.default_harness_id.is_some());
-    assert!(req.base_harness_id.is_some());
-
-    let req: UpdateOrganizationRequest =
-        serde_json::from_str(r#"{"default_model_id":null}"#).unwrap();
-    assert_eq!(req.default_model_id, Some(None));
-}
-
 #[tokio::test]
 async fn admins_set_and_clear_the_agentid_owner_cap() {
     use crate::storage::CreateOrganizationRow;

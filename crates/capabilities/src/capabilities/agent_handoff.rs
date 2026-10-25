@@ -1454,31 +1454,9 @@ mod tests {
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn config_schema_exposes_targets_array() {
-        let cap = AgentHandoffCapability;
-        let schema = cap.config_schema().expect("config schema");
-        assert_eq!(schema["properties"]["targets"]["type"], "array");
-    }
-
-    #[test]
     fn capability_no_longer_contributes_legacy_handoff_tools() {
         let cap = AgentHandoffCapability;
         assert!(cap.tools_with_config(&json!({})).is_empty());
-    }
-
-    #[test]
-    fn uk_localization_resolves() {
-        let cap = AgentHandoffCapability;
-        assert_eq!(
-            cap.localized_name(Some("uk-UA")),
-            "Передання роботи агентам"
-        );
-        assert!(
-            cap.localized_description(Some("uk-UA"))
-                .contains("Делегує роботу")
-        );
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

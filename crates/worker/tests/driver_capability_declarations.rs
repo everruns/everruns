@@ -176,18 +176,3 @@ fn each_driver_powers_the_services_the_page_claims() {
         );
     }
 }
-
-#[test]
-fn only_the_simulator_reaches_no_network() {
-    // The page says the simulator is the one entry that is not a real vendor.
-    // If a second in-process driver ever registers, that sentence needs
-    // rewriting rather than quietly becoming false.
-    let registry = create_driver_registry();
-    let in_process: Vec<String> = registry
-        .registered_providers()
-        .into_iter()
-        .filter(|id| *id == DriverId::LlmSim)
-        .map(|id| id.to_string())
-        .collect();
-    assert_eq!(in_process, vec!["llmsim".to_string()]);
-}

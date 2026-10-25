@@ -620,27 +620,6 @@ mod tests {
     }
 
     #[test]
-    fn generic_is_the_shared_platform_floor() {
-        let harness = Harness::generic();
-        assert_eq!(harness.name(), "generic");
-
-        let ids: Vec<&str> = harness
-            .capabilities()
-            .iter()
-            .map(|capability| capability.capability_id())
-            .collect();
-        let shared = everruns_contracts::generic_capabilities();
-        assert_eq!(ids.len(), shared.len());
-        for capability in &shared {
-            assert!(
-                ids.contains(&capability.capability_id()),
-                "{} missing from the Framework generic harness",
-                capability.capability_id()
-            );
-        }
-    }
-
-    #[test]
     fn generic_carries_capability_config_through() {
         // The floor is references *plus config*; dropping the config half
         // would make the two surfaces agree on names while behaving

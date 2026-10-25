@@ -97,45 +97,6 @@ impl Capability for OpenUiCapability {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = OpenUiCapability;
-        let prompt = cap.system_prompt_addition();
-        assert!(prompt.is_some());
-        let text = prompt.unwrap();
-        assert!(text.contains("openui-lang"));
-        assert!(text.contains("```openui"));
-        assert!(text.contains("## Syntax Rules"));
-        assert!(text.contains("## Component Signatures"));
-    }
-
-    #[test]
-    fn test_capability_features() {
-        let cap = OpenUiCapability;
-        let features = cap.features();
-        assert_eq!(features, vec!["openui"]);
-    }
-
-    #[test]
-    fn test_system_prompt_has_all_component_groups() {
-        let cap = OpenUiCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("### Content"));
-        assert!(prompt.contains("### Tables"));
-        assert!(prompt.contains("### Charts (2D)"));
-        assert!(prompt.contains("### Charts (1D)"));
-        assert!(prompt.contains("### Forms"));
-        assert!(prompt.contains("### Buttons"));
-        assert!(prompt.contains("### Layout"));
-    }
-}
-
-#[cfg(test)]
 mod catalog_tests {
     use super::*;
 

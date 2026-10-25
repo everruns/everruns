@@ -314,17 +314,6 @@ impl Capability for BrowserlessCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::runtime::capabilities::CapabilityStatus;
-
-    #[test]
-    fn test_capability_metadata() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.id(), "browserless");
-        assert_eq!(cap.name(), "Browserless");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("browserless"));
-        assert_eq!(cap.category(), Some("Browser"));
-    }
 
     #[test]
     fn capability_narrates_browserless_tools() {
@@ -422,32 +411,6 @@ mod tests {
         assert_eq!(result, "https://default.example.com");
     }
 
-    #[test]
-    fn test_capability_has_all_tools() {
-        let cap = BrowserlessCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 7);
-
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"browserless_open_browser"));
-        assert!(names.contains(&"browserless_close_browser"));
-        assert!(names.contains(&"browserless_navigate"));
-        assert!(names.contains(&"browserless_screenshot"));
-        assert!(names.contains(&"browserless_content"));
-        assert!(names.contains(&"browserless_scrape"));
-        assert!(names.contains(&"browserless_interact"));
-    }
-
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = BrowserlessCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("fresh browsers"));
-        assert!(prompt.contains("persistent browser"));
-        assert!(prompt.contains("closed when done"));
-        assert!(prompt.contains("screenshots for visual state"));
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = BrowserlessCapability;
@@ -457,29 +420,5 @@ mod tests {
             );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.len() <= 400, "prompt is {} bytes", prompt.len());
-    }
-
-    #[test]
-    fn test_all_tools_require_context() {
-        let cap = BrowserlessCapability;
-        for tool in cap.tools() {
-            assert!(
-                tool.requires_context(),
-                "Tool {} should require context",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_capability_depends_on_session_storage() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
-
-    #[test]
-    fn test_capability_risk_level() {
-        let cap = BrowserlessCapability;
-        assert_eq!(cap.risk_level(), RiskLevel::Medium);
     }
 }

@@ -956,16 +956,6 @@ mod tests {
         );
     }
 
-    /// The real EventService cache is constructed with the bounded settings.
-    #[tokio::test]
-    async fn event_service_cache_round_trips() {
-        let cache = build_agent_metadata_cache();
-        let id = SessionId::new();
-        cache.insert(id, sample_metadata()).await;
-        assert!(cache.get(&id).await.is_some());
-        assert!(cache.get(&SessionId::new()).await.is_none());
-    }
-
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,

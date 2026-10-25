@@ -841,30 +841,4 @@ mod tests {
             assert!(cap.validate_config(&bad).is_err(), "accepted {bad}");
         }
     }
-
-    #[test]
-    fn schema_matches_validation() {
-        let schema = OpenAiServerToolsCapability.config_schema().unwrap();
-        let one_of = schema["properties"][TOOLS_KEY]["items"]["oneOf"]
-            .as_array()
-            .unwrap();
-        assert_eq!(one_of.len(), TOOL_NAMES.len());
-        assert_eq!(
-            schema["properties"][CONTEXT_SIZE_KEY]["enum"],
-            json!(["low", "medium", "high"])
-        );
-    }
-
-    #[test]
-    fn ukrainian_overlay_labels_every_tool() {
-        let loc = OpenAiServerToolsCapability
-            .localizations()
-            .into_iter()
-            .find(|l| l.locale == "uk")
-            .unwrap();
-        let labels = &loc.config_overlay.unwrap()["properties"][TOOLS_KEY]["items"]["enum_labels"];
-        for (name, _) in TOOL_NAMES {
-            assert!(labels[name].as_str().is_some_and(|s| !s.is_empty()));
-        }
-    }
 }

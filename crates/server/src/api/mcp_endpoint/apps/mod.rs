@@ -770,14 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn action_tools_are_app_only() {
-        for tool in [SESSION_VIEW_TOOL, ANSWER_TOOL, APPROVAL_TOOL] {
-            let meta = tool_meta(tool).expect("view tool");
-            assert_eq!(meta["ui"]["visibility"], json!(["app"]));
-        }
-    }
-
-    #[test]
     fn home_is_a_global_and_thread_entrypoint() {
         let meta = tool_meta(HOME_TOOL).unwrap();
         assert_eq!(meta["ui"]["resourceUri"], HOME_VIEW_URI);

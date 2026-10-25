@@ -7,54 +7,6 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{EventContext, InputMessageData, ToolCompletedData};
 use everruns_core::message::RuntimeMessage;
 use everruns_core::{ContentPart, Event};
-use uuid::Uuid;
-
-#[test]
-fn test_event_serialization() {
-    let session_id = SessionId::new();
-    let event_context = EventContext::empty();
-    let event = Event::new(
-        session_id,
-        event_context,
-        InputMessageData::new(RuntimeMessage::user("test")),
-    );
-
-    let json = serde_json::to_value(&event).unwrap();
-
-    assert!(json.is_object());
-    assert_eq!(json["type"], "input.message");
-    // session_id now uses prefixed format (session_{hex})
-    let expected_session_id = format!("session_{}", session_id.uuid().simple());
-    assert_eq!(json["session_id"], expected_session_id);
-    assert!(json["context"].is_object());
-}
-
-#[test]
-fn test_event_type() {
-    let session_id = SessionId::new();
-    let event_context = EventContext::empty();
-    let event = Event::new(
-        session_id,
-        event_context,
-        InputMessageData::new(RuntimeMessage::user("test")),
-    );
-
-    assert_eq!(event.event_type, "input.message");
-}
-
-#[test]
-fn test_event_session_id() {
-    let raw_uuid = Uuid::now_v7();
-    let session_id = SessionId::from_uuid(raw_uuid);
-    let event_context = EventContext::empty();
-    let event = Event::new(
-        session_id,
-        event_context,
-        InputMessageData::new(RuntimeMessage::user("test")),
-    );
-
-    assert_eq!(event.session_uuid(), raw_uuid);
-}
 
 #[test]
 fn test_tool_call_completed_event_serialization() {

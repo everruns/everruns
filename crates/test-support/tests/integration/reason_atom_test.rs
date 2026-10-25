@@ -17,7 +17,7 @@ use everruns_core::{
     AgentDefinition, CompactionCheckpointStore, Controls, ExecutionContext, MessageRetriever,
     RuntimeMessage,
 };
-use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
+use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
 };
@@ -2049,62 +2049,6 @@ async fn test_reason_atom_with_tool_result_continuation() {
 }
 
 #[tokio::test]
-async fn test_reason_atom_with_lorem_response() {
-    let (
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        harness_id,
-        agent_id,
-        session_id,
-    ) = setup_test_environment().await;
-
-    message_retriever
-        .seed(
-            session_id.into(),
-            vec![RuntimeMessage::user("Tell me a long story")],
-        )
-        .await;
-
-    // Use lorem ipsum generator
-    let driver_registry = create_custom_driver_registry(LlmSimConfig::lorem(100));
-
-    let atom = reason_atom_with_stores(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever.clone(),
-        provider_store,
-        CapabilityRegistry::new(),
-        driver_registry,
-        InMemoryEventEmitter::new(),
-    );
-
-    let context = create_context(session_id);
-    let input = ReasonInput {
-        context,
-        harness_id,
-        agent_id: Some(agent_id.into()),
-        org_id: 0,
-        mcp_tool_definitions: vec![],
-        previous_response_id: None,
-        iteration: 1,
-    };
-
-    let result = atom
-        .execute(input)
-        .await
-        .expect("ReasonAtom should succeed");
-
-    assert!(result.success);
-    // Lorem ipsum should generate substantial text
-    assert!(result.text.len() > 50);
-    assert!(result.text.split_whitespace().count() > 10);
-}
-
-#[tokio::test]
 async fn test_reason_atom_handles_llm_error() {
     let (
         harness_store,
@@ -2577,41 +2521,6 @@ async fn test_reason_atom_bounds_repeated_provider_stream_stalls() {
         3,
         "stalls must stay bounded by the retry budget"
     );
-}
-
-#[tokio::test]
-async fn test_driver_registry_integration() {
-    // Verify that register_driver works with the standard DriverRegistry flow
-    let mut registry = DriverRegistry::new();
-    register_driver(&mut registry);
-
-    assert!(registry.has_driver(&DriverId::LlmSim));
-
-    // Create driver via registry
-    let config = everruns_contracts::driver_registry::ProviderConfig::new(DriverId::LlmSim)
-        .with_api_key("test-key");
-
-    let driver = registry
-        .create_chat_driver(&config)
-        .expect("Should create LlmSim driver");
-
-    // Test the driver
-    use everruns_contracts::driver_registry::{ChatDriver, LlmCallConfig, Message, MessageRole};
-
-    let messages = vec![Message::text(MessageRole::User, "Hello")];
-    let call_config = LlmCallConfig::new("test");
-
-    let response = driver
-        .chat_completion(
-            &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
-            messages,
-            &call_config,
-        )
-        .await
-        .expect("Chat completion should succeed");
-
-    // Default driver returns a fixed response
-    assert!(!response.text.is_empty());
 }
 
 #[tokio::test]

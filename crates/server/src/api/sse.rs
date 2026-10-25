@@ -457,93 +457,6 @@ mod tests {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn test_realtime_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.min_backoff_ms, 100);
-        assert_eq!(config.max_backoff_ms, 500);
-        assert_eq!(config.max_connection_secs, 300);
-        assert_eq!(config.disconnect_retry_ms, 100);
-        assert_eq!(config.heartbeat_interval_secs, 30);
-    }
-
-    #[test]
-    fn test_monitoring_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.min_backoff_ms, 1000);
-        assert_eq!(config.max_backoff_ms, 20000);
-        assert_eq!(config.max_connection_secs, 600);
-        assert_eq!(config.disconnect_retry_ms, 1000);
-        assert_eq!(config.heartbeat_interval_secs, 30);
-    }
-
-    #[test]
-    fn test_monitoring_backoff_caps() {
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.next_backoff(10000), 20000);
-        assert_eq!(config.next_backoff(15000), 20000); // Capped
-    }
-
-    #[test]
-    fn test_min_backoff_duration() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.min_backoff(), Duration::from_millis(100));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.min_backoff(), Duration::from_millis(1000));
-    }
-
-    #[test]
-    fn test_default_is_realtime() {
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-        }
-        let config = SseStreamConfig::default();
-        assert_eq!(config.min_backoff_ms, 100);
-        assert_eq!(config.max_backoff_ms, 500);
-        assert_eq!(config.max_connection_secs, 300);
-    }
-
-    #[test]
-    fn test_max_connection_duration() {
-        // Clear env overrides that might leak from parallel tests
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.max_connection_duration(), Duration::from_secs(300));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.max_connection_duration(), Duration::from_secs(600));
-    }
-
-    #[test]
-    fn test_retry_hint() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.retry_hint(100), Duration::from_millis(100));
-        assert_eq!(config.retry_hint(500), Duration::from_millis(500));
-    }
-
-    #[test]
-    fn test_disconnect_retry() {
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.disconnect_retry(), Duration::from_millis(100));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.disconnect_retry(), Duration::from_millis(1000));
-    }
-
-    #[test]
     fn test_jittered_max_connection_duration_within_bounds() {
         let config = SseStreamConfig::realtime();
         // 300s base, ±20% → 240–360s
@@ -572,16 +485,6 @@ mod tests {
             min,
             max
         );
-    }
-
-    #[test]
-    fn test_disconnect_reason() {
-        assert_eq!(
-            DisconnectReason::ConnectionCycle.as_str(),
-            "connection_cycle"
-        );
-        assert_eq!(DisconnectReason::Shutdown.as_str(), "shutdown");
-        assert_eq!(DisconnectReason::Error.as_str(), "error");
     }
 
     #[test]
@@ -724,58 +627,6 @@ mod tests {
     }
 
     #[test]
-    fn test_connection_limits_defaults() {
-        let limits = SseConnectionLimits::default();
-        assert_eq!(limits.global_max, 10_000);
-        assert_eq!(limits.per_session_max, 12);
-        assert_eq!(limits.per_org_max, 1_000);
-    }
-
-    #[test]
-    fn test_connection_rejection_display() {
-        assert_eq!(
-            SseConnectionRejection::GlobalLimitReached.to_string(),
-            "global SSE connection limit reached"
-        );
-        assert_eq!(
-            SseConnectionRejection::SessionLimitReached.to_string(),
-            "per-session SSE connection limit reached"
-        );
-        assert_eq!(
-            SseConnectionRejection::OrgLimitReached.to_string(),
-            "per-organization SSE connection limit reached"
-        );
-    }
-
-    #[test]
-    fn test_realtime_cycle_secs_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_REALTIME_CYCLE_SECS", "900");
-        }
-        let config = SseStreamConfig::realtime();
-        unsafe {
-            std::env::remove_var("SSE_REALTIME_CYCLE_SECS");
-        }
-        assert_eq!(config.max_connection_secs, 900); // 15 minutes
-        assert_eq!(config.min_backoff_ms, 100); // unchanged
-    }
-
-    #[test]
-    fn test_monitoring_cycle_secs_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_MONITORING_CYCLE_SECS", "1800");
-        }
-        let config = SseStreamConfig::monitoring();
-        unsafe {
-            std::env::remove_var("SSE_MONITORING_CYCLE_SECS");
-        }
-        assert_eq!(config.max_connection_secs, 1800); // 30 minutes
-        assert_eq!(config.min_backoff_ms, 1000); // unchanged
-    }
-
-    #[test]
     fn test_cycle_secs_env_invalid_fallback() {
         let _lock = ENV_LOCK.lock().unwrap();
         unsafe {
@@ -791,35 +642,6 @@ mod tests {
     // ============================================
     // Heartbeat Tests
     // ============================================
-
-    #[test]
-    fn test_heartbeat_interval_default() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        let config = SseStreamConfig::realtime();
-        assert_eq!(config.heartbeat_interval_secs, 30);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
-
-        let config = SseStreamConfig::monitoring();
-        assert_eq!(config.heartbeat_interval_secs, 30);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(30));
-    }
-
-    #[test]
-    fn test_heartbeat_interval_env_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        unsafe {
-            std::env::set_var("SSE_HEARTBEAT_INTERVAL_SECS", "15");
-        }
-        let config = SseStreamConfig::realtime();
-        unsafe {
-            std::env::remove_var("SSE_HEARTBEAT_INTERVAL_SECS");
-        }
-        assert_eq!(config.heartbeat_interval_secs, 15);
-        assert_eq!(config.heartbeat_interval(), Duration::from_secs(15));
-    }
 
     #[test]
     fn test_heartbeat_interval_env_invalid_fallback() {

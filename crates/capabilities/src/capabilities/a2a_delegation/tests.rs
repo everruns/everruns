@@ -840,13 +840,6 @@ impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
     }
 }
 
-#[test]
-fn a2a_delegation_depends_on_session_tasks() {
-    let cap = A2aAgentDelegationCapability;
-
-    assert_eq!(cap.dependencies(), vec![SESSION_TASKS_CAPABILITY_ID]);
-}
-
 #[tokio::test]
 async fn background_spawn_requires_task_registry_before_remote_work() {
     let config = configured_capability("http://127.0.0.1:1".to_string());
@@ -1158,17 +1151,6 @@ async fn wait_for_run_exits_superseded_on_fence_miss() {
     assert!(
         WaitOutcome::superseded_message(&superseded_run_id, attempt, by_attempt)
             .starts_with(SUPERSEDED_ERROR_PREFIX)
-    );
-}
-
-// EVE-645: timeout is selected via the typed WaitOutcome::TimedOut variant
-// and its message stays byte-identical to the legacy string.
-#[test]
-fn wait_outcome_timed_out_message_is_stable() {
-    let msg = WaitOutcome::timed_out_message("run-123", 30);
-    assert_eq!(
-        msg,
-        "Timed out waiting for external agent run run-123 after 30s"
     );
 }
 

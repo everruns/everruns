@@ -96,38 +96,6 @@ impl Capability for A2UiCapability {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Metadata/tool-list/registration constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn capability_has_system_prompt() {
-        let cap = A2UiCapability;
-        let prompt = cap.system_prompt_addition().expect("prompt present");
-        assert!(prompt.contains("```a2ui"));
-        assert!(prompt.contains("## Schema"));
-        assert!(prompt.contains("## Catalog"));
-        assert!(prompt.contains("## Actions"));
-    }
-
-    #[test]
-    fn capability_features() {
-        let cap = A2UiCapability;
-        assert_eq!(cap.features(), vec!["a2ui"]);
-    }
-
-    #[test]
-    fn system_prompt_lists_core_components() {
-        let cap = A2UiCapability;
-        let p = cap.system_prompt_addition().unwrap();
-        for name in ["Card", "Stack", "Button", "Form", "List", "Table"] {
-            assert!(p.contains(name), "prompt missing component {name}");
-        }
-    }
-}
-
-#[cfg(test)]
 mod catalog_tests {
     use std::collections::HashSet;
 

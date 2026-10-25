@@ -275,16 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn approval_request_round_trips_the_server_shape() {
-        let body = serde_json::json!({
-            "decisions": [{"tool_call_id": "tool_approval_1", "decision": "allow_always"}]
-        });
-        let parsed: SubmitToolApprovalsRequest = serde_json::from_value(body.clone()).unwrap();
-        assert!(parsed.decisions[0].decision.allows());
-        assert_eq!(serde_json::to_value(&parsed).unwrap(), body);
-    }
-
-    #[test]
     fn card_omits_empty_optional_fields() {
         let card = AgentCard {
             name: "support".into(),

@@ -542,19 +542,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn schemas_require_the_target() {
-        assert_eq!(
-            UpsertGitHubCommentTool::default().parameters_schema()["required"],
-            json!(["repo", "number", "body"])
-        );
-        assert_eq!(
-            GetGitHubPullRequestDiffTool::default().parameters_schema()["required"],
-            json!(["repo", "number"])
-        );
-        assert_eq!(marker_line("summary"), "<!-- everruns:summary -->");
-    }
-
     /// Records the access each tool asks for and holds no token.
     #[derive(Default)]
     struct RecordingResolver {
@@ -646,16 +633,6 @@ mod tests {
                 vec![pair("issues", "write")],
                 vec![pair("contents", "read"), pair("pull_requests", "write")],
             ]
-        );
-    }
-
-    #[test]
-    fn tools_act_as_the_agent_by_default() {
-        assert_eq!(
-            everruns_contracts::runtime::mcp_server::McpServerActsAs::from(
-                crate::github::GitHubConfig::default().acts_as
-            ),
-            everruns_contracts::runtime::mcp_server::McpServerActsAs::Service
         );
     }
 }

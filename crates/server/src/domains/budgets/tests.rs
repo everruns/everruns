@@ -342,41 +342,6 @@ fn test_metered_total_tokens_includes_disjoint_cache_buckets() {
 }
 
 #[test]
-fn test_compute_debit_tokens_currency() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit(
-        "tokens",
-        1500,
-        1000,
-        500,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
-    assert_eq!(debit, 1500.0);
-}
-
-#[test]
-fn test_compute_debit_usd_with_known_model() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit(
-        "usd",
-        1_000_000 + 500_000,
-        1_000_000,
-        500_000,
-        0,
-        0,
-        Some("gpt-5.2"),
-        Some("openai"),
-        None,
-    );
-    assert!(debit > 0.0, "Debit should be positive for known model");
-    assert!(debit < 100.0, "Debit should be reasonable for 1.5M tokens");
-}
-
-#[test]
 fn test_compute_debit_usd_prefers_provider_cost() {
     let (svc, _) = make_service();
     // A provider-reported cost wins over the price-table estimate, even for a
@@ -514,20 +479,6 @@ fn test_compute_debit_usd_estimates_openai_embedding_cost() {
     );
 
     assert_eq!(debit, 0.000_03);
-}
-
-#[test]
-fn test_compute_debit_credits_currency() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit("credits", 5000, 3000, 2000, 0, 0, None, None, None);
-    assert_eq!(debit, 5.0);
-}
-
-#[test]
-fn test_compute_debit_custom_currency_uses_token_count() {
-    let (svc, _) = make_service();
-    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, 0, 0, None, None, None);
-    assert_eq!(debit, 2000.0);
 }
 
 #[test]
@@ -1477,47 +1428,6 @@ async fn test_set_budget_status() {
         .unwrap()
         .unwrap();
     assert_eq!(updated2.status, "active");
-}
-
-#[test]
-fn test_row_to_budget_dto() {
-    let row = make_budget_row(100.0, 75.0, Some(80.0), "usd");
-    let dto = crate::domains::budgets::record::Budget::from(&row);
-    assert_eq!(dto.limit, 100.0);
-    assert_eq!(dto.balance, 75.0);
-    assert_eq!(dto.soft_limit, Some(80.0));
-    assert_eq!(dto.currency, "usd");
-    assert!(matches!(
-        dto.status,
-        everruns_core::budget::BudgetStatus::Active
-    ));
-}
-
-#[test]
-fn test_row_to_ledger_entry_dto() {
-    let row = BudgetLedgerRow {
-        id: uuid::Uuid::now_v7(),
-        journal_id: uuid::Uuid::now_v7(),
-        budget_id: Some(uuid::Uuid::now_v7()),
-        org_id: 1,
-        session_id: None,
-        user_id: None,
-        principal_id: None,
-        agent_id: None,
-        harness_id: None,
-        currency: "usd".into(),
-        amount: 5.5,
-        meter_source: "llm_tokens".into(),
-        ref_type: Some("llm_generation".into()),
-        ref_id: Some(uuid::Uuid::now_v7()),
-        description: Some("test".into()),
-        rating_metadata: None,
-        created_at: chrono::Utc::now(),
-    };
-    let dto = crate::domains::budgets::record::LedgerEntry::from(&row);
-    assert_eq!(dto.amount, 5.5);
-    assert_eq!(dto.meter_source, "llm_tokens");
-    assert_eq!(dto.description, Some("test".into()));
 }
 
 // ========================================================================

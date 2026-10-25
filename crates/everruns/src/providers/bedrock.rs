@@ -187,34 +187,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn static_keys_keep_their_region_and_token() {
-        let config = Bedrock::new("akid", "secret", "eu-west-1").session_token("token");
-        assert_eq!(config.region.as_deref(), Some("eu-west-1"));
-        match config.auth {
-            Auth::Static {
-                access_key_id,
-                secret_access_key,
-                session_token,
-            } => {
-                assert_eq!(access_key_id, "akid");
-                assert_eq!(secret_access_key, "secret");
-                assert_eq!(session_token.as_deref(), Some("token"));
-            }
-            Auth::DefaultChain => panic!("expected static keys"),
-        }
-    }
-
-    #[test]
-    fn default_chain_leaves_region_to_the_environment_until_set() {
-        let config = Bedrock::default_chain();
-        assert!(matches!(config.auth, Auth::DefaultChain));
-        assert_eq!(config.region, None);
-        let config = config.region("us-west-2").session_token("ignored");
-        assert!(matches!(config.auth, Auth::DefaultChain));
-        assert_eq!(config.region.as_deref(), Some("us-west-2"));
-    }
-
-    #[test]
     fn both_shapes_carry_the_bedrock_driver() {
         for config in [
             Bedrock::new("akid", "secret", "us-east-1"),

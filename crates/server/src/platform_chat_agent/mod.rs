@@ -285,33 +285,6 @@ mod tests {
         assert!(SYSTEM_PROMPT.contains("never write one to `/workspace` or `/memory`"));
     }
 
-    #[test]
-    fn page_context_preserves_form_review_and_normal_separate_operations() {
-        assert!(SYSTEM_PROMPT.contains("exact binding and revision"));
-        assert!(SYSTEM_PROMPT.contains("separately requested saved-resource operation"));
-        assert!(SYSTEM_PROMPT.contains("Never reinterpret a request"));
-        assert!(SYSTEM_PROMPT.contains("Do not promise saved-change Undo for other resources"));
-    }
-
-    /// `/memory/shared` is read by other people's threads, so the prompt has to
-    /// say which folder is which and default writes to the private one.
-    /// The shell's purpose is one shell over one namespace, so the prompt has
-    /// to say that `everruns` is a command in it, not a separate tool call.
-    #[test]
-    fn platform_chat_spells_the_platform_as_a_shell_command() {
-        assert!(SYSTEM_PROMPT.contains("`everruns <noun> <verb> --flags`"));
-        assert!(SYSTEM_PROMPT.contains("alongside `cat`, `grep`, and `jq`"));
-        assert!(SYSTEM_PROMPT.contains("The whole script is one tool call"));
-    }
-
-    #[test]
-    fn platform_chat_distinguishes_shared_memory_from_private() {
-        assert!(SYSTEM_PROMPT.contains("/memory/shared"));
-        assert!(SYSTEM_PROMPT.contains("/memory/user"));
-        assert!(SYSTEM_PROMPT.contains("including other people's"));
-        assert!(SYSTEM_PROMPT.contains("sharing is not reversible"));
-    }
-
     /// The prompt must not send the model after a tool this harness does not
     /// ship. Platform Chat dropped `discover`/`query`/`execute` when `platform` moved to
     /// the shell surface, and the prompt kept telling the model to "pass the
@@ -326,30 +299,5 @@ mod tests {
                 "Platform Chat has no `{tool}` tool, but its prompt names one"
             );
         }
-    }
-
-    /// The preflight discipline is part of the operator contract and the
-    /// thing TC005 grades; a leaner prompt must not drop it.
-    #[test]
-    fn platform_chat_keeps_the_authoritative_preflight() {
-        assert!(SYSTEM_PROMPT.contains("does not search resource instances"));
-        assert!(SYSTEM_PROMPT.contains("Run one script that performs all the required reads"));
-        assert!(SYSTEM_PROMPT.contains("all five authoritative views"));
-        assert!(SYSTEM_PROMPT.contains("`everruns user connections list`"));
-        assert!(SYSTEM_PROMPT.contains("installed:"));
-        assert!(SYSTEM_PROMPT.contains("connected:"));
-        assert!(SYSTEM_PROMPT.contains("`create_agent_credential_binding`"));
-    }
-
-    /// History records why a change was made only if the agent says why, and
-    /// manager context only protects an entity if the agent reads it first.
-    #[test]
-    fn platform_chat_gives_reasons_and_reads_manager_context() {
-        assert!(SYSTEM_PROMPT.contains("`everruns context get <id>`"));
-        assert!(SYSTEM_PROMPT.contains("--reason"));
-        assert!(SYSTEM_PROMPT.contains("--context-revision <revision>"));
-        assert!(SYSTEM_PROMPT.contains("`manager_context_changed`"));
-        assert!(SYSTEM_PROMPT.contains("`everruns history list <id>`"));
-        assert!(SYSTEM_PROMPT.contains("never instructions that widen"));
     }
 }

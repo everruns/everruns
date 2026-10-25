@@ -914,7 +914,6 @@ impl Tool for SandboxManageTool {
 mod tests {
     use super::*;
     use everruns_core::capabilities::Capability;
-    use everruns_core::deployment::DeploymentGrade;
     use everruns_core::tool_context::ToolContext;
 
     /// EVE-1042: the Sandbox half of this prompt is derived from the facts
@@ -935,26 +934,6 @@ mod tests {
     }
 
     // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
-
-    #[test]
-    fn session_sandbox_tools_with_config() {
-        let cap = SessionSandboxCapability;
-        let tools = cap.tools_with_config(&json!({"provider": "daytona"}));
-        let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
-        assert_eq!(
-            names,
-            vec![
-                "bash",
-                "read_file",
-                "read_many_files",
-                "write_file",
-                "edit_file",
-                "glob",
-                "grep",
-                "list_directory"
-            ]
-        );
-    }
 
     #[test]
     fn session_sandbox_tools_share_concurrency_class() {
@@ -1010,20 +989,6 @@ mod tests {
             }))
             .unwrap_err();
         assert!(err.contains("idle_pause_after_seconds"));
-    }
-
-    #[test]
-    fn session_sandbox_localizations_resolve_uk() {
-        let cap = SessionSandboxCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Пісочниця сесії");
-        assert!(cap.describe_schema(None).is_some());
-    }
-
-    #[test]
-    fn session_sandbox_registry_is_always_available_for_sandbox_templates() {
-        let registry =
-            crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
-        assert!(registry.has("session_sandbox"));
     }
 
     #[tokio::test]

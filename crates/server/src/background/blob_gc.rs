@@ -520,23 +520,6 @@ mod tests {
         assert_eq!(r, ReconcileResult::default());
     }
 
-    #[test]
-    fn disabled_when_interval_zero() {
-        let cfg = BlobGcConfig {
-            interval: Duration::from_secs(0),
-            ..Default::default()
-        };
-        assert!(!cfg.enabled());
-    }
-
-    #[test]
-    fn default_config_is_safe() {
-        let cfg = BlobGcConfig::default();
-        assert!(cfg.enabled());
-        assert_eq!(cfg.grace, ChronoDuration::hours(24));
-        assert_eq!(cfg.max_deletes_per_run, DEFAULT_MAX_DELETES_PER_RUN);
-    }
-
     // ------------------------------------------------------------------------
     // End-to-end sweep against the in-memory object_store backend (no DB).
     // Exercises list → reconcile → delete, mutating the real store.

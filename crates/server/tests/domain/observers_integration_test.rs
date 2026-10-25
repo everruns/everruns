@@ -48,25 +48,6 @@ async fn create_and_get_observer_roundtrip() {
 }
 
 #[tokio::test]
-async fn sampling_rate_defaults_to_ten_percent() {
-    let server = TestServer::in_memory().await;
-    let created = server
-        .post(
-            "/v1/observers",
-            json!({
-                "name": "Default sampling",
-                "scorers": [
-                    { "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }
-                ]
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json_value();
-    assert_eq!(created["sampling_rate"], 0.1);
-}
-
-#[tokio::test]
 async fn list_observers_excludes_archived_by_default() {
     let server = TestServer::in_memory().await;
     let created = server

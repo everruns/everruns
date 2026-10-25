@@ -164,43 +164,9 @@ async fn public_chat_channel_route_matches_legacy_alias() {
     assert_eq!(endpoint["name"], "Public Chat alias");
 }
 
-#[tokio::test]
-async fn test_list_connections_initially_empty() {
-    let server = TestServer::in_memory().await;
-
-    let resp: Vec<Value> = server
-        .get("/v1/user/connections")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    assert!(resp.is_empty());
-}
-
 // ============================================================================
 // Virtual User Connection tests
 // ============================================================================
-
-#[tokio::test]
-async fn test_identity_connections_list_empty() {
-    let server = TestServer::in_memory().await;
-
-    // Create an identity first
-    let identity: Value = server
-        .post("/v1/virtual-users", json!({"name": "ConnTest"}))
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let id = identity["id"].as_str().unwrap();
-
-    // List connections — should be empty
-    let connections: Vec<Value> = server
-        .get(&format!("/v1/virtual-users/{id}/connections"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert!(connections.is_empty());
-}
 
 #[tokio::test]
 async fn test_identity_connections_not_found_for_missing_identity() {

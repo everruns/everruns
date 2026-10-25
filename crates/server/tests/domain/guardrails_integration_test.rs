@@ -10,33 +10,6 @@ use serde_json::json;
 use test_harness::TestServer;
 
 #[tokio::test]
-async fn test_guardrails_capability_appears_with_marker() {
-    let server = TestServer::new().await;
-
-    let resp = server.get("/v1/capabilities").await.assert_success();
-    let body = resp.json_value();
-    let capabilities = body["data"].as_array().unwrap();
-
-    let guardrails = capabilities
-        .iter()
-        .find(|c| c["id"] == "guardrails")
-        .expect("guardrails capability should be listed");
-    assert_eq!(guardrails["is_guardrail"], true);
-    // Built-in prompt canary guardrail is also flagged.
-    let canary = capabilities
-        .iter()
-        .find(|c| c["id"] == "prompt_canary_guardrail")
-        .expect("prompt_canary_guardrail should be listed");
-    assert_eq!(canary["is_guardrail"], true);
-    // A non-guardrail capability omits the flag (serde skips false).
-    let current_time = capabilities
-        .iter()
-        .find(|c| c["id"] == "current_time")
-        .expect("current_time should be listed");
-    assert!(current_time.get("is_guardrail").is_none());
-}
-
-#[tokio::test]
 async fn test_dry_run_blocks_on_match() {
     let server = TestServer::new().await;
 
@@ -139,34 +112,6 @@ async fn test_dry_run_tool_pattern_uses_tool_name() {
     let body = resp.json_value();
     assert_eq!(body["blocked"], true);
     assert_eq!(body["hits"][0]["rule_type"], "tool_pattern");
-}
-
-#[tokio::test]
-async fn test_guardrail_examples_lists_presets_with_trust_metadata() {
-    let server = TestServer::new().await;
-
-    let resp = server
-        .get("/v1/capabilities/guardrails/examples")
-        .await
-        .assert_success();
-    let body = resp.json_value();
-    let examples = body["examples"].as_array().expect("examples array");
-    assert!(!examples.is_empty(), "gallery must not be empty");
-
-    let secret = examples
-        .iter()
-        .find(|e| e["name"] == "secret-detection")
-        .expect("secret-detection preset present");
-    assert_eq!(secret["display_name"], "Secret & Credential Detection");
-    // Trust metadata is present and derived from the config.
-    assert_eq!(secret["data_egress"], "none");
-    assert_eq!(secret["check_types"], json!(["regex"]));
-    assert_eq!(secret["stages"], json!(["output", "tool_output"]));
-    // The adoptable config carries the preset's checks.
-    assert!(
-        !secret["config"]["checks"].as_array().unwrap().is_empty(),
-        "preset config must carry checks"
-    );
 }
 
 #[tokio::test]

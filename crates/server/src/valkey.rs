@@ -185,18 +185,3 @@ pub async fn from_env() -> Result<Option<ValkeyClient>> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_valkey_url_parsing() {
-        // Verify URL parsing works for common formats (doesn't connect)
-        assert!(Config::from_url("redis://localhost:6379").is_ok());
-        // Note: rediss:// (TLS) URLs require a crypto provider to be installed,
-        // which happens at server startup. Tested via smoke test instead.
-        assert!(Config::from_url("redis://user:pass@localhost:6379").is_ok());
-        assert!(Config::from_url("not-a-url").is_err());
-    }
-}

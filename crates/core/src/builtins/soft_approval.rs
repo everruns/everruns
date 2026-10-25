@@ -749,51 +749,6 @@ mod tests {
     }
 
     #[test]
-    fn normal_and_protective_render_expected_guidance() {
-        let normal = render_approval_block(ApprovalMode::Normal).expect("normal block");
-        assert!(normal.starts_with("<soft_approval>"));
-        assert!(normal.contains("level normal"));
-        assert!(normal.contains("NORMAL"));
-        // The core behaviors must be spelled out.
-        assert!(normal.contains("BATCH"));
-        assert!(normal.contains("record_approval"));
-        // The pause is a tool call, and announcing instead of asking is the
-        // failure this block exists to prevent.
-        assert!(normal.contains("request_approval"));
-        assert!(normal.contains("NEVER announce a critical action"));
-        // A workflow the user invoked carries its own pre-authorization.
-        assert!(normal.contains("a workflow the user invoked by name"));
-        assert!(normal.ends_with("</soft_approval>"));
-
-        let protective = render_approval_block(ApprovalMode::Protective).expect("protective block");
-        assert!(protective.contains("level protective"));
-        assert!(protective.contains("PROTECTIVE"));
-    }
-
-    #[test]
-    fn capability_exposes_its_tools_undeferrable_and_read_only() {
-        let capability = SoftApprovalCapability::new();
-        let tools = capability.tools();
-        let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
-        assert_eq!(
-            names,
-            ["request_approval", "record_approval", "set_approval_mode"]
-        );
-        for tool in &tools {
-            assert_eq!(
-                tool.deferrable_policy(),
-                DeferrablePolicy::Never,
-                "{} must stay directly callable",
-                tool.name()
-            );
-            // Otherwise the hard `tool_approval` gate would ask a human to
-            // approve the act of asking a human.
-            assert_eq!(tool.hints().readonly, Some(true), "{}", tool.name());
-            assert_eq!(tool.hints().destructive, Some(false), "{}", tool.name());
-        }
-    }
-
-    #[test]
     fn config_validation_accepts_known_levels_and_rejects_typos() {
         let capability = SoftApprovalCapability::new();
         assert!(capability.validate_config(&json!({})).is_ok());

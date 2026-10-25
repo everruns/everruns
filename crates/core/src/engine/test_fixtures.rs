@@ -1,4 +1,3 @@
-use crate::durability::{PartialStreamState, PartialStreamStore};
 use crate::event_emitter::EventEmitter;
 use crate::events::{Event, EventRequest};
 use crate::message::RuntimeMessage;
@@ -125,18 +124,5 @@ pub(crate) struct NoopEventEmitter;
 impl EventEmitter for NoopEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         Ok(request.into_event(EventId::new(), 0))
-    }
-}
-
-pub(crate) struct NoopPartialStreamStore;
-
-#[async_trait]
-impl PartialStreamStore for NoopPartialStreamStore {
-    async fn get_partial_stream(
-        &self,
-        _session_id: SessionId,
-        _turn_id: &str,
-    ) -> Result<Option<PartialStreamState>> {
-        Ok(None)
     }
 }

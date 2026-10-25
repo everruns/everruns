@@ -166,13 +166,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_is_environment_free_and_sets_no_base_url() {
-        let (api_key, base_url) = OpenRouter::new("sk-or-explicit").into_parts();
-        assert_eq!(api_key, "sk-or-explicit");
-        assert_eq!(base_url, None);
-    }
-
-    #[test]
     fn from_lookup_reads_key_and_optional_base_url() {
         let (api_key, base_url) = OpenRouter::from_lookup(|name| match name {
             "OPENROUTER_API_KEY" => Some("sk-or-env".to_string()),

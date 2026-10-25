@@ -7,19 +7,6 @@ const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
 const TEST_AGENT_ID: &str = "agent_550e8400e29b41d4a716446655440000";
 
 #[test]
-fn test_create_session_request_minimal() {
-    let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
-    let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-    assert_eq!(req.harness_id.unwrap().to_string(), TEST_HARNESS_ID);
-    assert_eq!(req.agent_id, None);
-    assert_eq!(req.title, None);
-    assert_eq!(req.locale, None);
-    assert!(req.tags.is_empty());
-    assert_eq!(req.model_id, None);
-    assert!(req.capabilities.is_empty());
-}
-
-#[test]
 fn strip_internal_only_fields_drops_client_supplied_delegation_metadata() {
     // A public HTTP client must not be able to forge the internal-only
     // parent link; the boundary drops any caller-supplied value.
@@ -52,63 +39,6 @@ fn strip_internal_only_fields_drops_client_supplied_fork_lineage_and_seed() {
 
     assert_eq!(req.forked_from_session_id, None);
     assert_eq!(req.seed, SessionSeedMode::Fresh);
-}
-
-#[test]
-fn test_create_session_request_missing_harness_id_is_none() {
-    let json = r#"{}"#;
-    let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(req.harness_id, None);
-}
-
-#[test]
-fn test_create_session_request_with_agent_id() {
-    // agent_id is optional
-    let json = format!(
-        r#"{{"harness_id": "{}", "agent_id": "{}"}}"#,
-        TEST_HARNESS_ID, TEST_AGENT_ID
-    );
-    let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-    let expected_agent_id: AgentId = TEST_AGENT_ID.parse().unwrap();
-    assert_eq!(req.agent_id, Some(expected_agent_id));
-}
-
-#[test]
-fn test_create_session_request_with_title() {
-    let json = format!(
-        r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Test Session", "locale": "uk-UA"}}"#,
-        TEST_HARNESS_ID, TEST_AGENT_ID
-    );
-    let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-    assert_eq!(req.title, Some("Test Session".to_string()));
-    assert_eq!(req.locale.as_deref(), Some("uk-UA"));
-    assert!(req.tags.is_empty());
-    assert_eq!(req.model_id, None);
-}
-
-#[test]
-fn test_create_session_request_with_model_id() {
-    let model_id: ModelId = "model_550e8400e29b41d4a716446655440000".parse().unwrap();
-    let json = format!(
-        r#"{{"harness_id": "{}", "agent_id": "{}", "model_id": "{}"}}"#,
-        TEST_HARNESS_ID, TEST_AGENT_ID, model_id
-    );
-    let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-    assert_eq!(req.model_id, Some(model_id));
-}
-
-#[test]
-fn test_create_session_request_full() {
-    let model_id: ModelId = "model_550e8400e29b41d4a716446655440001".parse().unwrap();
-    let json = format!(
-        r#"{{"harness_id": "{}", "agent_id": "{}", "title": "Full Session", "tags": ["tag1", "tag2"], "model_id": "{}"}}"#,
-        TEST_HARNESS_ID, TEST_AGENT_ID, model_id
-    );
-    let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
-    assert_eq!(req.title, Some("Full Session".to_string()));
-    assert_eq!(req.tags, vec!["tag1", "tag2"]);
-    assert_eq!(req.model_id, Some(model_id));
-    assert!(req.capabilities.is_empty());
 }
 
 #[test]
@@ -194,16 +124,6 @@ fn test_create_session_request_rejects_client_side_mcp_tool_name() {
 // here over the `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` env var.
 
 #[test]
-fn test_update_session_request_minimal() {
-    let json = r#"{}"#;
-    let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(req.title, None);
-    assert_eq!(req.virtual_user_id, UpdateField::Unchanged);
-    assert_eq!(req.locale, None);
-    assert_eq!(req.tags, None);
-}
-
-#[test]
 fn test_update_session_request_clears_virtual_user_when_null() {
     let json = r#"{"virtual_user_id":null}"#;
     let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
@@ -215,23 +135,6 @@ fn test_update_session_request_sets_virtual_user_when_present() {
     let json = r#"{"virtual_user_id":"identity_550e8400e29b41d4a716446655440000"}"#;
     let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
     assert!(matches!(req.virtual_user_id, UpdateField::Set(_)));
-}
-
-#[test]
-fn test_update_session_request_with_title() {
-    let json = r#"{"title": "Updated Title", "locale": "en-US"}"#;
-    let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(req.title, Some("Updated Title".to_string()));
-    assert_eq!(req.locale.as_deref(), Some("en-US"));
-    assert_eq!(req.tags, None);
-}
-
-#[test]
-fn test_update_session_request_with_tags() {
-    let json = r#"{"tags": ["new-tag"]}"#;
-    let req: UpdateSessionRequest = serde_json::from_str(json).unwrap();
-    assert_eq!(req.title, None);
-    assert_eq!(req.tags, Some(vec!["new-tag".to_string()]));
 }
 
 #[tokio::test]

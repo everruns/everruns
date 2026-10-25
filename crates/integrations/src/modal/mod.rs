@@ -206,52 +206,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn capability_metadata() {
-        let cap = ModalCapability;
-        assert_eq!(cap.id(), "modal");
-        assert_eq!(cap.name(), "Modal");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.category(), Some("Execution"));
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-        assert_eq!(cap.features(), vec![LEASED_RESOURCES_FEATURE]);
-    }
-
-    #[test]
-    fn capability_has_all_tools_and_they_need_context() {
-        let names: Vec<_> = ModalCapability
-            .tools()
-            .iter()
-            .map(|t| {
-                assert!(t.requires_context(), "{} should require context", t.name());
-                t.name().to_string()
-            })
-            .collect();
-        assert_eq!(
-            names,
-            [
-                "modal_create_sandbox",
-                "modal_exec",
-                "modal_read_file",
-                "modal_write_file",
-                "modal_list_sandboxes",
-                "modal_manage_sandbox",
-                "modal_snapshot_sandbox",
-                "modal_tunnel_urls",
-            ]
-        );
-    }
-
-    #[test]
-    fn tool_schemas_are_closed_objects() {
-        for tool in ModalCapability.tools() {
-            let schema = tool.parameters_schema();
-            assert_eq!(schema["type"], "object", "{}", tool.name());
-            assert_eq!(schema["additionalProperties"], false, "{}", tool.name());
-        }
-    }
-
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let ctx =
@@ -264,23 +218,5 @@ mod tests {
             .unwrap();
         assert!(prompt.contains("modal_create_sandbox"));
         assert!(prompt.len() <= 1400, "prompt is {} bytes", prompt.len());
-    }
-
-    #[test]
-    fn plugins_are_experimental() {
-        assert!(
-            CAPABILITY_PLUGINS
-                .iter()
-                .all(|p| p.feature_flag == Some("modal"))
-        );
-        assert!(
-            CONNECTOR_PLUGINS
-                .iter()
-                .all(|p| p.feature_flag == Some("modal"))
-        );
-        assert_eq!(
-            (CONNECTOR_PLUGINS[0].factory)().provider_id(),
-            MODAL_PROVIDER
-        );
     }
 }

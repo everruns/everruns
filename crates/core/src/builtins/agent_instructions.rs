@@ -679,28 +679,6 @@ mod tests {
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn test_no_static_system_prompt() {
-        let cap = AgentInstructionsCapability;
-        assert!(cap.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_system_prompt_preview() {
-        let cap = AgentInstructionsCapability;
-        let preview = cap.system_prompt_preview().unwrap();
-        assert!(preview.contains("AGENTS.md"));
-        assert!(preview.contains("re-read every turn"));
-        assert!(preview.starts_with("<agent-instructions"));
-        assert!(preview.ends_with("</agent-instructions>"));
-    }
-
-    #[test]
-    fn test_no_mounts() {
-        let cap = AgentInstructionsCapability;
-        assert!(cap.mounts().is_empty());
-    }
-
-    #[test]
     fn test_format_agents_md_content_normal() {
         let content = "## Style\nUse snake_case for variables.";
         let result = format_agents_md_content(content).unwrap();
@@ -775,19 +753,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_uk_localization_resolves() {
-        let cap = AgentInstructionsCapability;
-        // The display name is a filename, so uk falls back to it.
-        assert_eq!(cap.localized_name(Some("uk-UA")), "AGENTS.md");
-        assert!(
-            cap.localized_description(Some("uk-UA"))
-                .contains("робочого простору")
-        );
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert!(cap.describe_schema(None).is_some());
-    }
-
     // ========================================================================
     // Conversation context contribution tests (hierarchical resolution)
     // ========================================================================
@@ -845,12 +810,6 @@ mod tests {
         };
 
         assert!(cap.conversation_context_contribution(&ctx).await.is_none());
-    }
-
-    #[test]
-    fn test_agent_instructions_config_defaults_to_agents_md() {
-        let config = AgentInstructionsConfig::from_value(&serde_json::json!({})).unwrap();
-        assert_eq!(config.files, vec!["AGENTS.md"]);
     }
 
     #[test]

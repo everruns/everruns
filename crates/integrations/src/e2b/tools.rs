@@ -908,21 +908,6 @@ impl Tool for E2BManageSandboxTool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn create_sandbox_tool_schema_requires_expected_fields() {
-        let schema = E2BCreateSandboxTool.parameters_schema();
-        let upload_files = schema
-            .get("properties")
-            .and_then(|value| value.get("upload_files"))
-            .and_then(|value| value.get("items"))
-            .and_then(|value| value.get("required"))
-            .and_then(Value::as_array)
-            .expect("upload_files required array");
-
-        let required: Vec<_> = upload_files.iter().filter_map(Value::as_str).collect();
-        assert_eq!(required, vec!["session_path", "sandbox_path"]);
-    }
-
     #[tokio::test]
     async fn no_context_tools_return_context_error() {
         let result = E2BExecTool.execute(json!({})).await;

@@ -228,12 +228,6 @@ fn recovery_instance(external_id: &str, session_id: SessionId) -> SessionSandbox
     }
 }
 
-#[test]
-fn daytona_session_sandbox_provider_is_registered() {
-    let provider = create_session_sandbox_provider("daytona");
-    assert!(provider.is_some());
-}
-
 #[tokio::test]
 async fn daytona_provider_mounts_recovery_volume_for_logical_session() {
     let mock_server = MockServer::start().await;

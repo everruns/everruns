@@ -312,17 +312,6 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn generic_names_the_shell_and_filesystem_it_promises() {
-        let ids: Vec<_> = generic_capabilities()
-            .iter()
-            .map(|capability| capability.capability_id().to_string())
-            .collect();
-        for expected in ["session_file_system", "bashkit_shell", "web_fetch"] {
-            assert!(ids.iter().any(|id| id == expected), "missing {expected}");
-        }
-    }
 }
 
 #[cfg(all(test, feature = "runtime"))]

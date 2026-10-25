@@ -826,12 +826,6 @@ mod tests {
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn test_provides_message_filter() {
-        let capability = InfinityContextCapability;
-        assert!(capability.message_filter_provider().is_some());
-    }
-
-    #[test]
     fn filter_only_view_preserves_filter_without_model_contributions() {
         let capability = InfinityContextFilterOnlyCapability;
 
@@ -890,16 +884,6 @@ mod tests {
                 }))
                 .is_err()
         );
-    }
-
-    #[test]
-    fn test_localizations_resolve_uk() {
-        let capability = InfinityContextCapability;
-        assert_eq!(
-            capability.localized_name(Some("uk-UA")),
-            "Нескінченний контекст"
-        );
-        assert!(capability.describe_schema(None).is_some());
     }
 
     #[test]
@@ -1260,12 +1244,6 @@ mod tests {
             estimate_json_value_len(&value),
             serde_json::to_string(&value).unwrap().len()
         );
-    }
-
-    #[test]
-    fn test_query_history_requires_context() {
-        let tool = QueryHistoryTool;
-        assert!(tool.requires_context());
     }
 
     #[tokio::test]

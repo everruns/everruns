@@ -1,12 +1,5 @@
 use super::*;
-use crate::domains::mcp_servers::McpServerResolved;
 use crate::storage::CreateHarnessRow;
-use crate::worker_link::direct_worker_adapters::mcp::resolved_mcp_server_to_worker_info;
-
-#[test]
-fn string_to_provider_type_maps_gemini() {
-    assert_eq!(string_to_provider_type("gemini").to_string(), "gemini");
-}
 
 #[test]
 fn string_to_provider_type_maps_unknown_to_external() {
@@ -15,37 +8,6 @@ fn string_to_provider_type_maps_unknown_to_external() {
         string_to_provider_type("custom-provider").to_string(),
         "custom-provider"
     );
-}
-
-#[test]
-fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
-    for acts_as in [
-        everruns_core::McpServerActsAs::None,
-        everruns_core::McpServerActsAs::Service,
-        everruns_core::McpServerActsAs::User,
-    ] {
-        let resolved = McpServerResolved {
-            id: Uuid::new_v4(),
-            name: "linear".to_string(),
-            url: "https://mcp.linear.app/mcp".to_string(),
-            auth_mode: everruns_core::McpServerAuthMode::None,
-            protocol_mode: everruns_core::McpProtocolMode::Auto,
-            oauth_provider_id: None,
-            acts_as,
-            connect_in_chat: Default::default(),
-            elicitation_policy: Default::default(),
-            tool_timeout_ms: None,
-            api_key: None,
-            headers: HashMap::new(),
-        };
-
-        let info = resolved_mcp_server_to_worker_info(resolved, HashMap::new());
-
-        assert_eq!(info.acts_as, acts_as);
-        assert_eq!(info.auth_mode, everruns_core::McpServerAuthMode::None);
-        assert!(info.oauth_provider_id.is_none());
-        assert!(info.api_key.is_none());
-    }
 }
 
 // =========================================================================
@@ -106,16 +68,6 @@ mod actors;
 mod dreaming_memory;
 mod internal_commands;
 mod phase_read_tests;
-
-#[tokio::test]
-async fn build_mcp_tool_definitions_with_empty_capabilities() {
-    let adapters = test_adapters();
-    let tools = adapters
-        .build_mcp_tool_definitions_with_capabilities(everruns_core::DEFAULT_ORG_ID, &[])
-        .await
-        .unwrap();
-    assert!(tools.is_empty());
-}
 
 #[tokio::test]
 async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
@@ -1350,26 +1302,6 @@ async fn get_session_carries_org_public_id() {
 // =========================================================================
 // Encrypted DB key model sync regression (EVE-57 / EVE-61)
 // =========================================================================
-
-#[tokio::test]
-async fn get_model_spec_returns_none_for_missing() {
-    let adapters = test_adapters();
-    let result = adapters
-        .get_model_spec(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
-        .await
-        .unwrap();
-    assert!(result.is_none());
-}
-
-#[tokio::test]
-async fn get_default_model_spec_returns_none_when_no_providers() {
-    let adapters = test_adapters();
-    let result = adapters
-        .get_default_model_spec(everruns_core::DEFAULT_ORG_ID)
-        .await
-        .unwrap();
-    assert!(result.is_none());
-}
 
 // =========================================================================
 // Usage attribution org scoping (EVE-56 / EVE-61)

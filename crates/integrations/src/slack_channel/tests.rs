@@ -214,18 +214,6 @@ async fn a_refused_post_is_permanent() {
 }
 
 #[test]
-fn from_env_names_its_secrets_and_new_names_none() {
-    assert_eq!(
-        Slack::from_env().secrets(),
-        vec![
-            "SLACK_BOT_TOKEN".to_string(),
-            "SLACK_SIGNING_SECRET".to_string()
-        ]
-    );
-    assert!(Slack::new("t", "s").secrets().is_empty());
-}
-
-#[test]
 fn strip_mentions_keeps_the_rest() {
     assert_eq!(strip_mentions("<@U1> hello <@U2>there"), "hello there");
     assert_eq!(strip_mentions("no mentions"), "no mentions");

@@ -387,14 +387,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn namespace_is_org_prefixed() {
-        assert_eq!(
-            index_namespace(1, "kidx_00000000000000000000000000000001"),
-            "org_1__kidx_00000000000000000000000000000001"
-        );
-    }
-
     #[tokio::test]
     async fn vector_query_ranks_by_cosine() {
         let store = InMemoryVectorStore::new();

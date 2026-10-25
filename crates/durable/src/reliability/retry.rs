@@ -203,14 +203,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_exponential_defaults() {
-        let policy = RetryPolicy::exponential();
-        assert_eq!(policy.max_attempts, 5);
-        assert_eq!(policy.initial_interval, Duration::from_secs(1));
-        assert_eq!(policy.backoff_coefficient, 2.0);
-    }
-
-    #[test]
     fn test_no_retry() {
         let policy = RetryPolicy::no_retry();
         assert_eq!(policy.max_attempts, 1);

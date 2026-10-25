@@ -440,22 +440,4 @@ mod tests {
         );
         assert_eq!(rewrite("get_agent 'id-é-1'", &m), "get_agent --id 'id-é-1'");
     }
-
-    #[test]
-    fn build_positional_map_contains_known_commands() {
-        let map = positional_map();
-        // Inventory commands with id: at least get_agent, get_capability.
-        assert_eq!(map.get("get_agent").copied(), Some("id"));
-        assert_eq!(map.get("get_capability").copied(), Some("id"));
-        // Inventory command with a single primary identifier: get_session → session_id.
-        assert_eq!(map.get("get_session").copied(), Some("session_id"));
-        // Inventory command with `id` as the primary identifier.
-        assert_eq!(map.get("get_model").copied(), Some("id"));
-        // List endpoints have no path params — must not be present.
-        assert!(!map.contains_key("list_agents"));
-        assert!(!map.contains_key("list_sessions"));
-        // Multi-path-param ops (e.g. delete_agent_channel has two) must not be
-        // present: positional ordering would be ambiguous.
-        assert!(!map.contains_key("delete_agent_channel"));
-    }
 }

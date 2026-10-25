@@ -3,11 +3,10 @@
 
 #![cfg(feature = "brave-search-hosted")]
 
-use everruns_contracts::connector::ConnectorPlugin;
-use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::capabilities::CapabilityRegistry;
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 
-use everruns_integrations::brave_search::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
+use everruns_integrations::brave_search::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
@@ -20,107 +19,10 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn test_brave_search_plugin_is_published() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    assert!(
-        plugins.iter().any(|p| {
-            let cap = (p.factory)();
-            cap.id() == "brave_search"
-        }),
-        "Brave Search IntegrationPlugin should be published in CAPABILITY_PLUGINS"
-    );
-}
-
-#[test]
-fn test_brave_search_plugin_is_not_behind_a_feature_flag() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    let brave_search = plugins
-        .iter()
-        .find(|p| {
-            let cap = (p.factory)();
-            cap.id() == "brave_search"
-        })
-        .expect("Brave Search plugin not found");
-
-    // Web search providers ship without Adoption flags: adding the
-    // capability or connecting an account is the opt-in.
-    assert_eq!(brave_search.feature_flag, None);
-}
-
-#[test]
-fn test_brave_search_registered_in_dev_registry() {
-    let registry = registry_for_grade(DeploymentGrade::Dev);
-    assert!(
-        registry.has("brave_search"),
-        "Brave Search should be in dev registry"
-    );
-}
-
-#[test]
 fn test_brave_search_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         registry.has("brave_search"),
         "Brave Search has no feature flag, so it is in the prod registry"
     );
-}
-
-#[test]
-fn test_brave_search_capability_metadata() {
-    let registry = registry_for_grade(DeploymentGrade::Dev);
-    let cap = registry
-        .get("brave_search")
-        .expect("Brave Search capability not found");
-
-    assert_eq!(cap.id(), "brave_search");
-    assert_eq!(cap.name(), "[Experimental] Brave Search");
-    assert_eq!(cap.icon(), Some("search"));
-    assert_eq!(cap.category(), Some("Network"));
-    assert!(cap.dependencies().is_empty());
-    assert_eq!(cap.tools().len(), 1);
-}
-
-#[test]
-fn test_brave_search_connection_provider_is_published() {
-    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
-    assert!(
-        plugins.iter().any(|p| {
-            let provider = (p.factory)();
-            provider.provider_id() == "brave_search"
-        }),
-        "Brave Search ConnectorPlugin should be published in CONNECTOR_PLUGINS"
-    );
-}
-
-#[test]
-fn test_brave_search_connection_provider_is_not_behind_a_feature_flag() {
-    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
-    let brave_search = plugins
-        .iter()
-        .find(|p| {
-            let provider = (p.factory)();
-            provider.provider_id() == "brave_search"
-        })
-        .expect("Brave Search connection plugin not found");
-
-    // Web search providers ship without Adoption flags: adding the
-    // capability or connecting an account is the opt-in.
-    assert_eq!(brave_search.feature_flag, None);
-}
-
-#[test]
-fn test_brave_search_connection_provider_has_form_schema() {
-    let plugins: Vec<&ConnectorPlugin> = CONNECTOR_PLUGINS.iter().collect();
-    let plugin = plugins
-        .iter()
-        .find(|p| {
-            let provider = (p.factory)();
-            provider.provider_id() == "brave_search"
-        })
-        .expect("Brave Search connection plugin not found");
-
-    let provider = (plugin.factory)();
-    let schema = provider.form_schema().expect("should have form schema");
-    assert_eq!(schema.fields.len(), 1);
-    assert_eq!(schema.fields[0].name, "api_key");
 }

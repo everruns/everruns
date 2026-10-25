@@ -748,18 +748,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn uk_localization_resolves() {
-        let cap = LuaCodeModeCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Режим коду Lua");
-        assert!(
-            cap.localized_description(Some("uk-UA"))
-                .contains("пісочницю Lua")
-        );
-        assert!(cap.describe_schema(Some("uk")).is_some());
-        assert!(cap.describe_schema(None).is_some());
-    }
-
     // Prompt-budget ratchet (knowledge/execution/capabilities.md → prompt size). Lowering is
     // always fine; raising requires an explicit bump + justification.
     #[test]

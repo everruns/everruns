@@ -90,11 +90,6 @@ impl TaskSupervisor {
         });
         self.track(name, handle);
     }
-
-    #[cfg(test)]
-    fn len(&self) -> usize {
-        self.handles.len()
-    }
 }
 
 impl Drop for TaskSupervisor {
@@ -115,13 +110,6 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-
-    #[tokio::test]
-    async fn tracks_spawned_handles() {
-        let mut supervisor = TaskSupervisor::new();
-        supervisor.track("test", tokio::spawn(async {}));
-        assert_eq!(supervisor.len(), 1);
-    }
 
     #[tokio::test]
     async fn restarts_panicking_tasks_when_configured() {

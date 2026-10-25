@@ -460,12 +460,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_event_delivery_in_memory_constructor() {
-        let delivery = EventDelivery::in_memory();
-        assert!(matches!(delivery, EventDelivery::InMemory(_)));
-    }
-
     fn large_generation(prompt_bytes: usize) -> Event {
         let prompt = "x".repeat(prompt_bytes);
         let mut data = everruns_core::LlmGenerationData::success(

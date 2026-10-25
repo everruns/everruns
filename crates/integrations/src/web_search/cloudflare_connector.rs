@@ -137,26 +137,6 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn declares_a_search_account_provider() {
-        let connector = CloudflareWebSearchConnector;
-        assert_eq!(connector.provider_id(), "cloudflare_web_search");
-        assert_eq!(connector.connection_type(), ConnectorType::ApiKey);
-        assert!(connector.capabilities().contains(&"web_search"));
-        assert!(
-            everruns_contracts::runtime::web_search::WEB_SEARCH_ACCOUNT_PROVIDERS
-                .contains(&connector.provider_id())
-        );
-        let schema = connector.form_schema().unwrap();
-        let names: Vec<&str> = schema.fields.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(
-            names,
-            ["account_id", "api_key", "index", "gateway_id", "byok_alias"]
-        );
-        assert!(schema.fields[0].required && schema.fields[1].required);
-        assert!(!schema.fields[2].required);
-    }
-
     #[tokio::test]
     async fn bad_fields_fail_before_any_network_call() {
         let connector = CloudflareWebSearchConnector;

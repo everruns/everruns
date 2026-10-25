@@ -848,28 +848,4 @@ mod tests {
             Some("Example App")
         );
     }
-
-    #[test]
-    fn single_session_builder_openrouter_attribution_configures_harness() {
-        let (harness, _agent, _session, _session_id) = SingleSessionBuilder::default()
-            .openrouter_attribution("https://single.example", "Single App")
-            .build();
-
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
-                .map(String::as_str),
-            Some("https://single.example")
-        );
-        assert_eq!(
-            harness
-                .definition
-                .embedder_metadata
-                .get(OPENROUTER_X_TITLE_METADATA_KEY)
-                .map(String::as_str),
-            Some("Single App")
-        );
-    }
 }

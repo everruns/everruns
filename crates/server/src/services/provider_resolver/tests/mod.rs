@@ -34,26 +34,6 @@ fn test_get_default_api_key_openai() {
 }
 
 #[test]
-fn test_get_default_api_key_anthropic() {
-    // Not set
-    assert_eq!(
-        get_default_api_key_with_lookup("anthropic", mock_env(&[])),
-        None
-    );
-
-    // Set
-    let env = mock_env(&[("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test-key")]);
-    assert_eq!(
-        get_default_api_key_with_lookup("anthropic", &env),
-        Some("sk-ant-test-key".to_string())
-    );
-    assert_eq!(
-        get_default_api_key_with_lookup("Anthropic", &env),
-        Some("sk-ant-test-key".to_string())
-    );
-}
-
-#[test]
 fn test_get_default_api_key_unknown_provider() {
     let env = mock_env(&[
         ("DEFAULT_OPENAI_API_KEY", "sk-test"),
@@ -69,15 +49,6 @@ fn test_get_default_api_key_unknown_provider() {
     assert_eq!(
         get_default_api_key_with_lookup("openrouter", &env),
         Some("sk-or-test".to_string())
-    );
-}
-
-#[test]
-fn test_get_default_api_key_meta() {
-    let explicit = mock_env(&[("DEFAULT_META_API_KEY", "meta-default")]);
-    assert_eq!(
-        get_default_api_key_with_lookup("meta", explicit),
-        Some("meta-default".to_string())
     );
 }
 

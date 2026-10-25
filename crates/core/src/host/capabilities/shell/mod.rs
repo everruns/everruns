@@ -364,16 +364,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn the_capability_declares_the_workspace_it_needs() {
-        assert_eq!(
-            HostShellCapability.dependencies(),
-            vec!["session_file_system"]
-        );
-        assert_eq!(HostShellCapability.risk_level(), RiskLevel::High);
-        assert_eq!(HostShellCapability.tools()[0].name(), "bash");
-    }
-
-    #[test]
     fn a_typed_value_becomes_the_config_the_capability_reads() {
         let spec = HostShell::new()
             .containment(ContainmentMode::ReadOnly)

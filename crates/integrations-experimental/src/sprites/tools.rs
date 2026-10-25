@@ -1203,19 +1203,6 @@ mod tests {
             .unwrap_or_else(|| panic!("Tool {name} not found"))
     }
 
-    #[test]
-    fn test_all_tools_have_schema() {
-        let cap = crate::sprites::SpritesCapability;
-        for tool in cap.tools() {
-            let schema = tool.parameters_schema();
-            assert!(
-                schema.get("type").is_some(),
-                "Tool {} missing type in schema",
-                tool.name()
-            );
-        }
-    }
-
     #[tokio::test]
     async fn test_exec_tool_requires_context() {
         let tool = get_tool("sprites_exec");

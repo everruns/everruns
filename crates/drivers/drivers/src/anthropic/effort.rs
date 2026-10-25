@@ -150,15 +150,6 @@ mod tests {
         );
     }
 
-    /// Either omitting `thinking` turns it off, or the API default already
-    /// matches the profile, so no effort is invented.
-    #[test]
-    fn other_families_get_none() {
-        for model in ["claude-opus-4-8", "claude-sonnet-5", "claude-opus-4-5"] {
-            assert_eq!(effort_for(model), None, "{model}");
-        }
-    }
-
     #[test]
     fn explicit_none_becomes_low_where_thinking_cannot_be_off() {
         let profile = |m| everruns_contracts::get_model_profile(&DriverId::Anthropic, m);

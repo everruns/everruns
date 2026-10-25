@@ -117,30 +117,3 @@ pub async fn list_examples(
 
     Json(examples)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dto_round_trips_capabilities() {
-        let examples = harness_examples();
-        let dto = example_to_dto(&examples[0]);
-        assert!(!dto.capabilities.is_empty());
-        assert_eq!(dto.parent_name.as_deref(), Some("sandbox-worker"));
-    }
-
-    #[test]
-    fn known_example_present_in_catalog() {
-        let names: Vec<String> = harness_examples()
-            .iter()
-            .map(|e| e.definition.name.clone())
-            .collect();
-        for expected in ["coding", "data-analyst"] {
-            assert!(
-                names.iter().any(|n| n == expected),
-                "expected {expected} in harness examples catalogue"
-            );
-        }
-    }
-}

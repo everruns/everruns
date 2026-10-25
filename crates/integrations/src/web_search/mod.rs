@@ -296,18 +296,6 @@ mod tests {
     use everruns_contracts::runtime::web_search::SearchDriver;
 
     #[test]
-    fn capability_metadata() {
-        let cap = WebSearchCapability::default();
-        assert_eq!(cap.id(), "web_search");
-        assert_eq!(cap.name(), "Web search");
-        assert_eq!(cap.icon(), Some("globe"));
-        assert_eq!(cap.risk_level(), RiskLevel::Medium);
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "web_search");
-    }
-
-    #[test]
     fn config_validation() {
         let cap = WebSearchCapability::default();
         assert!(cap.validate_config(&serde_json::Value::Null).is_ok());

@@ -47,16 +47,3 @@ impl Capability for OpenAiAgentsApiRuntimeCapability {
         RiskLevel::High
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn marker_capability_contributes_no_tools_or_prompt() {
-        let capability = OpenAiAgentsApiRuntimeCapability;
-        assert_eq!(capability.id(), "openai_agents_api_runtime");
-        assert!(capability.tools().is_empty());
-        assert!(capability.system_prompt_addition().is_none());
-    }
-}

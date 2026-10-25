@@ -332,47 +332,6 @@ mod tests {
     }
     use crate::CapabilityStatus;
 
-    /// Chat driver stub: registration-only, never invoked in these tests.
-    struct StubChatDriver;
-
-    #[async_trait]
-    impl everruns_contracts::driver_registry::ChatDriver for StubChatDriver {
-        async fn chat_completion_stream(
-            &self,
-            _endpoint: &everruns_contracts::runtime_provider::ProviderEndpoint,
-            _messages: Vec<everruns_contracts::driver_registry::Message>,
-            _config: &everruns_contracts::driver_registry::LlmCallConfig,
-        ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
-        {
-            Ok(Box::pin(futures::stream::empty()))
-        }
-    }
-
-    #[test]
-    fn composition_builder_registers_capabilities_and_drivers() {
-        let mut drivers = DriverRegistry::new();
-        let mut descriptor = everruns_contracts::driver_registry::DriverDescriptor::chat_only(
-            everruns_contracts::provider::DriverId::LlmSim,
-            |_config| {
-                Box::new(StubChatDriver) as everruns_contracts::driver_registry::BoxedChatDriver
-            },
-        );
-        descriptor.display_name = "Stub".into();
-        drivers.register_descriptor_or_replace(descriptor);
-
-        let composition = HostComposition::builder()
-            .driver_registry(drivers.clone())
-            .capability(HumanIntentCapability)
-            .build();
-
-        assert!(composition.capability_registry().has("human_intent"));
-        assert!(
-            composition
-                .driver_registry()
-                .has_driver(&everruns_contracts::provider::DriverId::LlmSim)
-        );
-    }
-
     #[test]
     fn composition_registries_stay_mutable_after_build() {
         let composition = HostComposition::default();

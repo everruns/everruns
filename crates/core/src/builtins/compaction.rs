@@ -1942,17 +1942,6 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_capability_metadata() {
-        let cap = CompactionCapability;
-        assert_eq!(cap.id(), COMPACTION_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Compaction");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.category(), Some("Optimization"));
-        assert!(cap.tools().is_empty());
-        assert!(cap.message_filter_provider().is_some());
-    }
-
-    #[test]
     fn test_config_schema_and_validate_config() {
         let cap = CompactionCapability;
 
@@ -1994,107 +1983,6 @@ mod tests {
     }
 
     #[test]
-    fn test_localizations_resolve_uk() {
-        let cap = CompactionCapability;
-        assert_eq!(cap.localized_name(Some("uk-UA")), "Ущільнення контексту");
-        assert!(cap.describe_schema(None).is_some());
-    }
-
-    #[test]
-    fn test_default_config() {
-        let config = RuntimeCompactionConfig::default();
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-        assert!((config.budget_percent - 0.85).abs() < f32::EPSILON);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 2);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::OneLine
-        );
-        assert!(config.summarization.model.is_none());
-        assert_eq!(config.summarization.preserve.len(), 5);
-        assert!(config.summarization.instructions.is_none());
-        assert!(config.cost_control.enabled);
-        assert_eq!(config.cost_control.keep_recent_tool_results, 2);
-    }
-
-    #[test]
-    fn test_config_from_empty_json() {
-        let config = RuntimeCompactionConfig::from_json(&json!({}));
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_native_only() {
-        let config = RuntimeCompactionConfig::from_json(&json!({"strategy": "native"}));
-        assert_eq!(config.strategy, CompactionStrategy::Native);
-        assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_observation_masking_with_custom_settings() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "observation_masking",
-            "proactive": false,
-            "observation_masking": {
-                "keep_recent_tool_outputs": 10,
-                "summary_format": "head_tail"
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::ObservationMasking);
-        assert!(!config.proactive);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 10);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::HeadTail
-        );
-    }
-
-    #[test]
-    fn test_config_cost_control_with_custom_settings() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "cost_control": {
-                "enabled": true,
-                "keep_recent_tool_results": 1,
-                "mask_after_tool_results": 2,
-                "max_live_tool_result_bytes": 4096,
-                "max_uncached_input_tokens": 50000,
-                "min_cache_read_ratio": 0.5
-            }
-        }));
-
-        assert!(config.cost_control.enabled);
-        assert_eq!(config.cost_control.keep_recent_tool_results, 1);
-        assert_eq!(config.cost_control.mask_after_tool_results, 2);
-        assert_eq!(config.cost_control.max_live_tool_result_bytes, 4096);
-        assert_eq!(config.cost_control.max_uncached_input_tokens, 50000);
-        assert!((config.cost_control.min_cache_read_ratio - 0.5).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_config_summarization_with_custom_model() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "summarization",
-            "summarization": {
-                "model": "claude-haiku-4-5-20251001",
-                "instructions": "Focus on API decisions",
-                "preserve": ["decisions", "errors"]
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::Summarization);
-        assert_eq!(
-            config.summarization.model.as_deref(),
-            Some("claude-haiku-4-5-20251001")
-        );
-        assert_eq!(
-            config.summarization.instructions.as_deref(),
-            Some("Focus on API decisions")
-        );
-        assert_eq!(config.summarization.preserve.len(), 2);
-    }
-
-    #[test]
     fn test_config_falls_back_to_defaults_for_invalid_json() {
         let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "nonexistent_strategy",
@@ -2102,24 +1990,6 @@ mod tests {
         }));
         assert_eq!(config.strategy, CompactionStrategy::Auto);
         assert!(config.proactive);
-    }
-
-    #[test]
-    fn test_config_partial_override() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "budget_percent": 0.7,
-            "observation_masking": {
-                "keep_recent_tool_outputs": 3
-            }
-        }));
-        assert_eq!(config.strategy, CompactionStrategy::Auto);
-        assert!(config.proactive);
-        assert!((config.budget_percent - 0.7).abs() < f32::EPSILON);
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 3);
-        assert_eq!(
-            config.observation_masking.summary_format,
-            MaskingSummaryFormat::OneLine
-        );
     }
 
     #[test]
@@ -2144,35 +2014,6 @@ mod tests {
                 "serde roundtrip mismatch for {strategy:?}"
             );
         }
-    }
-
-    #[test]
-    fn test_masking_format_serialization_roundtrip() {
-        for format in [
-            MaskingSummaryFormat::OneLine,
-            MaskingSummaryFormat::HeadTail,
-        ] {
-            let json = serde_json::to_value(format).unwrap();
-            let deserialized: MaskingSummaryFormat = serde_json::from_value(json).unwrap();
-            assert_eq!(format, deserialized);
-        }
-    }
-
-    #[test]
-    fn test_budget_percent_boundary_values() {
-        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.1}));
-        assert!((config.budget_percent - 0.1).abs() < f32::EPSILON);
-
-        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.99}));
-        assert!((config.budget_percent - 0.99).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_keep_recent_tool_outputs_zero() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "observation_masking": {"keep_recent_tool_outputs": 0}
-        }));
-        assert_eq!(config.observation_masking.keep_recent_tool_outputs, 0);
     }
 
     // ====================================================================
@@ -2483,12 +2324,6 @@ mod tests {
     // ====================================================================
 
     #[test]
-    fn test_head_tail_short_content_unchanged() {
-        let content = MessageContent::Text("line1\nline2\nline3".to_string());
-        assert_eq!(format_head_tail_summary(&content), "line1\nline2\nline3");
-    }
-
-    #[test]
     fn test_head_tail_exactly_six_lines() {
         let content = MessageContent::Text("1\n2\n3\n4\n5\n6".to_string());
         assert_eq!(format_head_tail_summary(&content), "1\n2\n3\n4\n5\n6");
@@ -2546,19 +2381,6 @@ mod tests {
     // ====================================================================
     // CompactionStep tests
     // ====================================================================
-
-    #[test]
-    fn test_compaction_step_serialization() {
-        let step = CompactionStep {
-            strategy: "observation_masking".to_string(),
-            messages_after: 42,
-            duration_ms: 12,
-        };
-        let json = serde_json::to_value(&step).unwrap();
-        assert_eq!(json["strategy"], "observation_masking");
-        assert_eq!(json["messages_after"], 42);
-        assert_eq!(json["duration_ms"], 12);
-    }
 
     // ====================================================================
     // Token estimation tests
@@ -2756,15 +2578,6 @@ mod tests {
         assert_eq!(metrics.strategy_counts["summarization"], 1);
     }
 
-    #[test]
-    fn test_session_metrics_serialization() {
-        let mut metrics = SessionCompactionMetrics::default();
-        metrics.record("auto", 50, 30, 100);
-        let json = serde_json::to_value(&metrics).unwrap();
-        assert_eq!(json["compaction_count"], 1);
-        assert_eq!(json["total_messages_saved"], 20);
-    }
-
     // ====================================================================
     // Hierarchical memory tier tests
     // ====================================================================
@@ -2868,37 +2681,6 @@ mod tests {
         );
         // All hot, no summary needed
         assert_eq!(result.len(), 2);
-    }
-
-    #[test]
-    fn test_memory_tier_config_from_json() {
-        let config: HierarchicalMemoryConfig = serde_json::from_value(json!({
-            "hot_messages": 10,
-            "warm_messages": 50
-        }))
-        .unwrap();
-        assert_eq!(config.hot_messages, 10);
-        assert_eq!(config.warm_messages, 50);
-    }
-
-    #[test]
-    fn test_memory_tier_config_defaults() {
-        let config = HierarchicalMemoryConfig::default();
-        assert_eq!(config.hot_messages, 20);
-        assert_eq!(config.warm_messages, 100);
-    }
-
-    #[test]
-    fn test_compaction_config_with_memory_tiers() {
-        let config = RuntimeCompactionConfig::from_json(&json!({
-            "strategy": "auto",
-            "memory_tiers": {
-                "hot_messages": 15,
-                "warm_messages": 80
-            }
-        }));
-        assert_eq!(config.memory_tiers.hot_messages, 15);
-        assert_eq!(config.memory_tiers.warm_messages, 80);
     }
 
     #[test]

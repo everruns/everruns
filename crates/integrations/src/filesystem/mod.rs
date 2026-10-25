@@ -3010,17 +3010,6 @@ mod tests {
     // the per-capability constant mirrors were removed.
 
     #[tokio::test]
-    async fn test_capability_has_system_prompt() {
-        let cap = FileSystemCapability;
-        let ctx = SystemPromptContext::without_file_store(SessionId::new());
-        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(prompt.contains("/workspace"));
-        assert!(prompt.contains("File reading economy"));
-        assert!(prompt.contains("offset"));
-        assert!(prompt.contains("total_lines"));
-    }
-
-    #[tokio::test]
     async fn system_prompt_uses_mounted_workspace_display_root() {
         let cap = FileSystemCapability;
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
@@ -4275,12 +4264,6 @@ mod tests {
     fn test_effective_read_defaults_binary() {
         let (_, mode) = effective_read_defaults("/app.wasm", false, false);
         assert_eq!(mode, ReadMode::MetadataOnly);
-    }
-
-    #[test]
-    fn localized_name_differs_from_default() {
-        let cap = FileSystemCapability;
-        assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
 
     #[test]

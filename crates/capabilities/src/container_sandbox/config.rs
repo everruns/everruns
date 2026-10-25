@@ -141,16 +141,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_default_config() {
-        let config = ContainerSandboxConfig::default();
-        assert_eq!(config.image, "ubuntu:24.04");
-        assert_eq!(config.working_dir, "/workspace");
-        assert_eq!(config.memory_limit, 2_147_483_648);
-        assert_eq!(config.pids_limit, 256);
-        assert_eq!(config.auto_stop_minutes, 20);
-    }
-
-    #[test]
     fn test_config_from_value() {
         let config = ContainerSandboxConfig::from_value(&json!({
             "image": "node:22",

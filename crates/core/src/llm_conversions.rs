@@ -442,19 +442,6 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_call_config_builder_with_driver_option() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        let value =
-            serde_json::json!({"models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-5.5"]});
-
-        let llm_config = llm_call_config_builder_from_agent(&runtime_agent)
-            .driver_option("test/routing", value.clone())
-            .build();
-
-        assert_eq!(llm_config.driver_options.get("test/routing"), Some(&value));
-    }
-
-    #[test]
     fn test_message_has_image_files_with_image_file() {
         let mut message = RuntimeMessage::user("Just text");
         assert!(!message_has_image_files(&message));

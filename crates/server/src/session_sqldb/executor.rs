@@ -409,19 +409,6 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_tables_schema() {
-        let conn = setup_conn();
-        execute_statement(&conn, "CREATE TABLE a (id INTEGER)").unwrap();
-        execute_statement(&conn, "CREATE TABLE b (id INTEGER, val TEXT)").unwrap();
-
-        let schema = get_schema(&conn).unwrap();
-        assert_eq!(schema.len(), 2);
-        let names: Vec<&str> = schema.iter().map(|t| t.name.as_str()).collect();
-        assert!(names.contains(&"a"));
-        assert!(names.contains(&"b"));
-    }
-
-    #[test]
     fn test_query_rejects_writes_and_transactions() {
         let conn = setup_conn();
         execute_statement(

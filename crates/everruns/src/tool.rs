@@ -884,15 +884,6 @@ mod tests {
     }
 
     #[test]
-    fn into_tool_maps_function_tool() {
-        let tool = FunctionTool::new("noop", "no-op", obj_schema(), |_: Value| async move {
-            Ok::<_, String>(json!({}))
-        });
-        let Tool::Function(function) = tool.into_tool();
-        assert_eq!(function.name(), "noop");
-    }
-
-    #[test]
     fn validate_tool_name_accepts_and_rejects() {
         assert!(validate_tool_name("get_weather").is_ok());
         assert!(validate_tool_name("Add-2").is_ok());

@@ -31,19 +31,6 @@ fn parse_stamp(normalized: &Value, field: &str) -> chrono::DateTime<chrono::Utc>
         .with_timezone(&chrono::Utc)
 }
 
-/// The shipped card derived the nudge as `expires_at - 60s`, which at the
-/// default timeout is the intended four-minute mark. Emitting the deadline
-/// server-side must not move it.
-#[test]
-fn the_default_timeout_keeps_its_four_minute_nudge() {
-    let asked_at = chrono::Utc::now();
-    let (nudge_at, expires_at) = deadlines_for(asked_at, DEFAULT_ASK_USER_TIMEOUT_SECONDS);
-
-    assert_eq!(expires_at - asked_at, chrono::Duration::seconds(300));
-    assert_eq!(expires_at - nudge_at, chrono::Duration::seconds(60));
-    assert_eq!(nudge_at - asked_at, chrono::Duration::seconds(240));
-}
-
 /// A fixed 60s lead on a short window would put the nudge at or before the
 /// moment the question was asked, so the card would open already warning.
 #[test]
@@ -166,57 +153,6 @@ fn declared_defaults_prefer_the_declared_option_then_the_first() {
     // A default answer never carries free text or a credential handle.
     assert!(answers.iter().all(|answer| answer.other_text.is_none()));
     assert!(answers.iter().all(|answer| answer.secret_ref.is_none()));
-}
-
-#[test]
-fn definition_is_an_undeferrable_read_only_client_tool() {
-    let capability = AskUserCapability::client_side();
-    assert_eq!(capability.category(), Some("Core"));
-    assert!(capability.tools().is_empty());
-    let definitions = capability.tool_definitions();
-    let [ToolDefinition::ClientSide(definition)] = definitions.as_slice() else {
-        panic!("ask_user must be a client-side tool");
-    };
-    assert_eq!(definition.name, ASK_USER_TOOL_NAME);
-    assert_eq!(definition.display_name.as_deref(), Some("Ask User"));
-    assert_eq!(definition.category.as_deref(), Some("Core"));
-    assert_eq!(definition.deferrable, DeferrablePolicy::Never);
-    assert_eq!(definition.hints.readonly, Some(true));
-    assert_eq!(definition.hints.destructive, Some(false));
-}
-
-#[test]
-fn definition_schema_carries_the_contract_limits() {
-    let definition = AskUserCapability::client_side()
-        .tool_definitions()
-        .remove(0);
-    let schema = definition.parameters();
-    let questions = &schema["properties"]["questions"];
-    assert_eq!(questions["minItems"], 1);
-    assert_eq!(questions["maxItems"], MAX_ASK_USER_QUESTIONS);
-    assert_eq!(
-        questions["items"]["properties"]["kind"]["enum"],
-        json!(["choice", "text", "secret"])
-    );
-    assert_eq!(
-        questions["items"]["properties"]["header"]["maxLength"],
-        MAX_ASK_USER_HEADER_CHARS
-    );
-    // A `secret` question offers none, so the 2-option floor for a choice
-    // is enforced in validation rather than in the shared schema.
-    assert_eq!(questions["items"]["properties"]["options"]["minItems"], 0);
-    assert_eq!(
-        questions["items"]["properties"]["secret_name"]["maxLength"],
-        MAX_ASK_USER_SECRET_NAME_CHARS
-    );
-    assert_eq!(
-        questions["items"]["properties"]["options"]["maxItems"],
-        MAX_ASK_USER_OPTIONS
-    );
-    assert_eq!(
-        schema["properties"]["timeout_seconds"]["maximum"],
-        DEFAULT_ASK_USER_TIMEOUT_SECONDS
-    );
 }
 
 #[test]

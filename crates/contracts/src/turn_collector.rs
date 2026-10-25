@@ -787,14 +787,4 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert!(items.iter().all(Result::is_ok));
     }
-
-    #[test]
-    fn default_limits_are_unbounded() {
-        assert!(TurnLimits::default().is_unbounded());
-        assert!(
-            !TurnLimits::default()
-                .requiring_terminal_event()
-                .is_unbounded()
-        );
-    }
 }

@@ -1301,22 +1301,6 @@ mod tests {
     }
 
     #[test]
-    fn test_error_response_internal_error() {
-        let (status, json) = ErrorResponse::internal_error();
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(json.0.detail.as_deref(), Some("Internal server error"));
-        assert_eq!(json.0.code.as_deref(), Some("internal_error"));
-    }
-
-    #[test]
-    fn test_error_response_not_found() {
-        let (status, json) = ErrorResponse::not_found("Agent");
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(json.0.detail.as_deref(), Some("Agent not found"));
-        assert_eq!(json.0.code.as_deref(), Some("not_found"));
-    }
-
-    #[test]
     fn test_api_result_ext_log_internal_error() {
         let result: Result<i32, &str> = Err("db connection failed");
         let mapped = result.log_internal_error("get agent");

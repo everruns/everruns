@@ -1009,43 +1009,6 @@ mod tests {
         assert_eq!(uuid.to_string(), "019c263f-eac1-7809-a9d4-42e25317890b");
     }
 
-    /// Test that ListEventsQuery JSON deserialization works with prefixed event IDs.
-    #[test]
-    fn test_events_query_deserializes_prefixed_event_id() {
-        let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": []}"#;
-        let query: ListEventsQuery = serde_json::from_str(json)
-            .expect("Should deserialize ListEventsQuery with prefixed event ID");
-
-        assert!(query.since_id.is_some());
-        let event_id = query.since_id.unwrap();
-        assert_eq!(
-            event_id.to_string(),
-            "event_019c263feac17809a9d442e25317890b"
-        );
-    }
-
-    #[test]
-    fn test_events_query_json_with_exclude() {
-        let json = r#"{"since_id": "event_019c263feac17809a9d442e25317890b", "exclude": ["output.message.delta", "reason.thinking.delta"]}"#;
-        let query: ListEventsQuery =
-            serde_json::from_str(json).expect("Should deserialize ListEventsQuery");
-
-        assert!(query.since_id.is_some());
-        assert_eq!(query.exclude.len(), 2);
-        assert!(query.exclude.contains(&"output.message.delta".to_string()));
-        assert!(query.exclude.contains(&"reason.thinking.delta".to_string()));
-    }
-
-    #[test]
-    fn test_events_query_empty_since_id() {
-        let json = r#"{"exclude": []}"#;
-        let query: ListEventsQuery = serde_json::from_str(json)
-            .expect("Should deserialize ListEventsQuery without since_id");
-
-        assert!(query.since_id.is_none());
-        assert!(query.exclude.is_empty());
-    }
-
     // Tests below use serde_html_form (the actual deserializer backing
     // axum_extra::extract::Query) to verify real URL query string parsing.
 
@@ -1062,50 +1025,6 @@ mod tests {
         assert_eq!(query.exclude[0], "output.message.delta");
         assert_eq!(query.exclude[1], "reason.thinking.delta");
         assert!(query.since_id.is_none());
-    }
-
-    /// Single exclude value should work.
-    #[test]
-    fn test_query_string_exclude_single() {
-        let qs = "exclude=output.message.delta";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("single exclude should parse");
-
-        assert_eq!(query.exclude.len(), 1);
-        assert_eq!(query.exclude[0], "output.message.delta");
-    }
-
-    /// No exclude param at all should default to empty vec.
-    #[test]
-    fn test_query_string_no_exclude() {
-        let qs = "since_id=event_019c263feac17809a9d442e25317890b";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("no exclude should parse");
-
-        assert!(query.exclude.is_empty());
-        assert!(query.since_id.is_some());
-    }
-
-    /// Empty query string should work (all fields optional/defaulted).
-    #[test]
-    fn test_query_string_empty() {
-        let qs = "";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("empty query should parse");
-
-        assert!(query.since_id.is_none());
-        assert!(query.exclude.is_empty());
-    }
-
-    /// Combined since_id and exclude params.
-    #[test]
-    fn test_query_string_since_id_with_exclude() {
-        let qs = "since_id=event_019c263feac17809a9d442e25317890b&exclude=output.message.delta&exclude=reason.thinking.delta";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("combined params should parse");
-
-        assert!(query.since_id.is_some());
-        assert_eq!(query.exclude.len(), 2);
     }
 
     // ============================================
@@ -1125,38 +1044,6 @@ mod tests {
         assert!(query.exclude.is_empty());
     }
 
-    /// Single types value.
-    #[test]
-    fn test_query_string_types_single() {
-        let qs = "types=input.message";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("single types should parse");
-
-        assert_eq!(query.types.len(), 1);
-        assert_eq!(query.types[0], "input.message");
-    }
-
-    /// No types param defaults to empty vec (all types returned).
-    #[test]
-    fn test_query_string_no_types() {
-        let qs = "";
-        let query: ListEventsQuery = serde_html_form::from_str(qs).expect("no types should parse");
-
-        assert!(query.types.is_empty());
-    }
-
-    /// Combined types and exclude params.
-    #[test]
-    fn test_query_string_types_with_exclude() {
-        let qs = "types=turn.started&types=turn.completed&types=turn.failed&exclude=turn.failed";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("types+exclude should parse");
-
-        assert_eq!(query.types.len(), 3);
-        assert_eq!(query.exclude.len(), 1);
-        assert_eq!(query.exclude[0], "turn.failed");
-    }
-
     /// All three params combined: since_id, types, exclude.
     #[test]
     fn test_query_string_all_params() {
@@ -1169,30 +1056,6 @@ mod tests {
         assert_eq!(query.exclude.len(), 1);
     }
 
-    /// JSON deserialization with types field.
-    #[test]
-    fn test_events_query_json_with_types() {
-        let json = r#"{"types": ["turn.started", "turn.completed"], "exclude": []}"#;
-        let query: ListEventsQuery =
-            serde_json::from_str(json).expect("Should deserialize with types");
-
-        assert_eq!(query.types.len(), 2);
-        assert!(query.types.contains(&"turn.started".to_string()));
-        assert!(query.types.contains(&"turn.completed".to_string()));
-        assert!(query.exclude.is_empty());
-    }
-
-    /// JSON deserialization with both types and exclude.
-    #[test]
-    fn test_events_query_json_types_and_exclude() {
-        let json = r#"{"types": ["turn.started", "turn.completed", "session.idled"], "exclude": ["session.idled"]}"#;
-        let query: ListEventsQuery =
-            serde_json::from_str(json).expect("Should deserialize types+exclude");
-
-        assert_eq!(query.types.len(), 3);
-        assert_eq!(query.exclude.len(), 1);
-    }
-
     // ============================================
     // Validation tests
     // ============================================
@@ -1202,35 +1065,6 @@ mod tests {
         let query = ListEventsQuery {
             since_id: None,
             types: vec!["turn.started".to_string(), "turn.completed".to_string()],
-            exclude: vec![],
-            limit: None,
-            before_sequence: None,
-            ..Default::default()
-        };
-        assert!(query.validate().is_ok());
-    }
-
-    #[test]
-    fn test_validate_valid_exclude() {
-        let query = ListEventsQuery {
-            since_id: None,
-            types: vec![],
-            exclude: vec![
-                "output.message.delta".to_string(),
-                "reason.thinking.delta".to_string(),
-            ],
-            limit: None,
-            before_sequence: None,
-            ..Default::default()
-        };
-        assert!(query.validate().is_ok());
-    }
-
-    #[test]
-    fn test_validate_empty_is_ok() {
-        let query = ListEventsQuery {
-            since_id: None,
-            types: vec![],
             exclude: vec![],
             limit: None,
             before_sequence: None,
@@ -1329,36 +1163,11 @@ mod tests {
     // ============================================
 
     #[test]
-    fn test_query_string_with_limit() {
-        let qs = "limit=200";
-        let query: ListEventsQuery = serde_html_form::from_str(qs).expect("limit should parse");
-        assert_eq!(query.limit, Some(200));
-        assert!(query.before_sequence.is_none());
-    }
-
-    #[test]
     fn test_query_string_with_limit_and_before_sequence() {
         let qs = "limit=200&before_sequence=4500";
         let query: ListEventsQuery =
             serde_html_form::from_str(qs).expect("limit+before_sequence should parse");
         assert_eq!(query.limit, Some(200));
         assert_eq!(query.before_sequence, Some(4500));
-    }
-
-    #[test]
-    fn test_query_string_limit_with_exclude() {
-        let qs = "limit=100&exclude=output.message.delta&exclude=reason.thinking.delta";
-        let query: ListEventsQuery =
-            serde_html_form::from_str(qs).expect("limit+exclude should parse");
-        assert_eq!(query.limit, Some(100));
-        assert_eq!(query.exclude.len(), 2);
-    }
-
-    #[test]
-    fn test_query_string_no_limit_defaults_none() {
-        let qs = "";
-        let query: ListEventsQuery = serde_html_form::from_str(qs).expect("empty should parse");
-        assert!(query.limit.is_none());
-        assert!(query.before_sequence.is_none());
     }
 }

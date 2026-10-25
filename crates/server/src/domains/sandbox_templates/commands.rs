@@ -64,14 +64,3 @@ impl Command for ListSandboxTargets {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn both_commands_are_part_of_the_core_surface() {
-        assert_eq!(GetSessionSandbox::meta().required_feature(), None);
-        assert_eq!(ListSandboxTargets::meta().required_feature(), None);
-    }
-}

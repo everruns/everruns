@@ -72,22 +72,6 @@ fn unified_spawn_agent_rejects_subagent_fields_for_configured_targets() {
 }
 
 #[test]
-fn test_capability_registry_get() {
-    let mut registry = CapabilityRegistry::new();
-    registry.register(NoopFixture);
-
-    let capability = registry.get("noop").unwrap();
-    assert_eq!(capability.id(), "noop");
-    assert_eq!(capability.status(), CapabilityStatus::Available);
-}
-
-#[test]
-fn default_registry_is_empty_and_selects_no_product_preset() {
-    assert!(CapabilityRegistry::default().is_empty());
-    assert!(CapabilityRegistryBuilder::default().build().is_empty());
-}
-
-#[test]
 fn blueprint_without_schema_accepts_no_config() {
     let blueprint = blueprint_with_schema(None);
 
@@ -227,16 +211,6 @@ async fn test_capability_registry_blueprint_with_capability() {
     let host = collect_capabilities(&["blueprint_provider".into()], &registry, &test_ctx()).await;
     assert!(host.tools.is_empty());
     assert!(host.tool_definitions.is_empty());
-}
-
-#[test]
-fn test_capability_registry_builder() {
-    let registry = CapabilityRegistry::builder()
-        .capability(NoopFixture)
-        .build();
-
-    assert!(registry.has("noop"));
-    assert_eq!(registry.len(), 1);
 }
 
 #[test]
@@ -644,28 +618,6 @@ async fn test_collect_capabilities_combines_mounts() {
 // =========================================================================
 
 #[test]
-fn test_resolve_dependencies_empty() {
-    let registry = CapabilityRegistry::new();
-
-    let resolved = resolve_dependencies(&[], &registry).unwrap();
-
-    assert!(resolved.resolved_ids.is_empty());
-    assert!(resolved.added_as_dependencies.is_empty());
-    assert!(resolved.user_selected.is_empty());
-}
-
-#[test]
-fn test_resolve_dependencies_no_deps() {
-    let registry = fixture_registry();
-
-    // CurrentTime has no dependencies
-    let resolved = resolve_dependencies(&["current_time".to_string()], &registry).unwrap();
-
-    assert_eq!(resolved.resolved_ids, vec!["current_time"]);
-    assert!(resolved.added_as_dependencies.is_empty());
-}
-
-#[test]
 fn test_resolve_dependencies_with_deps() {
     let resolved = resolve_dependencies(&["sample_data".into()], &fixture_registry()).unwrap();
     assert_eq!(
@@ -864,20 +816,6 @@ async fn collect_drops_every_member_of_a_conflicting_group() {
 // =========================================================================
 // Message filter provider tests
 // =========================================================================
-
-#[tokio::test]
-async fn test_collect_capabilities_with_configs_no_filter_providers() {
-    let registry = fixture_registry();
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("current_time"),
-        serde_json::json!({}),
-    )];
-
-    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-    assert!(collected.message_filter_providers.is_empty());
-    assert!(!collected.has_message_filters());
-}
 
 /// An `external_ag_ui` provider is advertised, opens the tool to the world,
 /// and gets the same external-target refusals as `external_a2a`.

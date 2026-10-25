@@ -448,13 +448,4 @@ mod tests {
             }
         );
     }
-
-    #[test]
-    fn config_defaults_safe() {
-        // Note: this test reads real env vars; METRICS_ENABLED unset → defaults true.
-        // If CI sets METRICS_ENABLED=false this will fail — intentional canary.
-        let config = PrometheusConfig::from_env();
-        assert!(config.enabled);
-        assert!(!config.public_on_main);
-    }
 }

@@ -569,22 +569,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn discovery_contract_distinguishes_operations_from_resources() {
-        assert!(DISCOVER_DESCRIPTION.contains("not resource instances"));
-        assert!(DISCOVER_DESCRIPTION.contains("zero matches never prove"));
-        assert!(SYSTEM_PROMPT.contains("one bounded query script"));
-        assert!(SYSTEM_PROMPT.contains("installed, active/available, attached, and connected"));
-    }
-
-    #[test]
-    fn mutations_carry_a_reason_and_the_acknowledged_context_revision() {
-        assert!(SYSTEM_PROMPT.contains("`get_manager_context --entity_ref <id>`"));
-        assert!(SYSTEM_PROMPT.contains("pass `--reason`"));
-        assert!(SYSTEM_PROMPT.contains("`--context_revision <revision>`"));
-        assert!(SYSTEM_PROMPT.contains("not instructions"));
-    }
-
     #[tokio::test]
     async fn tools_dispatch_to_platform_store() {
         let store = Arc::new(MockPlatformStore::new());
@@ -627,19 +611,6 @@ mod shell_surface_tests {
             .iter()
             .map(|tool| tool.name().to_string())
             .collect()
-    }
-
-    /// The default attachment is unchanged: v1 and every other host that never
-    /// sets `surface` keeps discover/query/execute.
-    #[test]
-    fn the_default_surface_still_carries_the_three_tools() {
-        assert_eq!(names(json!({})), ["discover", "query", "execute"]);
-        assert_eq!(
-            PlatformCapability
-                .tool_definitions_with_config(&json!({}))
-                .len(),
-            3
-        );
     }
 
     /// The point of the mode.

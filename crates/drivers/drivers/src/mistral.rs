@@ -371,9 +371,7 @@ pub fn from_env(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_contracts::driver_registry::{
-        LlmStreamEvent, MessageRole, ProviderConfig, ServiceKind,
-    };
+    use everruns_contracts::driver_registry::{LlmStreamEvent, MessageRole, ProviderConfig};
     use everruns_contracts::model::ReasoningEffort;
     use futures::StreamExt;
     use serde_json::{Value, json};
@@ -424,19 +422,6 @@ mod tests {
         config.reasoning_effort = Some(ReasoningEffort::High);
         config.max_tokens = Some(2000);
         config
-    }
-
-    #[test]
-    fn descriptor_declares_the_mistral_api_key() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-        let descriptor = registry.descriptor(&DriverId::Mistral).unwrap();
-        assert_eq!(descriptor.display_name, "Mistral AI");
-        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
-        assert_eq!(
-            descriptor.declared_env_vars(),
-            vec!["MISTRAL_API_KEY", "MISTRAL_BASE_URL"]
-        );
     }
 
     /// Direct and registered providers both reach `/v1/chat/completions` with

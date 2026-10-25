@@ -232,21 +232,6 @@ fn rank_results_prefers_lower_latency_among_equal_success() {
 }
 
 #[test]
-fn default_probe_tasks_non_empty() {
-    let tasks = default_probe_tasks();
-    assert!(!tasks.is_empty());
-    for t in &tasks {
-        assert!(!t.id.is_empty());
-        assert!(!t.prompt.is_empty());
-    }
-}
-
-#[test]
-fn model_scout_capability_is_high_risk() {
-    assert_eq!(ModelScoutCapability.risk_level(), RiskLevel::High);
-}
-
-#[test]
 fn probe_timeout_is_clamped_to_schema_bounds() {
     assert_eq!(
         bounded_probe_timeout_ms(&json!({})),

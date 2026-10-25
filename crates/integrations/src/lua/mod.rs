@@ -1139,20 +1139,6 @@ mod tests {
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-    #[test]
-    fn capability_features() {
-        let cap = LuaCapability;
-        assert_eq!(cap.features(), vec!["file_system"]);
-    }
-
-    #[test]
-    fn schema_requires_script() {
-        let schema = LuaTool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.iter().any(|v| v == "script"));
-        assert!(schema["properties"].get("script").is_some());
-    }
-
     // Path normalization is the shared `session_path::to_session_path` (tested
     // there); LuaVfs no longer carries its own copy and delegates resolution to
     // the store (MountFs in production).

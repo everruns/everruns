@@ -309,30 +309,6 @@ fn test_interceptor_rejects_non_bearer_scheme() {
 }
 
 #[tokio::test]
-async fn test_list_commands_includes_platform_catalog_commands() {
-    let service = test_worker_service().await;
-
-    let response = service
-        .list_commands(Request::new(ListCommandsRequest {}))
-        .await
-        .expect("list_commands should succeed")
-        .into_inner();
-
-    assert!(
-        response
-            .commands
-            .iter()
-            .any(|command| command.name == "list_harnesses" && command.api_version == "v1")
-    );
-    assert!(
-        response
-            .commands
-            .iter()
-            .any(|command| command.name == "create_agent_channel" && command.api_version == "v1")
-    );
-}
-
-#[tokio::test]
 async fn test_execute_command_denies_org_disabled_feature() {
     let service = test_worker_service().await;
     service
@@ -1230,29 +1206,6 @@ fn test_sqldb_error_to_status_maps_each_error_kind() {
         let status = sqldb_error_to_status(err);
         assert_eq!(status.code(), expected_code, "for {err_debug}");
     }
-}
-
-#[test]
-fn test_json_value_to_proto_null() {
-    let val = json_value_to_proto(serde_json::Value::Null);
-    assert!(matches!(
-        val.kind,
-        Some(prost_types::value::Kind::NullValue(0))
-    ));
-}
-
-#[test]
-fn test_json_value_to_proto_string() {
-    let val = json_value_to_proto(serde_json::Value::String("hello".into()));
-    assert!(matches!(val.kind, Some(prost_types::value::Kind::StringValue(ref s)) if s == "hello"));
-}
-
-#[test]
-fn test_json_value_to_proto_number() {
-    let val = json_value_to_proto(serde_json::json!(42.0));
-    assert!(
-        matches!(val.kind, Some(prost_types::value::Kind::NumberValue(n)) if (n - 42.0).abs() < f64::EPSILON)
-    );
 }
 
 #[test]

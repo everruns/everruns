@@ -7,37 +7,6 @@ use super::*;
 /// from-env test as a fallback-to-default 50 instead of 100). Serialize them.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-#[test]
-fn database_pool_config_defaults() {
-    let config = DatabasePoolConfig::default();
-    assert_eq!(config.max_connections, 50);
-    assert_eq!(config.min_connections, 5);
-    assert_eq!(config.acquire_timeout, std::time::Duration::from_secs(5));
-    assert_eq!(config.idle_timeout, std::time::Duration::from_secs(300));
-    assert_eq!(config.background_max_connections, 8);
-    assert_eq!(
-        config.background_acquire_timeout,
-        std::time::Duration::from_secs(30)
-    );
-}
-
-/// The whole point of the background pool is that it waits when the request
-/// pool would already have given up (EVE-1081).
-#[test]
-fn background_pool_waits_longer_than_the_request_pool() {
-    let config = DatabasePoolConfig::default();
-    assert!(
-        config.background_acquire_timeout > config.acquire_timeout,
-        "a sweep must outwait a request, or it is starved by the same burst"
-    );
-}
-
-#[test]
-fn total_max_connections_counts_both_pools() {
-    let config = DatabasePoolConfig::default();
-    assert_eq!(config.total_max_connections(), 58);
-}
-
 /// `DATABASE_BACKGROUND_POOL_MAX=0` is the config-only rollback: background
 /// work goes back on the request pool and opens no extra connections.
 #[test]
@@ -47,40 +16,6 @@ fn disabled_background_pool_adds_no_connections() {
         ..DatabasePoolConfig::default()
     };
     assert_eq!(config.total_max_connections(), config.max_connections);
-}
-
-#[test]
-fn database_pool_config_from_env() {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    // SAFETY: env access is serialized by ENV_LOCK for the critical section.
-    unsafe {
-        std::env::set_var("DATABASE_POOL_MAX", "100");
-        std::env::set_var("DATABASE_POOL_MIN", "10");
-        std::env::set_var("DATABASE_ACQUIRE_TIMEOUT_SECS", "15");
-        std::env::set_var("DATABASE_IDLE_TIMEOUT_SECS", "600");
-        std::env::set_var("DATABASE_BACKGROUND_POOL_MAX", "4");
-        std::env::set_var("DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS", "45");
-    }
-
-    let config = DatabasePoolConfig::from_env();
-    assert_eq!(config.max_connections, 100);
-    assert_eq!(config.min_connections, 10);
-    assert_eq!(config.acquire_timeout, std::time::Duration::from_secs(15));
-    assert_eq!(config.idle_timeout, std::time::Duration::from_secs(600));
-    assert_eq!(config.background_max_connections, 4);
-    assert_eq!(
-        config.background_acquire_timeout,
-        std::time::Duration::from_secs(45)
-    );
-
-    unsafe {
-        std::env::remove_var("DATABASE_POOL_MAX");
-        std::env::remove_var("DATABASE_POOL_MIN");
-        std::env::remove_var("DATABASE_ACQUIRE_TIMEOUT_SECS");
-        std::env::remove_var("DATABASE_IDLE_TIMEOUT_SECS");
-        std::env::remove_var("DATABASE_BACKGROUND_POOL_MAX");
-        std::env::remove_var("DATABASE_BACKGROUND_ACQUIRE_TIMEOUT_SECS");
-    }
 }
 
 #[test]

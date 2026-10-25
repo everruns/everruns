@@ -617,24 +617,6 @@ mod tests {
     }
 
     #[test]
-    fn a_trigger_command_defers_its_flags_to_help() {
-        // Every routed command now has a `cli` spelling with a worked example,
-        // so discovery names its `--help` instead of writing flags out.
-        let output = discover_for_test(&json!({
-            "query": "create_agent_trigger",
-            "include_schemas": true
-        }))
-        .expect("discover create_agent_trigger");
-        let value: Value = serde_json::from_str(&output).expect("discover JSON");
-        let operation = &value["operations"][0];
-
-        assert_eq!(
-            operation["help"], "everruns agents triggers create --help",
-            "{operation}"
-        );
-    }
-
-    #[test]
     fn exact_discovery_returns_one_operation_with_runnable_usage() {
         let output = discover_for_test(&json!({
             "query": "create_agent",

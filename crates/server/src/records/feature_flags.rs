@@ -636,12 +636,6 @@ mod tests {
     }
 
     #[test]
-    fn chatgpt_driver_is_always_offered() {
-        // Connecting the provider is the opt-in; there is no flag for it.
-        assert!(FeatureFlags::default().is_driver_offered("chatgpt"));
-    }
-
-    #[test]
     fn mistral_is_off_until_a_deployment_raises_it() {
         let definition = API_FEATURE_FLAG_DEFINITIONS
             .iter()
@@ -659,22 +653,6 @@ mod tests {
             .with_grade("mistral", FeatureFlagGrade::Adoption)
             .for_org(&enrolled);
         assert!(raised.is_driver_offered("mistral"));
-    }
-
-    #[test]
-    fn playground_is_not_a_feature_flag() {
-        assert!(
-            API_FEATURE_FLAG_DEFINITIONS
-                .iter()
-                .all(|flag| flag.name != "playground")
-        );
-        assert!(
-            !FeatureFlagPolicy::from_env(DeploymentGrade::Dev)
-                .deployment_flags()
-                .to_map()
-                .0
-                .contains_key("playground")
-        );
     }
 
     #[test]

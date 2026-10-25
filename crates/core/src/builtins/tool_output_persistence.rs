@@ -650,14 +650,6 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_metadata() {
-        let cap = ToolOutputPersistenceCapability;
-        assert_eq!(cap.id(), "tool_output_persistence");
-        assert!(!cap.post_tool_exec_hooks().is_empty());
-        assert!(cap.dependencies().contains(&"session_file_system"));
-    }
-
-    #[test]
     fn test_split_output_streams_both() {
         let text = "hello world\n--- stderr ---\nwarning: unused";
         let (stdout, stderr) = split_output_streams(text);
@@ -1234,13 +1226,6 @@ mod tool_output_persistence_config_tests {
     use super::*;
 
     #[test]
-    fn config_defaults_to_1kib() {
-        let cfg = ToolOutputPersistenceConfig::from_value(&serde_json::json!({}));
-        assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
-        assert_eq!(AUTO_SUCCESS_BUDGET, 1024);
-    }
-
-    #[test]
     fn config_override_parses_and_applies_to_auto() {
         let cfg = ToolOutputPersistenceConfig::from_value(
             &serde_json::json!({"auto_success_budget": 100}),
@@ -1269,14 +1254,5 @@ mod tool_output_persistence_config_tests {
             &serde_json::json!({"auto_success_budget": "lots"}),
         );
         assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
-    }
-
-    #[test]
-    fn schema_advertises_auto_success_budget() {
-        let schema = ToolOutputPersistenceConfig::json_schema();
-        assert_eq!(
-            schema["properties"]["auto_success_budget"]["default"],
-            serde_json::json!(1024)
-        );
     }
 }

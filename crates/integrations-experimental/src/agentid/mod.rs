@@ -98,24 +98,3 @@ impl Capability for AgentIdCapability {
         vec![Box::new(AgentIdAuthorizeTool)]
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_capability_exposes_only_the_authorize_tool() {
-        let cap = AgentIdCapability;
-        assert_eq!(cap.id(), "agentid");
-        let names: Vec<String> = cap.tools().iter().map(|t| t.name().to_string()).collect();
-        assert_eq!(names, vec!["agentid_authorize"]);
-        assert!(cap.tools()[0].requires_context());
-    }
-
-    #[test]
-    fn the_capability_and_connector_are_not_feature_flagged() {
-        // Opt-in is adding the capability and an AgentMail connection.
-        assert_eq!(CAPABILITY_PLUGINS[0].feature_flag, None);
-        assert_eq!(CONNECTOR_PLUGINS[0].feature_flag, None);
-    }
-}

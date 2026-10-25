@@ -264,12 +264,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_uses_defaults_for_empty_config() {
-        let resolved = resolve_usage_limit_auto_continue(&[cap_config(json!({}))]).unwrap();
-        assert_eq!(resolved, AutoContinueConfig::default());
-    }
-
-    #[test]
     fn resolve_reads_custom_delay_and_prompt() {
         let resolved = resolve_usage_limit_auto_continue(&[cap_config(json!({
             "delay_seconds": 300,

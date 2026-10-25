@@ -1008,15 +1008,6 @@ mod tests {
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-    #[test]
-    fn test_capability_has_system_prompt() {
-        let cap = SessionStorageCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("kv_store"));
-        assert!(prompt.contains("secret_store"));
-        assert!(prompt.contains("encrypted"));
-    }
-
     #[tokio::test]
     async fn test_kv_store_without_context() {
         let tool = KvStoreTool;

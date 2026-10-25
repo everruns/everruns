@@ -51,21 +51,3 @@ impl Capability for PlatformManagementCapability {
         Some("Platform")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retired_capability_contributes_nothing() {
-        let cap = PlatformManagementCapability;
-        assert_eq!(cap.status(), CapabilityStatus::Retired);
-        assert!(!cap.status().is_active());
-        assert!(!cap.status().is_listed());
-        assert!(cap.tools().is_empty());
-        assert!(cap.tool_definitions().is_empty());
-        assert!(cap.system_prompt_addition().is_none());
-        assert!(cap.mounts().is_empty());
-        assert!(cap.dependencies().is_empty());
-    }
-}

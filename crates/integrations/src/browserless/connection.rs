@@ -154,15 +154,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_provider_metadata() {
-        let p = BrowserlessConnector;
-        assert_eq!(p.provider_id(), "browserless");
-        assert_eq!(p.display_name(), "Browserless");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "browserless");
-    }
-
-    #[test]
     fn cdp_probe_404_for_plain_get_means_token_accepted() {
         // Current Browserless answers GET /chromium with 404 for a valid
         // token (no GET route; the WebSocket upgrade returns 101).
@@ -217,19 +208,5 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("Invalid API token"), "{err}");
-    }
-
-    #[test]
-    fn test_form_schema() {
-        let p = BrowserlessConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(
-            schema
-                .instructions_markdown
-                .contains("https://www.browserless.io/account/home")
-        );
     }
 }

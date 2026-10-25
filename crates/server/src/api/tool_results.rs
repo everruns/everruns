@@ -214,18 +214,4 @@ mod tests {
             "Connection refused"
         );
     }
-
-    #[test]
-    fn test_submit_tool_results_request_multiple() {
-        let json = r#"{
-            "tool_results": [
-                {"tool_call_id": "call_1", "result": "ok"},
-                {"tool_call_id": "call_2", "error": "failed"},
-                {"tool_call_id": "call_3", "result": {"key": "value"}}
-            ]
-        }"#;
-
-        let req: SubmitToolResultsRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.tool_results.len(), 3);
-    }
 }

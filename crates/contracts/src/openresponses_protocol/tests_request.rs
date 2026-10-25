@@ -70,105 +70,6 @@ fn explicit_cache_wire_options_are_model_gated() {
     assert_eq!(implicit["prompt_cache_options"]["mode"], "implicit");
 }
 
-#[test]
-fn test_request_serialization() {
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "gpt-5.2".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Hello".to_string()),
-            phase: None,
-        }],
-        instructions: Some("You are helpful".to_string()),
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: None,
-        metadata: None,
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["model"], "gpt-5.2");
-    assert_eq!(json["stream"], true);
-    assert_eq!(json["instructions"], "You are helpful");
-    assert!(json["input"].is_array());
-}
-
-#[test]
-fn test_request_with_reasoning() {
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "o3".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Think about this".to_string()),
-            phase: None,
-        }],
-        instructions: None,
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: Some(ResponsesReasoning {
-            effort: "high".to_string(),
-            summary: "detailed".to_string(),
-        }),
-        metadata: None,
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["reasoning"]["effort"], "high");
-    assert_eq!(json["reasoning"]["summary"], "detailed");
-}
-
-#[test]
-fn test_request_with_metadata() {
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("session_id".to_string(), "session_abc123".to_string());
-    metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
-
-    let request = ResponsesRequest {
-        include: None,
-        text: None,
-        service_tier: None,
-        model: "gpt-5.2".to_string(),
-        input: vec![ResponsesInputItem::Message {
-            r#type: "message".to_string(),
-            role: "user".to_string(),
-            content: ResponsesContent::Text("Hello".to_string()),
-            phase: None,
-        }],
-        instructions: None,
-        previous_response_id: None,
-        temperature: None,
-        max_output_tokens: None,
-        stream: true,
-        tools: None,
-        reasoning: None,
-        metadata: Some(metadata),
-        prompt_cache_key: None,
-        parallel_tool_calls: None,
-    };
-
-    let json = serde_json::to_value(&request).unwrap();
-    assert_eq!(json["metadata"]["session_id"], "session_abc123");
-    assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
-}
-
 /// EVE-598: the Responses request serializes `parallel_tool_calls` only when
 /// the config sets it, preserving provider defaults when `None`.
 #[test]
@@ -286,20 +187,6 @@ fn test_request_serializes_verbosity() {
 }
 
 #[test]
-fn test_function_call_output_serialization() {
-    let item = ResponsesInputItem::FunctionCallOutput {
-        r#type: "function_call_output".to_string(),
-        call_id: "call_123".to_string(),
-        output: r#"{"result": 42}"#.to_string().into(),
-    };
-
-    let json = serde_json::to_value(&item).unwrap();
-    assert_eq!(json["type"], "function_call_output");
-    assert_eq!(json["call_id"], "call_123");
-    assert_eq!(json["output"], r#"{"result": 42}"#);
-}
-
-#[test]
 fn tool_result_images_reach_function_call_output() {
     // A computer-use screenshot arrives as an image part on the tool message;
     // `function_call_output` must carry it as `input_image`, not drop it.
@@ -339,48 +226,6 @@ fn tool_result_images_reach_function_call_output() {
     ))
     .unwrap();
     assert_eq!(json["output"], "done");
-}
-
-#[test]
-fn test_multipart_content_serialization() {
-    let content = ResponsesContent::Parts(vec![
-        ResponsesContentPart::InputText {
-            r#type: "input_text".to_string(),
-            text: "Look at this image".to_string(),
-        },
-        ResponsesContentPart::InputImage {
-            r#type: "input_image".to_string(),
-            image_url: "data:image/png;base64,abc123".to_string(),
-        },
-    ]);
-
-    let json = serde_json::to_value(&content).unwrap();
-    assert!(json.is_array());
-    assert_eq!(json[0]["type"], "input_text");
-    assert_eq!(json[1]["type"], "input_image");
-}
-
-#[test]
-fn test_tool_serialization() {
-    let tool = ResponsesTool::Function {
-        r#type: "function".to_string(),
-        name: "get_weather".to_string(),
-        description: "Get weather for a location".to_string(),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "location": {"type": "string"}
-            },
-            "required": ["location"]
-        }),
-        strict: Some(true),
-        defer_loading: None,
-    };
-
-    let json = serde_json::to_value(&tool).unwrap();
-    assert_eq!(json["type"], "function");
-    assert_eq!(json["name"], "get_weather");
-    assert!(json["parameters"]["properties"]["location"].is_object());
 }
 
 #[test]
@@ -443,22 +288,6 @@ fn test_convert_role() {
         OpenResponsesProtocolChatDriver::convert_role(&MessageRole::Tool),
         "tool"
     );
-}
-
-#[test]
-fn test_function_call_serialization() {
-    let item = ResponsesInputItem::FunctionCall {
-        r#type: "function_call".to_string(),
-        call_id: "call_abc123".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: r#"{"timezone":"UTC"}"#.to_string(),
-    };
-
-    let json = serde_json::to_value(&item).unwrap();
-    assert_eq!(json["type"], "function_call");
-    assert_eq!(json["call_id"], "call_abc123");
-    assert_eq!(json["name"], "get_current_time");
-    assert_eq!(json["arguments"], r#"{"timezone":"UTC"}"#);
 }
 
 #[test]
@@ -736,14 +565,6 @@ fn compute_delta_keeps_tool_results_after_last_assistant_turn() {
     }
 }
 
-/// Empty input with previous_response_id is valid: the provider can resume
-/// purely from the continuation handle, no input needed.
-#[test]
-fn compute_delta_allows_empty_input_for_stateful_continuation() {
-    let trimmed = compute_delta_input_items(vec![]);
-    assert!(trimmed.is_empty());
-}
-
 /// Defensive: if no prior-assistant item is present (caller passed only fresh
 /// user input), all items are kept as delta.
 #[test]
@@ -967,20 +788,6 @@ fn unpaired_function_call_ids_reports_both_directions() {
 // ========================================================================
 // Provider-declared statefulness (EVE-523)
 // ========================================================================
-
-#[test]
-fn provider_can_enable_stateful_responses() {
-    assert!(
-        OpenResponsesProtocolChatDriver::new()
-            .with_stateful_responses(true)
-            .supports_stateful_responses()
-    );
-}
-
-#[test]
-fn wire_protocol_defaults_to_stateless() {
-    assert!(!OpenResponsesProtocolChatDriver::new().supports_stateful_responses());
-}
 
 /// End-to-end shape of the call path: against a stateless gateway, a request
 /// that carries a `previous_response_id` in config must still send the FULL

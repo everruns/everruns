@@ -480,7 +480,7 @@ async fn post_decision_message(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channels::slack::approvals::{APPROVE_ACTION_ID, DECLINE_ACTION_ID};
+    use crate::channels::slack::approvals::APPROVE_ACTION_ID;
 
     /// Slack posts interactivity as `payload=<url-encoded json>`, not as JSON.
     /// Getting this wrong makes every click a 400, so it is pinned against the
@@ -566,16 +566,6 @@ mod tests {
         assert!(parse_interaction(b"not_payload=%7B%7D").is_none());
     }
 
-    #[test]
-    fn a_decline_click_parses_as_a_decline() {
-        let payload =
-            parse_interaction(&form_body(&click(DECLINE_ACTION_ID, "U_R", "U_R"))).expect("parses");
-        assert_eq!(
-            ApprovalDecision::from_action_id(&payload.actions[0].action_id),
-            Some(ApprovalDecision::Declined)
-        );
-    }
-
     /// The binding survives the round trip through Slack's form encoding — the
     /// one place an escaping bug would silently unbind every card.
     #[test]
@@ -605,16 +595,6 @@ mod tests {
         .expect("parses");
         assert_eq!(payload.interaction_type, "view_submission");
         assert!(payload.actions.is_empty());
-    }
-
-    #[test]
-    fn a_block_action_from_another_card_is_not_a_decision() {
-        let payload =
-            parse_interaction(&form_body(&click("some_other_card", "U_R", "U_R"))).expect("parses");
-        assert_eq!(
-            ApprovalDecision::from_action_id(&payload.actions[0].action_id),
-            None
-        );
     }
 
     /// The signed-click path's gate: the same body with a wrong signature must

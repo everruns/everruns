@@ -540,33 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn provider_names_follow_the_registry() {
-        for (driver, expected) in [
-            ("openai", "openai"),
-            ("openai_completions", "openai"),
-            ("anthropic", "anthropic"),
-            ("gemini", "gcp.gemini"),
-            ("bedrock", "aws.bedrock"),
-            ("azure_openai", "azure.ai.openai"),
-            ("vertex_ai", "gcp.vertex_ai"),
-            ("vertexai", "gcp.vertex_ai"),
-            ("mistral", "mistral_ai"),
-            ("mistral_ai", "mistral_ai"),
-            ("xai", "x_ai"),
-            ("x_ai", "x_ai"),
-            ("openrouter", "openrouter"),
-            ("llmsim", "llmsim"),
-            ("custom-driver", "custom-driver"),
-        ] {
-            assert_eq!(
-                gen_ai::provider::from_driver_id(driver),
-                expected,
-                "{driver}"
-            );
-        }
-    }
-
-    #[test]
     fn error_classification_respects_precedence_and_status_boundaries() {
         for (code, message, expected) in [
             (

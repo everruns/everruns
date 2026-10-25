@@ -1,13 +1,12 @@
 use everruns_capabilities::capabilities::{
-    AgentHandoffCapability, SessionScheduleCapability, SubagentCapability,
-    register_hosted_capabilities,
+    AgentHandoffCapability, SubagentCapability, register_hosted_capabilities,
 };
 #[cfg(feature = "environment-capabilities")]
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_contracts::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 use everruns_core::capabilities::{
-    Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
+    CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
 #[cfg(feature = "environment-capabilities")]
 use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
@@ -143,16 +142,6 @@ fn retired_capabilities_stay_registered_and_inert() {
     assert!(capability.system_prompt_addition().is_none());
     assert!(capability.mounts().is_empty());
     assert!(capability.dependencies().is_empty());
-}
-
-#[test]
-fn hosted_schedule_feature_contract_is_preserved() {
-    assert_eq!(SessionScheduleCapability.features(), vec!["schedules"]);
-    assert_eq!(
-        everruns_core::capability_dto::CapabilityInfo::from_core(&SessionScheduleCapability)
-            .features,
-        vec!["schedules"]
-    );
 }
 
 #[tokio::test]

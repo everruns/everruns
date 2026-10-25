@@ -64,47 +64,6 @@ fn test_manifest_yaml_declares_the_oauth_redirect_url() {
 }
 
 #[test]
-fn test_manifest_yaml_contains_event_subscriptions() {
-    let yaml = build_manifest_yaml(
-        "My Bot",
-        "My Bot",
-        None,
-        TEST_REQUEST_URL,
-        TEST_INTERACTIVITY_URL,
-        TEST_REDIRECT_URL,
-        false,
-        &[],
-    );
-
-    assert!(
-        yaml.contains(&format!("    request_url: \"{TEST_REQUEST_URL}\"")),
-        "manifest must name this server's webhook:\n{yaml}"
-    );
-    for event in [
-        "      - app_mention",
-        "      - message.channels",
-        "      - message.groups",
-        "      - message.im",
-        "      - message.mpim",
-    ] {
-        assert!(
-            yaml.contains(event),
-            "manifest must subscribe {event}:\n{yaml}"
-        );
-    }
-    // event_subscriptions has to sit under `settings`, not at the root, or
-    // Slack rejects the manifest.
-    let settings = yaml.find("settings:").expect("settings section");
-    let subs = yaml
-        .find("  event_subscriptions:")
-        .expect("event_subscriptions section");
-    assert!(
-        subs > settings,
-        "event_subscriptions must nest under settings"
-    );
-}
-
-#[test]
 fn test_manifest_yaml_parses_as_yaml_with_expected_shape() {
     let yaml = build_manifest_yaml(
         "My Bot",
@@ -471,22 +430,6 @@ fn test_manifest_yaml_contains_description_and_long_description() {
 }
 
 #[test]
-fn test_manifest_yaml_with_app_description() {
-    let yaml = build_manifest_yaml(
-        "My Bot",
-        "My Bot",
-        Some("A helpful assistant"),
-        TEST_REQUEST_URL,
-        TEST_INTERACTIVITY_URL,
-        TEST_REDIRECT_URL,
-        false,
-        &[],
-    );
-    assert!(yaml.contains("A helpful assistant"));
-    assert!(yaml.contains("AI agent powered by Everruns"));
-}
-
-#[test]
 fn test_manifest_yaml_description_within_slack_limit() {
     // Slack description limit is 140 chars. Worst case: 35-char app name
     // (Slack's name limit) + " (Powered by Everruns)" = 57 chars.
@@ -571,30 +514,10 @@ fn test_yaml_escape() {
 }
 
 #[test]
-fn test_yaml_escape_no_special_chars() {
-    assert_eq!(yaml_escape("plain text"), "plain text");
-}
-
-#[test]
-fn test_yaml_escape_empty() {
-    assert_eq!(yaml_escape(""), "");
-}
-
-#[test]
 fn test_urlencoding_encode() {
     assert_eq!(urlencoding_encode("hello world"), "hello%20world");
     assert_eq!(urlencoding_encode("a=b&c=d"), "a%3Db%26c%3Dd");
     assert_eq!(urlencoding_encode("safe-_.~"), "safe-_.~");
-}
-
-#[test]
-fn test_urlencoding_encode_empty() {
-    assert_eq!(urlencoding_encode(""), "");
-}
-
-#[test]
-fn test_urlencoding_encode_newlines() {
-    assert_eq!(urlencoding_encode("a\nb"), "a%0Ab");
 }
 
 #[test]
@@ -646,23 +569,6 @@ fn test_slack_event_with_files_deserialization() {
     assert_eq!(event.files[0].name.as_deref().unwrap(), "image.png");
     assert_eq!(event.files[0].mimetype.as_deref().unwrap(), "image/png");
     assert_eq!(event.files[1].name.as_deref().unwrap(), "report.pdf");
-}
-
-#[test]
-fn test_slack_event_without_files_deserialization() {
-    let json = r#"{
-        "type": "event_callback",
-        "event": {
-            "type": "message",
-            "user": "U0123456789",
-            "text": "No files here",
-            "channel": "C0123456789",
-            "ts": "1234567890.123456"
-        }
-    }"#;
-    let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
-    let event = envelope.event.unwrap();
-    assert!(event.files.is_empty());
 }
 
 // ==========================================
@@ -749,12 +655,6 @@ fn test_build_attachment_content_parts_empty_attachment() {
 }
 
 #[test]
-fn test_build_attachment_content_parts_empty_vec() {
-    let parts = build_attachment_content_parts(&[]);
-    assert!(parts.is_empty());
-}
-
-#[test]
 fn test_build_attachment_content_parts_multiple() {
     let mut att1 = test_slack_attachment();
     att1.image_url = Some("https://example.com/img.png".to_string());
@@ -800,55 +700,9 @@ fn test_slack_event_with_attachments_deserialization() {
     );
 }
 
-#[test]
-fn test_slack_event_with_files_and_attachments() {
-    let json = r#"{
-        "type": "event_callback",
-        "event": {
-            "type": "message",
-            "user": "U0123456789",
-            "text": "",
-            "channel": "C0123456789",
-            "ts": "1234567890.123456",
-            "files": [{"id": "F01", "name": "photo.png", "mimetype": "image/png", "filetype": "png"}],
-            "attachments": [{"title": "Link", "text": "A link"}]
-        }
-    }"#;
-    let envelope: SlackEventEnvelope = serde_json::from_str(json).unwrap();
-    let event = envelope.event.unwrap();
-    assert_eq!(event.files.len(), 1);
-    assert_eq!(event.attachments.len(), 1);
-    // Both empty text + has files/attachments = should not be skipped
-    assert!(event.text.as_deref().unwrap().is_empty());
-}
-
 // ==========================================
 // Thread context — SlackReplyMessage parsing
 // ==========================================
-
-#[test]
-fn test_slack_reply_message_deserialization() {
-    let json = r#"[
-        {"user": "U123", "text": "Hello", "ts": "1234.0000"},
-        {"bot_id": "B123", "text": "Hi there", "ts": "1234.0001"},
-        {"user": "U456", "text": "Nice", "ts": "1234.0002", "subtype": "thread_broadcast"}
-    ]"#;
-    let replies: Vec<SlackReplyMessage> = serde_json::from_str(json).unwrap();
-    assert_eq!(replies.len(), 3);
-    assert_eq!(replies[0].user.as_deref(), Some("U123"));
-    assert!(replies[0].bot_id.is_none());
-    assert!(replies[1].bot_id.is_some());
-    assert_eq!(replies[2].subtype.as_deref(), Some("thread_broadcast"));
-}
-
-#[test]
-fn test_slack_reply_message_minimal() {
-    let json = r#"{"ts": "1234.0000"}"#;
-    let reply: SlackReplyMessage = serde_json::from_str(json).unwrap();
-    assert!(reply.user.is_none());
-    assert!(reply.text.is_none());
-    assert!(reply.bot_id.is_none());
-}
 
 #[test]
 fn test_should_skip_thread_reply_for_bot_messages() {

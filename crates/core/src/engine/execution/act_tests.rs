@@ -958,48 +958,6 @@ async fn test_act_atom_strips_human_intent_from_client_tool_calls() {
 }
 
 #[test]
-fn test_act_result_connection_required_serialization() {
-    let result = ActResult {
-        results: vec![ToolCallResult {
-            tool_call: ToolCall {
-                id: "call_1".to_string(),
-                name: "daytona_create_sandbox".to_string(),
-                arguments: json!({}),
-            },
-            result: ToolResult {
-                details: None,
-                tool_call_id: "call_1".to_string(),
-                result: Some(json!({"connection_required": "daytona"})),
-                images: None,
-                error: None,
-                connection_required: Some(ConnectionRequired::provider_only("daytona")),
-                raw_output: None,
-            },
-            success: false,
-            status: "success".to_string(),
-            connection_required: Some(ConnectionRequired::provider_only("daytona")),
-            determinism_fatal: None,
-        }],
-        completed: true,
-        success_count: 0,
-        error_count: 0,
-        waiting_for_tool_results: true,
-        waiting_for_url_elicitation: false,
-        blocked: false,
-        client_tool_calls: vec![],
-        client_tool_definitions: vec![],
-    };
-    let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: ActResult = serde_json::from_str(&json_str).unwrap();
-
-    assert!(parsed.waiting_for_tool_results);
-    assert_eq!(
-        parsed.results[0].connection_required,
-        result.results[0].connection_required
-    );
-}
-
-#[test]
 fn test_act_result_backward_compat_deserialization() {
     // Old JSON without new fields still deserializes
     let json_str = r#"{

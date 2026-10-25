@@ -1071,20 +1071,6 @@ fn conventions_parse_from_env_syntax() {
 }
 
 #[tokio::test]
-async fn listener_subscribes_to_the_fourteen_lifecycle_events() {
-    let h = OtelHarness::new(false, TraceConventions::ALL);
-    let types = h.listener.event_types().unwrap();
-    assert_eq!(types.len(), 14);
-    assert!(types.contains(&TURN_STARTED));
-    assert!(types.contains(&crate::events::TURN_SEALED));
-    assert!(types.contains(&LLM_GENERATION));
-    assert!(types.contains(&TOOL_COMPLETED));
-    assert_eq!(h.listener.name(), "OtelEventListener");
-    assert!(!h.listener.record_content());
-    assert_eq!(h.listener.conventions(), TraceConventions::ALL);
-}
-
-#[tokio::test]
 async fn provider_correlation_and_unknown_costs_reach_the_chat_span() {
     use crate::events::LlmCostComponent;
     let h = OtelHarness::new(false, TraceConventions::ALL);

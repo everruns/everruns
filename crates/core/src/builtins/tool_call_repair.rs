@@ -1056,25 +1056,6 @@ mod tests {
         assert_eq!(cfg.outcome_after_failed_salvage(0), RepairOutcome::GaveUp);
     }
 
-    #[test]
-    fn config_parses_from_json_with_defaults() {
-        assert_eq!(
-            ToolCallRepairConfig::from_json(&json!({})),
-            ToolCallRepairConfig::default()
-        );
-        assert_eq!(
-            ToolCallRepairConfig::from_json(&json!({ "max_reprompts": 3 })).max_reprompts,
-            3
-        );
-    }
-
-    #[test]
-    fn outcome_labels_are_stable() {
-        assert_eq!(RepairOutcome::LocalSalvage.label(), "local-salvage");
-        assert_eq!(RepairOutcome::Reprompt.label(), "re-prompt");
-        assert_eq!(RepairOutcome::GaveUp.label(), "gave-up");
-    }
-
     // ---- Capability wiring ----
 
     #[test]

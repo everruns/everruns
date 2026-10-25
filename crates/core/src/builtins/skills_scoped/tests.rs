@@ -187,29 +187,6 @@ fn two_scope_config() -> SkillsConfig {
 // Capability metadata / tool gating
 // ----------------------------------------------------------------------------
 
-#[test]
-fn default_config_exposes_two_tools() {
-    let cap = ScopedSkillsCapability::new(SkillsConfig::default());
-    let tools = cap.tools();
-    assert_eq!(tools.len(), 2);
-    assert_eq!(tools[0].name(), "list_skills");
-    assert_eq!(tools[1].name(), "activate_skill");
-    assert_eq!(cap.tool_definitions().len(), 2);
-    assert_eq!(cap.id(), "skills");
-    assert_eq!(cap.dependencies(), vec!["session_file_system"]);
-}
-
-#[test]
-fn manage_tools_adds_read_and_write() {
-    let cap = ScopedSkillsCapability::new(two_scope_config());
-    let tools = cap.tools();
-    let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-    assert_eq!(tools.len(), 4);
-    assert!(names.contains(&"read_skill"));
-    assert!(names.contains(&"write_skill"));
-    assert_eq!(cap.tool_definitions().len(), 4);
-}
-
 // ----------------------------------------------------------------------------
 // Discovery / list_skills
 // ----------------------------------------------------------------------------

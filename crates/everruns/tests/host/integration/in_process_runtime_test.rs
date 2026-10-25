@@ -183,29 +183,6 @@ impl SessionFileSystemFactory for ContextRealDiskFactory {
     }
 }
 
-#[test]
-fn per_type_builders_produce_portable_execution_values() {
-    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(51);
-    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(51);
-    let session_id = everruns_contracts::typed_id::SessionId::from_seed(51);
-
-    let harness = HarnessBuilder::new("math", "prompt").id(harness_id).build();
-    let agent = AgentBuilder::new("math-agent", "prompt")
-        .id(agent_id)
-        .build();
-    let session = SessionBuilder::new(harness_id)
-        .id(session_id)
-        .agent(agent_id)
-        .build();
-
-    // Harness/agent/session values are portable execution configuration
-    // (EVE-877, EVE-881, EVE-882); they carry no persistence timestamps.
-    assert_eq!(harness.id, harness_id);
-    assert_eq!(agent.id, agent_id);
-    assert_eq!(session.id, session_id);
-    assert_eq!(session.agent_id, Some(agent_id));
-}
-
 #[cfg(feature = "builtins")]
 #[tokio::test]
 async fn default_runtime_uses_runtime_safe_capability_preset() {

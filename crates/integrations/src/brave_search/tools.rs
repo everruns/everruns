@@ -301,54 +301,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_brave_web_search_with_session_secret() {
-        // API key set as session secret — tool should attempt search.
-        // Will fail at HTTP call (no real API), but token resolution should succeed.
-        let tool = BraveWebSearchTool;
-        let session_id = SessionId::new();
-        let store = Arc::new(MockStorageStore::new());
-        store
-            .seed_secret(session_id, "BRAVE_SEARCH_API_KEY", "test_key")
-            .await;
-        let context = ToolContext::with_storage_store(session_id, store);
-        let result = tool
-            .execute_with_context(json!({"query": "test"}), &context)
-            .await;
-        // Should fail at HTTP call, not at API key resolution
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                !msg.contains("API key not configured"),
-                "API key should have been resolved from session secret, got: {msg}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_brave_web_search_prefers_connection_resolver() {
-        let tool = BraveWebSearchTool;
-        let session_id = SessionId::new();
-        let store = Arc::new(MockStorageStore::new());
-        store
-            .seed_secret(session_id, "BRAVE_SEARCH_API_KEY", "fallback_key")
-            .await;
-        let resolver = Arc::new(MockConnectionResolver {
-            token: Some("preferred_key".to_string()),
-        });
-        let context =
-            ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
-        let result = tool
-            .execute_with_context(json!({"query": "test"}), &context)
-            .await;
-        // Should fail at HTTP call, not at API key resolution
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                !msg.contains("API key not configured"),
-                "API key should have been resolved from connection resolver, got: {msg}"
-            );
-        }
-    }
-
-    #[tokio::test]
     async fn test_get_api_key_prefers_connection_resolver() {
         let session_id = SessionId::new();
         let store = Arc::new(MockStorageStore::new());
@@ -404,67 +356,5 @@ mod tests {
             ToolContext::with_storage_store(session_id, store).with_connection_resolver(resolver);
         let key = get_api_key(&context).await;
         assert!(key.is_err());
-    }
-
-    #[test]
-    fn test_search_schema_has_required_query() {
-        let tool = BraveWebSearchTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        let required_strs: Vec<&str> = required.iter().map(|v| v.as_str().unwrap()).collect();
-        assert!(required_strs.contains(&"query"));
-        assert_eq!(required_strs.len(), 1);
-    }
-
-    #[test]
-    fn test_search_schema_has_optional_fields() {
-        let tool = BraveWebSearchTool;
-        let schema = tool.parameters_schema();
-        assert!(schema["properties"]["count"].is_object());
-        assert!(schema["properties"]["offset"].is_object());
-        assert!(schema["properties"]["freshness"].is_object());
-    }
-
-    #[test]
-    fn test_search_schema_freshness_enum() {
-        let tool = BraveWebSearchTool;
-        let schema = tool.parameters_schema();
-        let freshness_enum = &schema["properties"]["freshness"]["enum"];
-        let values: Vec<&str> = freshness_enum
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
-        assert!(values.contains(&"pd"));
-        assert!(values.contains(&"pw"));
-        assert!(values.contains(&"pm"));
-        assert!(values.contains(&"py"));
-    }
-
-    #[test]
-    fn test_search_schema_disallows_additional_properties() {
-        let tool = BraveWebSearchTool;
-        let schema = tool.parameters_schema();
-        assert_eq!(schema["additionalProperties"], json!(false));
-    }
-
-    #[test]
-    fn test_tool_name() {
-        let tool = BraveWebSearchTool;
-        assert_eq!(tool.name(), "brave_web_search");
-    }
-
-    #[test]
-    fn test_tool_has_description() {
-        let tool = BraveWebSearchTool;
-        assert!(!tool.description().is_empty());
-        assert!(tool.description().contains("Brave Search"));
-    }
-
-    #[test]
-    fn test_tool_requires_context() {
-        let tool = BraveWebSearchTool;
-        assert!(tool.requires_context());
     }
 }

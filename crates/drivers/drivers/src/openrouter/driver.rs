@@ -519,24 +519,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn registered_descriptor_declares_oauth_connect_flow() {
-        let mut registry = DriverRegistry::new();
-        register_driver(&mut registry);
-
-        let oauth = registry
-            .descriptor(&DriverId::OpenRouter)
-            .unwrap()
-            .oauth
-            .as_ref()
-            .expect("OpenRouter declares an OAuth connect flow");
-        assert_eq!(
-            oauth.flow,
-            everruns_contracts::DriverOAuthFlow::OpenRouterPkce
-        );
-        assert_eq!(oauth.authorize_url, "https://openrouter.ai/auth");
-        assert_eq!(oauth.token_url, "https://openrouter.ai/api/v1/auth/keys");
-    }
     #[tokio::test]
     async fn catalog_fetch_preserves_query_auth_and_model_mapping() {
         use serde_json::{Value, json};

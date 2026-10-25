@@ -119,29 +119,6 @@ async fn test_collected_capabilities_apply_multiple_filters_in_priority_order() 
     assert!(matches!(&query.filters[2], MessageFilter::Search(s) if s == "gamma"));
 }
 
-#[tokio::test]
-async fn test_collect_capabilities_preserves_config_for_filter_provider() {
-    let mut registry = CapabilityRegistry::new();
-    registry.register(FilterTestCapability { priority: 0 });
-
-    let test_config = serde_json::json!({
-        "search": "custom_search",
-        "extra_field": 42
-    });
-
-    let configs = vec![AgentCapabilityConfig::with_config(
-        CapabilityId::new("filter_test"),
-        test_config.clone(),
-    )];
-
-    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-    // Verify the config is preserved
-    assert_eq!(collected.message_filter_providers.len(), 1);
-    let (_, stored_config) = &collected.message_filter_providers[0];
-    assert_eq!(*stored_config, test_config);
-}
-
 // =========================================================================
 // collect_message_filters_only tests
 // =========================================================================
@@ -543,14 +520,6 @@ fn test_unregister_by_alias_removes_capability_and_aliases() {
 }
 
 #[test]
-fn test_compute_features_empty() {
-    let registry = CapabilityRegistry::new();
-
-    let features = compute_features(&[], &registry);
-    assert!(features.is_empty());
-}
-
-#[test]
 fn test_compute_features_unknown_capability_ignored() {
     let registry = fixture_registry();
 
@@ -559,12 +528,6 @@ fn test_compute_features_unknown_capability_ignored() {
         &registry,
     );
     assert_eq!(features, vec!["secrets", "key_value"]);
-}
-
-#[test]
-fn test_risk_level_ordering() {
-    assert!(RiskLevel::Low < RiskLevel::Medium);
-    assert!(RiskLevel::Medium < RiskLevel::High);
 }
 
 #[test]

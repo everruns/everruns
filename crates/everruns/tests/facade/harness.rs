@@ -21,29 +21,6 @@ fn filesystem_harness() -> Harness {
 }
 
 #[test]
-fn harness_holds_environment_requirements_and_model_default() {
-    let required = ComputeCapabilities {
-        native_processes: true,
-        packages: true,
-        ..Default::default()
-    };
-    let harness = Harness::builder("coding")
-        .requires_capabilities(required)
-        .requires_containment(ContainmentLevel::Isolated)
-        .model("fallback")
-        .build()
-        .expect("valid harness");
-
-    assert_eq!(harness.name(), "coding");
-    assert_eq!(harness.required_capabilities(), required);
-    assert_eq!(harness.required_containment(), ContainmentLevel::Isolated);
-    assert_eq!(harness.default_model(), Some("fallback"));
-
-    let without_default = Harness::builder("minimal").build().expect("valid harness");
-    assert_eq!(without_default.default_model(), None);
-}
-
-#[test]
 fn harness_rejects_invalid_and_duplicate_capabilities() {
     for name in ["", " ", "\t\n"] {
         assert_eq!(

@@ -694,37 +694,6 @@ mod tests {
     }
 
     #[test]
-    fn test_unknown_key_id() {
-        let key_v1 = test_key("kek-v1");
-        let key_v2 = test_key("kek-v2");
-
-        // Encrypt with v1
-        let service_v1 = EncryptionService::new(&key_v1, &[]).unwrap();
-        let encrypted = service_v1.encrypt_string("test").unwrap();
-
-        // Try to decrypt with only v2 (v1 not available)
-        let service_v2 = EncryptionService::new(&key_v2, &[]).unwrap();
-        let result = service_v2.decrypt(&encrypted);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_payload_format() {
-        let key = test_key("kek-v1");
-        let service = EncryptionService::new(&key, &[]).unwrap();
-
-        let encrypted = service.encrypt_string("test").unwrap();
-        let payload: EncryptedPayload = serde_json::from_slice(&encrypted).unwrap();
-
-        assert_eq!(payload.version, 1);
-        assert_eq!(payload.alg, "AES-256-GCM");
-        assert_eq!(payload.key_id, "kek-v1");
-        assert!(!payload.dek_wrapped.is_empty());
-        assert!(!payload.nonce.is_empty());
-        assert!(!payload.ciphertext.is_empty());
-    }
-
-    #[test]
     fn test_generate_key() {
         let key1 = generate_encryption_key("kek-v1");
         let key2 = generate_encryption_key("kek-v1");

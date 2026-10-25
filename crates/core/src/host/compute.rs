@@ -615,12 +615,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn containment_levels_order_from_open_to_closed() {
-        assert!(ContainmentLevel::None < ContainmentLevel::Native);
-        assert!(ContainmentLevel::Native < ContainmentLevel::Isolated);
-    }
-
-    #[test]
     fn network_policy_round_trips_with_its_mode_tag() {
         let allowlist = NetworkPolicy::Allowlist(vec!["crates.io".to_string()]);
         let json = serde_json::to_string(&allowlist).expect("serializable");

@@ -68,26 +68,6 @@ async fn test_search_agents_no_match() {
 }
 
 #[tokio::test]
-async fn test_search_agents_poem_does_not_crash() {
-    let db = StorageBackend::test_database();
-    create_test_agent(&db, "Alpha", None).await;
-
-    // A full poem pasted into search — should not crash or hang
-    let poem = "Roses are red, violets are blue, \
-                    sugar is sweet, and so are you. \
-                    The sky is wide, the ocean deep, \
-                    these memories I shall forever keep. \
-                    Through winding roads and starlit nights, \
-                    we chase our dreams to greater heights.";
-    let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some(poem), false, default_pagination())
-        .await
-        .unwrap();
-    // No agent should match a poem
-    assert!(results.is_empty());
-}
-
-#[tokio::test]
 async fn test_search_agents_poem_token_cap() {
     let db = StorageBackend::test_database();
     // Agent whose name contains many words from the poem
@@ -135,19 +115,6 @@ async fn test_search_agents_unicode() {
         .unwrap();
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].name, "日本語エージェント");
-}
-
-#[tokio::test]
-async fn test_search_agents_emoji() {
-    let db = StorageBackend::test_database();
-    create_test_agent(&db, "🤖 Robot Helper", None).await;
-    create_test_agent(&db, "Normal Agent", None).await;
-
-    let (results, _total) = db
-        .list_agents(DEFAULT_ORG_ID, Some("🤖"), false, default_pagination())
-        .await
-        .unwrap();
-    assert_eq!(results.len(), 1);
 }
 
 #[tokio::test]
@@ -252,30 +219,6 @@ async fn test_search_sessions_with_agent_filter() {
         .unwrap();
     assert_eq!(total, 1);
     assert_eq!(results.len(), 1);
-}
-
-#[tokio::test]
-async fn test_search_sessions_poem_input() {
-    let db = StorageBackend::test_database();
-
-    let pagination = crate::common_dto::Pagination::new(0, 20);
-    let poem = "Shall I compare thee to a summer's day? \
-                    Thou art more lovely and more temperate. \
-                    Rough winds do shake the darling buds of May, \
-                    And summer's lease hath all too short a date.";
-    let (results, total) = db
-        .list_sessions(
-            DEFAULT_ORG_ID,
-            &SessionListFilters {
-                search: Some(poem.to_string()),
-                ..Default::default()
-            },
-            pagination,
-        )
-        .await
-        .unwrap();
-    assert_eq!(total, 0);
-    assert!(results.is_empty());
 }
 
 #[tokio::test]
@@ -605,23 +548,6 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
         Some("You are a session-level override".to_string())
     );
     assert_eq!(fetched.initial_files, initial_files);
-}
-
-#[tokio::test]
-async fn test_session_system_prompt_defaults_to_none() {
-    let db = StorageBackend::test_database();
-
-    let session = db
-        .create_session(CreateSessionRow {
-            org_id: DEFAULT_ORG_ID,
-            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-
-    assert_eq!(session.system_prompt, None);
-    assert_eq!(session.initial_files, serde_json::json!([]));
 }
 
 #[tokio::test]

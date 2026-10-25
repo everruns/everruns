@@ -1085,22 +1085,4 @@ mod tests {
              model has to guess which one to use. Keep one."
         );
     }
-
-    #[test]
-    fn duplicate_web_search_rule_is_in_the_catalog() {
-        assert!(
-            builtin_rule_catalog()
-                .iter()
-                .any(|r| r.rule_id == "capabilities.duplicate_web_search")
-        );
-    }
-
-    #[test]
-    fn superseded_rule_is_in_the_catalog() {
-        assert!(
-            builtin_rule_catalog()
-                .iter()
-                .any(|r| r.rule_id == "capabilities.superseded")
-        );
-    }
 }

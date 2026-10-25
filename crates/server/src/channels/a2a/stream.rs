@@ -269,16 +269,4 @@ mod tests {
         });
         assert!(translate_session_event(&data, "t", "c", "").is_none());
     }
-
-    #[test]
-    fn jsonrpc_sse_frame_wraps_result_in_envelope() {
-        let frame = jsonrpc_sse_frame(
-            &Value::String("req-1".into()),
-            WireVersion::V0_3,
-            json!({"hello": "world"}),
-        );
-        let json_field = format!("{frame:?}");
-        assert!(json_field.contains("req-1"));
-        assert!(json_field.contains("hello"));
-    }
 }

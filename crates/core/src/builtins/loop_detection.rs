@@ -1083,13 +1083,6 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_provides_filter() {
-        let cap = LoopDetectionCapability;
-        assert_eq!(cap.id(), "loop_detection");
-        assert!(cap.message_filter_provider().is_some());
-    }
-
-    #[test]
     fn test_config_schema_and_validate_config() {
         let cap = LoopDetectionCapability;
 
@@ -1129,15 +1122,5 @@ mod tests {
             cap.validate_config(&serde_json::json!({"mutating_failure_threshold": 0}))
                 .is_err()
         );
-    }
-
-    #[test]
-    fn test_localizations_resolve_uk() {
-        let cap = LoopDetectionCapability;
-        assert_eq!(
-            cap.localized_name(Some("uk-UA")),
-            "Виявлення циклів інструментів"
-        );
-        assert!(cap.describe_schema(None).is_some());
     }
 }

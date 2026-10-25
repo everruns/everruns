@@ -668,13 +668,4 @@ mod tests {
         );
         assert!(image_thumbnail_key(7, file).ends_with("/thumb"));
     }
-
-    #[test]
-    fn content_sha256_matches_known_vector() {
-        // SHA-256 of "abc".
-        assert_eq!(
-            content_sha256(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
 }

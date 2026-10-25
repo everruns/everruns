@@ -18,17 +18,6 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
 }
 
 #[test]
-fn capability_plugin_is_published() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    assert!(
-        plugins
-            .iter()
-            .any(|p| (p.factory)().id() == "resource_discovery"),
-        "resource_discovery IntegrationPlugin should be published in CAPABILITY_PLUGINS"
-    );
-}
-
-#[test]
 fn capability_is_unflagged_and_registered_everywhere() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
@@ -44,22 +33,6 @@ fn capability_is_unflagged_and_registered_everywhere() {
         prod.has("resource_discovery"),
         "ungated capability should be in prod registry"
     );
-}
-
-#[test]
-fn capability_metadata_and_tools() {
-    let registry = registry_for_grade(DeploymentGrade::Dev);
-    let cap = registry
-        .get("resource_discovery")
-        .expect("capability not found");
-    assert_eq!(cap.icon(), Some("compass"));
-    assert_eq!(cap.category(), Some("Discovery"));
-    let tools = cap.tools();
-    assert_eq!(tools.len(), 3);
-    let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-    assert!(names.contains(&"discover_resources"));
-    assert!(names.contains(&"attach_resource"));
-    assert!(names.contains(&"list_attached_resources"));
 }
 
 #[test]

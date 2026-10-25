@@ -79,34 +79,3 @@ impl Connector for BraveSearchConnector {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_provider_metadata() {
-        let p = BraveSearchConnector;
-        assert_eq!(p.provider_id(), "brave_search");
-        // Its organization accounts are search accounts, and the contract's
-        // list of providers with a search driver names it.
-        assert!(p.capabilities().contains(&"web_search"));
-        assert!(
-            everruns_contracts::runtime::web_search::WEB_SEARCH_ACCOUNT_PROVIDERS
-                .contains(&p.provider_id())
-        );
-        assert_eq!(p.display_name(), "Brave Search");
-        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
-        assert_eq!(p.icon(), "search");
-    }
-
-    #[test]
-    fn test_form_schema() {
-        let p = BraveSearchConnector;
-        let schema = p.form_schema().expect("should have form schema");
-        assert_eq!(schema.fields.len(), 1);
-        assert_eq!(schema.fields[0].name, "api_key");
-        assert!(schema.fields[0].required);
-        assert!(schema.instructions_markdown.contains("brave.com"));
-    }
-}

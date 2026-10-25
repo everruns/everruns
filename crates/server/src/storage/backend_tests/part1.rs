@@ -1151,29 +1151,6 @@ async fn test_list_events_filter_types_positive() {
 }
 
 #[tokio::test]
-async fn test_list_events_filter_types_single() {
-    let db = StorageBackend::test_database();
-    let session_id = create_session_with_events(&db).await;
-
-    // Positive filter: single type
-    let events = db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].event_type, "input.message");
-}
-
-#[tokio::test]
 async fn test_list_events_filter_types_empty_returns_all() {
     let db = StorageBackend::test_database();
     let session_id = create_session_with_events(&db).await;

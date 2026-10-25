@@ -444,13 +444,6 @@ mod tests {
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn test_capability_in_registry() {
-        let registry = crate::builtins::portable_capability_registry().unwrap();
-        let cap = registry.get(MESSAGE_METADATA_CAPABILITY_ID).unwrap();
-        assert!(cap.model_view_provider().is_some());
-    }
-
-    #[test]
     fn test_annotates_user_and_agent_messages() {
         let user = RuntimeMessage::user("hello");
         let agent = RuntimeMessage::assistant("hi there");

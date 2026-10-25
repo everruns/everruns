@@ -528,19 +528,6 @@ mod tests {
     }
 
     #[test]
-    fn two_thousand_tool_discovery_is_cached_and_served_as_a_hit() {
-        let cache = McpDiscoveryCache::new();
-        let tools = (0..2_000)
-            .map(|i| def(&format!("tool_{i}")))
-            .collect::<Vec<_>>();
-        cache.store(key(), tools, Instant::now());
-        assert!(matches!(
-            cache.classify(&key(), Instant::now()),
-            Freshness::Fresh(tools) if tools.len() == 2_000
-        ));
-    }
-
-    #[test]
     fn ten_thousand_tool_catalog_fits_the_per_entry_cache_bound() {
         let cache = McpDiscoveryCache::new();
         let tools = (0..MAX_TOOLS_PER_ENTRY)

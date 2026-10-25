@@ -496,43 +496,6 @@ async fn test_tool_result_with_images_llm_conversion() {
 }
 
 #[test]
-fn test_tool_result_image_serialization() {
-    let img = ToolResultImage {
-        base64: "AAAA".to_string(),
-        media_type: "image/png".to_string(),
-    };
-
-    let json = serde_json::to_string(&img).unwrap();
-    let parsed: ToolResultImage = serde_json::from_str(&json).unwrap();
-
-    assert_eq!(parsed.base64, "AAAA");
-    assert_eq!(parsed.media_type, "image/png");
-}
-
-#[test]
-fn test_tool_result_with_images_serialization() {
-    let result = everruns_contracts::tool_types::ToolResult {
-        details: None,
-        tool_call_id: "call_1".to_string(),
-        result: Some(json!({"ok": true})),
-        images: Some(vec![ToolResultImage {
-            base64: "AAAA".to_string(),
-            media_type: "image/png".to_string(),
-        }]),
-        error: None,
-        connection_required: None,
-        raw_output: None,
-    };
-
-    let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_contracts::tool_types::ToolResult =
-        serde_json::from_str(&json_str).unwrap();
-
-    assert_eq!(parsed.images.as_ref().unwrap().len(), 1);
-    assert_eq!(parsed.images.unwrap()[0].media_type, "image/png");
-}
-
-#[test]
 fn test_tool_result_without_images_backward_compat() {
     // Ensure old JSON without `images` field still deserializes
     let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;

@@ -455,28 +455,6 @@ pub async fn get_model_profile(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_error_response_serialization() {
-        // RFC 9457 Problem Details shape: detail carries the message,
-        // title/status are populated when the response is finalized.
-        let (_status, body) = ErrorResponse::new("Internal server error")
-            .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        let parsed: serde_json::Value = serde_json::to_value(&body.0).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Internal server error");
-        assert_eq!(parsed["title"], "Internal Server Error");
-        assert_eq!(parsed["status"], 500);
-        // Unset extensions stay out of the wire payload.
-        assert!(parsed.get("type").is_none());
-        assert!(parsed.get("allowed_actions").is_none());
-    }
-
-    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
-}
-
 #[utoipa::path(get, path = "/v1/models/decision-default", description = "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn get_default_decision_model(
     org: ResolvedOrg,

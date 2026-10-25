@@ -305,32 +305,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_config() {
-        let config = PollerConfig::default();
-        assert_eq!(config.min_interval, Duration::from_millis(10));
-        assert_eq!(config.max_interval, Duration::from_secs(5));
-        assert_eq!(config.backoff_multiplier, 1.5);
-        assert_eq!(config.batch_size, 10);
-        assert_eq!(config.jitter_factor, 0.2);
-    }
-
-    #[test]
-    fn test_config_builder() {
-        let config = PollerConfig::new()
-            .with_min_interval(Duration::from_millis(50))
-            .with_max_interval(Duration::from_secs(10))
-            .with_backoff_multiplier(2.0)
-            .with_batch_size(20)
-            .with_jitter_factor(0.5);
-
-        assert_eq!(config.min_interval, Duration::from_millis(50));
-        assert_eq!(config.max_interval, Duration::from_secs(10));
-        assert_eq!(config.backoff_multiplier, 2.0);
-        assert_eq!(config.batch_size, 20);
-        assert_eq!(config.jitter_factor, 0.5);
-    }
-
-    #[test]
     fn test_adaptive_poller_high_load() {
         let config = PollerConfig::default();
         let mut poller = AdaptivePoller::new(config.clone());

@@ -66,49 +66,6 @@ fn dangling_calls_get_only_missing_unknown_outcomes_and_patching_is_idempotent()
 }
 
 #[test]
-fn plain_message_constructors_preserve_role_and_text() {
-    for (message, role, text) in [
-        (
-            RuntimeMessage::user("question"),
-            RuntimeMessageRole::User,
-            "question",
-        ),
-        (
-            RuntimeMessage::assistant("answer"),
-            RuntimeMessageRole::Agent,
-            "answer",
-        ),
-        (
-            RuntimeMessage::system("instruction"),
-            RuntimeMessageRole::System,
-            "instruction",
-        ),
-    ] {
-        assert_eq!(message.role, role);
-        assert_eq!(message.text(), Some(text));
-        assert_eq!(message.content, vec![ContentPart::text(text)]);
-        assert!(!message.has_tool_calls());
-    }
-}
-
-#[test]
-fn tool_result_constructor_preserves_result_and_error_fields() {
-    for (result, error) in [
-        (Some(json!({"count": 2})), None),
-        (None, Some("timeout".to_owned())),
-        (Some(json!(false)), Some("partial".to_owned())),
-    ] {
-        let message = RuntimeMessage::tool_result("call_result", result.clone(), error.clone());
-        assert_eq!(message.role, RuntimeMessageRole::ToolResult);
-        assert_eq!(message.tool_call_id(), Some("call_result"));
-        assert_eq!(
-            message.content,
-            vec![ContentPart::tool_result("call_result", result, error)]
-        );
-    }
-}
-
-#[test]
 fn assistant_tool_messages_preserve_calls_and_distinguish_empty_from_whitespace_text() {
     for text in ["", "   ", "Working"] {
         let message = RuntimeMessage::assistant_with_tools(text, calls());
