@@ -24,7 +24,6 @@ crates/core/src/engine/execution/reason.rs
 crates/core/src/guardrail_checks.rs
 crates/core/src/host/observability/braintrust.rs
 crates/drivers/drivers/src/anthropic/driver.rs
-crates/durable/src/persistence/memory.rs
 crates/durable/tests/postgres_integration_test.rs
 crates/everruns/tests/host/integration/runtime_host_test.rs
 crates/server/src/api/common.rs
