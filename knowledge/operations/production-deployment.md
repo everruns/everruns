@@ -188,7 +188,7 @@ Release and rollout references:
 
 This spec does not define:
 
-- exact Kubernetes manifests (the direction, a Helm chart and no operator, is in [Local Setup and Kubernetes](local-setup.md))
+- exact Kubernetes manifests (the Helm chart and why there is no operator are in [Local Setup and Kubernetes](local-setup.md))
 - exact Docker Compose commands
 - cloud-vendor-specific load balancer configuration
 - step-by-step migration or incident procedures

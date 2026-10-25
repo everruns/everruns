@@ -1,0 +1,80 @@
+# Helm chart checks.
+#
+# `check` lints and renders charts/everruns (scripts/check-helm-chart.sh).
+# `kind` installs it on a kind cluster with published images and runs
+# scripts/smoke-helm-chart.sh: healthy rollout, sign-in through the proxy, and
+# generated secrets kept across upgrade and reinstall. Like Compose Smoke it
+# runs `latest` on PRs, after each image publish, and daily.
+name: Helm Chart
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to install (default: latest)'
+        required: false
+        type: string
+  schedule:
+    - cron: '45 6 * * *'
+  workflow_run:
+    workflows: ['Docker Publish']
+    types: [completed]
+  pull_request:
+    paths:
+      - 'charts/**'
+      - 'examples/docker-compose-full.yaml'
+      - 'scripts/check-helm-chart.sh'
+      - 'scripts/smoke-helm-chart.sh'
+      - '.github/workflows/helm-chart.yml'
+      - '.github/workflows/publish-helm-chart.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.19.0
+  KIND_VERSION: v0.30.0
+
+jobs:
+  check:
+    name: Helm Chart Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install helm
+        run: |
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+
+      - name: Check the chart
+        run: scripts/check-helm-chart.sh
+
+  kind:
+    name: Helm Chart on kind
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install helm and kind
+        run: |
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+          curl -fsSLo /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          sudo install /tmp/kind /usr/local/bin/kind
+
+      - name: Create cluster
+        run: kind create cluster --name everruns --wait 120s
+
+      - name: Install the chart and smoke it
+        env:
+          EVERRUNS_TAG: ${{ inputs.tag || 'latest' }}
+        run: scripts/smoke-helm-chart.sh

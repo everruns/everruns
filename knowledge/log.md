@@ -2,6 +2,10 @@
 
 ## 2026-10-25
 
+* **Helm chart.** `charts/everruns` installs the self-hosted Platform on
+  Kubernetes: one server replica, KEDA-scaled workers, the Compose Caddy
+  routes, external PostgreSQL by default and secrets kept across upgrades. See
+  [Local Setup and Kubernetes](operations/local-setup.md).
 * **Local setup.** `everruns docker up` runs the self-hosted Platform through
   Docker Compose with a converging, re-runnable setup and a sign-in question;
   Kubernetes gets a Helm chart rather than an operator. `upgrade` backs up the

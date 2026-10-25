@@ -1,0 +1,20 @@
+apiVersion: v2
+name: everruns
+description: Self-hosted Everruns Platform (API server, workers, UI) on Kubernetes.
+type: application
+# The release publishes the chart with --version and --app-version set to the
+# release, so the published chart runs that release's images. From a checkout
+# it runs `latest`.
+version: 0.0.0-dev
+appVersion: latest
+home: https://everruns.com
+icon: https://everruns.com/favicon.svg
+sources:
+  - https://github.com/everruns/everruns
+keywords:
+  - ai-agents
+  - agents
+  - durable-execution
+maintainers:
+  - name: Everruns
+    url: https://github.com/everruns

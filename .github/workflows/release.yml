@@ -184,6 +184,15 @@ jobs:
           gh workflow run docker-publish.yml --ref "$TAG" -f "tag=$TAG"
           echo "Docker Publish triggered for $TAG"
 
+      - name: Trigger Helm chart publish for release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          echo "Triggering Helm chart publish for tag $TAG..."
+          gh workflow run publish-helm-chart.yml --ref "$TAG" -f "tag=$TAG"
+          echo "Helm chart publish triggered for $TAG"
+
       - name: Trigger CLI binary builds for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
