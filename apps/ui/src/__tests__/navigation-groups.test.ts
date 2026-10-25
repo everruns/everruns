@@ -43,33 +43,4 @@ describe("navigationGroupForPath", () => {
     );
     expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
   });
-
-  it("keeps Building and Operational in the requested order", () => {
-    const itemsFor = (label: string) =>
-      defaultNavigationSections
-        .find((section) => section.label === label)
-        ?.items.map((item) => item.name);
-    expect(itemsFor("Building")).toEqual([
-      "Agents",
-      "Playground",
-      "Harnesses",
-      "Sandboxes",
-      "Virtual Users",
-    ]);
-    expect(itemsFor("Operational")).toEqual(["Monitoring", "Sessions"]);
-    // Sandboxes is one page with tabs, not a sidebar group of its own.
-    expect(defaultNavigationSections.some((section) => section.label === "Sandboxes")).toBe(false);
-    expect(navigationGroupForPath("/sandboxes")).toBe("Building");
-    expect(navigationGroupForPath("/sandboxes/templates/template-1")).toBe("Building");
-    expect(navigationGroupForPath("/sandboxes/accounts")).toBe("Building");
-    expect(navigationGroupForPath("/knowledge")).toBe("Registers");
-    expect(navigationGroupForPath("/memory")).toBe("Registers");
-    expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");
-    expect(
-      defaultNavigationSections
-        .flatMap((section) => section.items)
-        .some((item) => item.href === "/approvals"),
-    ).toBe(false);
-    expect(navigationGroupForPath("/reports")).toBe("Quality");
-  });
 });

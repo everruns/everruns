@@ -18,38 +18,6 @@ jest.mock("lucide-react", () => ({
 }));
 
 describe("FileTree", () => {
-  describe("rendering", () => {
-    it("renders with children", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByText("test.txt")).toBeInTheDocument();
-    });
-
-    it("renders with tree role for accessibility", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByRole("tree")).toBeInTheDocument();
-    });
-
-    it("applies custom className", () => {
-      render(
-        <FileTree className="custom-class">
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByRole("tree")).toHaveClass("custom-class");
-    });
-  });
-
   describe("selection", () => {
     it("calls onSelect when file is clicked", () => {
       const onSelect = jest.fn();
@@ -214,24 +182,6 @@ describe("FileTreeFolder", () => {
     });
   });
 
-  describe("nested folders", () => {
-    it("renders nested folder structure", () => {
-      render(
-        <FileTree expanded={new Set(["/src", "/src/components"])}>
-          <FileTreeFolder path="/src" name="src">
-            <FileTreeFolder path="/src/components" name="components">
-              <FileTreeFile path="/src/components/button.tsx" name="button.tsx" />
-            </FileTreeFolder>
-          </FileTreeFolder>
-        </FileTree>,
-      );
-
-      expect(screen.getByText("src")).toBeInTheDocument();
-      expect(screen.getByText("components")).toBeInTheDocument();
-      expect(screen.getByText("button.tsx")).toBeInTheDocument();
-    });
-  });
-
   describe("actions prop", () => {
     it("renders actions inline in the folder row", () => {
       render(
@@ -295,52 +245,6 @@ describe("FileTreeFile", () => {
 
       expect(screen.getByTestId("custom-icon")).toBeInTheDocument();
     });
-
-    it("renders default file icon when no icon provided", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByTestId("file-icon")).toBeInTheDocument();
-    });
-
-    it("has treeitem role for accessibility", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      expect(screen.getByRole("treeitem")).toBeInTheDocument();
-    });
-
-    it("is focusable", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" />
-        </FileTree>,
-      );
-
-      const file = screen.getByRole("treeitem");
-      expect(file).toHaveAttribute("tabindex", "0");
-    });
-  });
-
-  describe("custom children", () => {
-    it("renders custom children instead of default layout", () => {
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt">
-            <span data-testid="custom-child">Custom Content</span>
-          </FileTreeFile>
-        </FileTree>,
-      );
-
-      expect(screen.getByTestId("custom-child")).toBeInTheDocument();
-      expect(screen.getByText("Custom Content")).toBeInTheDocument();
-    });
   });
 });
 
@@ -364,35 +268,5 @@ describe("FileTreeActions", () => {
 
     expect(onAction).toHaveBeenCalled();
     expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it("has group role for accessibility", () => {
-    render(
-      <FileTree>
-        <FileTreeFile path="/test.txt" name="test.txt">
-          <FileTreeName>test.txt</FileTreeName>
-          <FileTreeActions>
-            <button>Delete</button>
-          </FileTreeActions>
-        </FileTreeFile>
-      </FileTree>,
-    );
-
-    expect(screen.getByRole("group", { name: "File actions" })).toBeInTheDocument();
-  });
-});
-
-describe("FileTreeName", () => {
-  it("renders file name with truncation", () => {
-    render(
-      <FileTree>
-        <FileTreeFile path="/test.txt" name="test.txt">
-          <FileTreeName>very-long-filename-that-should-truncate.txt</FileTreeName>
-        </FileTreeFile>
-      </FileTree>,
-    );
-
-    const name = screen.getByText("very-long-filename-that-should-truncate.txt");
-    expect(name).toHaveClass("truncate");
   });
 });

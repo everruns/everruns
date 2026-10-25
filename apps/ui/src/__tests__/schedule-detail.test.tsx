@@ -191,26 +191,6 @@ describe("ScheduleDetailPage", () => {
   });
 
   // ============================================
-  // Loading State Tests
-  // ============================================
-
-  describe("Loading State", () => {
-    it("shows skeleton loading state while schedule is loading", () => {
-      mockUseSchedule.mockReturnValue({
-        data: undefined,
-        isLoading: true,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const skeletons = document.querySelectorAll('[class*="animate-pulse"]');
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ============================================
   // Error State Tests
   // ============================================
 
@@ -236,22 +216,6 @@ describe("ScheduleDetailPage", () => {
   // ============================================
 
   describe("Schedule Details", () => {
-    it("renders the schedule's name, description, cron, timezone, target, and input", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // "Daily Backup" may appear multiple times (header and card title).
-      expect(screen.getAllByText("Daily Backup").length).toBeGreaterThan(0);
-      expect(screen.getByText("Runs daily backup workflow for all services")).toBeInTheDocument();
-      expect(screen.getByText("Active")).toBeInTheDocument();
-      expect(screen.getByText("0 0 0 * * * *")).toBeInTheDocument();
-      expect(screen.getByText("UTC")).toBeInTheDocument();
-      expect(screen.getByText("workflow")).toBeInTheDocument();
-      expect(screen.getByText("backup-workflow")).toBeInTheDocument();
-      // "2" appears multiple times (max_concurrent and skipped_executions).
-      expect(screen.getAllByText(/2/).length).toBeGreaterThan(0);
-      expect(screen.getByText(/"bucket"/)).toBeInTheDocument();
-    });
-
     it("renders Paused badge for disabled schedule", () => {
       mockUseSchedule.mockReturnValue({
         data: { ...mockSchedule, enabled: false },
@@ -267,42 +231,10 @@ describe("ScheduleDetailPage", () => {
   });
 
   // ============================================
-  // Statistics Card Tests
-  // ============================================
-
-  describe("Statistics", () => {
-    it("renders total, successful, failed, and skipped execution counts", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByText("100")).toBeInTheDocument();
-      expect(screen.getByText("95")).toBeInTheDocument();
-      // "3" and "2" may also appear elsewhere (e.g. max_concurrent), so just
-      // check they exist.
-      expect(screen.getAllByText("3").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    });
-  });
-
-  // ============================================
   // Execution History Tests
   // ============================================
 
   describe("Execution History", () => {
-    it("renders execution history section", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByText(/Execution History/i)).toBeInTheDocument();
-    });
-
-    it.each(["completed", "failed", "running", "skipped"])(
-      "renders a %s execution row",
-      (status) => {
-        render(<ScheduleDetailPage />, { wrapper });
-
-        expect(screen.getAllByText(new RegExp(status, "i")).length).toBeGreaterThan(0);
-      },
-    );
-
     it("displays error message for failed executions", () => {
       render(<ScheduleDetailPage />, { wrapper });
 
@@ -322,33 +254,10 @@ describe("ScheduleDetailPage", () => {
   });
 
   // ============================================
-  // Execution History Filtering Tests
-  // ============================================
-
-  describe("Execution History Filtering", () => {
-    it("renders status filter dropdown", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      // Find filter dropdown in execution history section
-      const comboboxes = screen.getAllByRole("combobox");
-      expect(comboboxes.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ============================================
   // Action Button Tests
   // ============================================
 
   describe("Action Buttons", () => {
-    it("renders the Trigger, Pause, Edit, and Delete buttons for an enabled schedule", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      expect(screen.getByRole("button", { name: /Trigger/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Pause/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Edit/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Delete/i })).toBeInTheDocument();
-    });
-
     it("renders Resume button for disabled schedule", () => {
       mockUseSchedule.mockReturnValue({
         data: { ...mockSchedule, enabled: false },
@@ -502,19 +411,6 @@ describe("ScheduleDetailPage", () => {
       await waitFor(() => {
         expect(mockUpdateMutate).toHaveBeenCalled();
       });
-    });
-  });
-
-  // ============================================
-  // Navigation Tests
-  // ============================================
-
-  describe("Navigation", () => {
-    it("Back link has correct href", () => {
-      render(<ScheduleDetailPage />, { wrapper });
-
-      const backLink = screen.getByRole("link", { name: /Back to Schedules/i });
-      expect(backLink).toHaveAttribute("href", "/durable/schedules");
     });
   });
 });

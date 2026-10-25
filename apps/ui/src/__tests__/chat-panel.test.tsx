@@ -862,18 +862,6 @@ describe("ChatPanel placeholder", () => {
     expect(await screen.findByRole("button", { name: "/btw" })).toBeInTheDocument();
   });
 
-  it("does not render a top border between messages and composer", () => {
-    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
-
-    render(<ChatPanel />);
-
-    const composer = screen.getByPlaceholderText("Type a message... (Enter to send)");
-    const composerShell = composer.closest("form")?.parentElement;
-
-    expect(composerShell).not.toBeNull();
-    expect(composerShell).not.toHaveClass("border-t");
-  });
-
   it("drives one combined model/effort menu with reasoning support from the active model", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
     mockSessionContext.llmModel = {

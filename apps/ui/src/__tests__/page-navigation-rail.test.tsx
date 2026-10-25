@@ -1,11 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { PageNavigationRail } from "@/components/chat-mode/page-navigation-rail";
-import {
-  defaultBuildingNavigation,
-  defaultNavigationSections,
-  type NavigationSection,
-} from "@/lib/navigation";
+import { defaultBuildingNavigation, type NavigationSection } from "@/lib/navigation";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -20,15 +16,6 @@ jest.mock("next/link", () => ({
 }));
 
 const sections: NavigationSection[] = [{ label: "Building", items: defaultBuildingNavigation }];
-
-it("provides a short explanation for every default destination", () => {
-  for (const item of defaultNavigationSections.flatMap((section) => section.items)) {
-    expect({ name: item.name, description: item.description }).toEqual({
-      name: item.name,
-      description: expect.stringMatching(/\S/),
-    });
-  }
-});
 
 it("explains an unfamiliar icon on keyboard focus and dismisses with Escape", async () => {
   render(

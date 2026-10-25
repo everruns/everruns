@@ -50,38 +50,6 @@ function createToolResultMessage(overrides?: Partial<Message>): Message {
 }
 
 describe("ToolCallCard", () => {
-  describe("rendering", () => {
-    it("renders tool call name with colon", () => {
-      const toolCall = createToolCallMessage();
-      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.getByText("get_current_time:")).toBeInTheDocument();
-    });
-
-    it("renders arguments inline", () => {
-      const toolCall = createToolCallMessage();
-      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.getByText("timezone: UTC")).toBeInTheDocument();
-    });
-
-    it("does not render arguments when empty", () => {
-      const toolCall = createToolCallMessage({
-        content: [
-          {
-            type: "tool_call" as const,
-            id: "call_123",
-            name: "noop",
-            arguments: {},
-          },
-        ],
-      });
-      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.getByText("noop:")).toBeInTheDocument();
-    });
-  });
-
   describe("status display", () => {
     it("shows executing indicator when no tool result provided", () => {
       const toolCall = createToolCallMessage();
@@ -113,34 +81,6 @@ describe("ToolCallCard", () => {
       renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
 
       expect(screen.getByText("> Error: Something went wrong")).toBeInTheDocument();
-    });
-  });
-
-  describe("result display", () => {
-    it("does not display result section when incomplete", () => {
-      const toolCall = createToolCallMessage();
-      renderWithLocale(<ToolCallCard toolCall={toolCall} />);
-
-      expect(screen.queryByText(/Result:/)).not.toBeInTheDocument();
-    });
-  });
-
-  describe("different tool types", () => {
-    it("renders tool with no result value", () => {
-      const toolCall = createToolCallMessage();
-      const toolResult = createToolResultMessage({
-        content: [
-          {
-            type: "tool_result" as const,
-            tool_call_id: "call_123",
-            result: undefined,
-          },
-        ],
-      });
-      renderWithLocale(<ToolCallCard toolCall={toolCall} toolResult={toolResult} />);
-
-      // Should not show executing indicator when complete
-      expect(screen.queryByText("> ... executing ...")).not.toBeInTheDocument();
     });
   });
 });

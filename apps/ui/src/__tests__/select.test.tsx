@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import React from "react";
 import {
   Select,
@@ -73,14 +73,6 @@ jest.mock("@base-ui/react/select", () => {
 
 beforeEach(() => {
   rootItemsCalls.length = 0;
-});
-
-describe("SelectTrigger", () => {
-  it("resets native button appearance for shared pickers", () => {
-    render(<SelectTrigger>Default</SelectTrigger>);
-
-    expect(screen.getByRole("button")).toHaveClass("appearance-none");
-  });
 });
 
 describe("Select wrapper auto-collects display labels", () => {

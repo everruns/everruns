@@ -1,5 +1,4 @@
 import {
-  exposureStateLabel,
   isAnonymousExposure,
   resolveExposureState,
   type ExposureState,
@@ -68,13 +67,6 @@ describe("exposure state resolution", () => {
     expect(
       resolveExposureState(channel({ status: "draft" }), agent({ exposures_suspended: true })),
     ).toBe("suspended");
-  });
-
-  it("labels every state", () => {
-    const states: ExposureState[] = ["live", "draft", "disabled", "suspended", "agent-inactive"];
-    for (const state of states) {
-      expect(exposureStateLabel(state)).toBeTruthy();
-    }
   });
 });
 

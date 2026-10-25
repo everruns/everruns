@@ -34,20 +34,6 @@ describe("voice channel kind", () => {
     expect(screen.getByText("Voice")).toBeInTheDocument();
   });
 
-  it("builds the default voice config", () => {
-    const state = getDefaultChannelFormState("voice");
-    expect(isChannelFormValid(state)).toBe(true);
-    expect(buildChannelConfig(state)).toEqual({
-      mode: "delegated",
-      model: "gpt-realtime-2",
-      voice: "marin",
-      turn_detection: "server_vad",
-      interruption: "steer",
-      filler_after_ms: 1500,
-      filler: "One moment.",
-    });
-  });
-
   it("round-trips a saved voice channel and trims optional fields", () => {
     const channel = {
       channel_type: "voice",

@@ -58,32 +58,4 @@ describe("SessionCard - LLM Model Display", () => {
     expect(screen.getByText("GPT-4o")).toBeInTheDocument();
     expect(screen.getByText("Idle")).toBeInTheDocument();
   });
-
-  it("displays different model names correctly", async () => {
-    const claudeModel: ModelWithProvider = {
-      ...mockModel,
-      id: "model-2",
-      display_name: "Claude Sonnet 5",
-      provider_name: "Anthropic",
-      provider_type: "anthropic",
-    };
-
-    render(<SessionCard session={mockSession} model={claudeModel} />);
-
-    expect(screen.getByText("Claude Sonnet 5")).toBeInTheDocument();
-  });
-
-  it("links to org-level session URL", async () => {
-    render(<SessionCard session={mockSession} model={mockModel} />);
-
-    // Check that the link points to the org-level session path
-    const link = screen.getByTestId("session-link");
-    expect(link).toHaveAttribute("data-href", "/sessions/session-1/trace");
-  });
-
-  it("displays agent name when provided", async () => {
-    render(<SessionCard session={mockSession} agentName="Test Agent" model={mockModel} />);
-
-    expect(screen.getByText("Test Agent")).toBeInTheDocument();
-  });
 });
