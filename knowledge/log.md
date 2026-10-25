@@ -75,6 +75,15 @@
   the session read's `work` field outside `full` visibility; Slack, AG-UI and
   A2A get no projection. See [Work reports](execution/work-reports.md#public-view).
 
+* **Corrected surface qualification.** Recorded the final matched Muse/Luna
+  matrices, separate large-result tasks, and a clean-source Framework MCP smoke
+  after field-aware ranking and bounded omission-name refinement. Retained all
+  diagnostic and failed trials; the bounded platform search-budget miss remains
+  visible. Runtime dynamic-plugin/cache-prefix tests and offline stress complement
+  the model checks rather than claiming hosted or vendor cache qualification.
+  See [Platform Chat](harnesses/platform-chat.md) and the
+  [MCP follow-up](../evals/mcp-scale/README.md#final-source-follow-up-2026-10-24).
+
 * **Schema-independent lexical ranking.** Authentic platform evals exposed large
   schemas drowning name matches and common wrapper fields diluting pooled IDF.
   Shared retrieval now scores names, descriptions and schemas independently,

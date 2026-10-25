@@ -150,3 +150,12 @@ The original two-arm comparison remains provisional historical evidence because
 it lacked invocation-envelope and complete state assertions; see the
 [recorded findings](../../evals/platform-capability/README.md#follow-up-findings-2026-10-24)
 and corrected runs in the study before comparing surface costs.
+
+The corrected evidence supports keeping both execution mechanisms available:
+bounded native lookup can avoid CLI help, while rich platform write schemas and
+large result aggregation favor shell composition in this corpus. Bounded platform
+discovery still has a search-budget miss, so the experiment does not promote a
+production native platform surface. The [recorded comparison](../../evals/platform-capability/README.md#corrected-muse-comparison-2026-10-24)
+owns measurements and the HTTP/cache limitations; the
+[provenance](../../evals/platform-capability/results/corrected-2026-10-24-summary.json)
+separates cohorts and preserves failed attempts.

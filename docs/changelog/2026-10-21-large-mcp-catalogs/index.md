@@ -11,9 +11,8 @@ links:
   docs: [/features/large-mcp-catalogs/, /capabilities/tool-search/, /capabilities/tools-in-shell/]
 ---
 
-Everruns now discovers every page of a large MCP catalog and searches its
-server descriptions, tool descriptions, and parameter schemas within the
-current agent's access. Bounded `tool_search` reveals selected schemas as the
+Everruns discovers every MCP catalog page and searches server/tool descriptions
+and parameter schemas within current access. Bounded `tool_search` reveals selected schemas as the
 agent needs them. Run selected operations through native tools, the session
 shell, or both:
 

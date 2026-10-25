@@ -211,6 +211,27 @@ make an unadvertised call valid. Eager and bounded native schemas are identical.
 Byte-omitted candidates retain bounded `omitted_tools` names with exact-search
 guidance, sharing the same response budget. An omitted name is not a disclosure.
 
+For example, after `get_manager_context` returns revision 3, the experimental
+native `update_agent` call uses an object payload:
+
+```json
+{
+  "params": { "id": "agent_01triage", "description": "Support intake owner" },
+  "reason": "Set the description requested by the user",
+  "context_revision": 3
+}
+```
+
+The CLI equivalent is:
+
+```bash
+everruns agents update agent_01triage --description 'Support intake owner' \
+  --reason 'Set the description requested by the user' --context-revision 3
+```
+
+Neither route stores the reason or context revision on the agent. Native callers
+must not JSON-encode `params` into a string.
+
 This subject's Chat Completions transport sends the current tools at the top level.
 It preserves earlier messages and records positioned additions/removals, but a
 schema addition changes that top-level array. It does **not** exercise Framework's
@@ -314,6 +335,116 @@ without a usage response. Hosted Everruns events use the shared per-reasoning
 iteration usage projector, which avoids counting completion and rollup copies
 of the same generation; its metrics use the `llm.` prefix.
 
+### Corrected Muse comparison (2026-10-24)
+
+At clean source `18340609e`, **71/72 matched Muse trials passed**: three
+replications of the same eight tasks per surface. CLI and eager native passed
+24/24 each; bounded native passed 23/24. The remaining batch-update trial used
+its 12 model steps on discovery and reads, made no mutation, and failed the
+state scorer. It remains in the input, cost and success denominators.
+
+| Surface | Passed | Mean total input/task | Mean model calls | Mean duration | Reported cost, 24 trials |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CLI | 24/24 | 21,647 | 7.00 | 15.28 s | $0.036005 |
+| Bounded native | 23/24 | 70,327 | 5.46 | 12.84 s | $0.148498 |
+| Eager native | 24/24 | 452,712 | 2.83 | 14.58 s | $0.447777 |
+
+Input includes provider cache reads. The disjoint totals are:
+
+| Surface | Uncached input | Cache-read input | Output | Reasoning, subset of output |
+| --- | ---: | ---: | ---: | ---: |
+| CLI | 282,001 | 237,525 | 36,648 | 18,477 |
+| Bounded native | 1,416,510 | 271,330 | 31,522 | 16,031 |
+| Eager native | 4,294,468 | 6,570,628 | 25,943 | 14,262 |
+
+Bounded native processed 84.5% less input than eager native, with one task
+failure versus none. It still processed 3.25× CLI's input on this corpus. The
+first request held one 556-byte search schema for bounded native, one 1,205-byte
+shell schema for CLI, or 344 schemas totaling 651,943 bytes for eager native.
+The bounded active view stayed within 32 optional schemas / 64 KiB, and search
+results within 32 KiB, including omission hints.
+
+The per-task result explains the surface tradeoff. Simple agent lookup used
+7,681 input tokens with bounded native versus 14,403 with CLI; the three-family
+read used 10,476 versus 19,215. Description update used 80,056 versus 18,844;
+batch update used 224,374 versus 25,676 (including the failed bounded trial).
+The platform's agent-write schemas are about 31 KiB each. The fallback transport
+places selected schemas in search history and in subsequent function lists;
+CLI can use a small leaf help page and filter results in the shell. Native
+lookup and code-based composition therefore remain complementary.
+
+All 72 trials reported complete usage and effective cost. Cache-read shares
+were about 45.7% CLI, 16.1% bounded native and 60.5% eager native. These are
+observations after warmups, not controlled cold/warm experiments. In particular,
+this HTTP fallback rewrites its top-level tools when discovery adds schemas;
+it does not measure Framework's provider inline disclosure. Durations also
+shared the executor with other checks.
+
+The original creation prompt left optional configuration open while the scorer
+required a minimal payload. The corrected task explicitly leaves optional
+creation settings unspecified. Earlier failed/diagnostic attempts and their
+original scores are retained separately rather than rescored into this table.
+
+### Second model and result volume (2026-10-24)
+
+GPT-6 Luna passed **24/24 matched trials**, one replication per surface:
+
+| Surface | Passed | Mean total input/task | Mean model calls | Reported cost, eight trials |
+| --- | ---: | ---: | ---: | ---: |
+| CLI | 8/8 | 13,755 | 6.25 | $0.008376 |
+| Bounded native | 8/8 | 20,922 | 3.63 | $0.011929 |
+| Eager native | 8/8 | 104,466 | 2.38 | $0.015080 |
+
+The client submitted the same schema bytes, but provider-reported first eager
+request input was about 43,800 tokens for Luna versus 159,200 for Muse. Byte
+footprints alone cannot predict model input. Compare surfaces within each model;
+do not pool token counts or make a cross-model cost/quality ranking from this set.
+
+The separate 200-agent result-volume corpus passed **18/18 Muse trials**. Mean
+input per task over three repetitions was:
+
+| Task | CLI | Bounded native | Eager native |
+| --- | ---: | ---: | ---: |
+| Count agents by default model | 19,164 | 44,698 | 359,278 |
+| Find one named agent | 13,743 | 14,335 | 318,937 |
+
+Native aggregation returned 243,745 bytes of agent rows to the model per call;
+CLI could aggregate in Bashkit before returning output. CLI's measured output
+still includes help and intermediate inspection, so it is not a claim that every
+CLI call returned only a tiny aggregate. Server-side filtering kept the eager
+native targeted lookup to about 1,260 bytes of actual resource output, while
+schema/discovery costs remained separate. Both mechanisms matter.
+
+### Evidence and replay
+
+The [summary and provenance](results/corrected-2026-10-24-summary.json) separates
+matched tasks by model from result-volume tasks. The
+[formal raw archive](results/corrected-2026-10-24-live.jsonl.gz) holds all 114
+trials: 113 passed, one failed, zero infrastructure errors. All 535 model
+requests reported usage and effective cost; total reported formal-run cost was
+$0.818928. This excludes earlier diagnostics/warmups, retained with unchanged
+scores in the [38-record diagnostic archive](results/corrected-2026-10-24-diagnostics.jsonl.gz)
+and its [manifest](results/corrected-2026-10-24-diagnostics.json).
+
+Batches preserve original Mira trial index zero; the manifest carries the three
+replication indices, rotated arm order, exact commands, source and binary hashes,
+and raw line ranges. Decompressed report bytes remain unchanged. Recompute the
+matched cohort with the Rust reporter (use `jq` only to select the cohort):
+
+```bash
+gzip -dc results/corrected-2026-10-24-live.jsonl.gz | \
+  jq -c 'select(.case | startswith("surface-scale") | not)' | \
+  ./target/debug/summarize_surfaces - > /tmp/matched-summary.json
+```
+
+Targeted deterministic checks passed: 80 platform tests, four Rust reporting
+tests, 11 shared-index tests, 16 bounded-disclosure tests, five Framework
+catalog-lifecycle tests and 18 MCP-study tests. Strict Clippy passed for the
+platform study, contracts and core; repository guards, OKF and public docs
+build/checks passed. The separate [Framework MCP follow-up](../mcp-scale/README.md#final-source-follow-up-2026-10-24)
+passed all six live tasks at 2,000 tools after the same runtime changes and
+retains offline stress through 10,000 tools. No Yolop source changed.
+
 ### Recorded Muse comparison (2026-10-23)
 
 **48/48 trials passed the fixture's current assertions**: eight matched tasks, three repetitions per surface,
@@ -375,17 +506,17 @@ unchanged historical evidence. New runs must use the corrected three-arm contrac
   reason; all nine existing-agent updates also omit the context revision. CLI
   supplies reasons for all 12 mutations and revisions for all nine updates.
   The captured operation schemas describe payloads; production carries these
-  fields separately as invocation metadata. Native projection currently omits
-  that envelope, and the simulator accepts writes without enforcing the
-  default production agent-reason rule. Both arms need an equivalent invocation
-  contract and shared reason/stale-context validation before rerunning.
+  fields separately as invocation metadata. The original native projection omitted
+  that envelope, and the simulator accepted writes without enforcing the
+  default production agent-reason rule. The corrected run uses equivalent
+  invocation envelopes and shared reason/stale-context validation.
 - **Metadata and state preservation.** The simulator's generic create/update
   merges put CLI reasons into all 12 resulting agent rows and context revisions
   into nine updated rows. Those are invocation metadata, not entity fields.
-  Separate them before payload validation/mutation. The state scorer checks
-  specified partial fields and minimum operation counts, so it misses this
-  extra state. Add full before/after invariants, exact target checks, and
-  read-before-write/stale-revision cases.
+  The original state scorer checked only specified partial fields and
+  minimum operation counts. The corrected adapter separates metadata before
+  mutation; full before/after invariants, exact targets and ordered-read/revision
+  checks now reject these extra changes.
 - **CLI discovery friction.** The 24 CLI trials contain 136 shell calls: the
   existing friction classifier labels 75 as help reads and five as rejected
   guesses. Targeted command discovery/signatures/examples should be evaluated
@@ -393,11 +524,12 @@ unchanged historical evidence. New runs must use the corrected three-arm contrac
 
 The production invocation contract is documented in
 [Change Reasons and Manager Context](../../knowledge/execution/change-reasons-and-manager-context.md).
-The next comparable matrix should include CLI, eager native and Framework
-bounded native over the same platform catalog, tasks and invocation policy.
-The separate MCP matrix uses different schemas/tasks and cannot supply that
-missing third arm. Keep the existing raw traces and their original scores as
-historical evidence; the review does not retroactively claim a new pass rate.
+The corrected matrix above now includes all three interfaces over the same
+platform catalog, tasks and invocation policy. Its bounded arm reuses the
+production index; the HTTP loop still does not qualify Framework durable
+disclosure or provider inline changes. The separate Framework MCP matrix uses
+different schemas/tasks and is complementary evidence, not another platform
+arm. Existing raw traces and original scores remain unchanged historical evidence.
 
 ### Historical CLI versus three-tool baseline
 

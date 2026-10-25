@@ -153,6 +153,43 @@ The [platform capability comparison](../platform-capability/README.md#recorded-m
 separately compares CLI with all 344 real platform operation schemas exposed
 eagerly; it does not exercise Framework bounded discovery or hosted persistence.
 
+## Final source follow-up (2026-10-24)
+
+A separate [clean-source follow-up](results/followup-2026-10-24-summary.json)
+at `18340609e` passed **6/6 Muse 1.3 Contributor trials**: one read-only ticket
+and one state-verified staging rollback per surface, at 2,000 tools on one
+server. No trials failed, encountered infrastructure errors, or skipped.
+Each surface used one distinct MCP operation for reading and four for rollback.
+The [full trace](results/followup-2026-10-24-live.jsonl.gz) retains every event;
+the summary records source and binary hashes, complete usage/cost/request
+capture coverage, and a successful reproduction of each raw usage row through
+the shared Rust projection. Existing qualification archives remain separate.
+
+Totals across the two tasks per surface:
+
+| Surface | Uncached input | Cache-read input | Accumulated input | Model calls | Provider-reported cost |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Bounded native | 18,700 | 9,668 | 28,368 | 10 | $0.002095736 |
+| CLI | 16,724 | 28,793 | 45,517 | 13 | $0.002017586 |
+| Hybrid | 27,304 | 20,420 | 47,724 | 10 | $0.002978240 |
+
+Native used less accumulated input here. CLI's provider-reported effective cost
+was about 4% lower despite processing 1.60× native's input. Two tasks per
+surface do not establish a stable cost ranking. Cache reads are observational:
+the run overlapped the frozen platform comparison, so these counts establish
+neither causal cache savings nor a universally cheapest surface.
+
+The [final eight-row offline stress report](results/followup-2026-10-24-stress.json)
+covers 50, 600, 2,000 and 10,000 tools on one and ten servers using the production
+shared index. Query p95 across its three queries and both server partitions was
+1.293–3.119 ms at 2,000 tools and 6.339–21.848 ms at 10,000 tools. This dev build
+disabled debug information. The stress run overlapped a Framework rebuild and
+platform model checks on the shared executor; CPU contention makes these
+timings observational, and higher timings than earlier runs do not establish
+an algorithmic regression. They exclude model latency and MCP process/network
+startup. Ten-thousand-tool evidence remains offline stress, without a live
+model accuracy claim.
+
 ## What gets measured
 
 - **Tool evidence** requires at least one completed MCP operation in the Framework transcript.
