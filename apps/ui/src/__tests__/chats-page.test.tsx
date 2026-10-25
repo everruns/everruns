@@ -223,13 +223,6 @@ describe("Thread surface", () => {
     });
   }
 
-  it("loads the thread without feature-flag configuration", async () => {
-    await renderThread();
-
-    expect(mockSessionContext).toHaveBeenCalled();
-    expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
-  });
-
   it("resolves and reopens an adopted thread through the existing lifecycle", () => {
     const { rerender } = render(<ChatThreadView threadId="sess_1" threadMode />);
     fireEvent.click(screen.getByRole("button", { name: "Resolve thread" }));

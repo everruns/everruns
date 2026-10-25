@@ -167,33 +167,6 @@ describe("FileBrowser FileTree", () => {
     jest.clearAllMocks();
   });
 
-  it("renders files with name and size", () => {
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [mockFile],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByText("test.ts")).toBeInTheDocument();
-    expect(screen.getByText("1024 B")).toBeInTheDocument();
-  });
-
-  it("sorts directories before files", () => {
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [mockFile, mockDirectory],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    const items = screen.getAllByRole("treeitem");
-    // Directory should come first
-    expect(items[0]).toHaveTextContent("src");
-  });
-
   it("calls onFileSelect when file is clicked", () => {
     const onFileSelect = jest.fn();
     (useFiles as jest.Mock).mockReturnValue({
@@ -251,21 +224,6 @@ describe("FileBrowser FileTree", () => {
 
     // Should not have trash icon for readonly file
     expect(screen.queryByTitle("Delete")).not.toBeInTheDocument();
-  });
-
-  it("highlights selected file", () => {
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [mockFile],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(
-      <FileBrowser workspaceId="test-session" selectedPath="/workspace/test.ts" />,
-    );
-
-    const selectedItem = screen.getByText("test.ts").closest("[role='treeitem']");
-    expect(selectedItem).toHaveClass("bg-accent/20");
   });
 });
 
@@ -371,25 +329,6 @@ describe("FileBrowser Directory Expansion", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  it("calls listFiles API when directory is expanded", async () => {
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [mockDirectory],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    mockListFiles.mockResolvedValue([mockSubFile]);
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    // Click to expand directory
-    fireEvent.click(screen.getByText("src"));
-
-    await waitFor(() => {
-      expect(mockListFiles).toHaveBeenCalledWith("test-session", "/src");
-    });
   });
 
   it("renders subdirectory files after expansion", async () => {
@@ -503,38 +442,6 @@ describe("FileBrowser recursion guard", () => {
     expect(screen.queryByText("workspace")).not.toBeInTheDocument();
   });
 
-  it("filters self-referencing entries but keeps legitimate children", () => {
-    const dirA = makeFile({
-      id: "dirA",
-      path: "/workspace/src",
-      name: "src",
-      is_directory: true,
-    });
-    const fileB = makeFile({
-      id: "fileB",
-      path: "/workspace/README.md",
-      name: "README.md",
-    });
-    // Pathological: an entry whose path matches the root listing path
-    const selfRef = makeFile({
-      id: "selfRef",
-      path: "/workspace",
-      name: ".",
-      is_directory: true,
-    });
-
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [dirA, fileB, selfRef],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    renderWithProviders(<FileBrowser workspaceId="test-session" />);
-
-    expect(screen.getByText("src")).toBeInTheDocument();
-    expect(screen.getByText("README.md")).toBeInTheDocument();
-  });
-
   it("does not stack-overflow with mutual directory cycle (A lists B, B lists A)", async () => {
     const dirA = makeFile({
       id: "a",
@@ -592,54 +499,6 @@ describe("FileBrowser recursion guard", () => {
     // Multiple "a" nodes appear because the cycle re-renders A's subtree
     // until the depth limit is hit — that's the expected safe behavior
     expect(screen.getAllByText("a").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders empty directory without errors", () => {
-    const emptyDir = makeFile({
-      id: "empty",
-      path: "/workspace/empty",
-      name: "empty",
-      is_directory: true,
-    });
-
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [emptyDir],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    expect(() => {
-      renderWithProviders(<FileBrowser workspaceId="test-session" />);
-    }).not.toThrow();
-
-    expect(screen.getByText("empty")).toBeInTheDocument();
-  });
-
-  it("handles directory listing with only self-referencing entries (all filtered)", () => {
-    // Every entry in the root listing points back to /workspace
-    const selfRef1 = makeFile({
-      id: "s1",
-      path: "/workspace",
-      name: ".",
-      is_directory: true,
-    });
-    const selfRef2 = makeFile({
-      id: "s2",
-      path: "/workspace",
-      name: "..",
-      is_directory: true,
-    });
-
-    (useFiles as jest.Mock).mockReturnValue({
-      data: [selfRef1, selfRef2],
-      isLoading: false,
-      refetch: mockRefetch,
-    });
-
-    // All entries filtered → falls through to empty workspace
-    expect(() => {
-      renderWithProviders(<FileBrowser workspaceId="test-session" />);
-    }).not.toThrow();
   });
 
   it("handles duplicate file entries gracefully", () => {

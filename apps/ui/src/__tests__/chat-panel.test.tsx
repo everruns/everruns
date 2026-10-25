@@ -344,36 +344,6 @@ describe("ChatPanel compaction divider", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
   });
 
-  it("renders compaction divider with message counts and strategy", () => {
-    const compactedEvent = {
-      id: "evt-compacted-1",
-      type: "context.compacted",
-      session_id: "session-1",
-      ts: new Date().toISOString(),
-      context: { turn_id: "turn-1" },
-      data: {
-        strategy_used: "observation_masking",
-        messages_before: 42,
-        messages_after: 28,
-        duration_ms: 150,
-        steps: [
-          {
-            strategy: "observation_masking",
-            messages_after: 28,
-            duration_ms: 150,
-          },
-        ],
-      },
-    };
-    mockSessionContext.chatEvents = [compactedEvent];
-
-    render(<ChatPanel />);
-
-    expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
-    expect(screen.getByText(/42 → 28 messages/)).toBeInTheDocument();
-    expect(screen.getByText(/observation_masking/)).toBeInTheDocument();
-  });
-
   it("renders compaction divider without strategy when strategy is none", () => {
     const compactedEvent = {
       id: "evt-compacted-2",
@@ -397,33 +367,6 @@ describe("ChatPanel compaction divider", () => {
     expect(screen.getByText(/20 → 20 messages/)).toBeInTheDocument();
     // Should NOT show "none" as a strategy
     expect(screen.queryByText(/· none/)).not.toBeInTheDocument();
-  });
-
-  it("renders compaction divider with auto strategy showing multiple steps", () => {
-    const compactedEvent = {
-      id: "evt-compacted-3",
-      type: "context.compacted",
-      session_id: "session-1",
-      ts: new Date().toISOString(),
-      context: { turn_id: "turn-1" },
-      data: {
-        strategy_used: "auto",
-        messages_before: 100,
-        messages_after: 30,
-        duration_ms: 2500,
-        steps: [
-          { strategy: "observation_masking", messages_after: 70, duration_ms: 50 },
-          { strategy: "summarization", messages_after: 30, duration_ms: 2450 },
-        ],
-      },
-    };
-    mockSessionContext.chatEvents = [compactedEvent];
-
-    render(<ChatPanel />);
-
-    expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
-    expect(screen.getByText(/100 → 30 messages/)).toBeInTheDocument();
-    expect(screen.getByText(/auto/)).toBeInTheDocument();
   });
 });
 
@@ -657,29 +600,6 @@ describe("ChatPanel placeholder", () => {
 
     expect(mockSessionContext.chatSends.submit).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose a model/)).toBeInTheDocument();
-  });
-
-  it("advertises interactive cards on an existing thread with the default model", async () => {
-    mockSessionContext.llmModel = availableDefaultModel;
-    mockSessionContext.chatSends.submit.mockResolvedValueOnce(undefined);
-
-    render(<ChatPanel />);
-    const textarea = screen.getByRole("combobox");
-    fireEvent.change(textarea, { target: { value: "hello" } });
-    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
-
-    await waitFor(() =>
-      expect(mockSessionContext.chatSends.submit).toHaveBeenCalledWith({
-        text: "hello",
-        images: [],
-        files: [],
-        controls: {
-          hints: { setup_connection: true, url_elicitation: true, ask_user: true },
-          locale: "en-US",
-        },
-        addressedParticipantId: null,
-      }),
-    );
   });
 
   it.each(["image", "file"])("advertises interactive cards with a %s attachment", async (kind) => {

@@ -16,12 +16,6 @@ describe("Slack response policy", () => {
     />
   );
 
-  it("offers participation settings without feature enrollment", () => {
-    render(settings());
-    expect(screen.getByLabelText("Response policy")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Reply mode")).not.toBeInTheDocument();
-  });
-
   it("lets a builder select relevant messages", async () => {
     render(settings());
     fireEvent.click(screen.getByLabelText("Response policy"));

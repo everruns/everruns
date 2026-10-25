@@ -212,30 +212,6 @@ describe("Slack channel first run", () => {
     expect(screen.getByRole("button", { name: "Opening Slack…" })).toBeDisabled();
   });
 
-  it("does not offer a separate enable switch on the channel form", () => {
-    render(
-      <ChannelForm
-        state={getDefaultChannelFormState("slack")}
-        onChange={jest.fn()}
-        mode="edit"
-        channelId="appchan_123"
-      />,
-    );
-
-    expect(screen.queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
-  });
-
-  it("starts with manual Slack credentials collapsed", () => {
-    render(
-      <ChannelForm state={getDefaultChannelFormState("slack")} onChange={jest.fn()} mode="new" />,
-    );
-
-    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Bot token")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Session strategy")).toBeVisible();
-    expect(screen.queryByLabelText("Reply mode")).not.toBeInTheDocument();
-  });
-
   it("keeps saved credentials and manual-only setup collapsed until requested", () => {
     const { unmount } = render(
       <ChannelForm

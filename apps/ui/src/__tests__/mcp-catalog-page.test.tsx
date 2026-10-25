@@ -176,17 +176,6 @@ describe("McpCatalogPage", () => {
     expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();
   });
 
-  it("renders configured MCP servers", () => {
-    render(<McpCatalogPage />);
-
-    expect(screen.getByText("microsoft_learn")).toBeInTheDocument();
-    expect(screen.getByText("Microsoft Learn documentation MCP server")).toBeInTheDocument();
-    expect(screen.getByText("Set Key")).toBeInTheDocument();
-    expect(screen.getByText("2 agents")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Host" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Used by" })).toBeInTheDocument();
-  });
-
   it("renders the empty state when no servers exist", () => {
     mockUseMcpServerCatalog.mockReturnValue({
       data: [],

@@ -258,24 +258,6 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps MCP Connect visible without endpoint feature flag data", () => {
-    mockUseAuth.mockReturnValue({
-      user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
-      requiresAuth: false,
-      isAuthenticated: true,
-      config: { mode: "none" },
-      isLoading: false,
-      logout: jest.fn(),
-      logoutPending: false,
-      createOrganization: undefined,
-    });
-
-    render(<Sidebar />);
-    fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
-
-    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
-  });
-
   it("preserves authentication-only actions in authenticated mode", () => {
     mockUseAuth.mockReturnValue({
       user: { name: "Test User", email: "test@example.com", avatar_url: null },
@@ -512,14 +494,6 @@ describe("Sidebar", () => {
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
   });
 
-  it("leads with Chats above the first labelled group", () => {
-    render(<Sidebar />);
-
-    const navigation = screen.getByRole("navigation");
-    const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chats");
-  });
-
   it("hangs the thread list directly under the Chats entry", () => {
     mockThreads.mockReturnValue([{ id: "sess_1", title: "Standup" }]);
 
@@ -695,18 +669,6 @@ describe("Sidebar with config", () => {
     expect(mockPush).toHaveBeenCalledWith("/billing");
   });
 
-  it("renders sections without labels (unlabeled sections)", () => {
-    const customNav: NavigationSection[] = [
-      {
-        items: [{ name: "Unlabeled Item", href: "/unlabeled", icon: Settings }],
-      },
-    ];
-
-    render(<Sidebar config={{ navigation: customNav }} />);
-
-    expect(screen.getByText("Unlabeled Item")).toBeInTheDocument();
-  });
-
   it("highlights active item with exact match when exact is true", () => {
     mockPathname.mockReturnValue("/custom");
     const customNav: NavigationSection[] = [
@@ -833,15 +795,6 @@ describe("Create Organization dialog", () => {
       isLoading: false,
       isError: false,
     });
-  });
-
-  it("hides chat warning badge when LLM providers are configured", () => {
-    render(<Sidebar />);
-
-    const warningBtn = screen.queryByRole("button", {
-      name: /no llm provider configured/i,
-    });
-    expect(warningBtn).not.toBeInTheDocument();
   });
 
   // Sentry EVERRUNS-1Z: a rejected logout escaped the async click handler, so

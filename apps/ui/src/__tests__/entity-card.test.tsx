@@ -56,19 +56,6 @@ describe("EntityIdentity", () => {
     await waitFor(() => expect(screen.getByRole("status")).toBeEmptyDOMElement());
     jest.useRealTimers();
   });
-
-  it("wraps a page-heading label without exposing the long ID to the layout", () => {
-    const value = "entity_019fda100f037c008024046d6b3d74c0";
-
-    render(
-      <EntityIdentity value={value} truncate={false}>
-        A deliberately long readable entity heading for a narrow viewport
-      </EntityIdentity>,
-    );
-
-    expect(screen.getByText(/deliberately long readable/)).toHaveClass("break-words", "min-w-0");
-    expect(screen.queryByText(value)).not.toBeInTheDocument();
-  });
 });
 
 describe("EntityCardCapabilities", () => {

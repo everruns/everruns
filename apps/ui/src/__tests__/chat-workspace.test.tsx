@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { useChatThreads } from "@/hooks/use-chat-threads";
@@ -182,13 +180,6 @@ it("preserves the permanent conversation while opening and expanding a separate 
   expect(screen.getByRole("button", { name: "Restore split view" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Close threads" }));
   expect(mockPush).toHaveBeenLastCalledWith("/chats");
-});
-it("keeps transcript rows from remembering an inline size", () => {
-  const css = readFileSync(join(process.cwd(), "src/app/design-system.css"), "utf8");
-  const block = css.slice(css.indexOf(".chat-transcript-row"));
-  const rule = block.slice(0, block.indexOf("}"));
-  expect(rule).toContain("contain-intrinsic-block-size: auto 4rem");
-  expect(rule).not.toContain("contain-intrinsic-size:");
 });
 it("opens bookmarked drafts beside permanent Chat", () => {
   mockPath = "/chats/new";

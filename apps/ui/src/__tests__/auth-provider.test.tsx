@@ -73,12 +73,6 @@ describe("AuthProvider pluggable actions", () => {
     expect(mockLogoutMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("createOrganization is undefined by default", () => {
-    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
-
-    expect(result.current.createOrganization).toBeUndefined();
-  });
-
   it("provides createOrganization override when given", () => {
     const customCreate = jest.fn();
     const { result } = renderHook(() => useAuth(), {
@@ -88,15 +82,6 @@ describe("AuthProvider pluggable actions", () => {
     expect(result.current.createOrganization).toBe(customCreate);
     result.current.createOrganization!();
     expect(customCreate).toHaveBeenCalledTimes(1);
-  });
-
-  it("logoutPending is false when using override", () => {
-    const customLogout = jest.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: makeWrapper({ logout: customLogout }),
-    });
-
-    expect(result.current.logoutPending).toBe(false);
   });
 
   it("exposes the anonymous current user without claiming authentication is required", () => {

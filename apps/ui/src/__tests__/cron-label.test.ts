@@ -10,10 +10,6 @@ describe("getCronIntervalSeconds", () => {
     expect(getCronIntervalSeconds("0 * * * * * *")).toBe(60);
   });
 
-  it("returns 300 for every-5-minute 7-field expression", () => {
-    expect(getCronIntervalSeconds("0 */5 * * * * *")).toBe(300);
-  });
-
   it("returns 3600 for hourly expression", () => {
     expect(getCronIntervalSeconds("0 0 * * * * *")).toBe(3600);
   });

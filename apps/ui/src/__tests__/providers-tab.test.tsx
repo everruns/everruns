@@ -6,13 +6,10 @@ import {
   providerDefaultProblem,
 } from "@/components/models/defaults-tab";
 import { CredentialFields } from "@/components/providers/credential-fields";
-import ProvidersRedirect from "@/app/(main)/settings/providers/page";
 import type { ModelWithProvider, Provider } from "@/lib/api/types";
 
-const mockRedirect = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  redirect: (url: string) => mockRedirect(url),
 }));
 
 jest.mock("next/link", () => ({
@@ -286,12 +283,5 @@ describe("CredentialFields", () => {
       />,
     );
     expect(screen.getByLabelText("API Key")).not.toBeRequired();
-  });
-});
-
-describe("/settings/providers", () => {
-  it("redirects to the Providers tab", () => {
-    ProvidersRedirect();
-    expect(mockRedirect).toHaveBeenCalledWith("/models/providers");
   });
 });

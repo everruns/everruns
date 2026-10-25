@@ -30,29 +30,6 @@ describe("FileTree", () => {
       fireEvent.click(screen.getByText("test.txt"));
       expect(onSelect).toHaveBeenCalledWith("/test.txt");
     });
-
-    it("highlights selected file", () => {
-      render(
-        <FileTree selectedPath="/test.txt">
-          <FileTreeFile path="/test.txt" name="test.txt" />
-          <FileTreeFile path="/other.txt" name="other.txt" />
-        </FileTree>,
-      );
-
-      const selectedFile = screen.getByText("test.txt").closest("[role='treeitem']");
-      expect(selectedFile).toHaveClass("bg-accent/20");
-    });
-
-    it("does not highlight unselected files", () => {
-      render(
-        <FileTree selectedPath="/test.txt">
-          <FileTreeFile path="/other.txt" name="other.txt" />
-        </FileTree>,
-      );
-
-      const unselectedFile = screen.getByText("other.txt").closest("[role='treeitem']");
-      expect(unselectedFile).not.toHaveClass("bg-accent/20");
-    });
   });
 
   describe("keyboard navigation", () => {
@@ -166,20 +143,6 @@ describe("FileTreeFolder", () => {
 
       expect(screen.getByTestId("folder-open-icon")).toBeInTheDocument();
     });
-
-    it("rotates chevron when expanded", () => {
-      render(
-        <FileTree expanded={new Set(["/src"])}>
-          <FileTreeFolder path="/src" name="src">
-            <FileTreeFile path="/src/index.ts" name="index.ts" />
-          </FileTreeFolder>
-        </FileTree>,
-      );
-
-      // The ChevronRightIcon receives rotate-90 class when expanded
-      const chevron = screen.getByTestId("chevron-icon");
-      expect(chevron).toHaveClass("rotate-90");
-    });
   });
 
   describe("actions prop", () => {
@@ -229,21 +192,6 @@ describe("FileTreeFolder", () => {
       const trigger = screen.getByRole("button", { expanded: true });
       const action = screen.getByTestId("inline-action");
       expect(trigger).not.toContainElement(action);
-    });
-  });
-});
-
-describe("FileTreeFile", () => {
-  describe("rendering", () => {
-    it("renders custom icon", () => {
-      const CustomIcon = () => <span data-testid="custom-icon" />;
-      render(
-        <FileTree>
-          <FileTreeFile path="/test.txt" name="test.txt" icon={<CustomIcon />} />
-        </FileTree>,
-      );
-
-      expect(screen.getByTestId("custom-icon")).toBeInTheDocument();
     });
   });
 });

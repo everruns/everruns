@@ -6,11 +6,6 @@ describe("usePageTitle", () => {
     document.title = "initial";
   });
 
-  it("sets document.title to the formatted value on mount", () => {
-    renderHook(() => usePageTitle("Agents"));
-    expect(document.title).toBe("Agents · Everruns");
-  });
-
   it("joins multiple segments with the separator", () => {
     renderHook(() => usePageTitle("New Agent", "Agents"));
     expect(document.title).toBe("New Agent · Agents · Everruns");

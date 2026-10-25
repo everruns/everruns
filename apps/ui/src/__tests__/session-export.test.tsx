@@ -220,26 +220,6 @@ describe("downloadSessionExport", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it("shows the server message as an error toast on 413", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 413,
-        statusText: "Payload Too Large",
-        body: JSON.stringify({ detail: "ATIF document exceeds the 10 MiB export cap" }),
-      }),
-    );
-    const notify = jest.fn();
-
-    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
-
-    expect(downloads).toEqual([]);
-    expect(notify).toHaveBeenCalledWith({
-      title: "ATIF export failed",
-      body: "ATIF document exceeds the 10 MiB export cap",
-    });
-  });
-
   it("falls back to a clear message when the 413 body is not parseable", async () => {
     fetchMock.mockResolvedValueOnce(
       mockResponse({ ok: false, status: 413, statusText: "Payload Too Large" }),

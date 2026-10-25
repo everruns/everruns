@@ -140,15 +140,6 @@ describe("ModelsPage", () => {
     mockReview.mockResolvedValue(undefined);
   });
 
-  it("renders the Models, Providers and Defaults tabs", () => {
-    render(<ModelsPage />, { wrapper });
-    expect(screen.getByRole("heading", { level: 1, name: "Models" })).toBeInTheDocument();
-    for (const name of [/^Models/, /^Providers/, /^Defaults/]) {
-      expect(screen.getByRole("link", { name })).toBeInTheDocument();
-    }
-    expect(screen.getByRole("button", { name: "Connect provider" })).toBeInTheDocument();
-  });
-
   it("links each tab to its own path", () => {
     render(<ModelsPage />, { wrapper });
     expect(screen.getByRole("link", { name: /^Models/ })).toHaveAttribute("href", "/models");

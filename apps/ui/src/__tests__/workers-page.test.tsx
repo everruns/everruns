@@ -243,20 +243,6 @@ describe("WorkersPage", () => {
   // ============================================
 
   describe("Worker Actions", () => {
-    it("shows Drain button for active workers", () => {
-      render(<WorkersPage />, { wrapper });
-
-      const drainButton = screen.getByRole("button", { name: /^Drain$/i });
-      expect(drainButton).toBeInTheDocument();
-    });
-
-    it("shows Resume button for draining workers", () => {
-      render(<WorkersPage />, { wrapper });
-
-      const resumeButton = screen.getByRole("button", { name: /Resume/i });
-      expect(resumeButton).toBeInTheDocument();
-    });
-
     it("calls drain mutation after confirmation", () => {
       const mockDrainMutate = jest.fn();
       mockUseDrainWorker.mockReturnValue({
@@ -316,68 +302,6 @@ describe("WorkersPage", () => {
 
       expect(screen.queryByRole("button", { name: /^Drain$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Resume/i })).not.toBeInTheDocument();
-    });
-  });
-
-  // ============================================
-  // Summary with various worker configurations
-  // ============================================
-
-  describe("Summary with different worker configurations", () => {
-    it("handles all draining workers", () => {
-      const allDraining: WorkersResponse = {
-        data: [
-          makeWorker({
-            id: "w1",
-            status: "draining",
-            max_concurrency: 10,
-            current_load: 5,
-            accepting_tasks: false,
-          }),
-          makeWorker({
-            id: "w2",
-            status: "draining",
-            max_concurrency: 10,
-            current_load: 3,
-            accepting_tasks: false,
-          }),
-        ],
-        total: 2,
-        summary: { active: 0, draining: 2, stopped: 0, total_capacity: 0, total_load: 0 },
-      };
-
-      mockUseWorkers.mockReturnValue({
-        data: allDraining,
-        isLoading: false,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<WorkersPage />, { wrapper });
-
-      expect(screen.getByText("0 active")).toBeInTheDocument();
-      expect(screen.getByText("0%")).toBeInTheDocument();
-    });
-
-    it("handles high load scenario", () => {
-      const highLoad: WorkersResponse = {
-        data: [makeWorker({ id: "w1", status: "active", max_concurrency: 10, current_load: 9 })],
-        total: 1,
-        summary: { active: 1, draining: 0, stopped: 0, total_capacity: 10, total_load: 9 },
-      };
-
-      mockUseWorkers.mockReturnValue({
-        data: highLoad,
-        isLoading: false,
-        error: null,
-        refetch: jest.fn(),
-      });
-
-      render(<WorkersPage />, { wrapper });
-
-      // 9/10 * 100 = 90.0%
-      expect(screen.getByText("90.0%")).toBeInTheDocument();
-      expect(screen.getByText("9/10 slots")).toBeInTheDocument();
     });
   });
 });

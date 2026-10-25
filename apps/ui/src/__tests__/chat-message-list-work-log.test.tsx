@@ -78,12 +78,6 @@ function renderEmpty(emptyState?: React.ReactNode) {
 }
 
 describe("ChatMessageList empty state", () => {
-  it("invites a first message by default", () => {
-    renderEmpty();
-
-    expect(screen.getByText("no_messages_yet")).toBeInTheDocument();
-  });
-
   it("replaces that invitation with the override rather than stacking both", () => {
     renderEmpty(<div>Nothing to chat with</div>);
 

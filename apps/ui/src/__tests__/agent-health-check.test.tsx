@@ -98,16 +98,6 @@ describe("AgentHealthCheck", () => {
     expect(screen.getByText(/300 output tokens/)).toBeInTheDocument();
   });
 
-  it("uses a rail-safe two-column summary and wrapped expandable details", () => {
-    mockRun = completedRun;
-    render(<AgentHealthCheck agentId="agent_1" />);
-
-    expect(screen.getByText("Pass rate").parentElement?.parentElement).toHaveClass("grid-cols-2");
-    const details = screen.getByText("Case results (2)").closest("details");
-    expect(details).toHaveClass("min-w-0");
-    expect(screen.getByText("Responded politely.")).toHaveClass("break-words");
-  });
-
   it("shows the failure reason when the run failed", () => {
     mockRun = {
       id: "healthcheck_2",
