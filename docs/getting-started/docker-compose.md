@@ -5,6 +5,9 @@ description: "Deploy the Everruns platform with Docker Compose: control plane, w
 
 Deploy the complete Everruns platform using Docker Compose. This guide sets up the control plane, workers, UI, and database in a single command.
 
+On your own computer, [`everruns docker up`](/getting-started/run-locally/) does
+these steps for you. On a cluster, use the [Helm chart](/getting-started/kubernetes/).
+
 ## Prerequisites
 
 - Docker Engine 20.10+
