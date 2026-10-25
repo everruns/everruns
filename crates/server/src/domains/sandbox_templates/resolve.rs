@@ -315,7 +315,11 @@ fn sandbox_targets_for_grade(
             available: e2b_registered,
             reason: (!e2b_registered)
                 .then(|| "the E2B provider is not registered in this deployment".to_string()),
-            capabilities: managed_capabilities(false),
+            // E2B enforces deny and allowlists on its own network.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(false)
+            },
             containment_levels: vec!["isolated".to_string()],
             durability: "provider_snapshot".to_string(),
             credential_sources: vec![

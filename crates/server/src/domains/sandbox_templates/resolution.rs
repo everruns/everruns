@@ -30,7 +30,7 @@ const MANAGED_PROVIDERS: &[&str] = &["daytona", "e2b", "modal"];
 
 /// Managed providers that enforce `containment.network` themselves, from the
 /// `network` entry the server writes into their provider config.
-const PROVIDER_ENFORCED_NETWORK: &[&str] = &["daytona", "modal"];
+const PROVIDER_ENFORCED_NETWORK: &[&str] = &["daytona", "e2b", "modal"];
 
 /// Managed providers offered only at development grade while their integration
 /// is experimental. The plugin is linked into every build, so registration
@@ -743,8 +743,8 @@ fn validate_target_contract(
         }
         SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            // Modal (`modal_egress`) and Daytona (`daytona::network`) enforce
-            // deny and allowlists themselves.
+            // Modal (`modal_egress`), Daytona and E2B (their `network` modules)
+            // enforce deny and allowlists themselves.
             if !provider.is_some_and(|provider| PROVIDER_ENFORCED_NETWORK.contains(&provider))
                 && containment.network != SandboxNetworkPolicy::Allow
             {
@@ -1334,7 +1334,7 @@ mod tests {
     }
 
     #[test]
-    fn modal_and_daytona_enforce_the_template_network_policy() {
+    fn managed_providers_enforce_the_template_network_policy() {
         let modal = |network: SandboxNetworkPolicy, options: Value| {
             let mut value = profile(SandboxTargetSpec::managed("modal"));
             value.containment = Some(SandboxContainmentSpec {
@@ -1399,7 +1399,7 @@ mod tests {
             assert!(error.contains(expected), "{error}");
         }
 
-        // Daytona enforces deny and allowlists too; E2B does not yet.
+        // Daytona and E2B enforce deny and allowlists too.
         let restricted = |provider: &str, network: SandboxNetworkPolicy| {
             let mut value = profile(SandboxTargetSpec::managed(provider));
             value.containment = Some(SandboxContainmentSpec {
@@ -1421,11 +1421,8 @@ mod tests {
         );
         let daytona = restricted("daytona", SandboxNetworkPolicy::Deny).unwrap();
         assert_eq!(config(&daytona)["network"], json!({"mode": "blocked"}));
-        assert!(
-            restricted("e2b", SandboxNetworkPolicy::Deny)
-                .unwrap_err()
-                .contains("network.mode=allow")
-        );
+        let e2b = restricted("e2b", SandboxNetworkPolicy::Deny).unwrap();
+        assert_eq!(config(&e2b)["network"], json!({"mode": "blocked"}));
     }
 
     #[test]

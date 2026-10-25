@@ -201,7 +201,7 @@ type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>
 
 /**
  * Outbound network policy for providers that enforce it themselves (Modal,
- * Daytona). Renders grid cells, so it sits inside a two-column grid.
+ * Daytona, E2B). Renders grid cells, so it sits inside a two-column grid.
  */
 function NetworkPolicyFields({
   name,
@@ -379,13 +379,17 @@ function ModalOptionFields({
 function E2BOptionFields({
   name,
   options,
+  network,
   disabled,
   setOption,
+  onNetworkChange,
 }: {
   name: string;
   options: Record<string, unknown>;
+  network: NetworkPolicy;
   disabled: boolean;
   setOption: (key: string, value: unknown) => void;
+  onNetworkChange: (network: NetworkPolicy) => void;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -426,6 +430,12 @@ function E2BOptionFields({
           className="font-mono"
         />
       </div>
+      <NetworkPolicyFields
+        name={name}
+        network={network}
+        disabled={disabled}
+        onNetworkChange={onNetworkChange}
+      />
     </div>
   );
 }
@@ -741,8 +751,10 @@ function TemplateSpecEditor({
             <E2BOptionFields
               name={name}
               options={options}
+              network={network}
               disabled={disabled}
               setOption={setOption}
+              onNetworkChange={setNetwork}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">

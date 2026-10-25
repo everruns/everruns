@@ -28,6 +28,7 @@
 pub mod client;
 pub mod computer;
 pub mod connection;
+pub mod network;
 mod owned;
 mod session_sandbox;
 pub mod state;

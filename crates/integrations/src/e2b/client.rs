@@ -8,6 +8,7 @@ use connectrpc::client::{ClientConfig, HttpClient};
 use rustls::RootCertStore;
 use serde_json::{Value, json};
 
+use crate::e2b::network::E2BEgress;
 use crate::e2b::state::{E2BSandboxCreateResponse, E2BSandboxDetail, SandboxState};
 use crate::e2b::{E2B_API_BASE, E2B_DEFAULT_TIMEOUT_SECS, E2B_ENVD_PORT};
 
@@ -99,6 +100,7 @@ impl E2BClient {
         })
     }
 
+    /// Create a sandbox with open egress.
     pub async fn create_sandbox(
         &self,
         template_id: &str,
@@ -106,19 +108,45 @@ impl E2BClient {
         metadata: Value,
         env_vars: Value,
     ) -> Result<E2BSandboxCreateResponse, String> {
+        self.create_sandbox_with_egress(
+            template_id,
+            timeout_seconds,
+            metadata,
+            env_vars,
+            &E2BEgress::open(),
+        )
+        .await
+    }
+
+    /// Create a sandbox whose outbound traffic E2B restricts to `egress`.
+    pub async fn create_sandbox_with_egress(
+        &self,
+        template_id: &str,
+        timeout_seconds: u64,
+        metadata: Value,
+        env_vars: Value,
+        egress: &E2BEgress,
+    ) -> Result<E2BSandboxCreateResponse, String> {
+        let mut body = Self::create_sandbox_body(template_id, timeout_seconds, metadata, env_vars);
+        body["allowInternetAccess"] = json!(egress.allow_internet_access);
+        if let Some(network) = &egress.network {
+            body["network"] = network.clone();
+        }
         let value = self
-            .management_request(
-                reqwest::Method::POST,
-                "/sandboxes",
-                Some(Self::create_sandbox_body(
-                    template_id,
-                    timeout_seconds,
-                    metadata,
-                    env_vars,
-                )),
-            )
+            .management_request(reqwest::Method::POST, "/sandboxes", Some(body))
             .await?;
         serde_json::from_value(value).map_err(|e| format!("Failed to parse sandbox response: {e}"))
+    }
+
+    /// Replace a running sandbox's egress rules.
+    pub async fn update_network(&self, sandbox_id: &str, network: Value) -> Result<(), String> {
+        self.management_request(
+            reqwest::Method::PUT,
+            &format!("/sandboxes/{sandbox_id}/network"),
+            Some(network),
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn get_sandbox(&self, sandbox_id: &str) -> Result<E2BSandboxDetail, String> {

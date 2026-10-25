@@ -114,8 +114,8 @@ session-owned sandbox from the E2B `desktop` template. See
 - **Ownership**: the sandbox id is kept under the reserved session storage key
   `computer_use.display.e2b` and re-checked through the session-scoped state
   lookup on every call; the sandbox is leased and resumed when paused.
-- **Egress**: the same E2B network policy as `e2b_create_sandbox`; the session
-  network access list does not apply inside the desktop.
+- **Egress**: the same E2B network policy as `e2b_create_sandbox`: E2B
+  enforces the session network access list inside the desktop.
 
 ## Metadata
 

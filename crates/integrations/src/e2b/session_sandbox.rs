@@ -170,8 +170,16 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         if let Some(name) = &display_name {
             labels.insert("everruns.title".to_string(), json!(name));
         }
+        let egress =
+            super::network::E2BEgress::from_rules(&super::network::session_rules(context, config)?);
         let created = client
-            .create_sandbox(template, timeout, Value::Object(labels), json!({}))
+            .create_sandbox_with_egress(
+                template,
+                timeout,
+                Value::Object(labels),
+                json!({}),
+                &egress,
+            )
             .await
             .map_err(ToolExecutionResult::tool_error)?;
         let detail = super::tools::detail_from_create(created);
@@ -199,6 +207,12 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
             ),
             Err(error) => return Err(ToolExecutionResult::tool_error(error)),
         };
+        super::network::apply_to_running(
+            &client,
+            &instance.external_id,
+            &super::network::session_rules(context, config)?,
+        )
+        .await?;
         let resumed = instance_from_detail(
             context,
             detail,
