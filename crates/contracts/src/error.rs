@@ -923,12 +923,12 @@ mod tests {
             (
                 "Anthropic API error (401): invalid api key",
                 (false, true, false),
-                "There is a misconfiguration with the AI provider. Please contact support.",
+                "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
             ),
             (
                 "OpenAI API error (403): forbidden",
                 (false, true, false),
-                "There is a misconfiguration with the AI provider. Please contact support.",
+                "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
             ),
             (
                 "Anthropic API error (500): internal server error",

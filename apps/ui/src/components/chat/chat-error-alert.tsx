@@ -8,20 +8,30 @@ interface ChatErrorAlertProps {
   message: string;
   description?: string;
   details?: string | null;
+  /** False when resending cannot help (quota, keys, budgets); the card then says so. */
+  retryable?: boolean;
   className?: string;
 }
 
-export function ChatErrorAlert({ message, description, details, className }: ChatErrorAlertProps) {
+export function ChatErrorAlert({
+  message,
+  description,
+  details,
+  retryable = true,
+  className,
+}: ChatErrorAlertProps) {
   const { t } = useLocale();
   const displayMessage = message.trim() || t("chat_error_fallback");
   const trimmedDetails = details?.trim();
-  const displayDescription = description?.trim() || t("chat_error_description");
+  const displayDescription =
+    description?.trim() ||
+    (retryable ? t("chat_error_description") : t("chat_error_action_description"));
 
   return (
     <div
       role="alert"
       className={cn(
-        "animate-chat-row-in w-full rounded-lg border border-border/80 bg-card/95 px-4 py-3 text-left shadow-[0_12px_36px_hsl(var(--foreground)/0.06),inset_0_1px_0_hsl(var(--background)/0.92)]",
+        "animate-chat-row-in w-full rounded-lg border border-border/80 bg-card px-4 py-3 text-left",
         className,
       )}
     >

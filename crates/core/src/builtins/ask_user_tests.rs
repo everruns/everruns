@@ -247,6 +247,19 @@ fn validation_accepts_the_confirmed_default_rules() {
 }
 
 #[test]
+fn options_without_descriptions_are_accepted() {
+    // A yes/no confirmation needs no option descriptions; models omit them and a
+    // rejection used to drop the user from a confirmation card to a typed reply.
+    let value = json!({"questions": [{
+        "header": "Create agent?",
+        "question": "Create Release Notes Writer with these settings?",
+        "options": [{"label": "Create it", "default": true}, {"label": "Not yet"}]
+    }]});
+    let normalized = normalize_ask_user_arguments(&value).expect("descriptions are optional");
+    assert_eq!(normalized["questions"][0]["options"][1]["description"], "");
+}
+
+#[test]
 fn validation_rejects_contract_violations() {
     let valid = question(vec![option("Staging", false), option("Prod", false)]);
     let cases = [

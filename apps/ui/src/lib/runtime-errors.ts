@@ -40,6 +40,21 @@ export function getRuntimeErrorFromTurnFailed(
   };
 }
 
+// Errors a plain resend can clear. Everything else (quota, keys, budgets, model
+// choice, oversized context) needs someone to change something first, so the chat
+// must not tell the reader to "try again" for those.
+const RETRYABLE_RUNTIME_ERROR_CODES = new Set([
+  "provider_rate_limited",
+  "provider_unavailable",
+  "processing_error",
+  "provider_session_unavailable",
+  "dependency_unavailable",
+]);
+
+export function isRetryableRuntimeError(error: RuntimeErrorInfo | undefined): boolean {
+  return !error?.code || RETRYABLE_RUNTIME_ERROR_CODES.has(error.code);
+}
+
 export function getLocalizedOutputMessageText(
   locale: SupportedLocale,
   data: OutputMessageCompletedData,

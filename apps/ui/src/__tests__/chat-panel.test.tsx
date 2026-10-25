@@ -1085,11 +1085,36 @@ describe("ChatPanel placeholder", () => {
 
     render(<ChatPanel />);
 
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("The agent could not reply")).toBeInTheDocument();
     expect(
       screen.getByText("Execution stopped because a required dependency is unavailable."),
     ).toBeInTheDocument();
     expect(screen.queryByText("backend temporarily unavailable")).not.toBeInTheDocument();
+  });
+
+  it("does not suggest resending when only a settings change can fix the failure", () => {
+    mockSessionContext.chatEvents = [
+      {
+        id: "evt-failed-quota",
+        type: "turn.failed",
+        session_id: "session-1",
+        ts: new Date().toISOString(),
+        context: { turn_id: "turn-1" },
+        data: {
+          turn_id: "turn-1",
+          error: "credit_balance_exhausted",
+          error_code: "provider_quota_exhausted",
+        },
+      },
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("The agent could not reply")).toBeInTheDocument();
+    expect(
+      screen.getByText("Sending again will not help until this is fixed."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Try sending your message again/)).not.toBeInTheDocument();
   });
 
   it("renders one alert when an error message and turn failure describe the same turn", () => {
@@ -1152,7 +1177,7 @@ describe("ChatPanel placeholder", () => {
 
     render(<ChatPanel />);
 
-    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("The agent could not reply")).toBeInTheDocument();
     expect(screen.getByText("Message failed.")).toBeInTheDocument();
     expect(
       screen.queryByText("provider token leaked in diagnostic payload"),
@@ -1222,7 +1247,7 @@ describe("ChatPanel placeholder", () => {
 
     fireEvent.click(screen.getByTitle("Start voice session"));
 
-    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(await screen.findByText("The agent could not reply")).toBeInTheDocument();
     expect(
       screen.getByText("Check your browser microphone permissions, then try starting voice again."),
     ).toBeInTheDocument();
@@ -1261,7 +1286,7 @@ describe("ChatPanel placeholder", () => {
 
     fireEvent.click(screen.getByTitle("Start voice session"));
 
-    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(await screen.findByText("The agent could not reply")).toBeInTheDocument();
     expect(screen.getByText("Voice service is unavailable.")).toBeInTheDocument();
     expect(
       screen.getByText(

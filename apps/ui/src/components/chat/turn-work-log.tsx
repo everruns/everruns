@@ -30,7 +30,7 @@ import { formatWorkLogErrorCount, formatWorkLogIssueCount } from "@/lib/i18n";
 import { FailureIcon, failureTextClass } from "@/components/chat/failure-severity";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { useLocale } from "@/providers/locale-provider";
-import { isLiveTurnPhase, type TurnRowPhase } from "@/lib/chat-turn-state";
+import { STILL_STARTING_MS, isLiveTurnPhase, type TurnRowPhase } from "@/lib/chat-turn-state";
 
 interface TurnWorkLogProps {
   /** Turn status row phase; when set it drives the label instead of `label`/`isActive`. */
@@ -117,8 +117,10 @@ export function TurnWorkLog({
     headerLabel = t("working_for", {
       duration: `${seconds < 60 ? `${seconds}s` : formatWorkedDuration(seconds * 1000)}`,
     });
-    if (phase === "starting") statusText = t("turn_starting");
-    else if (phase === "thinking") statusText = status || t("turn_thinking");
+    if (phase === "starting") {
+      statusText =
+        (elapsedMs ?? 0) >= STILL_STARTING_MS ? t("turn_waiting_for_worker") : t("turn_starting");
+    } else if (phase === "thinking") statusText = status || t("turn_thinking");
   } else {
     headerLabel = isActive
       ? elapsedMs != null && elapsedMs >= 1000

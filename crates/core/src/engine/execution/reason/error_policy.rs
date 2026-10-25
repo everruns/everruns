@@ -10,6 +10,8 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "The AI provider is experiencing issues. Please try again shortly.",
     "Rate limited by the AI provider. Please wait a moment.",
     "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
+    "The AI provider is not set up correctly. Ask an administrator to check the provider in Models.",
+    // Older sessions carry the previous wording in their history.
     "There is a misconfiguration with the AI provider. Please contact support.",
     "No model is configured for this chat. Choose a model or configure a default model, then try again.",
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",

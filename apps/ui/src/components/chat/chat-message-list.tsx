@@ -53,6 +53,7 @@ import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import { ToolErrorDisclosureProvider } from "@/components/chat/tool-error-disclosure";
 import {
   getReasoningMultiIterationTurnIds,
   hasReasoningWorkLogSummary,
@@ -111,6 +112,7 @@ import { useLocale } from "@/providers/locale-provider";
 import {
   getRuntimeErrorFromOutputMessage,
   getRuntimeErrorFromTurnFailed,
+  isRetryableRuntimeError,
   localizeRuntimeError,
 } from "@/lib/runtime-errors";
 import type { SupportedLocale } from "@/lib/i18n";
@@ -1060,251 +1062,287 @@ export const ChatMessageList = memo(function ChatMessageList({
   }
 
   return (
-    <div className="space-y-4">
-      {loadingOlderEvents && hasMoreEvents && (
-        <div className="flex items-center justify-center py-2.5">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-xs text-muted-foreground">{t("loading_older_messages")}</span>
-        </div>
-      )}
-      {(() => {
-        const items: ReactNode[] = [];
-        const nowMs = Date.now();
-        let previousUserMs: number | undefined;
-        let previousPageRoute: unknown;
-        const pushDaySeparator = (key: string, ts: number) => {
-          if (needsDaySeparator(previousUserMs, ts)) {
-            items.push(
-              <div key={`day-${key}`} className={chatSurfaceStyles.daySeparator}>
-                {formatDaySeparator(ts, nowMs, locale, {
-                  today: t("day_today"),
-                  yesterday: t("day_yesterday"),
-                })}
-              </div>,
-            );
-          }
-          previousUserMs = ts;
-        };
-        for (const event of chatEvents) {
-          const eventNode = ((): ReactNode => {
-            if (event.type === "context.compacted") {
-              const compactedData = getEventData(event, "context.compacted");
-              return compactedData ? (
-                <CompactionDivider key={event.id} data={compactedData} />
-              ) : null;
-            }
-
-            if (event.type === "session.model.changed") {
-              const modelChangedData = getEventData(event, "session.model.changed");
-              return modelChangedData && !repeatedModelChangeIds.has(event.id) ? (
-                <ModelChangeDivider key={event.id} data={modelChangedData} />
-              ) : null;
-            }
-
-            const turnFailedData = getEventData(event, "turn.failed");
-            if (turnFailedData) {
-              if (errorMessageTurnIds.has(turnFailedData.turn_id)) return null;
-              return (
-                <ChatErrorAlert
-                  key={event.id}
-                  message={getTurnFailedMessage(locale, turnFailedData)}
-                />
+    <ToolErrorDisclosureProvider value={collapseWorkLog ? "details" : "inline"}>
+      <div className="space-y-4">
+        {loadingOlderEvents && hasMoreEvents && (
+          <div className="flex items-center justify-center py-2.5">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-xs text-muted-foreground">
+              {t("loading_older_messages")}
+            </span>
+          </div>
+        )}
+        {(() => {
+          const items: ReactNode[] = [];
+          const nowMs = Date.now();
+          let previousUserMs: number | undefined;
+          let previousPageRoute: unknown;
+          const pushDaySeparator = (key: string, ts: number) => {
+            if (needsDaySeparator(previousUserMs, ts)) {
+              items.push(
+                <div key={`day-${key}`} className={chatSurfaceStyles.daySeparator}>
+                  {formatDaySeparator(ts, nowMs, locale, {
+                    today: t("day_today"),
+                    yesterday: t("day_yesterday"),
+                  })}
+                </div>,
               );
             }
-
-            const sentMessage = getEventData(event, "conversation.message");
-            if (sentMessage) {
-              // What an explicit-communication agent sent with `send_message`: its reply,
-              // shown like any assistant message. The tool call stays a work-log row.
-              const text = sentMessage.text?.trim();
-              if (!text) return null;
-              const runs = runsByEventId?.get(event.id);
-              const turnId = getKnownTurnId(event);
-              return (
-                <div
-                  key={event.id}
-                  className="chat-transcript-row space-y-2"
-                  data-conversation-message-id={sentMessage.message_id}
-                >
-                  <div className="flex justify-start">
-                    <div className={chatSurfaceStyles.agentMessageRow}>
-                      <div className={chatSurfaceStyles.agentMessage}>
-                        <MessageContent text={sentMessage.text} />
-                      </div>
-                      <div
-                        className={cn(
-                          chatSurfaceStyles.agentActions,
-                          event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
-                        )}
-                        data-testid="agent-reply-actions"
-                      >
-                        <CopyButton value={text} label={t("copy_message")} />
-                        <MessageInfoIcon event={event} />
-                      </div>
-                    </div>
-                  </div>
-                  {runs ? <RunCards runs={runs} /> : null}
-                  {turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
-                    ? null
-                    : renderTurnDivider(
-                        event.id,
-                        turnDurationByEventId,
-                        t("worked_for", {
-                          duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                        }),
-                        null,
-                        t("trace_view_turn"),
-                      )}
-                </div>
-              );
-            }
-
-            if (isWorkLogEvent(event)) {
-              // Preserve event order and mount every loaded entry in testing/debugging views.
-              if (!collapseWorkLog) return renderWorkLogEventContent(event, true);
-              const turnId = getKnownTurnId(event);
-              if (turnId && anchoredTurnIds.has(turnId)) return null;
-              if (turnId) {
-                const group = workLogEventsByTurnId.get(turnId) ?? [];
-                if (group[0]?.id !== event.id) return null;
-                return renderWorkLog(event, group, (isActive) => {
-                  const entries = group
-                    .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
-                    .filter(Boolean);
-                  if (streamingRow && streamingWork?.turnId === turnId) entries.push(streamingRow);
-                  return <WorkLogEntries entries={entries} />;
-                });
+            previousUserMs = ts;
+          };
+          for (const event of chatEvents) {
+            const eventNode = ((): ReactNode => {
+              if (event.type === "context.compacted") {
+                const compactedData = getEventData(event, "context.compacted");
+                return compactedData ? (
+                  <CompactionDivider key={event.id} data={compactedData} />
+                ) : null;
               }
 
-              return renderWorkLog(event, [event], (isActive) =>
-                renderWorkLogEventContent(event, !isActive),
-              );
-            }
+              if (event.type === "session.model.changed") {
+                const modelChangedData = getEventData(event, "session.model.changed");
+                return modelChangedData && !repeatedModelChangeIds.has(event.id) ? (
+                  <ModelChangeDivider key={event.id} data={modelChangedData} />
+                ) : null;
+              }
 
-            const isUser = event.type === "input.message";
-            const inputData = getEventData(event, "input.message");
-            const outputData = getEventData(event, "output.message.completed");
-            const data = inputData ?? outputData;
-            if (!data) return null;
-            const pageContext = isUser ? data.message?.metadata?.page_context : undefined;
-            const pageRoute =
-              pageContext && typeof pageContext === "object" && "route" in pageContext
-                ? pageContext.route
-                : undefined;
-            const showPageContext = isUser && pageRoute !== previousPageRoute;
-            if (isUser) previousPageRoute = pageRoute;
+              const turnFailedData = getEventData(event, "turn.failed");
+              if (turnFailedData) {
+                if (errorMessageTurnIds.has(turnFailedData.turn_id)) return null;
+                return (
+                  <ChatErrorAlert
+                    key={event.id}
+                    message={getTurnFailedMessage(locale, turnFailedData)}
+                    retryable={isRetryableRuntimeError(
+                      getRuntimeErrorFromTurnFailed(turnFailedData),
+                    )}
+                  />
+                );
+              }
 
-            const textContent = getMessageText(data);
-            const outputError = outputData
-              ? getRuntimeErrorFromOutputMessage(outputData)
-              : undefined;
-            if (outputData && outputError) {
-              return <ChatErrorAlert key={event.id} message={textContent} />;
-            }
-            const outputToolCalls = !isUser && outputData ? getToolCalls(outputData) : [];
-            const toolCalls = outputToolCalls.filter(
-              (toolCall) =>
-                !clientRequestedToolCallIds.has(toolCall.id) &&
-                !activityGroups.narratedToolCallIds.has(toolCall.id),
-            );
-            const images = data.message?.content ? getMessageImages(data.message.content) : [];
-            const annotations = isUser ? [] : getMessageAnnotations(data.message?.content);
-            // Deep link to this generation's trace on the provider (assistant
-            // messages only; user messages carry no provider response id).
-            const genTraceUrl = outputData
-              ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver, {
-                  sessionId,
-                  turnId: event.context?.turn_id,
-                })
-              : null;
-            const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
-            // Platform-injected task updates (a thread finished, asked, or failed),
-            // not words the person typed.
-            const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
-            const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
-            // What a coordinator sent this thread, shown without the worker's instructions.
-            const coordinatorMessage =
-              isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
-            const isToolOnlyMessage =
-              !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
-
-            if (isToolOnlyMessage) {
-              if (toolCalls.length === 0) return null;
-              return renderWorkLog(
-                event,
-                [],
-                () => (
-                  <div className="space-y-1">
-                    <ToolActivityGroup
-                      toolCalls={toolCalls}
-                      toolResultsMap={toolResultsMap}
-                      toolProgressMap={toolProgressMap}
-                      toolOutputMap={toolOutputMap}
-                      approvalContexts={approvalContexts}
-                    />
+              const sentMessage = getEventData(event, "conversation.message");
+              if (sentMessage) {
+                // What an explicit-communication agent sent with `send_message`: its reply,
+                // shown like any assistant message. The tool call stays a work-log row.
+                const text = sentMessage.text?.trim();
+                if (!text) return null;
+                const runs = runsByEventId?.get(event.id);
+                const turnId = getKnownTurnId(event);
+                return (
+                  <div
+                    key={event.id}
+                    className="chat-transcript-row space-y-2"
+                    data-conversation-message-id={sentMessage.message_id}
+                  >
+                    <div className="flex justify-start">
+                      <div className={chatSurfaceStyles.agentMessageRow}>
+                        <div className={chatSurfaceStyles.agentMessage}>
+                          <MessageContent text={sentMessage.text} />
+                        </div>
+                        <div
+                          className={cn(
+                            chatSurfaceStyles.agentActions,
+                            event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
+                          )}
+                          data-testid="agent-reply-actions"
+                        >
+                          <CopyButton value={text} label={t("copy_message")} />
+                          <MessageInfoIcon event={event} />
+                        </div>
+                      </div>
+                    </div>
+                    {runs ? <RunCards runs={runs} /> : null}
+                    {turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
+                      ? null
+                      : renderTurnDivider(
+                          event.id,
+                          turnDurationByEventId,
+                          t("worked_for", {
+                            duration: formatWorkedDuration(
+                              turnDurationByEventId.get(event.id) ?? 0,
+                            ),
+                          }),
+                          null,
+                          t("trace_view_turn"),
+                        )}
                   </div>
-                ),
-                countToolCallFailures(toolCalls, toolResultsMap),
-              );
-            }
+                );
+              }
 
-            return (
-              <div
-                key={isUser ? `user-${getClientMessageId(event) ?? event.id}` : event.id}
-                className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
-                data-message-anchor={isUser ? event.id : undefined}
-                id={isUser ? `message-${data.message?.id}` : undefined}
-              >
-                {isUser && <MessagePageActions value={data.message?.metadata?.page_actions} />}
-                {(textContent || images.length > 0) && (
-                  <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-                    {isUser ? (
-                      <div className={chatSurfaceStyles.userMessage}>
-                        {showPageContext && <MessagePageContext value={pageContext} />}
-                        {isTaskWake && (
-                          <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                            <RefreshCw className="h-3 w-3" />
-                            <span>{t("automatic_update")}</span>
-                          </div>
-                        )}
-                        {isScheduleTriggered && (
-                          <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                            <CalendarClock className="h-3 w-3" />
-                            <span>{t("scheduled")}</span>
-                          </div>
-                        )}
-                        {coordinatorMessage && (
-                          <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                            <MessageSquare className="h-3 w-3" />
-                            <span>{t("from_chat")}</span>
-                          </div>
-                        )}
-                        <div className="flex items-start gap-2">
-                          <div className="flex-1 space-y-2">
-                            {taskUpdate ? (
-                              <>
-                                <p className="font-medium">
-                                  {t(`task_update_${taskUpdate.kind}` as const, {
-                                    title: taskUpdate.title,
-                                  })}
-                                </p>
-                                {taskUpdate.body && (
-                                  <p className="whitespace-pre-wrap">{taskUpdate.body}</p>
-                                )}
-                              </>
-                            ) : coordinatorMessage ? (
-                              <>
-                                {coordinatorMessage.kind === "assignment" && (
+              if (isWorkLogEvent(event)) {
+                // Preserve event order and mount every loaded entry in testing/debugging views.
+                if (!collapseWorkLog) return renderWorkLogEventContent(event, true);
+                const turnId = getKnownTurnId(event);
+                if (turnId && anchoredTurnIds.has(turnId)) return null;
+                if (turnId) {
+                  const group = workLogEventsByTurnId.get(turnId) ?? [];
+                  if (group[0]?.id !== event.id) return null;
+                  return renderWorkLog(event, group, (isActive) => {
+                    const entries = group
+                      .map((groupEvent) => renderWorkLogEventContent(groupEvent, !isActive))
+                      .filter(Boolean);
+                    if (streamingRow && streamingWork?.turnId === turnId)
+                      entries.push(streamingRow);
+                    return <WorkLogEntries entries={entries} />;
+                  });
+                }
+
+                return renderWorkLog(event, [event], (isActive) =>
+                  renderWorkLogEventContent(event, !isActive),
+                );
+              }
+
+              const isUser = event.type === "input.message";
+              const inputData = getEventData(event, "input.message");
+              const outputData = getEventData(event, "output.message.completed");
+              const data = inputData ?? outputData;
+              if (!data) return null;
+              const pageContext = isUser ? data.message?.metadata?.page_context : undefined;
+              const pageRoute =
+                pageContext && typeof pageContext === "object" && "route" in pageContext
+                  ? pageContext.route
+                  : undefined;
+              const showPageContext = isUser && pageRoute !== previousPageRoute;
+              if (isUser) previousPageRoute = pageRoute;
+
+              const textContent = getMessageText(data);
+              const outputError = outputData
+                ? getRuntimeErrorFromOutputMessage(outputData)
+                : undefined;
+              if (outputData && outputError) {
+                return (
+                  <ChatErrorAlert
+                    key={event.id}
+                    message={textContent}
+                    retryable={isRetryableRuntimeError(outputError)}
+                  />
+                );
+              }
+              const outputToolCalls = !isUser && outputData ? getToolCalls(outputData) : [];
+              const toolCalls = outputToolCalls.filter(
+                (toolCall) =>
+                  !clientRequestedToolCallIds.has(toolCall.id) &&
+                  !activityGroups.narratedToolCallIds.has(toolCall.id),
+              );
+              const images = data.message?.content ? getMessageImages(data.message.content) : [];
+              const annotations = isUser ? [] : getMessageAnnotations(data.message?.content);
+              // Deep link to this generation's trace on the provider (assistant
+              // messages only; user messages carry no provider response id).
+              const genTraceUrl = outputData
+                ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver, {
+                    sessionId,
+                    turnId: event.context?.turn_id,
+                  })
+                : null;
+              const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
+              // Platform-injected task updates (a thread finished, asked, or failed),
+              // not words the person typed.
+              const isTaskWake = isUser && data.message?.metadata?.everruns_origin === "task_wake";
+              const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
+              // What a coordinator sent this thread, shown without the worker's instructions.
+              const coordinatorMessage =
+                isUser && !isTaskWake && textContent ? parseCoordinatorMessage(textContent) : null;
+              const isToolOnlyMessage =
+                !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
+
+              if (isToolOnlyMessage) {
+                if (toolCalls.length === 0) return null;
+                return renderWorkLog(
+                  event,
+                  [],
+                  () => (
+                    <div className="space-y-1">
+                      <ToolActivityGroup
+                        toolCalls={toolCalls}
+                        toolResultsMap={toolResultsMap}
+                        toolProgressMap={toolProgressMap}
+                        toolOutputMap={toolOutputMap}
+                        approvalContexts={approvalContexts}
+                      />
+                    </div>
+                  ),
+                  countToolCallFailures(toolCalls, toolResultsMap),
+                );
+              }
+
+              return (
+                <div
+                  key={isUser ? `user-${getClientMessageId(event) ?? event.id}` : event.id}
+                  className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
+                  data-message-anchor={isUser ? event.id : undefined}
+                  id={isUser ? `message-${data.message?.id}` : undefined}
+                >
+                  {isUser && <MessagePageActions value={data.message?.metadata?.page_actions} />}
+                  {(textContent || images.length > 0) && (
+                    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                      {isUser ? (
+                        <div className={chatSurfaceStyles.userMessage}>
+                          {showPageContext && <MessagePageContext value={pageContext} />}
+                          {isTaskWake && (
+                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                              <RefreshCw className="h-3 w-3" />
+                              <span>{t("automatic_update")}</span>
+                            </div>
+                          )}
+                          {isScheduleTriggered && (
+                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                              <CalendarClock className="h-3 w-3" />
+                              <span>{t("scheduled")}</span>
+                            </div>
+                          )}
+                          {coordinatorMessage && (
+                            <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                              <MessageSquare className="h-3 w-3" />
+                              <span>{t("from_chat")}</span>
+                            </div>
+                          )}
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 space-y-2">
+                              {taskUpdate ? (
+                                <>
                                   <p className="font-medium">
-                                    {t("new_assignment", {
-                                      title: coordinatorMessage.title,
+                                    {t(`task_update_${taskUpdate.kind}` as const, {
+                                      title: taskUpdate.title,
                                     })}
                                   </p>
-                                )}
-                                <p className="whitespace-pre-wrap">{coordinatorMessage.body}</p>
-                              </>
-                            ) : (
-                              textContent && <p className="whitespace-pre-wrap">{textContent}</p>
+                                  {taskUpdate.body && (
+                                    <p className="whitespace-pre-wrap">{taskUpdate.body}</p>
+                                  )}
+                                </>
+                              ) : coordinatorMessage ? (
+                                <>
+                                  {coordinatorMessage.kind === "assignment" && (
+                                    <p className="font-medium">
+                                      {t("new_assignment", {
+                                        title: coordinatorMessage.title,
+                                      })}
+                                    </p>
+                                  )}
+                                  <p className="whitespace-pre-wrap">{coordinatorMessage.body}</p>
+                                </>
+                              ) : (
+                                textContent && <p className="whitespace-pre-wrap">{textContent}</p>
+                              )}
+                              {images.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {images.map((image) => (
+                                    <MessageImage
+                                      key={image.image_id}
+                                      imageId={image.image_id}
+                                      filename={image.filename}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <MessageInfoIcon event={event} />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={chatSurfaceStyles.agentMessageRow}>
+                          <div className={chatSurfaceStyles.agentMessage}>
+                            {textContent && (
+                              <MessageContent text={textContent} annotations={annotations} />
                             )}
                             {images.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-2">
@@ -1318,108 +1356,88 @@ export const ChatMessageList = memo(function ChatMessageList({
                               </div>
                             )}
                           </div>
-                          <MessageInfoIcon event={event} />
+                          <div
+                            className={cn(
+                              chatSurfaceStyles.agentActions,
+                              event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
+                            )}
+                            data-testid="agent-reply-actions"
+                          >
+                            {textContent && (
+                              <CopyButton value={textContent} label={t("copy_message")} />
+                            )}
+                            {messageActions && data.message?.id && (
+                              <MessageReplyActions
+                                sessionId={sessionId}
+                                messageId={data.message.id}
+                                sessionActive={sessionActive}
+                              />
+                            )}
+                            <MessageInfoIcon event={event} />
+                            {genTraceUrl && (
+                              <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className={chatSurfaceStyles.agentMessageRow}>
-                        <div className={chatSurfaceStyles.agentMessage}>
-                          {textContent && (
-                            <MessageContent text={textContent} annotations={annotations} />
-                          )}
-                          {images.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {images.map((image) => (
-                                <MessageImage
-                                  key={image.image_id}
-                                  imageId={image.image_id}
-                                  filename={image.filename}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div
-                          className={cn(
-                            chatSurfaceStyles.agentActions,
-                            event.id === latestAgentEventId ? "opacity-100" : "opacity-0",
-                          )}
-                          data-testid="agent-reply-actions"
-                        >
-                          {textContent && (
-                            <CopyButton value={textContent} label={t("copy_message")} />
-                          )}
-                          {messageActions && data.message?.id && (
-                            <MessageReplyActions
-                              sessionId={sessionId}
-                              messageId={data.message.id}
-                              sessionActive={sessionActive}
-                            />
-                          )}
-                          <MessageInfoIcon event={event} />
-                          {genTraceUrl && (
-                            <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
 
-                {toolCalls.length > 0 && (
-                  <div className="space-y-1">
-                    <ToolActivityGroup
-                      toolCalls={toolCalls}
-                      toolResultsMap={toolResultsMap}
-                      toolProgressMap={toolProgressMap}
-                      toolOutputMap={toolOutputMap}
-                      approvalContexts={approvalContexts}
-                    />
-                  </div>
-                )}
+                  {toolCalls.length > 0 && (
+                    <div className="space-y-1">
+                      <ToolActivityGroup
+                        toolCalls={toolCalls}
+                        toolResultsMap={toolResultsMap}
+                        toolProgressMap={toolProgressMap}
+                        toolOutputMap={toolOutputMap}
+                        approvalContexts={approvalContexts}
+                      />
+                    </div>
+                  )}
 
-                {(() => {
-                  const runs = runsByEventId?.get(event.id);
-                  return runs ? <RunCards runs={runs} /> : null;
-                })()}
+                  {(() => {
+                    const runs = runsByEventId?.get(event.id);
+                    return runs ? <RunCards runs={runs} /> : null;
+                  })()}
 
-                {(() => {
-                  const turnId = getKnownTurnId(event);
-                  if (turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))) {
-                    return null;
-                  }
-                  return renderTurnDivider(
-                    event.id,
-                    turnDurationByEventId,
-                    t("worked_for", {
-                      duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                    }),
-                    genTraceUrl,
-                    t("trace_view_turn"),
-                  );
-                })()}
-              </div>
-            );
-          })();
+                  {(() => {
+                    const turnId = getKnownTurnId(event);
+                    if (turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))) {
+                      return null;
+                    }
+                    return renderTurnDivider(
+                      event.id,
+                      turnDurationByEventId,
+                      t("worked_for", {
+                        duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                      }),
+                      genTraceUrl,
+                      t("trace_view_turn"),
+                    );
+                  })()}
+                </div>
+              );
+            })();
 
-          for (const marker of markersByEventId.get(event.id) ?? []) {
-            items.push(renderParticipantMarker(marker));
+            for (const marker of markersByEventId.get(event.id) ?? []) {
+              items.push(renderParticipantMarker(marker));
+            }
+            if (event.type === "input.message" && eventNode) {
+              pushDaySeparator(getClientMessageId(event) ?? event.id, Date.parse(event.ts));
+            }
+            items.push(eventNode);
+            const turnRow = renderStoredTurnRow(event);
+            if (turnRow) items.push(turnRow);
           }
-          if (event.type === "input.message" && eventNode) {
-            pushDaySeparator(getClientMessageId(event) ?? event.id, Date.parse(event.ts));
+          for (const send of pendingSends) {
+            pushDaySeparator(send.clientId, send.sentAtMs);
+            items.push(...renderPendingSend(send));
           }
-          items.push(eventNode);
-          const turnRow = renderStoredTurnRow(event);
-          if (turnRow) items.push(turnRow);
-        }
-        for (const send of pendingSends) {
-          pushDaySeparator(send.clientId, send.sentAtMs);
-          items.push(...renderPendingSend(send));
-        }
-        return items;
-      })()}
-      {trailingMarkers.map((marker) => renderParticipantMarker(marker))}
-      {trailingStreamingWork}
-    </div>
+          return items;
+        })()}
+        {trailingMarkers.map((marker) => renderParticipantMarker(marker))}
+        {trailingStreamingWork}
+      </div>
+    </ToolErrorDisclosureProvider>
   );
 });
