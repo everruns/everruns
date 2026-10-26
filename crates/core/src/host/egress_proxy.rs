@@ -28,8 +28,16 @@
 //!   tokens are minted for five minutes, so a far-future one can only come
 //!   from a bug or a leaked secret, and the cap bounds how long a captured
 //!   token can be replayed.
+//! - Sandboxes whose provider tunnels their traffic to us (E2B's SOCKS5
+//!   "bring your own proxy") get a second credential shape,
+//!   `s1.<org>.<session>.<exp>.<hmac>`, minted for the sandbox's lifetime
+//!   rather than five minutes. The version prefix is part of what is signed,
+//!   so neither shape verifies as the other: a request token cannot open a
+//!   SOCKS tunnel, and a long-lived sandbox credential cannot ride the HTTP
+//!   listener. It is handed to the provider's API only, never placed inside
+//!   the sandbox, and always names an org.
 
-use crate::{EgressError, EgressRequestKind, EgressResult, EgressScope};
+use crate::{EgressError, EgressRequestKind, EgressResult, EgressScope, SandboxProxyCredential};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -45,6 +53,17 @@ const TOKEN_TTL: Duration = Duration::from_secs(300);
 /// How far ahead of now a token's expiry may be. Covers clock skew between
 /// hosts on top of the five-minute lifetime.
 pub const MAX_PROXY_TOKEN_FUTURE_SECS: i64 = 3_600;
+/// Public SOCKS5 address (`host:port`) of the egress proxy that sandbox
+/// providers tunnel to. Unset: sandboxes are not routed through the proxy.
+pub const SANDBOX_PROXY_ADDRESS_ENV: &str = "EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS";
+/// `false` lets providers reach the SOCKS address without TLS. Only for a
+/// proxy on a private network; the default sends credentials inside TLS.
+pub const SANDBOX_PROXY_TLS_ENV: &str = "EVERRUNS_EGRESS_PROXY_SOCKS_TLS";
+/// SOCKS5 username on every sandbox credential; the password carries the claims.
+pub const SANDBOX_PROXY_USERNAME: &str = "everruns";
+/// Longest a sandbox credential may be valid for: a day of sandbox time (the
+/// longest provider timeout) plus slack. Also the verifier's future cap.
+pub const MAX_SANDBOX_PROXY_CREDENTIAL_SECS: i64 = 2 * 86_400;
 
 /// The tenant egress proxy and the secret its tokens are signed with.
 #[derive(Clone)]
@@ -167,10 +186,141 @@ impl TenantEgressProxy {
     }
 }
 
+/// Whether sandbox providers tunnel sandbox traffic to the proxy's SOCKS5
+/// listener (`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`).
+#[derive(Clone, Default)]
+pub(crate) enum SandboxProxyRoute {
+    /// Not configured: sandboxes use their provider's own egress.
+    #[default]
+    Off,
+    On {
+        address: String,
+        tls: bool,
+        secret: Vec<u8>,
+    },
+    /// Configured but unusable; sandboxes that would be routed fail to start.
+    Misconfigured(String),
+}
+
+impl std::fmt::Debug for SandboxProxyRoute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Off => f.write_str("Off"),
+            Self::On { address, tls, .. } => f
+                .debug_struct("On")
+                .field("address", address)
+                .field("tls", tls)
+                .finish_non_exhaustive(),
+            Self::Misconfigured(error) => f.debug_tuple("Misconfigured").field(error).finish(),
+        }
+    }
+}
+
+impl SandboxProxyRoute {
+    pub(crate) fn from_env() -> Self {
+        let address = std::env::var(SANDBOX_PROXY_ADDRESS_ENV).unwrap_or_default();
+        if address.trim().is_empty() {
+            return Self::Off;
+        }
+        let tls = std::env::var(SANDBOX_PROXY_TLS_ENV).unwrap_or_default();
+        let secret = std::env::var(EGRESS_PROXY_SECRET_ENV).unwrap_or_default();
+        let route = Self::new(address.trim(), tls.trim(), secret.into_bytes());
+        if let Self::Misconfigured(error) = &route {
+            tracing::error!(error = %error, "sandbox egress proxy misconfigured; routed sandboxes will not start");
+        }
+        route
+    }
+
+    /// `tls` is the raw setting: empty or `true` means TLS, `false` means none.
+    pub(crate) fn new(address: &str, tls: &str, secret: Vec<u8>) -> Self {
+        let tls = match tls.to_ascii_lowercase().as_str() {
+            "" | "true" | "1" => true,
+            "false" | "0" => false,
+            other => {
+                return Self::Misconfigured(format!(
+                    "{SANDBOX_PROXY_TLS_ENV} must be true or false, not {other:?}"
+                ));
+            }
+        };
+        let valid_address = address.rsplit_once(':').is_some_and(|(host, port)| {
+            !host.is_empty()
+                && !host.contains('/')
+                && port.parse::<u16>().is_ok_and(|port| port != 0)
+        });
+        if !valid_address {
+            return Self::Misconfigured(format!(
+                "{SANDBOX_PROXY_ADDRESS_ENV} must be host:port, not {address:?}"
+            ));
+        }
+        if secret.len() < MIN_SECRET_LEN {
+            return Self::Misconfigured(format!(
+                "{EGRESS_PROXY_SECRET_ENV} must be at least {MIN_SECRET_LEN} bytes"
+            ));
+        }
+        Self::On {
+            address: address.to_string(),
+            tls,
+            secret,
+        }
+    }
+
+    /// A credential for one sandbox, valid for `valid_for` (capped at
+    /// [`MAX_SANDBOX_PROXY_CREDENTIAL_SECS`]).
+    pub(crate) fn credential(
+        &self,
+        scope: Option<&EgressScope>,
+        valid_for: Duration,
+    ) -> EgressResult<Option<SandboxProxyCredential>> {
+        let (address, tls, secret) = match self {
+            Self::Off => return Ok(None),
+            Self::On {
+                address,
+                tls,
+                secret,
+            } => (address, *tls, secret),
+            Self::Misconfigured(error) => {
+                return Err(EgressError::Transport(format!(
+                    "sandbox egress proxy misconfigured: {error}"
+                )));
+            }
+        };
+        // Sandbox traffic is always attributable: no org, no credential.
+        let org = scope
+            .and_then(|scope| scope.org_id.as_ref())
+            .ok_or_else(|| EgressError::invalid("a sandbox proxy credential needs an org"))?
+            .to_string();
+        let session = scope
+            .and_then(|scope| scope.session_id.as_ref())
+            .map_or_else(|| "-".to_string(), ToString::to_string);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |at| at.as_secs() as i64);
+        let secs = (valid_for.as_secs() as i64).clamp(1, MAX_SANDBOX_PROXY_CREDENTIAL_SECS);
+        let expires_at = now + secs;
+        Ok(Some(SandboxProxyCredential {
+            address: address.clone(),
+            tls,
+            username: SANDBOX_PROXY_USERNAME.to_string(),
+            password: sign_sandbox_proxy_credential(secret, &org, &session, expires_at),
+            expires_at,
+        }))
+    }
+}
+
 /// Sign `v1.<org>.<session>.<exp>` with `secret`. `-` stands for a missing
 /// org or session.
 pub fn sign_proxy_token(secret: &[u8], org: &str, session: &str, exp: i64) -> String {
     let claims = format!("v1.{org}.{session}.{exp}");
+    format!(
+        "{claims}.{}",
+        to_hex(&hmac_sha256(secret, claims.as_bytes()))
+    )
+}
+
+/// Sign `s1.<org>.<session>.<exp>` with `secret`: the credential a sandbox
+/// provider presents when it tunnels that sandbox's traffic to the proxy.
+pub fn sign_sandbox_proxy_credential(secret: &[u8], org: &str, session: &str, exp: i64) -> String {
+    let claims = format!("s1.{org}.{session}.{exp}");
     format!(
         "{claims}.{}",
         to_hex(&hmac_sha256(secret, claims.as_bytes()))
@@ -203,7 +353,8 @@ pub enum ProxyTokenError {
     /// Past its expiry.
     #[error("expired proxy token")]
     Expired,
-    /// Expiry further ahead than [`MAX_PROXY_TOKEN_FUTURE_SECS`].
+    /// Expiry further ahead than its shape allows ([`MAX_PROXY_TOKEN_FUTURE_SECS`]
+    /// for request tokens, [`MAX_SANDBOX_PROXY_CREDENTIAL_SECS`] for sandboxes).
     #[error("proxy token expiry too far in the future")]
     TooFarAhead,
 }
@@ -228,11 +379,41 @@ pub fn verify_proxy_token(
     secret: &[u8],
     now_unix: i64,
 ) -> Result<ProxyClaims, ProxyTokenError> {
+    verify_signed(token, "v1", secret, now_unix, MAX_PROXY_TOKEN_FUTURE_SECS)
+}
+
+/// Verify a sandbox credential (the SOCKS5 password). It must name an org:
+/// sandbox traffic is always attributable.
+pub fn verify_sandbox_proxy_credential(
+    token: &str,
+    secret: &[u8],
+    now_unix: i64,
+) -> Result<ProxyClaims, ProxyTokenError> {
+    let claims = verify_signed(
+        token,
+        "s1",
+        secret,
+        now_unix,
+        MAX_SANDBOX_PROXY_CREDENTIAL_SECS,
+    )?;
+    if claims.org.is_none() {
+        return Err(ProxyTokenError::Malformed);
+    }
+    Ok(claims)
+}
+
+fn verify_signed(
+    token: &str,
+    expected_version: &str,
+    secret: &[u8],
+    now_unix: i64,
+    max_future_secs: i64,
+) -> Result<ProxyClaims, ProxyTokenError> {
     let parts: Vec<&str> = token.split('.').collect();
     let [version, org, session, exp, sig] = parts.as_slice() else {
         return Err(ProxyTokenError::Malformed);
     };
-    if *version != "v1" || !valid_token_org(org) || !valid_token_session(session) {
+    if *version != expected_version || !valid_token_org(org) || !valid_token_session(session) {
         return Err(ProxyTokenError::Malformed);
     }
     if exp.is_empty() || exp.len() > 12 || !exp.bytes().all(|b| b.is_ascii_digit()) {
@@ -254,7 +435,7 @@ pub fn verify_proxy_token(
     if exp <= now_unix {
         return Err(ProxyTokenError::Expired);
     }
-    if exp - now_unix > MAX_PROXY_TOKEN_FUTURE_SECS {
+    if exp - now_unix > max_future_secs {
         return Err(ProxyTokenError::TooFarAhead);
     }
     Ok(ProxyClaims {
@@ -451,6 +632,114 @@ mod tests {
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"abd"));
         assert!(!constant_time_eq(b"abc", b"abcd"));
+    }
+
+    #[test]
+    fn sandbox_credentials_verify_only_as_sandbox_credentials() {
+        let credential = sign_sandbox_proxy_credential(SECRET, ORG, "session_01", NOW + 86_400);
+        let claims = verify_sandbox_proxy_credential(&credential, SECRET, NOW).unwrap();
+        assert_eq!(claims.org.as_deref(), Some(ORG));
+        assert_eq!(claims.session.as_deref(), Some("session_01"));
+        // Neither shape passes for the other, even with the same claims.
+        assert_eq!(
+            verify_proxy_token(&credential, SECRET, NOW),
+            Err(ProxyTokenError::Malformed)
+        );
+        let request_token = sign_proxy_token(SECRET, ORG, "session_01", NOW + 300);
+        assert_eq!(
+            verify_sandbox_proxy_credential(&request_token, SECRET, NOW),
+            Err(ProxyTokenError::Malformed)
+        );
+        // Swapping the version prefix breaks the signature.
+        assert_eq!(
+            verify_sandbox_proxy_credential(&request_token.replacen("v1.", "s1.", 1), SECRET, NOW),
+            Err(ProxyTokenError::BadSignature)
+        );
+        let unscoped = sign_sandbox_proxy_credential(SECRET, "-", "-", NOW + 60);
+        assert_eq!(
+            verify_sandbox_proxy_credential(&unscoped, SECRET, NOW),
+            Err(ProxyTokenError::Malformed)
+        );
+        let too_far = sign_sandbox_proxy_credential(
+            SECRET,
+            ORG,
+            "-",
+            NOW + MAX_SANDBOX_PROXY_CREDENTIAL_SECS + 1,
+        );
+        assert_eq!(
+            verify_sandbox_proxy_credential(&too_far, SECRET, NOW),
+            Err(ProxyTokenError::TooFarAhead)
+        );
+        let expired = sign_sandbox_proxy_credential(SECRET, ORG, "-", NOW);
+        assert_eq!(
+            verify_sandbox_proxy_credential(&expired, SECRET, NOW),
+            Err(ProxyTokenError::Expired)
+        );
+    }
+
+    #[test]
+    fn sandbox_route_mints_scoped_credentials_and_fails_closed() {
+        let scope = EgressScope {
+            org_id: Some(ORG.parse().unwrap()),
+            session_id: None,
+        };
+        let route = SandboxProxyRoute::new("egress.example.com:1080", "", SECRET.to_vec());
+        let credential = route
+            .credential(Some(&scope), Duration::from_secs(3_600))
+            .unwrap()
+            .unwrap();
+        assert_eq!(credential.address, "egress.example.com:1080");
+        assert!(credential.tls, "TLS is the default");
+        assert_eq!(credential.username, SANDBOX_PROXY_USERNAME);
+        assert!(credential.password.len() <= 255, "fits a SOCKS5 password");
+        assert!(!format!("{credential:?}").contains(&credential.password));
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let claims = verify_sandbox_proxy_credential(&credential.password, SECRET, now).unwrap();
+        assert_eq!(claims.org.as_deref(), Some(ORG));
+        assert_eq!(claims.exp, credential.expires_at);
+        assert!(credential.expires_at <= now + 3_601);
+
+        // A week is capped to the verifier's limit, so it still verifies.
+        let long = route
+            .credential(Some(&scope), Duration::from_secs(7 * 86_400))
+            .unwrap()
+            .unwrap();
+        assert!(verify_sandbox_proxy_credential(&long.password, SECRET, now).is_ok());
+
+        assert!(route.credential(None, Duration::from_secs(60)).is_err());
+        assert!(
+            SandboxProxyRoute::Off
+                .credential(Some(&scope), Duration::from_secs(60))
+                .unwrap()
+                .is_none()
+        );
+        let plain = SandboxProxyRoute::new("10.0.0.5:1080", "false", SECRET.to_vec());
+        assert!(
+            !plain
+                .credential(Some(&scope), Duration::from_secs(60))
+                .unwrap()
+                .unwrap()
+                .tls
+        );
+        for broken in [
+            SandboxProxyRoute::new("egress.example.com:1080", "", b"short".to_vec()),
+            SandboxProxyRoute::new("egress.example.com", "", SECRET.to_vec()),
+            SandboxProxyRoute::new("socks5://egress.example.com:1080", "", SECRET.to_vec()),
+            SandboxProxyRoute::new("egress.example.com:1080", "maybe", SECRET.to_vec()),
+        ] {
+            assert!(
+                matches!(broken, SandboxProxyRoute::Misconfigured(_)),
+                "{broken:?}"
+            );
+            assert!(
+                broken
+                    .credential(Some(&scope), Duration::from_secs(60))
+                    .is_err()
+            );
+        }
     }
 
     #[test]

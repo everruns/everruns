@@ -14,7 +14,7 @@ use super::address::AddressPolicy;
 use super::limiter::Limiter;
 use super::limits::{LimitsCache, LimitsSource};
 use super::proxy::{Proxy, ProxyOptions, unix_now};
-use everruns_core::host::{TenantEgressProxy, sign_proxy_token};
+use everruns_core::host::{TenantEgressProxy, sign_proxy_token, sign_sandbox_proxy_credential};
 
 use super::limits::OrgLimits;
 use super::usage::UsageAggregator;
@@ -33,6 +33,7 @@ impl LimitsSource for Fixed {
 
 struct Harness {
     proxy_addr: std::net::SocketAddr,
+    socks_addr: std::net::SocketAddr,
     usage: Arc<UsageAggregator>,
     limits: Arc<Mutex<OrgLimits>>,
 }
@@ -55,9 +56,13 @@ async fn start(limits: OrgLimits, policy: AddressPolicy, global_per_host: u64) -
     });
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind proxy");
     let proxy_addr = listener.local_addr().expect("addr");
+    let socks = TcpListener::bind("127.0.0.1:0").await.expect("bind socks");
+    let socks_addr = socks.local_addr().expect("addr");
+    tokio::spawn(proxy.clone().serve_socks(socks));
     tokio::spawn(proxy.serve(listener));
     Harness {
         proxy_addr,
+        socks_addr,
         usage,
         limits,
     }
@@ -477,4 +482,247 @@ async fn health_answers_without_a_token() {
         .await
         .expect("write");
     assert!(read_to_end(&mut stream).await.starts_with("HTTP/1.1 200"));
+}
+
+// --- SOCKS5 -----------------------------------------------------------------
+
+/// Where a SOCKS5 CONNECT should go.
+enum Dest<'a> {
+    Addr(std::net::SocketAddr),
+    Domain(&'a str, u16),
+}
+
+/// What the proxy said at each step: the method it chose, the auth status,
+/// and the reply code. `None` where it closed instead of answering.
+#[derive(Debug, PartialEq, Eq)]
+struct SocksOutcome {
+    method: Option<u8>,
+    auth: Option<u8>,
+    reply: Option<u8>,
+}
+
+async fn socks_connect(
+    h: &Harness,
+    password: Option<&str>,
+    command: u8,
+    dest: Dest<'_>,
+) -> (TcpStream, SocksOutcome) {
+    let mut stream = TcpStream::connect(h.socks_addr).await.expect("connect");
+    let mut outcome = SocksOutcome {
+        method: None,
+        auth: None,
+        reply: None,
+    };
+    let offered: &[u8] = if password.is_some() {
+        &[0x00, 0x02]
+    } else {
+        &[0x00]
+    };
+    let mut greeting = vec![0x05, offered.len() as u8];
+    greeting.extend_from_slice(offered);
+    stream.write_all(&greeting).await.expect("greeting");
+    let mut choice = [0u8; 2];
+    if stream.read_exact(&mut choice).await.is_err() {
+        return (stream, outcome);
+    }
+    outcome.method = Some(choice[1]);
+    let Some(password) = password.filter(|_| choice[1] == 0x02) else {
+        return (stream, outcome);
+    };
+
+    let mut auth = vec![0x01, 8];
+    auth.extend_from_slice(b"everruns");
+    auth.push(password.len() as u8);
+    auth.extend_from_slice(password.as_bytes());
+    stream.write_all(&auth).await.expect("auth");
+    let mut status = [0u8; 2];
+    if stream.read_exact(&mut status).await.is_err() {
+        return (stream, outcome);
+    }
+    outcome.auth = Some(status[1]);
+    if status[1] != 0 {
+        return (stream, outcome);
+    }
+
+    let mut request = vec![0x05, command, 0x00];
+    match dest {
+        Dest::Addr(std::net::SocketAddr::V4(addr)) => {
+            request.push(0x01);
+            request.extend_from_slice(&addr.ip().octets());
+            request.extend_from_slice(&addr.port().to_be_bytes());
+        }
+        Dest::Addr(std::net::SocketAddr::V6(addr)) => {
+            request.push(0x04);
+            request.extend_from_slice(&addr.ip().octets());
+            request.extend_from_slice(&addr.port().to_be_bytes());
+        }
+        Dest::Domain(name, port) => {
+            request.push(0x03);
+            request.push(name.len() as u8);
+            request.extend_from_slice(name.as_bytes());
+            request.extend_from_slice(&port.to_be_bytes());
+        }
+    }
+    stream.write_all(&request).await.expect("request");
+    let mut reply = [0u8; 10];
+    if tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut reply))
+        .await
+        .is_ok_and(|read| read.is_ok())
+    {
+        outcome.reply = Some(reply[1]);
+    }
+    (stream, outcome)
+}
+
+fn sandbox_credential(org: &str) -> String {
+    sign_sandbox_proxy_credential(SECRET, org, "session_1", unix_now() + 86_400)
+}
+
+/// The credential the egress service mints for a sandbox is the one the
+/// SOCKS5 listener admits, and the tunnel is counted like any other.
+#[tokio::test]
+async fn socks_tunnels_a_minted_sandbox_credential_and_counts_bytes() {
+    let echo = echo_server().await;
+    let h = start(
+        OrgLimits::unlimited(),
+        AddressPolicy::AllowLoopbackForTests,
+        1_000,
+    )
+    .await;
+    let egress = everruns_core::host::DirectEgressService::new().with_sandbox_proxy(
+        Some(&h.socks_addr.to_string()),
+        false,
+        SECRET.to_vec(),
+    );
+    let scope = everruns_core::EgressScope {
+        org_id: Some(ORG.parse().expect("org id")),
+        session_id: Some(
+            "session_00000000000000000000000000000001"
+                .parse()
+                .expect("session id"),
+        ),
+    };
+    let credential = everruns_core::EgressService::sandbox_proxy_credential(
+        &egress,
+        Some(&scope),
+        Duration::from_secs(3_600),
+    )
+    .expect("routing is configured")
+    .expect("a credential");
+    assert_eq!(credential.address, h.socks_addr.to_string());
+
+    let (mut stream, outcome) =
+        socks_connect(&h, Some(&credential.password), 0x01, Dest::Addr(echo)).await;
+    assert_eq!(
+        outcome,
+        SocksOutcome {
+            method: Some(0x02),
+            auth: Some(0x00),
+            reply: Some(0x00)
+        }
+    );
+    stream.write_all(b"ping-0123456789").await.expect("write");
+    let mut back = [0u8; 15];
+    stream.read_exact(&mut back).await.expect("echo");
+    assert_eq!(&back, b"ping-0123456789");
+    stream.shutdown().await.expect("shutdown");
+    let _ = read_to_end(&mut stream).await;
+
+    let (egress, ingress, requests) = settled_bytes(&h.usage).await;
+    assert_eq!((egress, ingress, requests), (15, 15, 1));
+}
+
+#[tokio::test]
+async fn socks_resolves_domains_itself() {
+    let echo = echo_server().await;
+    let h = start(
+        OrgLimits::unlimited(),
+        AddressPolicy::AllowLoopbackForTests,
+        1_000,
+    )
+    .await;
+    // `localhost` may answer ::1 first while the echo server is on 127.0.0.1;
+    // the proxy tries each validated address in turn.
+    let (mut stream, outcome) = socks_connect(
+        &h,
+        Some(&sandbox_credential(ORG)),
+        0x01,
+        Dest::Domain("LocalHost", echo.port()),
+    )
+    .await;
+    assert_eq!(outcome.reply, Some(0x00), "{outcome:?}");
+    stream.write_all(b"hi").await.expect("write");
+    let mut back = [0u8; 2];
+    stream.read_exact(&mut back).await.expect("echo");
+    assert_eq!(&back, b"hi");
+}
+
+#[tokio::test]
+async fn socks_refuses_request_tokens_forgeries_and_no_auth() {
+    let echo = echo_server().await;
+    let h = start(
+        OrgLimits::unlimited(),
+        AddressPolicy::AllowLoopbackForTests,
+        1_000,
+    )
+    .await;
+
+    // No username/password method offered: no acceptable method.
+    let (_, outcome) = socks_connect(&h, None, 0x01, Dest::Addr(echo)).await;
+    assert_eq!(outcome.method, Some(0xff));
+
+    let request_token = sign_proxy_token(SECRET, ORG, "session_1", unix_now() + 300);
+    let forged = sign_sandbox_proxy_credential(
+        b"another-secret-another-secret-xxxx",
+        ORG,
+        "-",
+        unix_now() + 300,
+    );
+    let expired = sign_sandbox_proxy_credential(SECRET, ORG, "-", unix_now() - 1);
+    for password in [request_token.as_str(), &forged, &expired, "nonsense"] {
+        let (_, outcome) = socks_connect(&h, Some(password), 0x01, Dest::Addr(echo)).await;
+        assert_eq!(outcome.auth, Some(0x01), "{password}");
+        assert_eq!(outcome.reply, None);
+    }
+
+    // BIND and UDP ASSOCIATE are not offered.
+    for command in [0x02, 0x03] {
+        let (_, outcome) = socks_connect(
+            &h,
+            Some(&sandbox_credential(ORG)),
+            command,
+            Dest::Addr(echo),
+        )
+        .await;
+        assert_eq!(outcome.reply, Some(0x07), "command {command}");
+    }
+    assert!(h.usage.drain(None).is_empty(), "nothing was admitted");
+}
+
+/// Past authentication the SOCKS5 listener runs the HTTP listener's checks.
+#[tokio::test]
+async fn socks_applies_the_same_destination_and_org_checks() {
+    let h = start(OrgLimits::unlimited(), AddressPolicy::PublicOnly, 1_000).await;
+    let credential = sandbox_credential(ORG);
+    for dest in [
+        Dest::Addr("127.0.0.1:443".parse().expect("addr")),
+        Dest::Addr("169.254.169.254:80".parse().expect("addr")),
+        Dest::Addr("[::1]:443".parse().expect("addr")),
+        Dest::Domain("localhost", 443),
+        Dest::Domain("smtp.example.com", 25),
+    ] {
+        let (_, outcome) = socks_connect(&h, Some(&credential), 0x01, dest).await;
+        assert_eq!(outcome.reply, Some(0x02));
+    }
+
+    let echo = echo_server().await;
+    let h = start(
+        OrgLimits::unlimited(),
+        AddressPolicy::AllowLoopbackForTests,
+        1_000,
+    )
+    .await;
+    h.limits.lock().expect("lock").suspended = true;
+    let (_, outcome) = socks_connect(&h, Some(&credential), 0x01, Dest::Addr(echo)).await;
+    assert_eq!(outcome.reply, Some(0x02), "suspended org");
 }

@@ -208,6 +208,46 @@ pub trait EgressService: Send + Sync {
     fn name(&self) -> &'static str {
         "EgressService"
     }
+
+    /// A credential for routing a sandbox's own outbound traffic through the
+    /// host's tenant egress proxy, valid for `valid_for`, or `None` when the
+    /// host does not route sandboxes. The provider hands it to its own API
+    /// (E2B's SOCKS5 egress proxy), never into the sandbox. An error means
+    /// routing is configured but unusable: the sandbox must not start with
+    /// direct egress instead.
+    fn sandbox_proxy_credential(
+        &self,
+        _scope: Option<&EgressScope>,
+        _valid_for: std::time::Duration,
+    ) -> EgressResult<Option<SandboxProxyCredential>> {
+        Ok(None)
+    }
+}
+
+/// Where and how a sandbox provider tunnels one sandbox's traffic to the
+/// tenant egress proxy (SOCKS5 with username and password).
+#[derive(Clone, PartialEq, Eq)]
+pub struct SandboxProxyCredential {
+    /// Public `host:port` of the proxy's SOCKS5 listener.
+    pub address: String,
+    /// Whether the provider must reach `address` over TLS.
+    pub tls: bool,
+    pub username: String,
+    /// Signed claims naming the org and session; secret.
+    pub password: String,
+    /// Expiry, unix seconds.
+    pub expires_at: i64,
+}
+
+impl std::fmt::Debug for SandboxProxyCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SandboxProxyCredential")
+            .field("address", &self.address)
+            .field("tls", &self.tls)
+            .field("username", &self.username)
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Stamps every request with the tenant it is made for, then delegates.
@@ -241,6 +281,16 @@ impl EgressService for ScopedEgressService {
 
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+
+    /// Minted for this wrapper's scope, whatever the caller passes.
+    fn sandbox_proxy_credential(
+        &self,
+        _scope: Option<&EgressScope>,
+        valid_for: std::time::Duration,
+    ) -> EgressResult<Option<SandboxProxyCredential>> {
+        self.inner
+            .sandbox_proxy_credential(Some(&self.scope), valid_for)
     }
 }
 

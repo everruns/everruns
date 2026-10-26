@@ -1,12 +1,12 @@
 //! Reqwest-backed implementation of the neutral Everruns egress contract.
 
-use super::egress_proxy::ProxyRoute;
+use super::egress_proxy::{ProxyRoute, SandboxProxyRoute};
 use super::org_egress_allowlist::{
     ORG_EGRESS_ALLOWLIST_CACHE_TTL, OrgAllowlistCache, OrgAllowlistSource,
 };
 use crate::{
-    EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
-    EgressStreamResponse, SystemAllowlist,
+    EgressError, EgressRequest, EgressResponse, EgressResult, EgressScope, EgressService,
+    EgressSigning, EgressStreamResponse, SystemAllowlist,
 };
 use async_trait::async_trait;
 use everruns_contracts::runtime::org_egress_allowlist::OrgEgressAllowlist;
@@ -49,6 +49,9 @@ pub struct DirectEgressService {
     /// Where tenant requests leave from: directly, or through the tenant
     /// egress proxy (`EVERRUNS_EGRESS_PROXY_URL`).
     proxy: ProxyRoute,
+    /// Whether sandbox providers tunnel sandbox traffic to the proxy's SOCKS5
+    /// listener (`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`).
+    sandbox_proxy: SandboxProxyRoute,
     /// Optional DNS override for `dns_pinning_required` requests. Production
     /// leaves this unset and uses the system resolver; tests install a
     /// controlled resolver to prove private answers are denied before connect.
@@ -83,6 +86,7 @@ impl DirectEgressService {
             deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
+            sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
         }
     }
@@ -96,6 +100,7 @@ impl DirectEgressService {
             deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
+            sandbox_proxy: SandboxProxyRoute::Off,
             dns_resolver: None,
         }
     }
@@ -139,12 +144,25 @@ impl DirectEgressService {
             .with_deny_feeds(super::egress_deny_feeds::runtime_deny_feeds());
         service.org_allowlist = OrgAllowlistSource::Runtime;
         service.proxy = ProxyRoute::from_env();
+        service.sandbox_proxy = SandboxProxyRoute::from_env();
         service
     }
 
     /// Send tenant requests through `proxy` (or directly with `None`).
     pub fn with_tenant_proxy(mut self, proxy: Option<super::TenantEgressProxy>) -> Self {
         self.proxy = proxy.map_or(ProxyRoute::Direct, ProxyRoute::Proxy);
+        self
+    }
+
+    /// Route sandboxes to the proxy's SOCKS5 listener at `address` (`host:port`),
+    /// over TLS unless `tls` is false; `None` turns sandbox routing off.
+    pub fn with_sandbox_proxy(mut self, address: Option<&str>, tls: bool, secret: Vec<u8>) -> Self {
+        self.sandbox_proxy = match address {
+            Some(address) => {
+                SandboxProxyRoute::new(address, if tls { "true" } else { "false" }, secret)
+            }
+            None => SandboxProxyRoute::Off,
+        };
         self
     }
 
@@ -481,6 +499,14 @@ impl EgressService for DirectEgressService {
 
     fn name(&self) -> &'static str {
         "DirectEgressService"
+    }
+
+    fn sandbox_proxy_credential(
+        &self,
+        scope: Option<&EgressScope>,
+        valid_for: Duration,
+    ) -> EgressResult<Option<crate::SandboxProxyCredential>> {
+        self.sandbox_proxy.credential(scope, valid_for)
     }
 }
 

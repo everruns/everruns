@@ -261,6 +261,18 @@ pub trait SessionSandboxContext: Send + Sync {
         None
     }
 
+    /// A credential for tunnelling the sandbox's own traffic through the
+    /// host's tenant egress proxy, valid for `valid_for`; `None` when the host
+    /// does not route sandboxes. An error means routing is configured but
+    /// unusable, and the sandbox must not start with direct egress instead.
+    #[cfg(feature = "runtime")]
+    fn sandbox_proxy_credential(
+        &self,
+        _valid_for: std::time::Duration,
+    ) -> Result<Option<crate::runtime::SandboxProxyCredential>, ToolExecutionResult> {
+        Ok(None)
+    }
+
     /// Labels for the managed Session Sandbox itself: [`Self::resource_labels`]
     /// plus [`LABEL_MANAGED`], which the orphan scan keys on.
     async fn managed_resource_labels(&self) -> serde_json::Map<String, Value> {
