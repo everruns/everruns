@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-26
+
+- Added bounded, read-only organization catalog discovery to [User MCP servers](integrations/user-mcp-servers.md), preserving verified initiating-person management authorization and removing credentials from display endpoints.
+
 ## 2026-10-25
 
 - Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).

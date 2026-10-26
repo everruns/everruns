@@ -8,8 +8,8 @@
 use async_trait::async_trait;
 use everruns_core::ScopedMcpServer;
 use everruns_core::mcp::{
-    McpLogin, McpLoginPrompter, UserMcpServerEntry, UserMcpServerSummary, UserMcpStore,
-    UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+    McpLogin, McpLoginPrompter, UserMcpCatalogPage, UserMcpServerEntry, UserMcpServerSummary,
+    UserMcpStore, UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
 };
 use everruns_core::tool_context::ToolContextExtensions;
 use std::sync::Arc;
@@ -54,6 +54,18 @@ fn unexpected(reply: UserMcpStoreReply) -> UserMcpStoreError {
 
 #[async_trait]
 impl UserMcpStore for ForwardingUserMcpStore {
+    async fn list_catalog(&self, cursor: Option<&str>) -> UserMcpStoreResult<UserMcpCatalogPage> {
+        match self
+            .call(UserMcpStoreCall::ListCatalog {
+                cursor: cursor.map(str::to_owned),
+            })
+            .await?
+        {
+            UserMcpStoreReply::Catalog { page } => Ok(page),
+            other => Err(unexpected(other)),
+        }
+    }
+
     async fn list(&self) -> UserMcpStoreResult<Vec<UserMcpServerSummary>> {
         match self.call(UserMcpStoreCall::List).await? {
             UserMcpStoreReply::Servers { servers } => Ok(servers),

@@ -38,8 +38,9 @@ use everruns_capabilities::capabilities::{
 };
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::mcp::{
-    McpLogin, UserMcpLoginStatus, UserMcpServerEntry, UserMcpServerSummary, UserMcpStoreCall,
-    UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
+    McpLogin, UserMcpCatalogEntry, UserMcpCatalogPage, UserMcpLoginStatus, UserMcpServerEntry,
+    UserMcpServerSummary, UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply,
+    UserMcpStoreResult,
 };
 use uuid::Uuid;
 
@@ -119,6 +120,12 @@ pub async fn invoke_user_mcp_store(
     let clashes = Clashes::of(turn, &resolved.resolved_capability_configs);
 
     match call {
+        UserMcpStoreCall::ListCatalog { cursor } => {
+            // Discovery has the same manage/person checks as add, but projects
+            // only public metadata. No OAuth, presentation refresh or network.
+            let page = catalog_page(turn.db, turn.org_id, cursor.as_deref()).await?;
+            Ok(UserMcpStoreReply::Catalog { page })
+        }
         UserMcpStoreCall::List => {
             let mut listed: Vec<_> = servers
                 .list()
@@ -215,6 +222,62 @@ pub async fn invoke_user_mcp_store(
             })
         }
     }
+}
+
+const CATALOG_PAGE_SIZE: usize = 50;
+// Catalog descriptions have no write-time size bound. Keep display metadata
+// small enough that it cannot bury the names or continuation token.
+const CATALOG_DESCRIPTION_CHARS: usize = 256;
+
+async fn catalog_page(
+    db: &StorageBackend,
+    org_id: i64,
+    cursor: Option<&str>,
+) -> UserMcpStoreResult<UserMcpCatalogPage> {
+    let cursor = cursor
+        .map(|value| {
+            value
+                .parse::<everruns_contracts::typed_id::McpServerId>()
+                .map_err(|_| UserMcpStoreError::Invalid("Invalid catalog cursor".into()))
+        })
+        .transpose()?;
+    let mut rows = db
+        .list_mcp_server_catalog_page(org_id, cursor, (CATALOG_PAGE_SIZE + 1) as i64)
+        .await
+        .map_err(|error| UserMcpStoreError::Internal(error.to_string()))?;
+    let has_more = rows.len() > CATALOG_PAGE_SIZE;
+    rows.truncate(CATALOG_PAGE_SIZE);
+    // Cursor follows scanned rows, including inactive/invalid entries. This
+    // bounds every page and lets callers traverse sparse catalogs safely.
+    let next_cursor = has_more
+        .then(|| rows.last().map(|row| row.id.to_string()))
+        .flatten();
+    let servers = rows
+        .into_iter()
+        .filter(|row| row.status == "active")
+        .filter_map(|row| {
+            let mut url = everruns_contracts::url_validation::validate_safe_url(&row.url).ok()?;
+            // THREAT[TM-TOOL-066]: catalog endpoints may contain literal credentials. Display only an
+            // identification URL; attachment still resolves the original preset.
+            url.set_username("").ok()?;
+            url.set_password(None).ok()?;
+            url.set_query(None);
+            url.set_fragment(None);
+            let auth_mode = super::McpServerService::settings_from_row(&row).auth_mode;
+            Some(UserMcpCatalogEntry {
+                name: row.name,
+                url: url.into(),
+                description: row
+                    .description
+                    .map(|text| text.chars().take(CATALOG_DESCRIPTION_CHARS).collect()),
+                auth_mode,
+            })
+        })
+        .collect();
+    Ok(UserMcpCatalogPage {
+        servers,
+        next_cursor,
+    })
 }
 
 /// The records a manage call is checked against, loaded from storage as the
