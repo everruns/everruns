@@ -47,7 +47,7 @@ impl SessionSandboxService {
         if !config.desktop_recording() {
             return Ok(());
         }
-        let context = self.tool_context(session_id);
+        let context = self.tool_context(session_id).await;
         let recordings = collect_desktop_recordings(&context, &config)
             .await
             .map_err(|err| anyhow::anyhow!("{err:?}"))?;

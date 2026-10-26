@@ -120,12 +120,14 @@ pub(super) fn build(
                     &auth_config,
                     host_composition.egress_service(),
                 ));
-                let service =
-                    Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
+                let service = Arc::new(
+                    crate::domains::session_sandbox::SessionSandboxService::new(
                         db.clone(),
                         storage_store,
                         connection_resolver,
-                    ));
+                    )
+                    .with_egress(host_composition.egress_service()),
+                );
                 event_listeners.push(Arc::new(
                     crate::domains::session_sandbox::SessionSandboxEventListener::new(
                         service.clone(),
