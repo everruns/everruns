@@ -295,7 +295,7 @@ scope visible where it affects which account an action uses.
 | Chats | Uses the current org's default end-user virtual user automatically. Retain threads, pins, archives, and the agent picker. No routine virtual-user picker. |
 | Settings: Account | Management profile, security/PATs, and console preferences. Sidebar footer continues to show the signed-in Everruns account. |
 | Settings: Profile | Name, locale, and timezone for the default virtual user in the selected org. |
-| Settings: Connections | Provider sign-ins and credentials for that virtual user. `/settings/connections` is the page. `/settings/agent-experience` opens Profile, or Connections when the query is an OAuth result. |
+| Settings: Connections | Provider sign-ins and credentials for that virtual user. `/settings/connections` is the page, including OAuth returns. |
 | Settings: MCP servers | MCP servers the person adds and signs in to. |
 | Settings: AI clients | AI apps approved to use Everruns as that person. |
 | Settings: Members | Label as Team members to identify console operators and organization roles. |

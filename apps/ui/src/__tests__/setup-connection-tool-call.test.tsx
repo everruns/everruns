@@ -133,11 +133,7 @@ describe("SetupConnectionToolCall", () => {
     renderCard({ provider: "daytona" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open connections" }));
-    expect(open).toHaveBeenCalledWith(
-      "/settings/connections",
-      "_blank",
-      "noopener,noreferrer",
-    );
+    expect(open).toHaveBeenCalledWith("/settings/connections", "_blank", "noopener,noreferrer");
   });
 
   it("keeps the card open with a plain reason when the popup sign-in fails", () => {

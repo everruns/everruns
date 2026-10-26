@@ -9,7 +9,6 @@ const SETTINGS_CHILD_ROUTES = [
   "/settings/payments",
   "/settings/profile",
   "/settings/user-profile",
-  "/settings/agent-experience",
   "/settings/connections",
   "/settings/mcp-servers",
   "/settings/ai-clients",
