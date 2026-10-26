@@ -41,6 +41,8 @@ pub struct DirectEgressService {
     open_reads: Arc<OpenReadMeter>,
     /// Optional domain reputation consulted before an open read.
     reputation: Option<Arc<super::egress_reputation::DomainReputation>>,
+    /// Optional threat-intelligence domain lists, refused like the deny list.
+    deny_feeds: Option<Arc<super::egress_deny_feeds::DenyFeeds>>,
     /// Where org allowlist extensions come from. Consulted only for a request
     /// the system policy would refuse as not allowlisted.
     org_allowlist: OrgAllowlistSource,
@@ -81,6 +83,7 @@ impl DirectEgressService {
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
             reputation: None,
+            deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
             sandbox_proxy: SandboxProxyRoute::Off,
@@ -94,6 +97,7 @@ impl DirectEgressService {
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
             reputation: None,
+            deny_feeds: None,
             org_allowlist: OrgAllowlistSource::None,
             proxy: ProxyRoute::Direct,
             sandbox_proxy: SandboxProxyRoute::Off,
@@ -136,7 +140,8 @@ impl DirectEgressService {
     pub fn from_env() -> Self {
         let mut service = Self::new()
             .with_system_policy(SystemEgressPolicy::from_env())
-            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new));
+            .with_reputation(super::egress_reputation::DomainReputation::from_env().map(Arc::new))
+            .with_deny_feeds(super::egress_deny_feeds::runtime_deny_feeds());
         service.org_allowlist = OrgAllowlistSource::Runtime;
         service.proxy = ProxyRoute::from_env();
         service.sandbox_proxy = SandboxProxyRoute::from_env();
@@ -170,6 +175,16 @@ impl DirectEgressService {
         self
     }
 
+    /// Attach (or clear) deny feeds. Every request the curated allowlist does
+    /// not admit is refused when its host is listed.
+    pub fn with_deny_feeds(
+        mut self,
+        deny_feeds: Option<Arc<super::egress_deny_feeds::DenyFeeds>>,
+    ) -> Self {
+        self.deny_feeds = deny_feeds;
+        self
+    }
+
     /// Resolve org allowlist extensions through `resolver` (cached for
     /// [`ORG_EGRESS_ALLOWLIST_CACHE_TTL`]) instead of the process-wide one.
     pub fn with_org_allowlist(mut self, resolver: Arc<dyn OrgEgressAllowlist>) -> Self {
@@ -199,11 +214,36 @@ impl DirectEgressService {
         self
     }
 
+    /// Decide the policy for one request: the system policy, then the deny
+    /// feeds for anything the curated allowlist did not admit.
+    async fn decide_policy(&self, request: &EgressRequest) -> PolicyDecision {
+        let decision = self.decide_system_policy(request).await;
+        if matches!(
+            decision,
+            PolicyDecision::Allowlisted
+                | PolicyDecision::AllowlistedOrg
+                | PolicyDecision::Denied(_)
+        ) {
+            return decision;
+        }
+        if let Some(feeds) = &self.deny_feeds {
+            feeds.start();
+            if let Some(host) = reqwest::Url::parse(&request.url)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_string))
+                && feeds.is_listed(&host)
+            {
+                return PolicyDecision::DenyFeed;
+            }
+        }
+        decision
+    }
+
     /// Decide the system policy for one request. The org's grant is
     /// consulted only when the policy alone would not allow the request
     /// outright: an open grant lifts everything but the deny list, and an
     /// allowlist extension can admit a request refused as not allowlisted.
-    async fn decide_policy(&self, request: &EgressRequest) -> PolicyDecision {
+    async fn decide_system_policy(&self, request: &EgressRequest) -> PolicyDecision {
         let Some(policy) = &self.system_policy else {
             return PolicyDecision::NoPolicy;
         };
@@ -294,6 +334,14 @@ impl DirectEgressService {
             PolicyDecision::Denied(_) => {
                 return Err(EgressError::NetworkAccessDenied {
                     url: request.url.clone(),
+                });
+            }
+            PolicyDecision::DenyFeed => {
+                return Err(EgressError::NetworkAccessDenied {
+                    url: format!(
+                        "{} (domain on a threat-intelligence deny feed)",
+                        request.url
+                    ),
                 });
             }
         }
@@ -548,6 +596,8 @@ enum PolicyDecision {
     /// The org holds an open grant: any host the deny list allows.
     OpenOrg,
     Denied(EgressPolicyDenial),
+    /// The host is on a deny feed and the allowlist did not admit it.
+    DenyFeed,
 }
 
 impl PolicyDecision {
@@ -559,6 +609,7 @@ impl PolicyDecision {
             Self::OpenRead => "open_read".to_string(),
             Self::OpenOrg => "open_org".to_string(),
             Self::Denied(denial) => format!("denied:{}", denial.reason()),
+            Self::DenyFeed => "denied:deny_feed".to_string(),
         }
     }
 }

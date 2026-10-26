@@ -32,6 +32,7 @@ use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use super::address::{self, AddressPolicy, ResolveError};
 use super::limiter::{Admission, Limiter};
 use super::limits::LimitsCache;
+use super::signals::Refusal;
 use super::usage::UsageAggregator;
 use everruns_core::host::{ProxyClaims, ProxyTokenError, verify_proxy_authorization};
 
@@ -210,6 +211,11 @@ impl Proxy {
             port,
             method,
         };
+        let signal = |refusal: Refusal| {
+            if let Some(org) = &claims.org {
+                self.usage.signals().refused(org, refusal, now);
+            }
+        };
         let refuse = |decision: &'static str, status: u16, message: &'static str| {
             log.refused(decision, status);
             Refused {
@@ -220,6 +226,7 @@ impl Proxy {
         };
 
         if !address::port_allowed(port) {
+            signal(Refusal::Port);
             return Err(refuse(
                 "port_blocked",
                 403,
@@ -247,12 +254,16 @@ impl Proxy {
 
         let admission = match self.limiter.admit(&org_key, host, &lookup.limits, now) {
             Ok(admission) => admission,
-            Err(refusal) => return Err(refuse(refusal.as_str(), 429, refusal.reason())),
+            Err(refusal) => {
+                signal(Refusal::Rate);
+                return Err(refuse(refusal.as_str(), 429, refusal.reason()));
+            }
         };
         // Every admitted request counts, even one that later fails to
         // connect: it consumed a slot and shows the attempt on the meter.
         if let Some(org) = &claims.org {
             self.usage.record(org, session, now, 0, 0, 1);
+            self.usage.signals().host(org, host, now);
         }
 
         let addrs = match address::resolve(host, port, self.options.address_policy).await {
@@ -260,13 +271,17 @@ impl Proxy {
             Err(err) => {
                 return Err(match err {
                     ResolveError::PortBlocked => {
+                        signal(Refusal::Port);
                         refuse("port_blocked", 403, "egress to this port is not allowed")
                     }
-                    ResolveError::NotPublic => refuse(
-                        "non_public_address",
-                        403,
-                        "destination resolves to a non-public address",
-                    ),
+                    ResolveError::NotPublic => {
+                        signal(Refusal::Private);
+                        refuse(
+                            "non_public_address",
+                            403,
+                            "destination resolves to a non-public address",
+                        )
+                    }
                     ResolveError::NoAddress => {
                         refuse("dns_failure", 502, "destination host does not resolve")
                     }

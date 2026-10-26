@@ -1,8 +1,9 @@
 // Session trace index repository: keeps `session_trace_*` caught up with events.
 //
-// Decision: projection runs right after events are written (spawned after the
-// writing transaction commits, never on the write's own latency) and again
-// before every trace read, both through `catch_up_session_trace`. A per-session
+// Decision: projection runs right after a turn's last event is written
+// (spawned after the writing transaction commits, never on the write's own
+// latency) and again before every trace read, both through
+// `catch_up_session_trace`. A per-session
 // watermark makes the passes idempotent: each event is applied exactly once,
 // whichever pass gets there first, and a pass that fails or is skipped is made
 // up by the next one. The background backfill uses the same entry point for
@@ -65,9 +66,18 @@ struct EventSlice {
 }
 
 impl Database {
-    /// Is any of these event types one the trace index reads?
-    pub fn is_trace_event_type(event_type: &str) -> bool {
-        TRACE_EVENT_TYPES.contains(&event_type)
+    /// Does this event end a turn, so the write path projects the turn now?
+    ///
+    /// Decision: the write path projects once per turn, at its end, rather
+    /// than after every stored batch. A pass is a transaction of about nine
+    /// statements, and a turn stores about seven batches; every reader of the
+    /// index catches up first anyway (`catch_up_session_trace_fully`), so an
+    /// open turn is still shown whole.
+    pub fn ends_trace_turn(event_type: &str) -> bool {
+        matches!(
+            event_type,
+            "turn.completed" | "turn.failed" | "turn.cancelled" | "turn.sealed"
+        )
     }
 
     /// Project a session's trace in the background once the current

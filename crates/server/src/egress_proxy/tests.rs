@@ -366,6 +366,7 @@ async fn the_control_endpoint_answers_limits_and_receives_usage() {
             ingress_bytes: 20,
             requests: 1,
         }],
+        signals: Vec::new(),
     };
     HttpUsageSink::new(&base, &secret)
         .expect("sink")

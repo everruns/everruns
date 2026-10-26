@@ -558,6 +558,7 @@ These apply to tenant traffic: requests an agent, capability, MCP server or inte
 | `EVERRUNS_EGRESS_POLICY` | `open` | `open`, `curated-writes` or `curated-all`. An unrecognized value enforces `curated-all`. |
 | `EVERRUNS_EGRESS_OPEN_READS_PER_MINUTE` | `120` | Per-org, per-process limit on reads to hosts outside the allowlist in `curated-writes`. `0` turns those reads off. |
 | `EVERRUNS_EGRESS_REPUTATION` | `off` | `cloudflare-security` checks hosts against Cloudflare's security resolver before connecting; lookups that fail let the request through. |
+| `EVERRUNS_EGRESS_DENY_FEEDS` | unset | Comma-separated threat-intelligence domain lists to refuse: `hagezi-tif-mini` (HaGeZi Threat Intelligence Feeds, mini) or your own `https://` URLs of plain, hosts-file or adblock-style domain lists. A listed domain and its subdomains are refused in every mode and for every org, open egress included, unless the curated allowlist names the host. Fetched at start and every 6 hours; a failed fetch keeps the last list. |
 | `EVERRUNS_EGRESS_PROXY_URL` | unset | Send tenant traffic through a tenant egress proxy, for example `http://egress-proxy:4750`. |
 | `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
 | `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` | unset | Public `host:port` of the proxy's SOCKS5 listener. When set, E2B sandboxes send their own outbound TCP through the proxy (E2B's bring-your-own-proxy), under the same checks, caps and per-org counts as tenant traffic. Needs `EVERRUNS_EGRESS_PROXY_SECRET`; if it is missing or short, E2B sandboxes fail to start rather than leave directly. |
@@ -584,6 +585,8 @@ Read by the `everruns-egress-proxy` binary. Every cap is off unless set.
 | `EGRESS_PROXY_CONTROL_URL` | unset | Control endpoint. The proxy asks `GET /internal/egress-proxy/orgs/{org}/limits` (cached 60 s) and posts usage to `POST /internal/egress-proxy/usage`, both with `Authorization: Bearer <secret>`. The `EGRESS_PROXY_ORG_*` caps then apply only while it cannot be reached. |
 
 Usage without a control endpoint is logged once per org, session and minute on the `everruns::egress::usage` target.
+
+The proxy also counts abuse signals per org and minute: attempts on blocked (SMTP) ports, destinations that resolve to private addresses, requests refused by a cap, and how many distinct hosts the org reached. They go to the control endpoint in the same usage batches (`signals`), or are logged on the `everruns::egress::signals` target. The proxy only counts them; acting on them, such as suspending an org, is up to the control plane.
 
 ## UI API Proxy Architecture
 

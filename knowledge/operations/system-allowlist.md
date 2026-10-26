@@ -122,6 +122,18 @@ carry data in its URL, so open reads are bounded:
   The lookup runs concurrently with DNS-pinning resolution, so a first read of
   an unknown host pays one round trip rather than two; allowlisted hosts skip
   it entirely, which is one reason to list frequently read sites.
+- **Deny feeds.** With `EVERRUNS_EGRESS_DENY_FEEDS`, the boundary also
+  refuses domains on public threat-intelligence lists (preset
+  `hagezi-tif-mini`, or operator URLs), with their subdomains, for every
+  request the allowlist does not admit, open grant included. Unlike the
+  curated deny list, a curated allowlist entry wins over a feed: a feed is a
+  third party's judgement and lists shared platforms. Fetched once per process
+  at start and every 6 hours; a failed fetch keeps the last list, and the
+  process allows traffic until the first fetch lands. Decision: a refreshed
+  list over a per-request lookup, because the long tail of phishing and C2
+  hosts churns daily and a set lookup costs nothing per request; it
+  complements the reputation resolver rather than replacing it. Source:
+  `crates/core/src/host/egress_deny_feeds.rs`.
 - **URL length.** An open read's URL is capped at 2048 characters.
 - **Hostnames only.** An open read to an IP literal is refused, since it would
   bypass any domain-based reputation.
@@ -314,6 +326,15 @@ to the log. Hosted Everruns keeps only its commercial layer in the SaaS
 repository: trust tiers tied to payment, the operator kill switch, and booking
 usage into the org ledger.
 
+The proxy also reports **abuse signals** per org and minute with the usage
+batch (`crates/server/src/egress_proxy/signals.rs`): blocked-port (SMTP)
+attempts, private-address refusals, cap refusals, and distinct hosts reached.
+It counts and never acts on them: deciding that a pattern is abuse needs
+history and account state the proxy does not hold, and the response (warn,
+throttle, suspend) is the host's policy. Distinct hosts are counted per
+org-minute, not per session, so many sessions using the same few APIs do not
+add up to a fan-out.
+
 ### Sandboxes through the proxy
 
 E2B can tunnel a sandbox's own outbound TCP to a SOCKS5 proxy we name
@@ -357,6 +378,7 @@ yet. Threat model: TM-E2B-005, TM-E2B-008.
 | System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
 | Org extension | One org's runtime egress, widening the allowlist only | Platform user grants, org admins edit |
 | Open egress grant | One org's runtime egress, `open` mode except the deny list | Platform user or the host's own rules |
+| Deny feeds | All runtime egress the allowlist does not admit | Operator (`EVERRUNS_EGRESS_DENY_FEEDS`) |
 | Tenant egress proxy | All tenant runtime egress: separate addresses, per-org limits | Deployment |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |

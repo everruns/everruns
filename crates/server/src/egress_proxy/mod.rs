@@ -53,6 +53,7 @@ pub mod address;
 pub mod limiter;
 pub mod limits;
 pub mod proxy;
+pub mod signals;
 pub mod socks;
 pub mod usage;
 

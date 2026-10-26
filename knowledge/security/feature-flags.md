@@ -49,8 +49,12 @@ Patch operations change only named flags. The default-organisation seeder must n
 features: defaults belong to the grade policy, so bootstrap cannot bypass internal/off.
 
 [Resolution](../../crates/server/src/services/org_feature_flags.rs) reads durable overrides
-on every enforcement path. A replica-local cache must not delay revocation. Storage
-failures deny feature access instead of treating unknown overrides as production defaults.
+on every enforcement path. A replica-local cache must not delay revocation, so the
+[override cache](../../crates/server/src/storage/backend/org_feature_flag_cache.rs) serves
+reads only while its server is listening for the table's change notifications: every
+committed write, from any replica or tool, clears that org on commit, and a lost listener
+connection clears everything and reads the table until it is back. Storage failures deny
+feature access instead of treating unknown overrides as production defaults.
 
 ## Configuration authority
 
