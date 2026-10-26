@@ -102,6 +102,12 @@ it("declares metadata separately from the secure value step", async () => {
   fireEvent.change(screen.getByLabelText("Allowed HTTPS URL"), {
     target: { value: "https://other.example/v1" },
   });
+  expect(
+    screen.getByText(/web_fetch and Bashkit send Authorization: Bearer \$OTHER_TOKEN/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/Daytona, E2B, and Modal commands run without this credential/),
+  ).toBeInTheDocument();
   expect(screen.queryByLabelText("Credential value")).not.toBeInTheDocument();
   fireEvent.submit(screen.getByLabelText("Label").closest("form")!);
   await waitFor(() =>

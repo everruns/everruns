@@ -43,6 +43,13 @@ function expiry(input: string) {
   return input ? new Date(input).toISOString() : undefined;
 }
 
+function placementPreview(auth: string, field: string, name: string) {
+  const reference = `$${name || "NAME"}`;
+  if (auth === "bearer") return `Authorization: Bearer ${reference}`;
+  if (auth === "form_field") return `${field || "field"}=${reference}`;
+  return `${field || "Header"}: ${reference}`;
+}
+
 function ValueForm({
   credential,
   onSaved,
@@ -462,6 +469,10 @@ function AddBinding({
                   />
                 </div>
               )}
+              <p className="text-xs text-muted-foreground">
+                web_fetch and Bashkit send {placementPreview(auth, field, name)} only to this URL.
+                Daytona, E2B, and Modal commands run without this credential.
+              </p>
             </>
           ) : (
             <>
