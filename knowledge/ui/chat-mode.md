@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Page-aware Chat mode"
-description: "How the Adoption-gated split shell connects permanent Platform Chat to the current page, with shared context across app pages and typed draft editing."
+description: "How the Adoption-gated split shell connects a Platform Chat instance to the current page, with shared context across app pages and typed draft editing."
 tags:
   - ui
   - agents
@@ -33,12 +33,53 @@ the existing shell. The source catalog is
 [`feature_flags.rs`](../../crates/server/src/records/feature_flags.rs).
 
 The app layout owns one long-lived
-[`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx).
-It reuses the person's permanent Platform Chat and existing `SessionProvider`
-and `ChatPanel`. Entering via Chat or Command/Ctrl-J preserves the route and the
-mounted page. Back to app hides the Chat without tearing down its stream or
-composer. An organization switch destroys the shell's state. A direct `/chats`
-entry under the flag opens Chat beside Agents; side-chat URLs keep working.
+[`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx)
+and one [`ChatWorkspace`](../../apps/ui/src/components/chat/chat-workspace.tsx).
+Chat and every subchat are full conversation destinations: `/chats` opens the
+permanent conversation; `/chats/{id}` replaces it with the selected instance.
+Neither opens another conversation beside itself. History is a list destination.
+Command/Ctrl-J on a Chat destination focuses its existing composer.
+
+A **subchat** is a fresh instance of the managed Platform Chat Agent with its own
+session, transcript and workspace files. Creating one does not fork, seed or copy
+another transcript. The shared/private memory contract still applies; a new
+conversation is not a new identity or a separate organization. New subchat and
+recent subchats remain discoverable regardless of either Adoption flag. An empty
+draft creates its session only on first send; a failed first send reuses that
+session. Ordinary subchats keep normal pin/archive behavior.
+
+Command/Ctrl-J on an app page opens the selected personal Chat instance beside
+that page, defaulting to permanent Chat. The shell retains one mounted conversation
+and its composer when moving between full Chat and the page workspace. Back to
+app hides the conversation without tearing down its stream or composer. An
+organization switch destroys the shell's state. Delegated child conversations
+are not selected as page editors. Page context is enabled only beside non-Chat
+pages, and the conversation list does not register filters as adjacent-page state.
+
+The Subchats panel lists independent conversations. Its optional **Work** tab
+shows delegation and background tasks belonging to the active Chat instance, or
+the validated Platform Chat parent of a delegated child. It never hosts a second
+conversation or a second composer. Existing task links remain usable without
+automatically enabling new delegation.
+
+### Proposed flag schema (not migrated)
+
+The existing keys remain compatible and retain their current organization
+rollouts. Their labels now describe the behavior: **Chat workspace** (`chat_mode`)
+and **Chat background work** (`chat_threads`). The proposed key cleanup is:
+
+| Surface | Proposed key | Availability |
+| --- | --- | --- |
+| Chat, fresh subchats, history, pin/archive | None | Core, always available |
+| Page-side Chat, page context, draft/review tools | `chat_workspace` | Organization Adoption opt-in; replaces `chat_mode` |
+| Delegation capability and Work panel | `chat_background_work` | Organization Adoption opt-in; replaces `chat_threads` |
+| External public-facing Chat | `public_chat` | Existing independent rollout; unchanged |
+
+There is no master Chat gate and neither Adoption feature depends on the other.
+Voice remains its cross-cutting capability flag. A future migration should resolve
+an explicitly configured new key first, then fall back to its old key when no new
+value exists. Do not OR aliases: an explicit false must win. Preserve enrollment,
+sessions and history; never enroll an organization as part of the rename.
 
 The desktop geometry follows the exploration: up to 600 px Chat on the left,
 the current page in the middle, and a 48 px navigation rail on the right.
@@ -271,7 +312,7 @@ Without a browser adapter, the existing platform-command editing flow remains.
 
 [Entity history](../execution/change-reasons-and-manager-context.md) records the
 originating session and numbered snapshots. The shared review controller follows
-only changes attributed to this permanent Chat or a correlated browser Save. It
+only changes attributed to the active Chat instance or a correlated browser Save. It
 never infers a mutation from tool-output prose or the administrator audit log.
 A foreign writer ends the uninterrupted Chat sequence, including writes between
 polls. Undo can reach only the Chat sequence after that writer.

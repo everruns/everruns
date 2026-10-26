@@ -804,6 +804,7 @@
     "input_schema": {
       "$defs": {
         "ModelSelectionChange": {
+          "description": "A reviewed model enablement change with the provider and state the user saw.",
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -827,6 +828,7 @@
           "type": "object"
         }
       },
+      "description": "Apply a set of reviewed model enablement changes in one transaction.",
       "properties": {
         "changes": {
           "items": {
@@ -10966,6 +10968,7 @@
     "cli": "users profile get",
     "description": "Read your own editable profile, without email, tokens or credentials.",
     "input_schema": {
+      "description": "Read the editable profile belonging to the signed-in account.",
       "properties": {
         "id": {
           "type": "string"
@@ -11786,6 +11789,7 @@
     "cli": "orgs decision-settings get",
     "description": "Read the active organization's decision-model selection without model credentials.",
     "input_schema": {
+      "description": "Read the active organization decision-model selection without credentials.",
       "properties": {
         "org": {
           "type": "string"
@@ -11831,6 +11835,7 @@
     "cli": "organization-accounts get",
     "description": "Read an organization account's editable name. Credentials are never returned.",
     "input_schema": {
+      "description": "Read the editable name of an authorized organization account.",
       "properties": {
         "id": {
           "format": "uuid",
@@ -11854,6 +11859,7 @@
     "cli": "virtual-users self-profile get",
     "description": "Read your own organization profile.",
     "input_schema": {
+      "description": "Read the active organization profile bound to the signed-in account.",
       "properties": {
         "id": {
           "type": "string"
@@ -12113,6 +12119,7 @@
           "type": "string"
         }
       },
+      "description": "Read authorized Sandbox Template metadata without execution configuration.",
       "properties": {
         "id": {
           "$ref": "#/$defs/sbxtplId"
@@ -19182,6 +19189,7 @@
     "input_schema": {
       "$defs": {
         "UndoModelSelectionItem": {
+          "description": "A saved model selection change to restore at an expected current revision.",
           "properties": {
             "expected_revision": {
               "format": "int64",
@@ -19203,6 +19211,7 @@
           "type": "object"
         }
       },
+      "description": "Restore reviewed model selections atomically while their revisions remain current.",
       "properties": {
         "changes": {
           "items": {
@@ -19303,6 +19312,7 @@
     "cli": "users me update",
     "description": "Update your own account display name.",
     "input_schema": {
+      "description": "Update the signed-in account display name across organizations.",
       "properties": {
         "id": {
           "type": "string"
@@ -23948,7 +23958,8 @@
           ],
           "type": "object"
         }
-      ]
+      ],
+      "description": "Update the active organization name and explicitly supplied defaults."
     },
     "method": "PATCH",
     "name": "update_org",
@@ -23962,20 +23973,38 @@
     "cli": "organization-accounts update",
     "description": "Rename an organization account while preserving its current credentials.",
     "input_schema": {
-      "properties": {
-        "id": {
-          "format": "uuid",
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
+      "$defs": {
+        "OrganizationAccountNameRequest": {
+          "description": "A new display name; account credentials remain unchanged.",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
         }
       },
-      "required": [
-        "id",
-        "name"
+      "allOf": [
+        {
+          "$ref": "#/$defs/OrganizationAccountNameRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
       ],
-      "type": "object"
+      "description": "Rename an organization account without replacing its credentials."
     },
     "method": "PATCH",
     "name": "update_organization_account_name",
@@ -24070,7 +24099,8 @@
           ],
           "type": "object"
         }
-      ]
+      ],
+      "description": "Update the signed-in organization profile without changing its lifecycle."
     },
     "method": "PATCH",
     "name": "update_own_virtual_user_profile",
@@ -24475,6 +24505,24 @@
     "description": "Update Sandbox Template metadata while preserving its current execution specification.",
     "input_schema": {
       "$defs": {
+        "SandboxTemplateMetadataRequest": {
+          "description": "Editable template metadata; omitted fields retain their current values.",
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
         "sbxtplId": {
           "description": "Prefixed identifier with 'sbxtpl' prefix",
           "example": "sbxtpl_01933b5a000070008000000000000001",
@@ -24482,27 +24530,23 @@
           "type": "string"
         }
       },
-      "properties": {
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ]
+      "allOf": [
+        {
+          "$ref": "#/$defs/SandboxTemplateMetadataRequest"
         },
-        "display_name": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "id": {
-          "$ref": "#/$defs/sbxtplId"
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/sbxtplId"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "id"
       ],
-      "type": "object"
+      "description": "Update Sandbox Template metadata while preserving its current execution specification."
     },
     "method": "PATCH",
     "name": "update_sandbox_template_metadata",

@@ -15,7 +15,7 @@ than inferring write access from a page title.
 
 ## Preconditions
 
-- Adoption Chat mode enabled in a disposable organization, a second browser/session
+- Adoption Chat workspace enabled in a disposable organization, a second browser/session
   for concurrent edits, and owner/admin plus read-only users.
 - Real configured model for Chat turns. Use the requested Muse 1.3 Contributor
   through OpenRouter when available; record its exact model ID in the run evidence.

@@ -286,6 +286,7 @@ pub async fn update_connection(
     Ok(Json(OrganizationConnectionResponse::from_row(row)))
 }
 
+/// A display-name change that preserves the connected account credential.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameOrganizationConnectionRequest {
     pub name: String,
@@ -312,7 +313,9 @@ pub async fn rename_connection(
     );
     crate::domains::organizations::provider_accounts::UpdateOrganizationAccountName {
         id: connection_id,
-        name: body.name,
+        req: crate::domains::organizations::provider_accounts::OrganizationAccountNameRequest {
+            name: body.name,
+        },
     }
     .run(&ctx)
     .await

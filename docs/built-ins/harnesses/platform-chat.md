@@ -11,23 +11,30 @@ access, introduction, conversation starters, and durable operator memory.
 Platform Chat is built in and read-only: you cannot edit, archive, or delete it from the UI
 or the API. Use **Copy** on its page to make an editable Agent from it.
 
-## Chat and side conversations
+## Chat and subchats
 
 The sidebar's **Chat** entry always opens your permanent conversation. It cannot be
-renamed, unpinned, archived, deleted, or reassigned. **New chat** opens a fresh side
+renamed, unpinned, archived, deleted, or reassigned. **New subchat** opens a fresh
 conversation with the same Agent. Its session is created when you send the first
 message; it starts without copied conversation history or workspace files.
 
-**All chats** lists your side conversations. Playground
+Each subchat is a new Chat instance with its own transcript and workspace files.
+Selecting a subchat replaces the main conversation; Chat never opens a second
+conversation beside itself. The Subchats panel lists your conversations.
+
+**All chats** lists your subchats. Playground
 conversations and runs with other agents stay outside Chat. Use Playground to select
 an Agent or harness and test its behavior.
 
 ## Chat beside your pages
 
-Organization owners and admins can enable **Chat mode** in **Settings > Features**.
-Open an app page, then click **Chat** or press **Command-J** (**Ctrl-J** on Windows
-and Linux). The permanent conversation opens beside the current page. **Back to
-app** restores the full page and keeps the conversation and composer draft.
+Organization owners and admins can enable **Chat workspace** in **Settings > Features**.
+Open an app page, then press **Command-J** (**Ctrl-J** on Windows and Linux).
+Your selected personal Chat opens beside the page, defaulting to the permanent
+conversation. **Back to app** restores the full page and keeps the conversation
+and composer draft. The sidebar's **Chat** entry opens full Chat; on Chat pages,
+Command/Ctrl-J focuses the existing composer. Page context is attached only
+when Chat is beside an app page.
 
 Each message shares the current page's identity with Chat. On an Agent page,
 Chat can read the live form, including unsaved instructions and configuration,
@@ -57,7 +64,7 @@ Chat edits one form at a time.
 
 Use the page's existing **Save** or **Create** action to apply a staged change.
 Organization, Model defaults and Web search defaults use explicit **Save** and
-**Discard** controls while Chat mode is enabled. Chat can also stage supported
+**Discard** controls while Chat workspace is enabled. Chat can also stage supported
 settings, schedule and eval-case fields, MCP metadata, invitations, report-builder
 choices and Playground setup. Connection credentials, approvals, financial actions
 and operational buttons retain their normal manual controls. Operational context
@@ -74,7 +81,9 @@ New-resource forms still require Create. Undo does not delete newly created
 resources or reverse invitations, payments, issued tokens or queued tasks.
 Protected values keep their manual controls. An inverse that no longer passes
 validation stays visible with an error for review.
-Chat mode is independent of the **Chat threads** opt-in.
+Chat workspace is independent of **Chat background work**, which enables
+delegation and the Work tab. Each Chat instance has its own work. Core Chat,
+subchats and history remain available with either Adoption feature off.
 
 ## Platform access and memory
 
@@ -119,7 +128,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Ask User | Pause for structured user input when required |
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
 | User MCP Servers | Use the MCP servers the person added for themselves, and add, remove and connect them in chat ([User MCP servers](/features/user-mcp-servers/)) |
-| Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat threads |
+| Coordination | Hand focused work to threads you can open and follow, when the organization has adopted Chat background work |
 | Poppy Personal Agent | Talk to companies' agents for the person over the Personal Agent Protocol ([Poppy Personal Agent](/capabilities/poppy-personal-agent/)) |
 
 ## Existing conversations

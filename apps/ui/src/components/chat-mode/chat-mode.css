@@ -8,6 +8,12 @@
 .chat-mode-shell[data-chat-mode="open"] {
   grid-template-columns: 0px min(600px, 44vw) minmax(0, 1fr) 48px;
 }
+.chat-mode-shell[data-chat-mode="chat"] {
+  grid-template-columns: 240px minmax(0, 1fr) 0px 0px;
+}
+.chat-mode-shell[data-chat-mode="chat"] .chat-mode-page {
+  visibility: hidden;
+}
 .chat-mode-sidebar {
   grid-column: 1;
   grid-row: 1;
@@ -115,6 +121,9 @@
   }
   .chat-mode-shell[data-chat-mode="open"] {
     grid-template-columns: 0px minmax(0, 1fr) 0px 48px;
+  }
+  .chat-mode-shell[data-chat-mode="chat"] {
+    grid-template-columns: 0px minmax(0, 1fr) 0px 0px;
   }
   .chat-mode-conversation {
     grid-column: 2;

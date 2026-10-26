@@ -2,6 +2,9 @@
 
 ## 2026-10-26
 
+- Chat now treats subchats as independent instances, renders one active conversation,
+  scopes Work to its originating Chat, and proposes independent workspace/background-work flags.
+
 - Bounded the automatic-title listener future after reproducing a default-thread stack overflow; title admission and ownership behavior are unchanged. See [Session titles](runtime-resources/session-titles.md).
 
 - Bound server test compilation to avoid concurrent heavy codegen on hosted runners; retained the full selected test inventory and execution concurrency. See [CI Build Time](project/ci-build-time.md).

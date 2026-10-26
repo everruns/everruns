@@ -13,7 +13,7 @@ Verify Chat can explain visible operational state without exposing payloads or i
 
 ## Preconditions
 
-- Chat mode adopted; real chat model configured.
+- Chat workspace adopted; real chat model configured.
 - Platform operator and separate tenant administrator without platform permission.
 - Known worker, task, workflow, schedule and circuit-breaker fixture IDs; Monitoring enabled.
 

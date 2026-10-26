@@ -24,7 +24,6 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { sideChatNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
 const [newSideChat, chatHistory] = sideChatNavigation;
 
@@ -46,7 +45,6 @@ function useFrozen<T>(value: T, frozen: boolean): T {
 }
 
 export function SidebarChatThreads({ pathname }: { pathname: string }) {
-  const chatMode = useChatMode();
   const { threads, isLoading } = useChatThreads();
   usePlatformChatThread({ ensure: true });
   const [interacting, setInteracting] = useState(false);
@@ -54,12 +52,11 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
   const visible = stableThreads.slice(0, SIDEBAR_THREAD_LIMIT);
 
   if (isLoading && visible.length === 0) return null;
-  if (chatMode && visible.length === 0) return null;
 
   return (
     <div
       role="group"
-      aria-label="Side chats"
+      aria-label="Subchats"
       className="ml-9 mr-2.5 mb-1"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
@@ -68,8 +65,8 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     >
       <div className="border-l border-border">
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
-          <p className="text-xs font-medium">Side chats</p>
-          {!chatMode && (
+          <p className="text-xs font-medium">Subchats</p>
+          {
             <Link
               href={newSideChat.href}
               prefetch={false}
@@ -79,7 +76,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             >
               <newSideChat.icon className="size-3.5" aria-hidden="true" />
             </Link>
-          )}
+          }
         </div>
         {visible.map((thread) => {
           const href = `/chats/${thread.id}`;
@@ -106,7 +103,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         })}
       </div>
 
-      {!chatMode && stableThreads.length > SIDEBAR_THREAD_LIMIT && (
+      {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
         <Link
           href={chatHistory.href}
           prefetch={false}

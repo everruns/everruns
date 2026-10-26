@@ -13,6 +13,8 @@ People in the current organization.
 | Command | What it does |
 |---|---|
 | [`users list`](#users-list) | List users in the current organization. |
+| [`users me update`](#users-me-update) | Update your own account display name. |
+| [`users profile get`](#users-profile-get) | Read your own editable profile, without email, tokens or credentials. |
 
 ## users list
 
@@ -31,4 +33,43 @@ Example:
 ```bash
 # Find a user by name or email in the current organization
 everruns users list --search alice
+```
+
+## users me update
+
+Update your own account display name.
+
+```bash
+everruns users me update [OPTIONS] --id <id> --name <name>
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Required. |
+| `--name <NAME>` | Required. |
+
+Example:
+
+```bash
+# Update your own display name across organizations
+everruns users me update --id 00000000-0000-0000-0000-000000000001 --name 'Alex Rivera' --reason 'Use my preferred name'
+```
+
+## users profile get
+
+Read your own editable profile, without email, tokens or credentials.
+
+```bash
+everruns users profile get [OPTIONS] --id <id>
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Required. |
+
+Example:
+
+```bash
+# Read your own account display name independently of the active organization
+everruns users profile get --id 00000000-0000-0000-0000-000000000001
 ```

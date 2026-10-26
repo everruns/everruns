@@ -10,15 +10,17 @@ use everruns_core::{DEFAULT_ORG_ID, OrgRole, Permission, Policy, Rule};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Read the active organization decision-model selection without credentials.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetOrgDecisionSettings {
     pub org: String,
 }
+/// The decision-model selection for the active organization.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OrgDecisionSettings {
     pub model_id: Option<String>,
 }
-#[command(name = "get_org_decision_settings", category = "organizations", description = "Read the active organization's decision-model selection without model credentials.", method = "GET", path = "/v1/orgs/{org}/decision-settings", policy = crate::domains::models::LLM_MODEL_VIEW, cli = CliRoute::new(&["orgs", "decision-settings"], "get").with_examples(&[CliExample::new("Check the active organization decision-model selection", "everruns orgs decision-settings get --org org_01h9")]))]
+#[command(name = "get_org_decision_settings", http = plain, tag = "Organizations", summary = "Get organization decision settings", category = "organizations", description = "Read the active organization's decision-model selection without model credentials.", method = "GET", path = "/v1/orgs/{org}/decision-settings", policy = crate::domains::models::LLM_MODEL_VIEW, cli = CliRoute::new(&["orgs", "decision-settings"], "get").with_examples(&[CliExample::new("Check the active organization decision-model selection", "everruns orgs decision-settings get --org org_01h9")]))]
 impl Command for GetOrgDecisionSettings {
     type Output = OrgDecisionSettings;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -44,6 +46,7 @@ pub const ORGANIZATION_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgSettingsManage)],
 };
 
+/// Update the active organization name and explicitly supplied defaults.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UpdateOrg {
     pub org: String,

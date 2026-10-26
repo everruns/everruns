@@ -4740,6 +4740,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/organization-accounts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization account name
+     * @description Read an organization account's editable name. Credentials are never returned.
+     */
+    get: operations["get_organization_account"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Rename organization account
+     * @description Rename an organization account while preserving its current credentials.
+     */
+    patch: operations["update_organization_account_name"];
+    trace?: never;
+  };
   "/v1/orgs": {
     parameters: {
       query?: never;
@@ -4788,6 +4812,26 @@ export interface paths {
      * @description List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.
      */
     get: operations["list_audit_logs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/decision-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get organization decision settings
+     * @description Read the active organization's decision-model selection without model credentials.
+     */
+    get: operations["get_org_decision_settings"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5830,6 +5874,30 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-template-metadata/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get sandbox template metadata
+     * @description Read editable Sandbox Template metadata, excluding execution configuration and environment values.
+     */
+    get: operations["get_sandbox_template_metadata"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update sandbox template metadata
+     * @description Update Sandbox Template metadata while preserving its current execution specification.
+     */
+    patch: operations["update_sandbox_template_metadata"];
     trace?: never;
   };
   "/v1/sandbox-templates": {
@@ -7549,6 +7617,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/users/{id}/profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your account profile
+     * @description Read your own editable profile, without email, tokens or credentials.
+     */
+    get: operations["get_account_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/virtual-users": {
     parameters: {
       query?: never;
@@ -7867,6 +7955,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/virtual-users/{id}/self-profile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get your organization profile
+     * @description Read your own organization profile.
+     */
+    get: operations["get_own_virtual_user_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update your organization profile
+     * @description Update your own organization profile without changing lifecycle.
+     */
+    patch: operations["update_own_virtual_user_profile"];
+    trace?: never;
+  };
   "/v1/workspaces": {
     parameters: {
       query?: never;
@@ -8069,6 +8181,11 @@ export interface components {
     AcceptInviteResponse: {
       org_id: string;
       role: string;
+    };
+    /** @description The signed-in account editable profile, excluding email and credentials. */
+    AccountProfile: {
+      id: string;
+      name: string;
     };
     /** @description Data for act.completed event */
     ActCompletedData: {
@@ -9603,6 +9720,10 @@ export interface components {
     AppendManagerContextRequest: {
       /** @description The paragraph to add, markdown. */
       text: string;
+    };
+    /** @description Apply a set of reviewed model enablement changes in one transaction. */
+    ApplyModelSelection: {
+      changes: components["schemas"]["ModelSelectionChange"][];
     };
     /** @description Named session file to collect after an eval case completes. */
     ArtifactSpec: {
@@ -20019,6 +20140,14 @@ export interface components {
       source: string;
       vendor?: components["schemas"]["ModelVendor"] | null;
     };
+    /** @description A reviewed model enablement change with the provider and state the user saw. */
+    ModelSelectionChange: {
+      enabled: boolean;
+      expected_enabled: boolean;
+      id: string;
+      provider_id: string;
+    };
+    /** @description The saved before and after values and revisions of a model selection change. */
     ModelSelectionReceipt: {
       after: boolean;
       before: boolean;
@@ -20861,6 +20990,10 @@ export interface components {
      * @enum {string}
      */
     ObserverStatus: "active" | "paused" | "archived" | "deleted";
+    /** @description The decision-model selection for the active organization. */
+    OrgDecisionSettings: {
+      model_id?: string | null;
+    };
     /** @description An organization's egress allowlist extension. */
     OrgEgressAllowlistResponse: {
       /**
@@ -20910,6 +21043,16 @@ export interface components {
     };
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
+    };
+    /** @description Editable history contains only the account's display name. */
+    OrganizationAccountMetadata: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    /** @description A new display name; account credentials remain unchanged. */
+    OrganizationAccountNameRequest: {
+      name: string;
     };
     /** @description Non-secret metadata for an organization-owned provider account. */
     OrganizationConnectionResponse: {
@@ -22956,6 +23099,7 @@ export interface components {
        */
       redact_content?: boolean;
     };
+    /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
     };
@@ -24040,6 +24184,11 @@ export interface components {
        * @description Timestamp of the most recent definition or revision change.
        */
       updated_at: string;
+    };
+    /** @description Editable template metadata; omitted fields retain their current values. */
+    SandboxTemplateMetadataRequest: {
+      description?: string | null;
+      display_name?: string | null;
     };
     /** @description Template revision a Sandbox was created from. */
     SandboxTemplateRef: {
@@ -26300,6 +26449,12 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
+    /** @description Editable Sandbox Template labels and metadata, excluding execution configuration. */
+    TemplateMetadata: {
+      description?: string | null;
+      display_name: string;
+      id: components["schemas"]["sbxtplId"];
+    };
     /**
      * @description A claim-level citation attached to a span of generated text.
      *
@@ -27952,6 +28107,18 @@ export interface components {
      * @enum {string}
      */
     TurnWaitStatus: "completed" | "failed" | "timeout";
+    /** @description Restore reviewed model selections atomically while their revisions remain current. */
+    UndoModelSelection: {
+      changes: components["schemas"]["UndoModelSelectionItem"][];
+    };
+    /** @description A saved model selection change to restore at an expected current revision. */
+    UndoModelSelectionItem: {
+      /** Format: int64 */
+      expected_revision: number;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+    };
     /** @description Request to update an ingress channel owned by an Agent. */
     UpdateAgentChannelRequest: {
       /** @description Replacement transport-specific channel configuration. */
@@ -31557,6 +31724,11 @@ export interface components {
      * @example paypol_01933b5a000070008000000000000001
      */
     paypolId: string;
+    /**
+     * @description Prefixed identifier with 'sbxtpl' prefix
+     * @example sbxtpl_01933b5a000070008000000000000001
+     */
+    sbxtplId: string;
     /**
      * @description Prefixed identifier with 'session' prefix
      * @example session_01933b5a000070008000000000000001
@@ -43400,7 +43572,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ApplyModelSelection"];
+      };
+    };
     responses: {
       /** @description Success */
       200: {
@@ -43420,7 +43596,11 @@ export interface operations {
       path?: never;
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UndoModelSelection"];
+      };
+    };
     responses: {
       /** @description Success */
       200: {
@@ -43894,6 +44074,56 @@ export interface operations {
       };
     };
   };
+  get_organization_account: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
+        };
+      };
+    };
+  };
+  update_organization_account_name: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OrganizationAccountNameRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationAccountMetadata"];
+        };
+      };
+    };
+  };
   list_organizations: {
     parameters: {
       query?: never;
@@ -44047,6 +44277,29 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ListResponse_AuditLogEntry"];
+        };
+      };
+    };
+  };
+  get_org_decision_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrgDecisionSettings"];
         };
       };
     };
@@ -46780,6 +47033,56 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SandboxTargetsResponse"];
+        };
+      };
+    };
+  };
+  get_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
+        };
+      };
+    };
+  };
+  update_sandbox_template_metadata: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SandboxTemplateMetadataRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateMetadata"];
         };
       };
     };
@@ -51061,6 +51364,29 @@ export interface operations {
       };
     };
   };
+  get_account_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountProfile"];
+        };
+      };
+    };
+  };
   list_virtual_users: {
     parameters: {
       query?: {
@@ -52208,6 +52534,56 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
+      };
+    };
+  };
+  update_own_virtual_user_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateVirtualUserRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VirtualUser"];
+        };
       };
     };
   };

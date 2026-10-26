@@ -13,7 +13,7 @@ Verify the settings reviewed beside Chat are the settings saved through ordinary
 
 ## Preconditions
 
-- Running stack, organization administrator, Chat mode adopted; a second browser on the same organization.
+- Running stack, organization administrator, Chat workspace adopted; a second browser on the same organization.
 - Real chat model configured. Record organization ID and saved settings through the API.
 
 ## Test Data
@@ -39,7 +39,7 @@ Verify the settings reviewed beside Chat are the settings saved through ordinary
    remain editable and retryable; restoring the API and saving must persist it once.
 5. Remove manage permission while a form is open. New patches and Save must fail;
    re-read the API to verify unchanged state. Repeat a stale revision and organization switch.
-6. Disable Chat mode through the manual feature control. Verify the old shell and
+6. Disable Chat workspace through the manual feature control. Verify the old shell and
    Organization/default autosave behavior; no new Save/Discard controls remain.
 7. Repeat at desktop and narrow pane widths, dark mode and reduced motion. Settings
    navigation must fit the pane, controls remain reachable and Back to app preserves drafts.

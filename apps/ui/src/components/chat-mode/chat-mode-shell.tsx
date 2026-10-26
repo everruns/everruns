@@ -26,8 +26,7 @@ import {
 } from "@/lib/navigation";
 import { usePolicies } from "@/hooks/use-policies";
 import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
-import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { chatPageRoute } from "@/lib/chat-page-context";
 import {
   ChatModeContext,
@@ -47,8 +46,8 @@ import {
 } from "./form-collection-adapter";
 import { PageViewRegistryContext, usePageViewRegistry } from "./page-view-state";
 
-const ChatPanel = dynamic(() =>
-  import("@/components/chat/chat-panel").then((module) => module.ChatPanel),
+const ChatWorkspace = dynamic(() =>
+  import("@/components/chat/chat-workspace").then((module) => module.ChatWorkspace),
 );
 
 export function ChatModeShell({
@@ -87,9 +86,17 @@ function EnabledShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/") || pathname === "/chat";
+  const fullChat = chatRoute && pathname !== "/chats/history";
   const [open, setOpen] = useState(false);
+  const splitOpen = open && !chatRoute;
+  const conversationVisible = fullChat || splitOpen;
+  const [activeChatId, setActiveChatId] = useState<string>();
   const [visited, setVisited] = useState(false);
   const [hint, setHint] = useState(true);
+  useEffect(() => {
+    if (fullChat) setVisited(true);
+  }, [fullChat]);
   const [registrations, setRegistrations] = useState<
     Array<{
       token: string;
@@ -105,7 +112,7 @@ function EnabledShell({
     pageRef.current = element;
     setPageElement(element);
   }, []);
-  const { thread, isLoading, error } = usePlatformChatThread({ ensure: visited });
+  const { thread, isLoading, error } = usePlatformChatThread({ ensure: visited || fullChat });
   const { setOpen: setSearchOpen } = useCommandPalette();
   const route = chatPageRoute(pathname, searchParams);
   const { currentOrg } = useOrg();
@@ -197,81 +204,106 @@ function EnabledShell({
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
         event.preventDefault();
-        changeOpen(!open);
+        if (chatRoute) {
+          document
+            .querySelector<HTMLElement>(
+              '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
+            )
+            ?.focus();
+        } else changeOpen(!open);
       }
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [changeOpen, open]);
+  }, [changeOpen, open, chatRoute]);
 
   return (
     <ChatModeContext.Provider
       value={{
         pageContainer: pageRef,
         pageContainerElement: pageElement,
-        open,
+        open: splitOpen,
         setOpen: changeOpen,
         page,
         registerPage,
         pageAdapter,
         pageViewAdapter: viewAdapter,
-        threadId: thread?.id,
+        threadId: activeChatId ?? thread?.id,
         actions,
         recordAction,
       }}
     >
-      <div className="chat-mode-shell min-h-0 flex-1" data-chat-mode={open ? "open" : "closed"}>
-        <div className="chat-mode-sidebar min-h-0 overflow-hidden" inert={open} aria-hidden={open}>
+      <div
+        className="chat-mode-shell min-h-0 flex-1"
+        data-chat-mode={fullChat ? "chat" : splitOpen ? "open" : "closed"}
+      >
+        <div
+          className="chat-mode-sidebar min-h-0 overflow-hidden"
+          inert={splitOpen}
+          aria-hidden={splitOpen}
+        >
           <Sidebar className="hidden md:flex" />
           <MobileSidebar />
         </div>
         <section
           className="chat-mode-conversation min-h-0 overflow-hidden border-r bg-background"
           aria-label="Platform Chat"
-          hidden={!visited}
-          inert={!open}
+          hidden={!visited && !fullChat}
+          inert={!conversationVisible}
+          aria-hidden={!conversationVisible}
         >
-          <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
-            <h2 className="text-sm font-semibold">Chat</h2>
-            <Button variant="ghost" size="sm" onClick={() => changeOpen(false)}>
-              <ArrowLeft className="size-3.5" />
-              Back to app
-            </Button>
-          </div>
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {hint && open && (
-              <div className="absolute left-4 right-4 top-4 z-10 flex gap-3 border bg-card p-4 text-sm shadow-sm">
-                <Eye className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <p>I can see the page beside this chat. Ask about it, or tell me what to change.</p>
-                <button
-                  type="button"
-                  aria-label="Dismiss chat hint"
-                  className="self-start"
-                  onClick={() => setHint(false)}
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-            )}
-            {visited && thread ? (
-              <SessionProvider key={thread.id} sessionId={thread.id}>
-                <ChatPanel
-                  pageAware
-                  onPageMessage={() => setHint(false)}
-                  showParticipants={false}
-                  showRunCards
-                />
-              </SessionProvider>
-            ) : (
-              <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">
-                {error
-                  ? `Could not open Chat: ${error.message}`
-                  : isLoading
-                    ? "Opening Chat…"
-                    : "Open Chat to begin."}
-              </p>
-            )}
-          </div>
+          {(visited || fullChat) && thread ? (
+            <ChatWorkspace
+              activeChatId={activeChatId}
+              onActiveChatChange={setActiveChatId}
+              visible={conversationVisible}
+              pageAware={splitOpen}
+              onPageMessage={() => setHint(false)}
+              extraActions={
+                splitOpen ? (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => changeOpen(false)}>
+                      <ArrowLeft className="size-3.5" /> Back to app
+                    </Button>
+                    <LinkButton
+                      variant="ghost"
+                      size="icon-sm"
+                      href={`/chats/${activeChatId ?? thread.id}`}
+                      aria-label="Open full Chat"
+                    >
+                      <Maximize2 className="size-3.5" />
+                    </LinkButton>
+                  </>
+                ) : undefined
+              }
+              notice={
+                hint && splitOpen ? (
+                  <div className="flex shrink-0 gap-3 border-b bg-card px-4 py-3 text-xs">
+                    <Eye className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <p>
+                      I can see the page beside this chat. Ask about it, or tell me what to change.
+                    </p>
+                    <button
+                      type="button"
+                      aria-label="Dismiss chat hint"
+                      className="ml-auto self-start"
+                      onClick={() => setHint(false)}
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : undefined
+              }
+            />
+          ) : (
+            <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">
+              {error
+                ? `Could not open Chat: ${error.message}`
+                : isLoading
+                  ? "Opening Chat…"
+                  : "Open Chat to begin."}
+            </p>
+          )}
         </section>
         <PageViewRegistryContext.Provider value={viewRegistry}>
           <PageChangeReviewProvider>
@@ -280,8 +312,10 @@ function EnabledShell({
               tabIndex={-1}
               className="chat-mode-page relative flex min-h-0 min-w-0 flex-col outline-none"
               aria-label="Current page"
+              inert={fullChat}
+              aria-hidden={fullChat}
             >
-              {open && (
+              {splitOpen && (
                 <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
                   <Eye className="size-3.5 shrink-0" />
                   <span className="truncate">Showing this page to the chat</span>
@@ -311,13 +345,13 @@ function EnabledShell({
                 </div>
               )}
               <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
-                {children}
+                {fullChat ? null : children}
               </main>
               <SavedPageChanges />
             </section>
           </PageChangeReviewProvider>
         </PageViewRegistryContext.Provider>
-        <IconRail open={open} navigation={navigation} />
+        <IconRail open={splitOpen} navigation={navigation} />
       </div>
     </ChatModeContext.Provider>
   );

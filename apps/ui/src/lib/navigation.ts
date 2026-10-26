@@ -83,7 +83,12 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 // These links are rendered beneath Chat rather than as peer sidebar destinations.
 export const sideChatNavigation: NavigationItem[] = [
-  { name: "New side chat", href: "/chats/new", icon: Plus, keywords: ["thread", "conversation"] },
+  {
+    name: "New subchat",
+    href: "/chats/new",
+    icon: Plus,
+    keywords: ["thread", "conversation", "new side chat", "new chat"],
+  },
   {
     name: "View all chats",
     href: "/chats/history",

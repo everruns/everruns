@@ -18,16 +18,18 @@ fn owner(ctx: &Ctx, id: &str) -> Result<Uuid, CommandError> {
     }
     Ok(id)
 }
+/// The signed-in account editable profile, excluding email and credentials.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AccountProfile {
     pub id: String,
     pub name: String,
 }
+/// Read the editable profile belonging to the signed-in account.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetAccountProfile {
     pub id: String,
 }
-#[command(name = "get_account_profile", category = "users", description = "Read your own editable profile, without email, tokens or credentials.", method = "GET", path = "/v1/users/{id}/profile", policy = OWN_PROFILE, cli = CliRoute::new(&["users", "profile"], "get").with_examples(&[CliExample::new("Read your own account display name independently of the active organization", "everruns users profile get --id 00000000-0000-0000-0000-000000000001")]))]
+#[command(name = "get_account_profile", http = plain, tag = "users", summary = "Get your account profile", category = "users", description = "Read your own editable profile, without email, tokens or credentials.", method = "GET", path = "/v1/users/{id}/profile", policy = OWN_PROFILE, cli = CliRoute::new(&["users", "profile"], "get").with_examples(&[CliExample::new("Read your own account display name independently of the active organization", "everruns users profile get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetAccountProfile {
     type Output = AccountProfile;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -43,6 +45,7 @@ impl Command for GetAccountProfile {
         })
     }
 }
+/// Update the signed-in account display name across organizations.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UpdateAccountProfile {
     pub id: String,

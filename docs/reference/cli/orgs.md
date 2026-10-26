@@ -16,7 +16,9 @@ Organizations you belong to, and which one is active.
 | [`orgs get`](#orgs-get) | Get organization details. |
 | [`orgs list`](#orgs-list) | List organizations for the current user. |
 | [`orgs resolve`](#orgs-resolve) | Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). |
+| [`orgs update`](#orgs-update) | Update the active organization's name and defaults. |
 | [`orgs audit-logs list`](#orgs-audit-logs-list) | List audit logs for the caller's organization. |
+| [`orgs decision-settings get`](#orgs-decision-settings-get) | Read the active organization's decision-model selection without model credentials. |
 | [`orgs egress-allowlist get`](#orgs-egress-allowlist-get) | Get the organization's outbound allowlist extension: whether a platform administrator granted it, its host patterns, and the deployment's egress policy mode. |
 | [`orgs egress-allowlist set`](#orgs-egress-allowlist-set) | Replace the organization's outbound allowlist extension. |
 | [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). |
@@ -84,6 +86,35 @@ Example:
 everruns orgs resolve --id org_01h9
 ```
 
+## orgs update
+
+Update the active organization's name and defaults.
+
+```bash
+everruns orgs update [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--agentid-agents-per-owner <AGENTID_AGENTS_PER_OWNER>` | How many agents one AgentID owner may sign in to this organization's Public Chat channels. |
+| `--base-harness-id <BASE_HARNESS_ID>` | Base harness to use when a session is started without an explicit harness_id. |
+| `--default-harness-id <DEFAULT_HARNESS_ID>` | Default harness to preselect in the UI for new sessions. Mutually exclusive with `default_har... |
+| `--default-harness-name <DEFAULT_HARNESS_NAME>` | Alternative to `default_harness_id` — looked up by stable name within the org. Mutually exclu... |
+| `--default-model-id <DEFAULT_MODEL_ID>` | Default LLM model for this organization. |
+| `--default-provider-per-service <DEFAULT_PROVIDER_PER_SERVICE>` | Org-level default provider per service (EVE-569). |
+| `--name <NAME>` | The display name of the organization. |
+| `--org <ORG>` | Required. |
+| `--small-model-id <SMALL_MODEL_ID>` | Shared small chat model for lightweight work. |
+| `--system-decisions <SYSTEM_DECISIONS>` |  |
+| `--web-search-defaults <WEB_SEARCH_DEFAULTS>` |  |
+
+Example:
+
+```bash
+# Rename the active organization while preserving its model and harness defaults
+everruns orgs update --org org_01h9 --name 'Northstar Support' --reason 'Use the team name'
+```
+
 ## orgs audit-logs list
 
 List audit logs for the caller's organization. Supports domain, action, actor, and event-type filters.
@@ -106,6 +137,25 @@ Example:
 ```bash
 # Review who changed what in the organization recently
 everruns orgs audit-logs list --domain management --limit 50
+```
+
+## orgs decision-settings get
+
+Read the active organization's decision-model selection without model credentials.
+
+```bash
+everruns orgs decision-settings get [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. |
+
+Example:
+
+```bash
+# Check the active organization decision-model selection
+everruns orgs decision-settings get --org org_01h9
 ```
 
 ## orgs egress-allowlist get

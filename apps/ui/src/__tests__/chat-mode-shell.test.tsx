@@ -5,6 +5,7 @@ import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
 import { defaultNavigationSections } from "@/lib/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
+let mockPathname = "/agents/agent_1";
 let mockEnabled = false;
 let mockCanNavigate = false;
 let mockOrg = "org_1";
@@ -20,7 +21,7 @@ function render(ui: ReactNode) {
   });
 }
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/agents/agent_1",
+  usePathname: () => mockPathname,
   useSearchParams: () => mockQuery,
 }));
 jest.mock("next/link", () => ({
@@ -37,14 +38,24 @@ jest.mock("next/link", () => ({
 jest.mock("next/dynamic", () => ({
   __esModule: true,
   default: () =>
-    function ChatStub() {
+    function ChatStub({
+      extraActions,
+      pageAware,
+    }: {
+      extraActions?: ReactNode;
+      pageAware?: boolean;
+    }) {
       const [text, setText] = useState("");
       return (
-        <input
-          aria-label="Chat draft"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
+        <div data-testid="workspace" data-page-aware={pageAware}>
+          {extraActions}
+          <input
+            aria-label="Chat draft"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <textarea aria-label="Existing composer" />
+        </div>
       );
     },
 }));
@@ -81,6 +92,7 @@ function Page() {
   return <button onClick={() => setCount(count + 1)}>Page edits {count}</button>;
 }
 beforeEach(() => {
+  mockPathname = "/agents/agent_1";
   mockEnabled = false;
   mockCanNavigate = false;
   mockOrg = "org_1";
@@ -225,4 +237,69 @@ it("labels a collection of page forms with the page title instead of the last fo
     </ChatModeShell>,
   );
   expect(screen.getByLabelText("Page context label")).toHaveTextContent("Current Agent");
+});
+
+it("shows one full Chat without page-side Chat or its nested route content", () => {
+  mockEnabled = true;
+  mockPathname = "/chats/side";
+  render(
+    <ChatModeShell>
+      <div>Nested route conversation</div>
+    </ChatModeShell>,
+  );
+  expect(screen.getAllByTestId("workspace")).toHaveLength(1);
+  expect(screen.getByTestId("workspace")).toHaveAttribute("data-page-aware", "false");
+  expect(screen.queryByText("Nested route conversation")).not.toBeInTheDocument();
+  expect(screen.queryByText("Showing this page to the chat")).not.toBeInTheDocument();
+  expect(screen.getByTestId("workspace").closest("[data-chat-mode]")).toHaveAttribute(
+    "data-chat-mode",
+    "chat",
+  );
+  fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+  expect(screen.getByLabelText("Existing composer")).toHaveFocus();
+});
+it("preserves a conversation draft between full Chat and the page workspace", () => {
+  mockEnabled = true;
+  mockPathname = "/chats/session_chat";
+  const { rerender } = render(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  const workspace = screen.getByTestId("workspace");
+  fireEvent.change(screen.getByLabelText("Chat draft"), {
+    target: { value: "Draft across views" },
+  });
+  mockPathname = "/agents/agent_1";
+  rerender(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+  expect(screen.getByTestId("workspace")).toBe(workspace);
+  expect(screen.getByLabelText("Chat draft")).toHaveValue("Draft across views");
+  expect(workspace).toHaveAttribute("data-page-aware", "true");
+  mockPathname = "/chats/session_chat";
+  rerender(
+    <ChatModeShell>
+      <Page />
+    </ChatModeShell>,
+  );
+  expect(screen.getByTestId("workspace")).toBe(workspace);
+  expect(workspace).toHaveAttribute("data-page-aware", "false");
+  expect(screen.getByLabelText("Chat draft")).toHaveValue("Draft across views");
+});
+it("shows Chat history without another conversation pane", () => {
+  mockEnabled = true;
+  mockPathname = "/chats/history";
+  render(
+    <ChatModeShell>
+      <p>History list</p>
+    </ChatModeShell>,
+  );
+  expect(screen.getByText("History list")).toBeInTheDocument();
+  expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+  expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
 });

@@ -5,6 +5,7 @@ use crate::domains::common::*;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// A reviewed model enablement change with the provider and state the user saw.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ModelSelectionChange {
     pub id: String,
@@ -12,10 +13,12 @@ pub struct ModelSelectionChange {
     pub expected_enabled: bool,
     pub enabled: bool,
 }
+/// Apply a set of reviewed model enablement changes in one transaction.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApplyModelSelection {
     pub changes: Vec<ModelSelectionChange>,
 }
+/// The saved before and after values and revisions of a model selection change.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct ModelSelectionReceipt {
     pub id: String,
@@ -40,7 +43,7 @@ fn validate_ids(ids: &[String]) -> Result<(), CommandError> {
     }
     Ok(())
 }
-#[command(name = "apply_model_selection", category = "models", description = "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.", method = "POST", path = "/v1/models/selection", policy = LLM_MODEL_MANAGE, http = plain, cli = CliRoute::new(&["models", "selection"], "apply").with_examples(&[CliExample::new("Enable a reviewed model only if its provider and current selection still match", "everruns models selection apply --changes '[{\"id\":\"model_01h9\",\"provider_id\":\"provider_01h9\",\"expected_enabled\":false,\"enabled\":true}]' --reason 'Make the reviewed model selectable'")]))]
+#[command(name = "apply_model_selection", category = "models", description = "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.", method = "POST", path = "/v1/models/selection", policy = LLM_MODEL_MANAGE, http = plain, request_body(ApplyModelSelection), cli = CliRoute::new(&["models", "selection"], "apply").with_examples(&[CliExample::new("Enable a reviewed model only if its provider and current selection still match", "everruns models selection apply --changes '[{\"id\":\"model_01h9\",\"provider_id\":\"provider_01h9\",\"expected_enabled\":false,\"enabled\":true}]' --reason 'Make the reviewed model selectable'")]))]
 impl Command for ApplyModelSelection {
     type Output = Vec<ModelSelectionReceipt>;
     fn transactional() -> bool {
@@ -79,17 +82,19 @@ impl Command for ApplyModelSelection {
         Ok(receipts)
     }
 }
+/// A saved model selection change to restore at an expected current revision.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UndoModelSelectionItem {
     pub id: String,
     pub from_revision: i64,
     pub expected_revision: i64,
 }
+/// Restore reviewed model selections atomically while their revisions remain current.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UndoModelSelection {
     pub changes: Vec<UndoModelSelectionItem>,
 }
-#[command(name = "undo_model_selection", category = "models", description = "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.", method = "POST", path = "/v1/models/selection/undo", policy = LLM_MODEL_MANAGE, http = plain, cli = CliRoute::new(&["models", "selection"], "undo").with_examples(&[CliExample::new("Undo reviewed enablement only while the saved revision is still current", "everruns models selection undo --changes '[{\"id\":\"model_01h9\",\"from_revision\":1,\"expected_revision\":2}]' --reason 'Restore the reviewed selection'")]))]
+#[command(name = "undo_model_selection", category = "models", description = "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.", method = "POST", path = "/v1/models/selection/undo", policy = LLM_MODEL_MANAGE, http = plain, request_body(UndoModelSelection), cli = CliRoute::new(&["models", "selection"], "undo").with_examples(&[CliExample::new("Undo reviewed enablement only while the saved revision is still current", "everruns models selection undo --changes '[{\"id\":\"model_01h9\",\"from_revision\":1,\"expected_revision\":2}]' --reason 'Restore the reviewed selection'")]))]
 impl Command for UndoModelSelection {
     type Output = Vec<ModelSelectionReceipt>;
     fn transactional() -> bool {

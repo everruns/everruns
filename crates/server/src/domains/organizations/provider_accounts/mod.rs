@@ -108,11 +108,12 @@ pub struct OrganizationAccountMetadata {
     pub id: Uuid,
     pub name: String,
 }
+/// Read the editable name of an authorized organization account.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetOrganizationAccount {
     pub id: Uuid,
 }
-#[command(name = "get_organization_account", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "get").with_examples(&[CliExample::new("Read an organization account name without retrieving its credentials", "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001")]))]
+#[command(name = "get_organization_account", http = plain, tag = "Organizations", summary = "Get organization account name", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "get").with_examples(&[CliExample::new("Read an organization account name without retrieving its credentials", "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetOrganizationAccount {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -127,16 +128,23 @@ impl Command for GetOrganizationAccount {
         })
     }
 }
+/// Rename an organization account without replacing its credentials.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct UpdateOrganizationAccountName {
     pub id: Uuid,
+    #[serde(flatten)]
+    pub req: OrganizationAccountNameRequest,
+}
+/// A new display name; account credentials remain unchanged.
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct OrganizationAccountNameRequest {
     pub name: String,
 }
-#[command(name = "update_organization_account_name", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "update").with_examples(&[CliExample::new("Rename a connected account while preserving its credential", "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'")]))]
+#[command(name = "update_organization_account_name", http = plain, request_body(OrganizationAccountNameRequest), tag = "Organizations", summary = "Rename organization account", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "update").with_examples(&[CliExample::new("Rename a connected account while preserving its credential", "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'")]))]
 impl Command for UpdateOrganizationAccountName {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let name = self.name.trim();
+        let name = self.req.name.trim();
         if name.is_empty() || name.len() > 255 {
             return Err(CommandError::bad_request(
                 "Account name must be 1 to 255 characters",

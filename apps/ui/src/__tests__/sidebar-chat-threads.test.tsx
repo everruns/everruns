@@ -57,15 +57,15 @@ describe("SidebarChatThreads", () => {
 
     render(<SidebarChatThreads pathname="/chats/sess_a" />);
 
-    const sideChats = within(screen.getByRole("group", { name: "Side chats" }));
-    expect(sideChats.getByText("Side chats")).toBeInTheDocument();
+    const sideChats = within(screen.getByRole("group", { name: "Subchats" }));
+    expect(sideChats.getByText("Subchats")).toBeInTheDocument();
     expect(sideChats.getByRole("link", { name: "Alpha" })).toHaveAttribute("aria-current", "page");
     expect(sideChats.getByRole("link", { name: "Beta" })).not.toHaveAttribute("aria-current");
-    expect(sideChats.getByRole("link", { name: "New side chat" })).toBeInTheDocument();
-    expect(sideChats.getByText("Side chats").parentElement).toContainElement(
-      sideChats.getByRole("link", { name: "New side chat" }),
+    expect(sideChats.getByRole("link", { name: "New subchat" })).toBeInTheDocument();
+    expect(sideChats.getByText("Subchats").parentElement).toContainElement(
+      sideChats.getByRole("link", { name: "New subchat" }),
     );
-    expect(sideChats.queryByText("New side chat")).not.toBeInTheDocument();
+    expect(sideChats.queryByText("New subchat")).not.toBeInTheDocument();
   });
 
   it("caps the list and offers the way out to all chats", () => {
@@ -80,10 +80,7 @@ describe("SidebarChatThreads", () => {
       "href",
       "/chats/history",
     );
-    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
-      "href",
-      "/chats/new",
-    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute("href", "/chats/new");
   });
 
   it.each([0, 1, 5])("hides All chats with %i side chats", (count) => {
@@ -94,10 +91,7 @@ describe("SidebarChatThreads", () => {
     render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(screen.queryByRole("link", { name: "View all chats" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
-      "href",
-      "/chats/new",
-    );
+    expect(screen.getByRole("link", { name: "New subchat" })).toHaveAttribute("href", "/chats/new");
   });
 
   it("marks pinned threads", () => {

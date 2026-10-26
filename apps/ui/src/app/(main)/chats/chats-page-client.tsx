@@ -117,7 +117,7 @@ export default function ChatsPageClient() {
       <PageMasthead
         icon={<ChatIcon />}
         title="All chats"
-        description="Your side conversations for managing Everruns."
+        description="Your subchats for managing Everruns."
         actions={
           <>
             <ArchiveFilter
@@ -129,7 +129,7 @@ export default function ChatsPageClient() {
             />
             <Link href="/chats/new" className={buttonVariants()}>
               <Plus className="size-4" />
-              New chat
+              New subchat
             </Link>
           </>
         }
@@ -163,11 +163,11 @@ export default function ChatsPageClient() {
           ) : (
             <EmptyState
               icon={<ChatIcon />}
-              title="No side chats yet"
+              title="No subchats yet"
               description="Start a fresh conversation with your Everruns assistant."
               action={
                 <Link href="/chats/new" className={buttonVariants()}>
-                  New chat
+                  New subchat
                 </Link>
               }
             />

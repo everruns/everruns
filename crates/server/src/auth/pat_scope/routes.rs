@@ -525,6 +525,11 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     (
+        "PATCH",
+        "/v1/orgs/{org}/organization-connections/{connection_id}",
+        Write,
+    ),
+    (
         "POST",
         "/v1/orgs/{org}/organization-connections/{connection_id}/verify",
         Write,
