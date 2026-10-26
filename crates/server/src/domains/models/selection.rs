@@ -40,7 +40,7 @@ fn validate_ids(ids: &[String]) -> Result<(), CommandError> {
     }
     Ok(())
 }
-#[command(name = "apply_model_selection", category = "models", description = "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.", method = "POST", path = "/v1/models/selection", policy = LLM_MODEL_MANAGE, http = plain)]
+#[command(name = "apply_model_selection", category = "models", description = "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.", method = "POST", path = "/v1/models/selection", policy = LLM_MODEL_MANAGE, http = plain, cli = CliRoute::new(&["models", "selection"], "apply").with_examples(&[CliExample::new("Enable a reviewed model only if its provider and current selection still match", "everruns models selection apply --changes '[{\"id\":\"model_01h9\",\"provider_id\":\"provider_01h9\",\"expected_enabled\":false,\"enabled\":true}]' --reason 'Make the reviewed model selectable'")]))]
 impl Command for ApplyModelSelection {
     type Output = Vec<ModelSelectionReceipt>;
     fn transactional() -> bool {
@@ -89,7 +89,7 @@ pub struct UndoModelSelectionItem {
 pub struct UndoModelSelection {
     pub changes: Vec<UndoModelSelectionItem>,
 }
-#[command(name = "undo_model_selection", category = "models", description = "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.", method = "POST", path = "/v1/models/selection/undo", policy = LLM_MODEL_MANAGE, http = plain)]
+#[command(name = "undo_model_selection", category = "models", description = "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.", method = "POST", path = "/v1/models/selection/undo", policy = LLM_MODEL_MANAGE, http = plain, cli = CliRoute::new(&["models", "selection"], "undo").with_examples(&[CliExample::new("Undo reviewed enablement only while the saved revision is still current", "everruns models selection undo --changes '[{\"id\":\"model_01h9\",\"from_revision\":1,\"expected_revision\":2}]' --reason 'Restore the reviewed selection'")]))]
 impl Command for UndoModelSelection {
     type Output = Vec<ModelSelectionReceipt>;
     fn transactional() -> bool {

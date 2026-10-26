@@ -27,7 +27,7 @@ pub struct AccountProfile {
 pub struct GetAccountProfile {
     pub id: String,
 }
-#[command(name = "get_account_profile", category = "users", description = "Read your own editable profile, without email, tokens or credentials.", method = "GET", path = "/v1/users/{id}/profile", policy = OWN_PROFILE)]
+#[command(name = "get_account_profile", category = "users", description = "Read your own editable profile, without email, tokens or credentials.", method = "GET", path = "/v1/users/{id}/profile", policy = OWN_PROFILE, cli = CliRoute::new(&["users", "profile"], "get").with_examples(&[CliExample::new("Read your own account display name independently of the active organization", "everruns users profile get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetAccountProfile {
     type Output = AccountProfile;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -48,7 +48,7 @@ pub struct UpdateAccountProfile {
     pub id: String,
     pub name: String,
 }
-#[command(name = "update_account_profile", category = "users", description = "Update your own account display name.", method = "PATCH", path = "/v1/users/me", policy = OWN_PROFILE)]
+#[command(name = "update_account_profile", category = "users", description = "Update your own account display name.", method = "PATCH", path = "/v1/users/me", policy = OWN_PROFILE, cli = CliRoute::new(&["users", "me"], "update").with_examples(&[CliExample::new("Update your own display name across organizations", "everruns users me update --id 00000000-0000-0000-0000-000000000001 --name 'Alex Rivera' --reason 'Use my preferred name'")]))]
 impl Command for UpdateAccountProfile {
     type Output = AccountProfile;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

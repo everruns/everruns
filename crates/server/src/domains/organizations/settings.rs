@@ -18,7 +18,7 @@ pub struct GetOrgDecisionSettings {
 pub struct OrgDecisionSettings {
     pub model_id: Option<String>,
 }
-#[command(name = "get_org_decision_settings", category = "organizations", description = "Read the active organization's decision-model selection without model credentials.", method = "GET", path = "/v1/orgs/{org}/decision-settings", policy = crate::domains::models::LLM_MODEL_VIEW)]
+#[command(name = "get_org_decision_settings", category = "organizations", description = "Read the active organization's decision-model selection without model credentials.", method = "GET", path = "/v1/orgs/{org}/decision-settings", policy = crate::domains::models::LLM_MODEL_VIEW, cli = CliRoute::new(&["orgs", "decision-settings"], "get").with_examples(&[CliExample::new("Check the active organization decision-model selection", "everruns orgs decision-settings get --org org_01h9")]))]
 impl Command for GetOrgDecisionSettings {
     type Output = OrgDecisionSettings;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -50,7 +50,7 @@ pub struct UpdateOrg {
     #[serde(flatten)]
     pub request: UpdateOrganizationRequest,
 }
-#[command(name = "update_org", category = "organizations", description = "Update the active organization's name and defaults.", method = "PATCH", path = "/v1/orgs/{org}", policy = ORGANIZATION_MANAGE)]
+#[command(name = "update_org", category = "organizations", description = "Update the active organization's name and defaults.", method = "PATCH", path = "/v1/orgs/{org}", policy = ORGANIZATION_MANAGE, cli = CliRoute::new(&["orgs"], "update").with_examples(&[CliExample::new("Rename the active organization while preserving its model and harness defaults", "everruns orgs update --org org_01h9 --name 'Northstar Support' --reason 'Use the team name'")]))]
 impl Command for UpdateOrg {
     type Output = OrganizationResponse;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

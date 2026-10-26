@@ -28,7 +28,7 @@ pub async fn owns(ctx: &Ctx, id: &str) -> bool {
 pub struct GetOwnVirtualUserProfile {
     pub id: String,
 }
-#[command(name = "get_own_virtual_user_profile", category = "virtual_users", description = "Read your own organization profile.", method = "GET", path = "/v1/virtual-users/{id}/self-profile", policy = OWN_PROFILE)]
+#[command(name = "get_own_virtual_user_profile", category = "virtual_users", description = "Read your own organization profile.", method = "GET", path = "/v1/virtual-users/{id}/self-profile", policy = OWN_PROFILE, cli = CliRoute::new(&["virtual-users", "self-profile"], "get").with_examples(&[CliExample::new("Read the organization profile bound to your signed-in account", "everruns virtual-users self-profile get --id identity_01h9")]))]
 impl Command for GetOwnVirtualUserProfile {
     type Output = VirtualUser;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -45,7 +45,7 @@ pub struct UpdateOwnVirtualUserProfile {
     #[serde(flatten)]
     pub req: UpdateVirtualUserRequest,
 }
-#[command(name = "update_own_virtual_user_profile", category = "virtual_users", description = "Update your own organization profile without changing lifecycle.", method = "PATCH", path = "/v1/virtual-users/{id}/self-profile", policy = OWN_PROFILE)]
+#[command(name = "update_own_virtual_user_profile", category = "virtual_users", description = "Update your own organization profile without changing lifecycle.", method = "PATCH", path = "/v1/virtual-users/{id}/self-profile", policy = OWN_PROFILE, cli = CliRoute::new(&["virtual-users", "self-profile"], "update").with_examples(&[CliExample::new("Set your own organization profile timezone without management authority", "everruns virtual-users self-profile update --id identity_01h9 --timezone Europe/London --reason 'Use my local timezone'")]))]
 impl Command for UpdateOwnVirtualUserProfile {
     type Output = VirtualUser;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

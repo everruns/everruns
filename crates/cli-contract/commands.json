@@ -6436,14 +6436,14 @@
         "long": "expected-revision",
         "kind": "integer",
         "required": false,
-        "help": "Refuse if the Agent changed after this revision."
+        "help": "Refuse if the resource changed after this revision."
       },
       {
         "field": "fields",
         "long": "fields",
         "kind": "string_list",
         "required": false,
-        "help": "Restore only these top-level Agent fields; omit to restore the full definition. Requires expe..."
+        "help": "Restore only these top-level fields; omit to restore the full definition. Requires expected_r..."
       },
       {
         "field": "kind",
@@ -8043,6 +8043,56 @@
     ]
   },
   {
+    "wire_name": "apply_model_selection",
+    "path": [
+      "models",
+      "selection"
+    ],
+    "verb": "apply",
+    "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+    "method": "POST",
+    "http_path": "/v1/models/selection",
+    "args": [
+      {
+        "field": "changes",
+        "long": "changes",
+        "kind": "json",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Enable a reviewed model only if its provider and current selection still match",
+        "command": "everruns models selection apply --changes '[{\"id\":\"model_01h9\",\"provider_id\":\"provider_01h9\",\"expected_enabled\":false,\"enabled\":true}]' --reason 'Make the reviewed model selectable'"
+      }
+    ]
+  },
+  {
+    "wire_name": "undo_model_selection",
+    "path": [
+      "models",
+      "selection"
+    ],
+    "verb": "undo",
+    "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+    "method": "POST",
+    "http_path": "/v1/models/selection/undo",
+    "args": [
+      {
+        "field": "changes",
+        "long": "changes",
+        "kind": "json",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Undo reviewed enablement only while the saved revision is still current",
+        "command": "everruns models selection undo --changes '[{\"id\":\"model_01h9\",\"from_revision\":1,\"expected_revision\":2}]' --reason 'Restore the reviewed selection'"
+      }
+    ]
+  },
+  {
     "wire_name": "update_model",
     "path": [
       "models"
@@ -8412,6 +8462,60 @@
     ]
   },
   {
+    "wire_name": "get_organization_account",
+    "path": [
+      "organization-accounts"
+    ],
+    "verb": "get",
+    "description": "Read an organization account's editable name. Credentials are never returned.",
+    "method": "GET",
+    "http_path": "/v1/organization-accounts/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read an organization account name without retrieving its credentials",
+        "command": "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_organization_account_name",
+    "path": [
+      "organization-accounts"
+    ],
+    "verb": "update",
+    "description": "Rename an organization account while preserving its current credentials.",
+    "method": "PATCH",
+    "http_path": "/v1/organization-accounts/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename a connected account while preserving its credential",
+        "command": "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_audit_logs",
     "path": [
       "orgs",
@@ -8469,6 +8573,31 @@
       {
         "intent": "Review who changed what in the organization recently",
         "command": "everruns orgs audit-logs list --domain management --limit 50"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_org_decision_settings",
+    "path": [
+      "orgs",
+      "decision-settings"
+    ],
+    "verb": "get",
+    "description": "Read the active organization's decision-model selection without model credentials.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/decision-settings",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check the active organization decision-model selection",
+        "command": "everruns orgs decision-settings get --org org_01h9"
       }
     ]
   },
@@ -8667,6 +8796,98 @@
       {
         "intent": "Look up an organization by its identifier",
         "command": "everruns orgs resolve --id org_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_org",
+    "path": [
+      "orgs"
+    ],
+    "verb": "update",
+    "description": "Update the active organization's name and defaults.",
+    "method": "PATCH",
+    "http_path": "/v1/orgs/{org}",
+    "args": [
+      {
+        "field": "agentid_agents_per_owner",
+        "long": "agentid-agents-per-owner",
+        "kind": "integer",
+        "required": false,
+        "help": "How many agents one AgentID owner may sign in to this organization's Public Chat channels."
+      },
+      {
+        "field": "base_harness_id",
+        "long": "base-harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Base harness to use when a session is started without an explicit harness_id."
+      },
+      {
+        "field": "default_harness_id",
+        "long": "default-harness-id",
+        "kind": "string",
+        "required": false,
+        "help": "Default harness to preselect in the UI for new sessions. Mutually exclusive with `default_har..."
+      },
+      {
+        "field": "default_harness_name",
+        "long": "default-harness-name",
+        "kind": "string",
+        "required": false,
+        "help": "Alternative to `default_harness_id` — looked up by stable name within the org. Mutually exclu..."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Default LLM model for this organization."
+      },
+      {
+        "field": "default_provider_per_service",
+        "long": "default-provider-per-service",
+        "kind": "json",
+        "required": false,
+        "help": "Org-level default provider per service (EVE-569)."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "The display name of the organization."
+      },
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "small_model_id",
+        "long": "small-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Shared small chat model for lightweight work."
+      },
+      {
+        "field": "system_decisions",
+        "long": "system-decisions",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "web_search_defaults",
+        "long": "web-search-defaults",
+        "kind": "json",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Rename the active organization while preserving its model and harness defaults",
+        "command": "everruns orgs update --org org_01h9 --name 'Northstar Support' --reason 'Use the team name'"
       }
     ]
   },
@@ -10512,6 +10733,68 @@
       {
         "intent": "See which sandbox targets this deployment offers",
         "command": "everruns sandbox-targets list"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_template_metadata",
+    "path": [
+      "sandbox-template-metadata"
+    ],
+    "verb": "get",
+    "description": "Read editable Sandbox Template metadata, excluding execution configuration and environment values.",
+    "method": "GET",
+    "http_path": "/v1/sandbox-template-metadata/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxtpl' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect a template display name without reading its execution configuration",
+        "command": "everruns sandbox-template-metadata get --id sbxtpl_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_sandbox_template_metadata",
+    "path": [
+      "sandbox-template-metadata"
+    ],
+    "verb": "update",
+    "description": "Update Sandbox Template metadata while preserving its current execution specification.",
+    "method": "PATCH",
+    "http_path": "/v1/sandbox-template-metadata/{id}",
+    "args": [
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "display_name",
+        "long": "display-name",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'sbxtpl' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Clarify a template label while preserving the current sandbox specification",
+        "command": "everruns sandbox-template-metadata update --id sbxtpl_01h9 --display-name 'Northstar review sandbox' --reason 'Clarify the template purpose'"
       }
     ]
   },
@@ -14122,6 +14405,62 @@
     ]
   },
   {
+    "wire_name": "update_account_profile",
+    "path": [
+      "users",
+      "me"
+    ],
+    "verb": "update",
+    "description": "Update your own account display name.",
+    "method": "PATCH",
+    "http_path": "/v1/users/me",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Update your own display name across organizations",
+        "command": "everruns users me update --id 00000000-0000-0000-0000-000000000001 --name 'Alex Rivera' --reason 'Use my preferred name'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_account_profile",
+    "path": [
+      "users",
+      "profile"
+    ],
+    "verb": "get",
+    "description": "Read your own editable profile, without email, tokens or credentials.",
+    "method": "GET",
+    "http_path": "/v1/users/{id}/profile",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read your own account display name independently of the active organization",
+        "command": "everruns users profile get --id 00000000-0000-0000-0000-000000000001"
+      }
+    ]
+  },
+  {
     "wire_name": "create_virtual_user",
     "path": [
       "virtual-users"
@@ -14312,6 +14651,97 @@
       {
         "intent": "Find service accounts by name",
         "command": "everruns virtual-users list --usage service --search ops"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_own_virtual_user_profile",
+    "path": [
+      "virtual-users",
+      "self-profile"
+    ],
+    "verb": "get",
+    "description": "Read your own organization profile.",
+    "method": "GET",
+    "http_path": "/v1/virtual-users/{id}/self-profile",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the organization profile bound to your signed-in account",
+        "command": "everruns virtual-users self-profile get --id identity_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_own_virtual_user_profile",
+    "path": [
+      "virtual-users",
+      "self-profile"
+    ],
+    "verb": "update",
+    "description": "Update your own organization profile without changing lifecycle.",
+    "method": "PATCH",
+    "http_path": "/v1/virtual-users/{id}/self-profile",
+    "args": [
+      {
+        "field": "avatar_url",
+        "long": "avatar-url",
+        "kind": "string",
+        "required": false,
+        "help": "Profile image URL."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable description."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "locale",
+        "long": "locale",
+        "kind": "string",
+        "required": false,
+        "help": "Locale used for agent-facing defaults."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Human-readable name."
+      },
+      {
+        "field": "status",
+        "long": "status",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "timezone",
+        "long": "timezone",
+        "kind": "string",
+        "required": false,
+        "help": "IANA time zone used for agent-facing defaults."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Set your own organization profile timezone without management authority",
+        "command": "everruns virtual-users self-profile update --id identity_01h9 --timezone Europe/London --reason 'Use my local timezone'"
       }
     ]
   },

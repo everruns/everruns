@@ -169,7 +169,7 @@ async fn organization_settings_require_database_admin_role() {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
             json["detail"],
-            "Only organization admins can update organization settings"
+            "Access denied: policy 'organization.manage' requires 'org:settings:manage'"
         );
     }
 }

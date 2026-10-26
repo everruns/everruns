@@ -22,7 +22,7 @@ fn metadata(value: super::record::SandboxTemplate) -> TemplateMetadata {
 pub struct GetSandboxTemplateMetadata {
     pub id: SandboxTemplateId,
 }
-#[command(name = "get_sandbox_template_metadata", category = "sandbox-templates", description = "Read editable Sandbox Template metadata, excluding execution configuration and environment values.", method = "GET", path = "/v1/sandbox-template-metadata/{id}", policy = HARNESS_VIEW)]
+#[command(name = "get_sandbox_template_metadata", category = "sandbox-templates", description = "Read editable Sandbox Template metadata, excluding execution configuration and environment values.", method = "GET", path = "/v1/sandbox-template-metadata/{id}", policy = HARNESS_VIEW, cli = CliRoute::new(&["sandbox-template-metadata"], "get").with_examples(&[CliExample::new("Inspect a template display name without reading its execution configuration", "everruns sandbox-template-metadata get --id sbxtpl_01h9")]))]
 impl Command for GetSandboxTemplateMetadata {
     type Output = TemplateMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -51,7 +51,7 @@ fn double_option<'de, T: Deserialize<'de>, D: serde::Deserializer<'de>>(
 ) -> Result<Option<Option<T>>, D::Error> {
     Option::<T>::deserialize(de).map(Some)
 }
-#[command(name = "update_sandbox_template_metadata", category = "sandbox-templates", description = "Update Sandbox Template metadata while preserving its current execution specification.", method = "PATCH", path = "/v1/sandbox-template-metadata/{id}", policy = HARNESS_MANAGE)]
+#[command(name = "update_sandbox_template_metadata", category = "sandbox-templates", description = "Update Sandbox Template metadata while preserving its current execution specification.", method = "PATCH", path = "/v1/sandbox-template-metadata/{id}", policy = HARNESS_MANAGE, cli = CliRoute::new(&["sandbox-template-metadata"], "update").with_examples(&[CliExample::new("Clarify a template label while preserving the current sandbox specification", "everruns sandbox-template-metadata update --id sbxtpl_01h9 --display-name 'Northstar review sandbox' --reason 'Clarify the template purpose'")]))]
 impl Command for UpdateSandboxTemplateMetadata {
     type Output = TemplateMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

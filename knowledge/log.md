@@ -2,6 +2,8 @@
 
 ## 2026-10-26
 
+- Bounded the automatic-title listener future after reproducing a default-thread stack overflow; title admission and ownership behavior are unchanged. See [Session titles](runtime-resources/session-titles.md).
+
 - Bound server test compilation to avoid concurrent heavy codegen on hosted runners; retained the full selected test inventory and execution concurrency. See [CI Build Time](project/ci-build-time.md).
 
 - Added bounded, read-only organization catalog discovery to [User MCP servers](integrations/user-mcp-servers.md), preserving verified initiating-person management authorization and removing credentials from display endpoints.
@@ -10,7 +12,7 @@
   saved review and inverse Undo across supported page editors. Model selections
   use atomic batches; account history is owner-only and global; schedule inverses
   share the PostgreSQL transaction. See [Chat mode](ui/chat-mode.md) and
-  [Change history](execution/change-reasons-and-manager-context.md).
+  [Change history](execution/change-reasons-and-manager-context.md). Shared review commands also carry worked CLI examples and synchronized terminal/evaluation catalogs.
 
 ## 2026-10-25
 

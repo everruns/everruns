@@ -112,7 +112,7 @@ pub struct OrganizationAccountMetadata {
 pub struct GetOrganizationAccount {
     pub id: Uuid,
 }
-#[command(name = "get_organization_account", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW)]
+#[command(name = "get_organization_account", category = "organizations", description = "Read an organization account's editable name. Credentials are never returned.", method = "GET", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "get").with_examples(&[CliExample::new("Read an organization account name without retrieving its credentials", "everruns organization-accounts get --id 00000000-0000-0000-0000-000000000001")]))]
 impl Command for GetOrganizationAccount {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
@@ -132,7 +132,7 @@ pub struct UpdateOrganizationAccountName {
     pub id: Uuid,
     pub name: String,
 }
-#[command(name = "update_organization_account_name", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW)]
+#[command(name = "update_organization_account_name", category = "organizations", description = "Rename an organization account while preserving its current credentials.", method = "PATCH", path = "/v1/organization-accounts/{id}", policy = ORG_PROVIDER_ACCOUNTS_VIEW, cli = CliRoute::new(&["organization-accounts"], "update").with_examples(&[CliExample::new("Rename a connected account while preserving its credential", "everruns organization-accounts update --id 00000000-0000-0000-0000-000000000001 --name 'Northstar sandbox' --reason 'Clarify the account purpose'")]))]
 impl Command for UpdateOrganizationAccountName {
     type Output = OrganizationAccountMetadata;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {

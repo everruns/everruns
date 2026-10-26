@@ -136,6 +136,10 @@ impl Fixture {
         }
     }
     async fn turn(&self) -> Result<()> {
+        assert!(
+            std::mem::size_of_val(&self.listener.generate_for_turn(self.id, 0)) < 4096,
+            "the advisory listener must keep its composed future bounded"
+        );
         let event = self
             .events
             .emit(EventRequest::new(
