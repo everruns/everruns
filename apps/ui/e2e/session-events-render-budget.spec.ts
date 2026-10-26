@@ -102,11 +102,15 @@ test("keeps screenshot-heavy Events readable with bounded browser layout", async
     const after = await cdp.send("Performance.getMetrics");
     await cdp.send("HeapProfiler.collectGarbage");
     const retained = await cdp.send("Performance.getMetrics");
+    const liveCharacters = await previews.evaluateAll((nodes) =>
+      nodes.reduce((sum, node) => sum + (node.textContent?.length ?? 0), 0),
+    );
     const metric = (metrics: typeof before.metrics, name: string) =>
       metrics.find((m) => m.name === name)?.value ?? 0;
     return {
       elapsedMs,
       characters: texts.reduce((n, t) => n + t.length, 0),
+      liveCharacters,
       taskSeconds: metric(after.metrics, "TaskDuration") - metric(before.metrics, "TaskDuration"),
       layoutSeconds:
         metric(after.metrics, "LayoutDuration") - metric(before.metrics, "LayoutDuration"),
@@ -145,6 +149,8 @@ test("keeps screenshot-heavy Events readable with bounded browser layout", async
     contentType: "application/json",
   });
   console.info("events-browser-before-after", JSON.stringify({ legacy, fixed }));
+  expect(legacy.liveCharacters).toBe(legacy.characters);
+  expect(fixed.liveCharacters).toBe(fixed.characters);
   expect(fixed.characters).toBeLessThan(legacy.characters / 20);
   await expect(page.getByRole("button", { name: "Next page" })).toBeEnabled();
   await page.getByRole("button", { name: "Next page" }).click();
