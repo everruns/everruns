@@ -2822,8 +2822,17 @@ jobs:
           pnpm build
           pnpm exec playwright install --with-deps chromium
           pnpm e2e
-          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
-          TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test pnpm test:broker
+          # The broker's HTTPS edge must listen on 443. Namespace runners mount
+          # /proc/sys read-only, so when the sysctl cannot lower the privileged
+          # port floor, run the broker as root with the runner's PATH and HOME
+          # (HOME keeps Playwright's browser cache).
+          export TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0 || true
+          if [ "$(cat /proc/sys/net/ipv4/ip_unprivileged_port_start)" -le 443 ]; then
+            pnpm test:broker
+          else
+            sudo --preserve-env=TEST_CHAT_DATABASE_URL env "PATH=$PATH" "HOME=$HOME" pnpm test:broker
+          fi
 
       - name: Upload Work Chat browser evidence
         if: always()
