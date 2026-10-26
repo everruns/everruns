@@ -1,15 +1,15 @@
 version: 0.49.0
 date: 2026-10-26
 headline:
-  - Large MCP,
-  - GitHub sync.
+  - Thousands of
+  - MCP tools.
 summary:
+  - Agent source syncs with GitHub.
   - Helm chart and everruns docker up.
   - Sandbox network policy on Daytona and E2B.
-  - Knowledge and automatic session titles.
 highlights:
-  - title: Large MCP and MCP Tasks
-    description: MCP servers with 2,000+ tools, and long tool calls run as MCP Tasks.
+  - title: Thousands of MCP tools
+    description: MCP servers with 2,000+ tools; long tool calls run as MCP Tasks.
     source: "#4870"
   - title: GitHub sync
     description: Agent source syncs from GitHub, and edits in Everruns commit back.
