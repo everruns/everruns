@@ -339,7 +339,7 @@ impl EventService {
         if let Some(agent_id) = responder {
             let agent = self
                 .db
-                .get_agent(session.org_id, agent_id)
+                .get_agent_config(session.org_id, agent_id)
                 .await
                 .context("failed to load agent for MCP event provenance")?
                 .context("agent missing for MCP event provenance")?;

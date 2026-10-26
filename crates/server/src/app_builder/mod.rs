@@ -599,7 +599,9 @@ impl ServerAppBuilder {
             resolve_listener_database_url()?.as_ref()
         {
             let flags = db.org_feature_flag_cache().clone();
-            crate::live_updates::org_feature_flag_invalidation::spawn(database_url.clone(), flags);
+            let config_rows = db.config_row_cache().clone();
+            let caches = crate::live_updates::cache_invalidation::Caches { flags, config_rows };
+            crate::live_updates::cache_invalidation::spawn(database_url.clone(), caches);
             let broadcaster =
                 crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
                     database_url.clone(),

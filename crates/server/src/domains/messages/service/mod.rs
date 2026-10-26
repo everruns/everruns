@@ -318,7 +318,7 @@ impl MessageService {
                 Some(row) => Some(row),
                 None => match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
                     Some(row) => Some(row),
-                    None => self.db.get_agent(ctx.org_id, id.into()).await?,
+                    None => self.db.get_agent_config(ctx.org_id, id.into()).await?,
                 },
             };
             Some(
