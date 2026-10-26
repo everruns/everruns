@@ -88,7 +88,7 @@ mod tests {
         db.replace_org_feature_flags(1, &HashMap::from([("skills".into(), true)]))
             .await
             .unwrap();
-        assert_eq!(db.list_org_feature_flags(1).await.unwrap()["skills"], true);
+        assert!(db.list_org_feature_flags(1).await.unwrap()["skills"]);
 
         db.database()
             .replace_org_feature_flags(1, &HashMap::from([("skills".into(), false)]))

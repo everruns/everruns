@@ -163,13 +163,13 @@ mod tests {
         db.replace_org_feature_flags(1, &HashMap::from([("skills".into(), true)]))
             .await
             .unwrap();
-        assert_eq!(db.list_org_feature_flags(1).await.unwrap()["skills"], true);
+        assert!(db.list_org_feature_flags(1).await.unwrap()["skills"]);
         // A write that bypasses the backend is still seen: nothing was cached.
         db.database()
             .replace_org_feature_flags(1, &HashMap::from([("skills".into(), false)]))
             .await
             .unwrap();
-        assert_eq!(db.list_org_feature_flags(1).await.unwrap()["skills"], false);
+        assert!(!db.list_org_feature_flags(1).await.unwrap()["skills"]);
         assert_eq!(db.org_feature_flag_cache().0.entries.entry_count(), 0);
     }
 
@@ -180,7 +180,7 @@ mod tests {
         db.replace_org_feature_flags(1, &HashMap::from([("skills".into(), true)]))
             .await
             .unwrap();
-        assert_eq!(db.list_org_feature_flags(1).await.unwrap()["skills"], true);
+        assert!(db.list_org_feature_flags(1).await.unwrap()["skills"]);
         db.org_feature_flag_cache().0.entries.run_pending_tasks();
         assert_eq!(db.org_feature_flag_cache().0.entries.entry_count(), 1);
 
@@ -188,7 +188,7 @@ mod tests {
         db.replace_org_feature_flags(1, &HashMap::from([("skills".into(), false)]))
             .await
             .unwrap();
-        assert_eq!(db.list_org_feature_flags(1).await.unwrap()["skills"], false);
+        assert!(!db.list_org_feature_flags(1).await.unwrap()["skills"]);
     }
 
     #[tokio::test]
