@@ -21,7 +21,9 @@ under the turn, with a player and a download link. To turn recording off, set `r
     "kind": "managed",
     "provider": "daytona",
     "options": {
-      "desktop": { "record": false }
+      "desktop": {
+        "record": false
+      }
     }
   }
 }
