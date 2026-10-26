@@ -1,6 +1,8 @@
 //! Cancellation-safe `BEGIN` and `COMMIT`.
 
+use sqlx::postgres::{PgConnection, PgTransactionManager};
 use sqlx::{PgPool, Postgres, Transaction};
+use sqlx_core::transaction::TransactionManager;
 
 /// Begin a transaction on `pool` so that cancelling the caller cannot leave
 /// the transaction open on a pooled connection.
@@ -43,14 +45,41 @@ pub async fn begin_transaction(
 /// "there is no transaction in progress", and the caller never learns that
 /// its writes committed. Running the commit on its own task lets it finish
 /// either way, mirroring [`begin_transaction`].
-pub async fn commit_transaction(tx: Transaction<'static, Postgres>) -> Result<(), sqlx::Error> {
-    #[allow(clippy::disallowed_methods)] // the one sanctioned call
-    let commit = async move { tx.commit().await };
+pub async fn commit_transaction(mut tx: Transaction<'static, Postgres>) -> Result<(), sqlx::Error> {
+    // After `commit_in_place` sqlx counts no open transaction either way, so
+    // dropping `tx` queues nothing.
+    let commit = async move { commit_in_place(&mut tx).await };
     match tokio::spawn(commit).await {
         Ok(result) => result,
         Err(join) if join.is_panic() => std::panic::resume_unwind(join.into_panic()),
         // Only a runtime shutting down cancels the task.
         Err(_) => Err(sqlx::Error::PoolClosed),
+    }
+}
+
+/// Commit the transaction open on `conn` and leave sqlx's count of open
+/// transactions matching the server whichever way `COMMIT` goes.
+///
+/// Decision (EVERRUNS-35): a `COMMIT` the server rejects (a deferred
+/// constraint check, a serialization failure) still ends the transaction, but
+/// sqlx 0.9 leaves it counted open, so the drop guard's `ROLLBACK` draws
+/// "there is no transaction in progress". sqlx cannot be told the transaction
+/// is gone, so after a database error this opens an empty one for its count
+/// and rolls that back. Any other error (the connection failed, so the outcome
+/// is unknown) leaves the transaction counted open for the caller's guard.
+pub async fn commit_in_place(conn: &mut PgConnection) -> Result<(), sqlx::Error> {
+    match PgTransactionManager::commit(conn).await {
+        Err(error @ sqlx::Error::Database(_)) => {
+            let resync = async {
+                sqlx::raw_sql("BEGIN").execute(&mut *conn).await?;
+                PgTransactionManager::rollback(conn).await
+            };
+            if let Err(resync) = resync.await {
+                tracing::warn!(error = %resync, "could not settle a rejected COMMIT");
+            }
+            Err(error)
+        }
+        result => result,
     }
 }
 
@@ -212,5 +241,64 @@ mod tests {
             "cancelled COMMITs drew notices: {notices:?}"
         );
         assert_eq!(committed, 200, "a cancelled COMMIT was lost");
+    }
+
+    /// EVERRUNS-35: a `COMMIT` the server rejects (here a deferred foreign key
+    /// check) ends the transaction server-side. The failure must reach the
+    /// caller without a stray `ROLLBACK` behind it, and the connection must go
+    /// back to the pool idle.
+    #[tokio::test]
+    async fn rejected_commit_draws_no_stray_rollback() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let notices = Notices::default();
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(notices.clone()));
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url())
+            .await
+            .expect("connect");
+        sqlx::raw_sql(
+            "DROP TABLE IF EXISTS rejected_commit_child, rejected_commit_parent; \
+             CREATE TABLE rejected_commit_parent (id INT PRIMARY KEY); \
+             CREATE TABLE rejected_commit_child (id INT PRIMARY KEY REFERENCES \
+             rejected_commit_parent(id) DEFERRABLE INITIALLY DEFERRED)",
+        )
+        .execute(&pool)
+        .await
+        .expect("create probe tables");
+        notices.0.lock().expect("notices").clear();
+
+        let mut tx = begin_transaction(&pool).await.expect("begin");
+        sqlx::query("INSERT INTO rejected_commit_child (id) VALUES (1)")
+            .execute(&mut *tx)
+            .await
+            .expect("insert defers its foreign key check");
+        let error = commit_transaction(tx)
+            .await
+            .expect_err("the deferred foreign key check rejects COMMIT");
+        assert!(
+            matches!(&error, sqlx::Error::Database(db) if db.is_foreign_key_violation()),
+            "unexpected commit error: {error:?}"
+        );
+
+        // Drain whatever the guard queued on the one pooled connection.
+        assert!(!next_connection_in_transaction(&pool).await);
+        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM rejected_commit_child")
+            .fetch_one(&pool)
+            .await
+            .expect("count");
+        sqlx::raw_sql("DROP TABLE rejected_commit_child, rejected_commit_parent")
+            .execute(&pool)
+            .await
+            .expect("drop probe tables");
+
+        assert_eq!(rows, 0, "a rejected COMMIT kept its writes");
+        let notices = notices.0.lock().expect("notices").clone();
+        assert!(
+            notices.is_empty(),
+            "a rejected COMMIT drew notices: {notices:?}"
+        );
     }
 }
