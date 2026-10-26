@@ -6,7 +6,7 @@
 
 * **Shared Chat review.** Adoption uses shared draft diffs, revision-guarded saves,
   saved review and inverse Undo across supported page editors. Model selections
-  use atomic batches; profile history is owner-only and global; schedule inverses
+  use atomic batches; account history is owner-only and global; schedule inverses
   share the PostgreSQL transaction. See [Chat mode](ui/chat-mode.md) and
   [Change history](execution/change-reasons-and-manager-context.md).
 

@@ -45,10 +45,10 @@ than inferring write access from a page title.
    Undo all remaining fields and verify the original values. Review History after
    reload; temporary receipts may reset, server revisions must remain available.
 3. Repeat on Organization, main/small/decision defaults, Web search, outbound
-   allowlist, Profile and an organization account name. A name-only account save
-   must not require credential rotation. Profile history must be unavailable to
+   allowlist, Account, organization Profile and an organization account name. A name-only account save
+   must not require credential rotation. Account history must be unavailable to
    another member or tenant administrator, excluded from organization history,
-   included in account export and erased with account deletion.
+   included in account export and erased with account deletion. A member can review and undo their own organization Profile fields without management permission, but cannot change lifecycle or reach another member’s self-service profile.
 4. Leave a saved review, navigate to another page, and Undo it there. A dirty draft
    on the resource blocks saved Undo. Switch organization: discard the old receipt
    scope; late reads, saves and undo callbacks must not affect the new tenant.

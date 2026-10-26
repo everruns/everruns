@@ -41,7 +41,7 @@ Verify Chat can explain visible operational state without exposing payloads or i
 5. As the tenant administrator, direct-load global Durable routes and attempt the
    same reads. Without durable.view, global rows must be unavailable even if a prior
    operator loaded them. Loading, errors and revoked permission clear the projection.
-6. Inspect My agent experience connections, connected clients, Features, Health,
+6. Inspect personal Connections, MCP servers and AI clients, Features, Health,
    Slack and Payments: share public status metadata, never keys, auth methods or
    grants. Their immediate operations remain manual. Verify Adoption off, route/org
    switches, narrow pane, dark mode and reduced motion.

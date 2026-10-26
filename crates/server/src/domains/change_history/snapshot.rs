@@ -165,6 +165,18 @@ fn provider_trace(value: &Value) -> Value {
 
 /// The entity as its read command returns it now.
 pub(super) async fn read(ctx: &Ctx, kind: EntityKind, entity_ref: &str) -> Option<Value> {
+    if kind == EntityKind::VirtualUser
+        && crate::domains::virtual_users::self_profile::owns(ctx, entity_ref).await
+    {
+        let text = dispatch(
+            "get_own_virtual_user_profile",
+            serde_json::json!({"id":entity_ref}),
+            ctx,
+        )
+        .await
+        .ok()?;
+        return serde_json::from_str(&text).ok();
+    }
     let (command, param) = match kind.lookup() {
         Some(lookup) => lookup,
         None => return read_child(ctx, kind, entity_ref).await,

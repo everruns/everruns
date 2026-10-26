@@ -10,9 +10,9 @@ const resource: PageResource = {
   label: "Model",
 };
 const endpoint = `/v1/models/${resource.id}`;
-function setup() {
+function setup(initialRevision = 1) {
   let org = "org_test",
-    revision = 1;
+    revision = initialRevision;
   const transport: ReviewTransport = {
     currentOrg: () => org,
     history: jest.fn(async () => [{ revision, action: "updated" }]),
@@ -266,4 +266,66 @@ it("uses the server's captured baseline when first writing a migrated resource",
   await write!.succeeded({ ...resource, revision: 3, from_revision: 2 });
   expect(transport.diff).toHaveBeenCalledWith(resource, 2, 3);
   expect(manager.receipts()[0]).toMatchObject({ from: 2, revision: 3 });
+});
+
+it.each([
+  ["/v1/users/me", "user_profile"],
+  ["/v1/virtual-users/me", "virtual_user"],
+])("guards %s using only the explicitly registered form identity", async (path, kind) => {
+  const { manager, transport } = setup();
+  expect(await manager.beforeWrite("PATCH", path)).toBeUndefined();
+  const own = { kind, id: "identity_01933b5a000070008000000000000002", label: "Profile" };
+  manager.connect({ id: "own-profile", resource: own, dirty: false, baseline: "original" });
+  await manager.poll();
+  const write = await manager.beforeWrite("PATCH", path);
+  expect(JSON.parse(write!.headers!["Everruns-Expected-Change"])).toEqual({
+    kind,
+    id: own.id,
+    revision: 1,
+  });
+  await write!.succeeded({ ...own, revision: 2 });
+  expect(transport.diff).toHaveBeenCalledWith(own, 1, 2);
+});
+
+it("bounds receipts from ordinary row saves without requiring page navigation", async () => {
+  const { manager, setRevision } = setup();
+  await manager.poll();
+  for (let index = 1; index <= 30; index++) {
+    const row = {
+      kind: "model",
+      id: `model_${index.toString(16).padStart(32, "0")}`,
+      label: "Model",
+    };
+    setRevision(1);
+    const write = await manager.beforeWrite("PATCH", `/v1/models/${row.id}`);
+    setRevision(2);
+    await write!.succeeded({ ...row, revision: 2 });
+  }
+  expect(manager.receipts()).toHaveLength(20);
+  expect(manager.guard("form").loading).toBe(false);
+});
+
+it("reviews the first Chat save on a resource that previously had no journal", async () => {
+  const { manager, transport } = setup(0);
+  await manager.poll();
+  manager.threadId = "current-chat";
+  (transport.history as jest.Mock).mockResolvedValueOnce([
+    { revision: 2, action: "updated", via_session_id: "current-chat" },
+    { revision: 1, action: "baseline", via_session_id: "current-chat" },
+  ]);
+  await manager.poll();
+  expect(transport.diff).toHaveBeenCalledWith(resource, 1, 2);
+  expect(manager.receipts()[0]).toMatchObject({ from: 1, revision: 2 });
+});
+
+it("does not invent a destructive inverse for a first Chat creation", async () => {
+  const { manager, transport } = setup(0);
+  await manager.poll();
+  manager.threadId = "current-chat";
+  (transport.history as jest.Mock).mockResolvedValueOnce([
+    { revision: 1, action: "created", via_session_id: "current-chat" },
+  ]);
+  await manager.poll();
+  expect(transport.diff).not.toHaveBeenCalled();
+  expect(manager.receipts()).toHaveLength(0);
 });

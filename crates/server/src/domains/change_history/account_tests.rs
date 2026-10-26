@@ -212,3 +212,146 @@ async fn alternate_profile_uuid_spellings_share_one_revision_and_save_guard() {
         "Second reviewed name"
     );
 }
+
+struct SelfServicePermissions;
+impl everruns_core::PermissionResolver for SelfServicePermissions {
+    fn has_permission(&self, _: &Caller, _: &everruns_core::Permission) -> bool {
+        false
+    }
+    fn caller_permissions(&self, _: &Caller) -> Vec<everruns_core::Permission> {
+        vec![]
+    }
+}
+
+#[tokio::test]
+async fn console_self_profile_shares_management_history_and_guards_without_management_permission() {
+    let db = Arc::new(StorageBackend::test_database());
+    let user = db
+        .create_user(CreateUserRow {
+            email: "self-profile@example.test".into(),
+            name: "Original profile".into(),
+            avatar_url: None,
+            roles: vec!["user".into()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .unwrap();
+    let profile = db
+        .default_virtual_user(DEFAULT_ORG_ID, user.id)
+        .await
+        .unwrap();
+    // A self read inside Save/Undo must reuse the one available connection.
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(2))
+        .connect_with(db.pool().connect_options().as_ref().clone())
+        .await
+        .unwrap();
+    let _fixture_db = db.clone();
+    let db = Arc::new(StorageBackend::from_database(
+        crate::storage::Database::new(pool),
+    ));
+    let id = profile.id.to_string();
+    let ctx = Ctx::minimal_for_test(
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".into(),
+            user_id: Some(user.id),
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+            read_only: false,
+        },
+        db,
+        None,
+    )
+    .with_permission_resolver(Arc::new(SelfServicePermissions));
+    assert!(
+        command("get_virtual_user", json!({"id":id}), &ctx)
+            .await
+            .is_err()
+    );
+    assert!(
+        command(
+            "update_virtual_user",
+            json!({"id":id,"name":"Forbidden management write"}),
+            &ctx
+        )
+        .await
+        .is_err()
+    );
+    let original = command("get_own_virtual_user_profile", json!({"id":id}), &ctx)
+        .await
+        .unwrap();
+    command(
+        "update_own_virtual_user_profile",
+        json!({"id":id,"name":"Reviewed profile","locale":"fr-FR"}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let history = command("list_entity_history", json!({"entity_ref":id}), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(history[0]["revision"], 2);
+    command(
+        "restore_entity_revision",
+        json!({"entity_ref":id,"revision":1,"expected_revision":2,"fields":["name","locale"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let restored = command("get_own_virtual_user_profile", json!({"id":id}), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(restored["name"], original["name"]);
+    assert_eq!(restored["locale"], original["locale"]);
+    assert!(
+        command(
+            "restore_entity_revision",
+            json!({"entity_ref":id,"revision":1,"expected_revision":2,"fields":["name"]}),
+            &ctx
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        command(
+            "update_own_virtual_user_profile",
+            json!({"id":id,"status":"archived"}),
+            &ctx
+        )
+        .await
+        .is_err()
+    );
+    let mut stranger = ctx.clone();
+    stranger.caller.user_id = Some(uuid::Uuid::from_u128(43));
+    for (name, params) in [
+        ("get_own_virtual_user_profile", json!({"id":id})),
+        (
+            "update_own_virtual_user_profile",
+            json!({"id":id,"name":"Forbidden"}),
+        ),
+        ("list_entity_history", json!({"entity_ref":id})),
+    ] {
+        assert!(command(name, params, &stranger).await.is_err(), "{name}");
+    }
+    let mut read_only = ctx.clone();
+    read_only.caller.read_only = true;
+    assert!(
+        command(
+            "update_own_virtual_user_profile",
+            json!({"id":id,"name":"Forbidden"}),
+            &read_only
+        )
+        .await
+        .is_err()
+    );
+}

@@ -8,10 +8,9 @@
 // `recommendedModelIds`), and the footer applies the whole selection at once, so
 // a catalog of hundreds never has to be enabled row by row.
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
-import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -272,26 +271,27 @@ function ModelSelectionBody({
         .max(ids.size),
     });
   }, [choices]);
-  usePageFormPrefill({
-    identity: title,
-    open: true,
-    values: [...selected].sort(),
-    saved: [...initialSelection(models, { recommend })].sort(),
-    apply: (ids) => {
-      setSelected(new Set(ids));
-      if (adopted) setReviewedModels(models.map((model) => ({ ...model })));
-    },
-  });
+  const originalSelection = JSON.stringify(
+    [...initialSelection(displayedModels, { recommend })].sort(),
+  );
+  const selection = JSON.stringify([...selected].sort());
+  const dirty = selection !== originalSelection;
+  // Compare cleanliness to the frozen catalog, never a later server value
+  // that happens to equal the user's unsaved selection.
+  useLayoutEffect(() => {
+    if (adopted && !dirty && JSON.stringify(reviewedModels) !== JSON.stringify(models)) {
+      setReviewedModels(models.map((model) => ({ ...model })));
+      setSelected(initialSelection(models, { recommend }));
+    }
+  }, [adopted, dirty, reviewedModels, models, recommend]);
   const chat = usePageFormDraft({
     schema,
     entityType: "model_selection",
     label: title,
     priority: 30,
     values: { selected_model_ids: [...selected].sort() },
-    baseline: JSON.stringify([...initialSelection(models, { recommend })].sort()),
-    dirty:
-      JSON.stringify([...selected].sort()) !==
-      JSON.stringify([...initialSelection(models, { recommend })].sort()),
+    baseline: originalSelection,
+    dirty,
     writable: !applying,
     apply: (values) => setSelected(new Set(values.selected_model_ids)),
   });

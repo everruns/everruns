@@ -117,10 +117,20 @@ function EnabledShell({
         .at(-1),
     [registrations, route],
   );
-  const page = useMemo<ChatPageContext>(
-    () => registered?.page ?? pageLocation(route),
-    [registered, route, pathname],
-  );
+  const page = useMemo<ChatPageContext>(() => {
+    const primary = registered?.page ?? pageLocation(route);
+    const peers = registrations.filter(
+      (item) => item.page.route === route && item.adapter && item.priority === registered?.priority,
+    );
+    if (peers.length < 2) return primary;
+    // A collection reads all peer forms. Its chip should identify the page,
+    // rather than whichever form happened to register last.
+    const title = registrations
+      .filter((item) => item.page.route === route && !item.adapter)
+      .sort((a, b) => a.priority - b.priority)
+      .at(-1)?.page.label;
+    return { ...primary, label: title ?? pageLocation(route).label };
+  }, [registered, registrations, route]);
   const { registry: viewRegistry, read: readViewState } = usePageViewRegistry(route);
   const viewAdapter = usePageViewAdapter(page, currentOrg?.public_id, () => readViewState(route));
   const activeForms = useMemo(() => {

@@ -636,7 +636,9 @@ pub fn declared(name: &str) -> Change {
         "delete_workspace" => on(K::Workspace, Deleted, Param("workspace_id")),
 
         "create_virtual_user" => on(K::VirtualUser, Created, ID),
-        "update_virtual_user" => on(K::VirtualUser, Updated, ID),
+        "update_virtual_user" | "update_own_virtual_user_profile" => {
+            on(K::VirtualUser, Updated, ID)
+        }
         "delete_virtual_user" | "destroy_virtual_user" => on(K::VirtualUser, Deleted, Param("id")),
 
         "create_observer" => on(K::Observer, Created, ID),

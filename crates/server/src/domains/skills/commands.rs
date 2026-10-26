@@ -239,7 +239,6 @@ impl Command for GetSkillContent {
         ] {
             if let Some(value) = value {
                 frontmatter[key] = value.clone().into();
-
             }
         }
         if row

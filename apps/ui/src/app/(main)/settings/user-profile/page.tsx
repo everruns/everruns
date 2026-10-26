@@ -52,8 +52,7 @@ export default function UserProfilePage() {
       }),
   });
   if (profile.isLoading) return <p>Loading your profile…</p>;
-  if (!profile.data)
-    return <p className="text-destructive">Your profile could not be loaded.</p>;
+  if (!profile.data) return <p className="text-destructive">Your profile could not be loaded.</p>;
 
   const user = profile.data;
   return (

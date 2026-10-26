@@ -206,9 +206,13 @@ impl Command for RestoreEntityRevision {
 
     async fn execute(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
         let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
-        kind.manage_policy()
-            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-            .map_err(|e| CommandError::forbidden(e.message))?;
+        if !(kind == super::EntityKind::VirtualUser
+            && crate::domains::virtual_users::self_profile::owns(ctx, &entity_ref).await)
+        {
+            kind.manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.message))?;
+        }
         if self.fields.is_some() && self.expected_revision.is_none() {
             return Err(CommandError::bad_request(
                 "Field restore requires expected_revision",
@@ -227,9 +231,13 @@ impl Command for RestoreEntityRevision {
 impl RestoreEntityRevision {
     async fn restore(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
         let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
-        kind.manage_policy()
-            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-            .map_err(|e| CommandError::forbidden(e.message))?;
+        if !(kind == super::EntityKind::VirtualUser
+            && crate::domains::virtual_users::self_profile::owns(ctx, &entity_ref).await)
+        {
+            kind.manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.message))?;
+        }
         if self.expected_revision.is_some() || self.fields.is_some() {
             if self.expected_revision.is_none() {
                 return Err(CommandError::bad_request(
@@ -325,6 +333,21 @@ impl RestoreEntityRevision {
                 field == id_param || locators.contains(&field.as_str()) || fields.contains(field)
             });
         }
+        let command = if kind == super::EntityKind::VirtualUser
+            && kind
+                .manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .is_err()
+        {
+            if params.get("status").is_some() {
+                return Err(CommandError::forbidden(
+                    "Self-service cannot restore lifecycle. Choose profile fields only.",
+                ));
+            }
+            "update_own_virtual_user_profile"
+        } else {
+            command
+        };
         let current_secrets = snapshot::secret_markers(ctx, kind, &entity_ref, &current).await;
         let warnings = snapshot::kept_warnings(restored, &current, &current_secrets, self.revision);
 

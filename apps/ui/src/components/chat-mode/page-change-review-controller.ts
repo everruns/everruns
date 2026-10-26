@@ -227,7 +227,7 @@ export class PageChangeReviewController {
             )
               form.revision = revision;
         } else if (previous !== revision && !state.writes) {
-          if (latest?.via_session_id === this.threadId && previous > 0 && this.threadId) {
+          if (latest?.via_session_id === this.threadId && this.threadId) {
             // Stop at the first foreign writer, including saves between polls.
             // A bounded history window also limits how far back Undo may reach.
             const between = entries.filter(
@@ -235,14 +235,19 @@ export class PageChangeReviewController {
             );
             const contiguous: number[] = [];
             for (const entry of between) {
-              if (entry.via_session_id !== this.threadId) break;
+              if (
+                entry.via_session_id !== this.threadId ||
+                entry.action === "baseline" ||
+                entry.action === "created"
+              )
+                break;
               contiguous.push(entry.revision!);
             }
             const from = contiguous.length
               ? Math.max(previous, Math.min(...contiguous) - 1)
               : revision;
             if (state.receipt && state.receipt.revision !== from) state.receipt.stale = true;
-            if (from < revision) await this.makeReceipt(state, from, revision, epoch);
+            if (from > 0 && from < revision) await this.makeReceipt(state, from, revision, epoch);
           } else if (state.receipt && state.receipt.revision !== revision)
             state.receipt.stale = true;
           await this.transport.refresh(state.resource);
@@ -279,37 +284,52 @@ export class PageChangeReviewController {
   beforeWrite = async (method: string, endpoint: string): Promise<ObservedWrite | undefined> => {
     const epoch = this.epoch;
     const resource =
-      endpoint === "/v1/users/me" && method.toUpperCase() === "PATCH"
-        ? [...this.forms.values()].find((form) => form.resource.kind === "user_profile")?.resource
+      ["/v1/users/me", "/v1/virtual-users/me"].includes(endpoint) &&
+      method.toUpperCase() === "PATCH"
+        ? [...this.forms.values()].find(
+            (form) =>
+              form.resource.kind ===
+              (endpoint === "/v1/users/me" ? "user_profile" : "virtual_user"),
+          )?.resource
         : resourceWrite(method, endpoint, this.org);
     if (!resource || !this.live()) return;
     const state = this.state(resource);
-    if (state.revision === undefined || state.initializing) await this.load(state);
-    if (!this.live(epoch)) throw new Error("The organization changed. No changes were saved.");
-    if (state.revision === undefined || state.error)
-      throw new Error(
-        "Could not verify the saved version. Your draft is kept; retry loading change history.",
-      );
-    const forms = [...this.forms.values()].filter(
-      (form) => resourceKey(form.resource) === resourceKey(resource) && form.dirty,
-    );
-    const expected = forms.length
-      ? Math.min(...forms.map((form) => form.revision ?? -1))
-      : state.revision;
-    if (expected < 0 || expected !== state.revision)
-      throw new Error(
-        "The saved version changed. Your draft is kept; discard it to review the latest version.",
-      );
+    // Reserve the state before awaiting history so another completed row save
+    // cannot evict a write that is still preparing its revision guard.
     state.writes++;
-    this.emit();
     let settled = false;
     const finish = () => {
       if (!settled) {
         settled = true;
         state.writes--;
+        this.prune();
         this.emit();
       }
     };
+    let forms: FormState[] = [];
+    let expected = -1;
+    try {
+      if (state.revision === undefined || state.initializing) await this.load(state);
+      if (!this.live(epoch)) throw new Error("The organization changed. No changes were saved.");
+      if (state.revision === undefined || state.error)
+        throw new Error(
+          "Could not verify the saved version. Your draft is kept; retry loading change history.",
+        );
+      forms = [...this.forms.values()].filter(
+        (form) => resourceKey(form.resource) === resourceKey(resource) && form.dirty,
+      );
+      expected = forms.length
+        ? Math.min(...forms.map((form) => form.revision ?? -1))
+        : state.revision;
+      if (expected < 0 || expected !== state.revision)
+        throw new Error(
+          "The saved version changed. Your draft is kept; discard it to review the latest version.",
+        );
+    } catch (error) {
+      finish();
+      throw error;
+    }
+    this.emit();
     return {
       headers: {
         "Everruns-Expected-Change": JSON.stringify({

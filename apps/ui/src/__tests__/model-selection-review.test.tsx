@@ -56,6 +56,8 @@ it("keeps a dirty selection tied to the values displayed when editing began", ()
   fireEvent.click(screen.getByRole("checkbox", { name: /Fixture A/ }));
   rerender(picker([model("A", true, "Foreign rename"), model("B", false)], apply));
   expect(screen.queryByText("Fixture B")).not.toBeInTheDocument();
+  rerender(picker([model("A", true, "Second foreign rename"), model("B", true)], apply));
+  expect(screen.queryByText("Fixture B")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Save/ }));
   expect([...apply.mock.calls[0][0]]).toEqual(["A"]);
   expect(apply.mock.calls[0][1]).toEqual([

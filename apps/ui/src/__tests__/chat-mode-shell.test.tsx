@@ -1,6 +1,6 @@
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChatModeShell } from "@/components/chat-mode/chat-mode-shell";
 import { defaultNavigationSections } from "@/lib/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
@@ -188,4 +188,41 @@ it("uses the host's navigation sections in the shared rail", () => {
   fireEvent.click(screen.getByRole("button", { name: "Chat entry" }));
   expect(screen.getByRole("link", { name: "Hosted settings" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Agents" })).not.toBeInTheDocument();
+});
+
+it("labels a collection of page forms with the page title instead of the last form", () => {
+  mockEnabled = true;
+  function MultipleForms() {
+    const mode = useChatMode();
+    const register = mode?.registerPage;
+    useEffect(() => {
+      if (!register) return;
+      const adapter = (binding: string) => ({
+        binding,
+        describe: () => ({ binding, revision: "1", dirty: false, writable: false }),
+        read: () => {
+          throw new Error("Unused in label test");
+        },
+        patch: () => {
+          throw new Error("Read only");
+        },
+      });
+      const stop = [
+        register({ route: "/agents/agent_1", label: "Current Agent" }, undefined, 2),
+        register({ route: "/agents/agent_1", label: "Name", form_name: "name" }, adapter("name")),
+        register(
+          { route: "/agents/agent_1", label: "Outbound allowlist", form_name: "network" },
+          adapter("network"),
+        ),
+      ];
+      return () => stop.forEach((dispose) => dispose());
+    }, [register]);
+    return <output aria-label="Page context label">{mode?.page.label}</output>;
+  }
+  render(
+    <ChatModeShell>
+      <MultipleForms />
+    </ChatModeShell>,
+  );
+  expect(screen.getByLabelText("Page context label")).toHaveTextContent("Current Agent");
 });

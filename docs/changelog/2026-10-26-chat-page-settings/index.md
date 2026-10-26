@@ -31,3 +31,5 @@ to the space beside Chat. The organization opt-in remains unchanged.
 See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ![Organization settings keep edits in a draft until Save](./settings-draft@2x.png)
+
+![Saved review keeps Before/After and guarded Undo available](./saved-review@2x.png)

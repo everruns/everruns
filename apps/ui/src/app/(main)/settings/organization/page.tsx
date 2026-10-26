@@ -128,10 +128,19 @@ export default function OrganizationPage() {
     save: async (values) => {
       if (!values.name.trim() || !values.default_harness_id || !values.base_harness_id)
         throw new Error("Name and harness defaults are required.");
+      // Displayed harness fallbacks are not explicit settings. A name-only
+      // Save must leave those implicit defaults and other untouched fields alone.
       await updateOrganization.mutateAsync({
-        ...values,
-        name: values.name.trim(),
-        default_model_id: values.default_model_id || null,
+        ...(values.name.trim() !== organizationName ? { name: values.name.trim() } : {}),
+        ...(values.default_model_id !== organizationDefaultModelId
+          ? { default_model_id: values.default_model_id || null }
+          : {}),
+        ...(values.default_harness_id !== organizationDefaultHarnessId
+          ? { default_harness_id: values.default_harness_id }
+          : {}),
+        ...(values.base_harness_id !== organizationBaseHarnessId
+          ? { base_harness_id: values.base_harness_id }
+          : {}),
       });
     },
   });

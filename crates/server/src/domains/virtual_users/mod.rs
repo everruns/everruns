@@ -8,6 +8,7 @@ pub mod commands;
 pub mod lifecycle;
 pub mod queries;
 pub mod record;
+pub mod self_profile;
 pub mod types;
 
 pub use commands::*;

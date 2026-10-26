@@ -128,14 +128,15 @@ Credential-bearing URL fields disable their adapter and incoming URL patches are
 validated. No redacted credential is ever written back as a form value.
 
 Providers have independent details, tracing and advanced Save forms. Their shared
-page binding returns named forms and permits one named form per patch. Child
+page binding returns named forms and permits one named form per patch. A collection
+uses the page title for its context chip, rather than the last registered form. Child
 validation and the aggregate size check run before mutation. Opening/closing or
 replacing a form rotates the collection binding. A dialog may take priority over
 the underlying page form, then unmount cleanly back to that page.
 
 After Adoption, Organization, Model defaults and Web search defaults stage both
 mouse and Chat edits locally behind explicit Save/Discard controls. With Adoption
-off they retain autosave. My agent experience, invitation and account names,
+off they retain autosave. Organization Profile fields, invitation and account names,
 provider connection metadata, model selection, MCP metadata, schedule editors,
 eval cases, report-builder settings, Playground setup and queue metadata use the
 same draft contract. Channel variants expose typed public configuration while
@@ -169,6 +170,8 @@ a direct server save.
 
 ### Shared saved review
 
+Personal Settings follow the split navigation: Account is the global private account name; Profile is the organization virtual-user profile. Console Profile saves resolve `/me` to the proved self binding before the normal revision guard and journal. Members can review their own profile without management permission; self-service cannot restore lifecycle. Runtime self-service writes share the resource lock, and unrecorded changes invalidate saved Undo. Connections, MCP servers and AI clients retain their existing protected projections.
+
 Every supported existing-resource editor uses the same Adoption-only review
 controller as Agents. A local draft shows Before/After values with field and
 whole-draft Undo. Normal Save stays a user action. Before Save, the browser checks
@@ -180,7 +183,7 @@ also share that organization's conflict boundary.
 
 Saved reviews survive page navigation within the organization. They show
 Before/After, per-field Undo, Undo all and History. Undo requires the reviewed
-revision, the resource's current manage policy and no dirty local draft. A newer
+revision, the resource's current edit authority and no dirty local draft. A newer
 save refuses the inverse without overwriting it. A failed review read after a
 successful Save is reported as saved; reloading history rebuilds the review
 without resubmitting the mutation. Only the active page and mounted forms poll;
@@ -196,7 +199,7 @@ so a background catalog refresh cannot silently replace that baseline. Account
 names and Sandbox Template metadata have inverses that preserve current credentials
 and execution specifications. Channel configuration inverses use an explicit public
 projection merged into current configuration; tokens, sign-in and approval policy
-are never replayed. Provider diagnostics preserve current headers. Profile history
+are never replayed. Provider diagnostics preserve current headers. Account profile history
 is private to the account owner, independent of the active tenant, and is included
 in account export and erasure.
 

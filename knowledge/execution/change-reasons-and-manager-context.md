@@ -153,6 +153,12 @@ restore fails without committing the inverse. Model-selection batches sort resou
 locks and commit all child updates/history together; their inverse checks every
 child revision. Ordinary full-history restore retains its warning behavior.
 
+Console organization-profile saves resolve the proved active self binding before
+joining the ordinary Virtual User revision journal and resource lock. Self-service
+read and inverse commands retain binding checks independently of management roles;
+lifecycle changes still require management authority. Binding reads join the
+command transaction, including with a one-connection pool.
+
 Account profile revisions live in an owner-only global journal, excluded from
 organization history and manager notes. An organization role cannot grant access
 to another account's revisions. Account export includes that journal and account
