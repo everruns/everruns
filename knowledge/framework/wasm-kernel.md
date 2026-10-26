@@ -126,7 +126,9 @@ that provenance without copying pending tools or execution ownership.
 The old room payload is backed up before importing settled history, and queued
 messages retain their identities. Room application state is still one JSON row
 with small-demo bounds, no automatic compaction or per-user budget controls.
-Optional shared access is not individual identity or room-level authorization.
+The chat gateway is public with no browser access gate; individual identity and
+room-level authorization are not implemented. Internal authority calls retain
+an independent server-side service secret, separate from Cloudflare API credentials.
 These remain application concerns; native SQLite host services do not implicitly
 provide equivalent ports for an object adapter.
 

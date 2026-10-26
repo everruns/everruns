@@ -155,6 +155,11 @@
 
 ## 2026-10-25
 
+* **Public chat demo access.** Remove the shared browser key and cookie gate;
+  keep internal authority authentication and clarify that its secret is
+  application-generated, not a Cloudflare API credential. See
+  [The isolate host](framework/wasm-kernel.md).
+
 - Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).
 
 * **Helm chart.** `charts/everruns` installs the self-hosted Platform on

@@ -142,7 +142,6 @@ const config = {
     TEST_CREATION_BUILD: "chat-71eae7eb9de56959711746bb",
     TENANT_ID: "chat",
     AUTHORITY_TOKEN: "test-authority-secret-at-least-32-characters",
-    CHAT_ACCESS_TOKEN: "test-access",
     OPENROUTER_API_KEY: "test",
     OPENROUTER_BASE_URL: `http://127.0.0.1:${model.address().port}/v1`,
   },
@@ -206,11 +205,10 @@ async function request(path, body) {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: "Bearer test-access",
           },
           body: JSON.stringify(body),
         }
-      : { headers: { authorization: "Bearer test-access" } },
+      : undefined,
   );
   if (!r.ok) throw new Error(await r.text());
   return r.json();
@@ -239,9 +237,7 @@ const idle = async (id) => {
   );
 };
 async function socket() {
-  const ws = new WebSocket(
-    base.replace("http", "ws") + "/rooms/shared/socket?access=test-access",
-  );
+  const ws = new WebSocket(base.replace("http", "ws") + "/rooms/shared/socket");
   const messages = [];
   ws.addEventListener("message", (e) => {
     const message = JSON.parse(e.data);
@@ -360,16 +356,12 @@ try {
   console.log(
     "chat e2e: legacy SQLite import, backup, and uncertain admission acknowledgement passed",
   );
-  assert.equal((await fetch(base + "/rooms/shared/state")).status, 401);
-  assert.equal((await fetch(base + "/cells/private/state")).status, 401);
-  assert.equal(
-    (
-      await fetch(base + "/cells/private/state", {
-        headers: { authorization: "Bearer test-access" },
-      })
-    ).status,
-    404,
-  );
+  const page = await fetch(base + "/");
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("set-cookie"), null);
+  assert.match(await page.text(), /Message the room/);
+  assert.equal((await fetch(base + "/rooms/shared/state")).status, 200);
+  assert.equal((await fetch(base + "/cells/private/state")).status, 404);
   const a = await socket(),
     b = await socket();
   a.ws.send(JSON.stringify({ type: "select", username: "Alice" }));

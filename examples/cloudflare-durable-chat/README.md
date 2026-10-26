@@ -107,14 +107,17 @@ npx wrangler login
 npm run deploy
 npx wrangler secret put AUTHORITY_TOKEN
 npx wrangler secret put OPENROUTER_API_KEY
-npx wrangler secret put CHAT_ACCESS_TOKEN
 ```
 
-Use independent random authority and optional shared-access secrets. The Worker
-exposes only the room gateway; privileged authority operations are object-local
-or authenticated internal calls. They must never be exposed to browsers.
-With `CHAT_ACCESS_TOKEN`, open `/?access=YOUR_KEY` to establish an HttpOnly,
-Secure, SameSite cookie. Invitation links include that shared key.
+`AUTHORITY_TOKEN` is an application-generated service secret, not a Cloudflare
+API credential. Use an independent random value of at least 32 characters, for
+example `openssl rand -hex 32`. The adapter uses it to authenticate internal
+room/session requests. Keep it server-side; the Worker exposes only the room
+gateway and never exposes privileged authority operations to browsers.
+
+The demo has no browser access gate: anyone with its URL can open rooms and send
+messages. Room links need no access key or cookie. For an existing deployment,
+remove the old gate secret with `npx wrangler secret delete CHAT_ACCESS_TOKEN`.
 
 ## Existing demo data and limits
 

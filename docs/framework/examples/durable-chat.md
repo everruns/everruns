@@ -160,13 +160,17 @@ npx wrangler login
 npm run deploy
 npx wrangler secret put AUTHORITY_TOKEN
 npx wrangler secret put OPENROUTER_API_KEY
-npx wrangler secret put CHAT_ACCESS_TOKEN
 ```
 
-Use independent random authority and shared-access keys. With the optional
-`CHAT_ACCESS_TOKEN`, open `/?access=YOUR_KEY`; the browser receives an HttpOnly,
-Secure, SameSite cookie for HTTP and WebSocket access. The room gateway never
-exposes privileged authority endpoints or the provider credential.
+`AUTHORITY_TOKEN` is an application-generated internal service secret, not a
+Cloudflare API credential. Generate an independent random value of at least
+32 characters, for example with `openssl rand -hex 32`. The adapter uses it to
+authenticate room/session requests; it never goes to the browser. The room
+gateway never exposes privileged authority endpoints or the provider credential.
+
+The demo has no browser access gate. Anyone with its URL can open rooms and send
+messages; room links need no access key or cookie. To disable the old gate on an
+existing deployment, run `npx wrangler secret delete CHAT_ACCESS_TOKEN`.
 
 The tests use real workerd and synthetic provider responses, confined to tests.
 They cover shared sockets, receipts, forks and isolation, process death during
@@ -202,7 +206,8 @@ checks the binding and absence of a live epoch before clearing a compatibility
 suspension. It does not clear uncertain effects. The chat has no browser retry
 control or automatic binding-rewrite migration.
 
-Rooms use a JSON metadata document without automatic compaction. Shared access
-is not individual identity or tenant authorization, and deployers own production
-budget controls. Additional external tools need idempotency or reconciliation.
+Rooms use a JSON metadata document without automatic compaction. The public demo
+has no individual identity or room authorization, and deployers own production
+access and budget controls. Additional external tools need idempotency or
+reconciliation.
 The browser displays committed snapshots; it does not render token streaming.

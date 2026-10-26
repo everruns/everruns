@@ -638,29 +638,9 @@ export class ChatRoom extends DurableObject {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url),
-      token = env.CHAT_ACCESS_TOKEN;
-    const supplied =
-      url.searchParams.get("access") ??
-      request.headers.get("authorization")?.replace(/^Bearer /, "") ??
-      request.headers
-        .get("cookie")
-        ?.split(";")
-        .map((c) => c.trim())
-        .find((c) => c.startsWith("everruns_chat_access="))
-        ?.slice(21);
-    if (token && supplied !== token) {
-      if (url.pathname !== "/")
-        return new Response("access key required", { status: 401 });
-      return new Response(
-        '<!doctype html><title>Everruns chat access</title><form><label>Access key <input type="password" name="access" required></label><button>Open chat</button></form>',
-        {
-          headers: { "content-type": "text/html", "cache-control": "no-store" },
-        },
-      );
-    }
+    const url = new URL(request.url);
     if (url.pathname === "/") {
-      const response = new Response(html, {
+      return new Response(html, {
         headers: {
           "content-type": "text/html;charset=utf-8",
           "cache-control": "no-store",
@@ -669,12 +649,6 @@ export default {
             "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         },
       });
-      if (token)
-        response.headers.set(
-          "set-cookie",
-          `everruns_chat_access=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`,
-        );
-      return response;
     }
     const match = url.pathname.match(
       /^\/rooms\/([a-zA-Z0-9_-]{1,64})\/(state|commands|socket)$/,
