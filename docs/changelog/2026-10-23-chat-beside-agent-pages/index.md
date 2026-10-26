@@ -34,14 +34,4 @@ explanations, or open **Pages** for a labeled menu.
 
 ## Update 2026-10-26
 
-Chat can stage supported settings, schedule and eval-case fields, invitations,
-MCP metadata, report choices and Playground setup. Organization, Model defaults
-and Web search defaults use **Save** and **Discard** while Chat mode is enabled.
-Dirty dialogs preserve edits on refresh and block conflicting saves. Credential
-and approval dialogs keep their protected controls manual.
-
-Operational pages share bounded status rows, including queues, workers, workflows,
-schedules, circuit breakers and Monitoring. Settings navigation and page grids
-adapt to the space beside Chat. The organization Adoption opt-in remains unchanged.
-
-![Organization settings keep edits in a draft until Save](./settings-draft.png)
+Chat now stages [settings and secondary forms](/changelog/2026-10-26-chat-page-settings/) and shares operational status.
