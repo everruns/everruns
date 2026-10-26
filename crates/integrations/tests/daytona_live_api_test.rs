@@ -1352,3 +1352,91 @@ async fn test_live_session_sandbox_enforces_network_policy() {
         .expect("managed session sandbox delete failed");
     std::mem::forget(guard);
 }
+
+/// Desktop recording: a recording started on the desktop captures input and
+/// comes back as a video when collected, after which the sandbox holds none.
+#[tokio::test]
+async fn test_live_desktop_recording() {
+    use everruns_contracts::runtime::computer_use::{ComputerAction, ComputerSession, DisplaySize};
+    use everruns_integrations::daytona::computer::DaytonaDesktopSession;
+    use everruns_integrations::daytona::recording;
+
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key.clone());
+    let info = client
+        .create_sandbox(
+            serde_json::from_value(json!({
+                "autoStopInterval": 5,
+                "env": {"VNC_RESOLUTION": "1024x768"},
+                "labels": {"everruns-test": "desktop-recording"}
+            }))
+            .expect("valid create body"),
+        )
+        .await
+        .expect("Failed to create sandbox");
+    let guard = SandboxGuard::new(info.id.clone());
+    client
+        .wait_for_ready(&info.id)
+        .await
+        .expect("Sandbox did not become ready");
+
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = DaytonaDesktopSession::start(
+        DaytonaClient::new(api_key.clone()),
+        guard.sandbox_id.clone(),
+        display,
+    )
+    .await
+    .expect("desktop did not start");
+    recording::ensure_started(&client, &guard.sandbox_id)
+        .await
+        .expect("recording did not start");
+    // Idempotent: a second start while one runs keeps the one recording.
+    recording::ensure_started(&client, &guard.sandbox_id)
+        .await
+        .expect("second start failed");
+    let running = recording::list(&client, &guard.sandbox_id)
+        .await
+        .expect("list failed");
+    assert_eq!(
+        running.iter().filter(|r| r.is_active()).count(),
+        1,
+        "{running:?}"
+    );
+
+    for arguments in [
+        json!({"action": "mouse_move", "coordinate": [100, 200]}),
+        json!({"action": "double_click", "coordinate": [512, 384]}),
+        json!({"action": "wait", "duration": 3}),
+        json!({"action": "screenshot"}),
+    ] {
+        let action = ComputerAction::from_arguments(&arguments).expect("valid action");
+        session.perform(&action).await.expect("action failed");
+    }
+
+    let collected = recording::collect(&client, &guard.sandbox_id)
+        .await
+        .expect("collect failed");
+    assert_eq!(collected.len(), 1, "{collected:?}");
+    let video = collected[0].content.as_ref().expect("video kept");
+    assert!(video.len() > 1000, "video is {} bytes", video.len());
+    assert!(
+        collected[0].file_name.starts_with("desktop-"),
+        "{}",
+        collected[0].file_name
+    );
+    eprintln!(
+        "[recording] {} {} bytes, {:?}s",
+        collected[0].file_name,
+        video.len(),
+        collected[0].duration_seconds
+    );
+    let left = recording::list(&client, &guard.sandbox_id)
+        .await
+        .expect("list failed");
+    assert!(left.is_empty(), "{left:?}");
+    drop(guard);
+}

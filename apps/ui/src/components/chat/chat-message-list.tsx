@@ -104,6 +104,10 @@ import {
   type FailureCounts,
 } from "@/components/chat/failure-severity";
 import { RunCards } from "@/components/chat/run-card";
+import {
+  DesktopRecordingCards,
+  assignRecordingsToEvents,
+} from "@/components/chat/desktop-recordings";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
@@ -374,6 +378,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     return contexts;
   }, [approvalCalls, chatEvents, memberNames, sessionId, toolResultsMap]);
   const traceConfigByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
+  const recordingsByEventId = useMemo(() => assignRecordingsToEvents(events ?? []), [events]);
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -1155,6 +1160,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                       </div>
                     </div>
                     {runs ? <RunCards runs={runs} /> : null}
+                    {sessionId && recordingsByEventId.has(event.id) ? (
+                      <DesktopRecordingCards
+                        sessionId={sessionId}
+                        recordings={recordingsByEventId.get(event.id) ?? []}
+                      />
+                    ) : null}
                     {turnId && (workLogTurnIds.has(turnId) || anchoredTurnIds.has(turnId))
                       ? null
                       : renderTurnDivider(
@@ -1409,6 +1420,13 @@ export const ChatMessageList = memo(function ChatMessageList({
                     const runs = runsByEventId?.get(event.id);
                     return runs ? <RunCards runs={runs} /> : null;
                   })()}
+
+                  {sessionId && recordingsByEventId.has(event.id) ? (
+                    <DesktopRecordingCards
+                      sessionId={sessionId}
+                      recordings={recordingsByEventId.get(event.id) ?? []}
+                    />
+                  ) : null}
 
                   {(() => {
                     const turnId = getKnownTurnId(event);

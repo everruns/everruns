@@ -192,6 +192,21 @@ for a session on that Sandbox, through the Daytona or E2B session types above.
   Daytona uses its default image, which ships the desktop, so a desktop
   template rejects `size` and `snapshot`; the display size goes in through
   `VNC_RESOLUTION` at create.
+- **Recordings.** Daytona's toolbox records the screen itself
+  (`/computeruse/recordings/*`), so the provider starts a recording when the
+  desktop opens and `SessionSandboxProvider::collect_desktop_recordings`
+  stops it, downloads it and deletes it from the Sandbox. The server collects
+  on `session.idled`, the end of a turn, and writes the video read-only to
+  `/recordings/` in the session files with a `file.written` event, which the
+  chat places under the turn that just ended
+  ([`crates/server/src/domains/session_sandbox/recordings.rs`](../../crates/server/src/domains/session_sandbox/recordings.rs)).
+  Collection runs on the server rather than inside a turn because it needs no
+  model step and the server already owns idle handling with a provider
+  context. The Sandbox's recording list is the only state: running means no
+  end time, collected means deleted. On by default for desktops;
+  `desktop.record: false` turns it off. A video shows what the screenshots
+  stored with tool results already show, to the same session readers. E2B has
+  no recording API, so its provider keeps the default of nothing to collect.
 
 ## Phases
 
@@ -202,6 +217,7 @@ for a session on that Sandbox, through the Daytona or E2B session types above.
 | 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), replaced by 3c |
 | 3b | Desktop backend on a Daytona sandbox through its Computer Use API, capability `computer_use_daytona` | Done, replaced by 3c |
 | 3c | Desktop as a Sandbox Template option on Daytona and E2B, capability `sandbox_desktop` | Done |
+| 3d | Daytona desktop recordings saved to session files and played in the chat | Done |
 | 4 | Full Anthropic toolset: `zoom`, `cursor_position`, `left_mouse_down`/`up`, `hold_key`, modified drags, native batches stop at the first failure | Done |
 
 Open before the capability leaves experimental mode: verify the native OpenAI

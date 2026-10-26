@@ -8,6 +8,7 @@
 // - Capability config is resolved through the Sandbox Template domain, which owns
 //   the effective harness + agent + session merge.
 
+use crate::services::EventService;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use async_trait::async_trait;
 use everruns_capabilities::session_sandbox::{
@@ -20,18 +21,22 @@ use everruns_core::{
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
     session_services::SessionStorageStore, tool_context::ToolContext,
 };
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock, Weak};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct SessionSandboxService {
-    db: Arc<StorageBackend>,
+    pub(super) db: Arc<StorageBackend>,
     storage_store: Arc<dyn SessionStorageStore>,
     leased_resource_store: Arc<dyn LeasedResourceStore>,
     session_resource_registry: Arc<dyn SessionResourceRegistry>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     idle_tasks: Arc<Mutex<HashMap<SessionId, tokio::task::JoinHandle<()>>>>,
+    pub(super) recordings_in_flight: Arc<Mutex<HashSet<SessionId>>>,
+    /// Bound after construction: the event service is built from the listener
+    /// list this service's listener is part of.
+    events: Arc<OnceLock<Weak<EventService>>>,
 }
 
 impl SessionSandboxService {
@@ -53,7 +58,17 @@ impl SessionSandboxService {
             session_resource_registry,
             connection_resolver,
             idle_tasks: Arc::new(Mutex::new(HashMap::new())),
+            recordings_in_flight: Arc::new(Mutex::new(HashSet::new())),
+            events: Arc::new(OnceLock::new()),
         }
+    }
+
+    pub(crate) fn bind_events(&self, events: &Arc<EventService>) {
+        let _ = self.events.set(Arc::downgrade(events));
+    }
+
+    pub(super) fn events(&self) -> Option<Arc<EventService>> {
+        self.events.get().and_then(Weak::upgrade)
     }
 
     pub async fn auto_start_for_capabilities(
@@ -225,6 +240,9 @@ impl EventListener for SessionSandboxEventListener {
             }
             EventData::SessionIdled(_) => {
                 self.service.schedule_idle_pause(event.session_id).await;
+                let service = self.service.clone();
+                let session_id = event.session_id;
+                tokio::spawn(async move { service.collect_recordings(session_id).await });
             }
             _ => {}
         }
