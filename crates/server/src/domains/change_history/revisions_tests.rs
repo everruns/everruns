@@ -1190,7 +1190,27 @@ async fn skill_content_history_round_trips_yaml_and_restores_the_instructions() 
 
 #[tokio::test]
 async fn organization_chat_default_undo_preserves_the_agent_default_and_rejects_stale_undo() {
-    let ctx = owner();
+    let mut ctx = owner();
+    let user = ctx
+        .db
+        .create_user(crate::storage::CreateUserRow {
+            email: "chat-default-review@example.test".into(),
+            name: "Chat reviewer".into(),
+            avatar_url: None,
+            roles: vec!["user".into()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    ctx.db
+        .add_organization_member(ctx.org_id(), user.id, "owner")
+        .await
+        .unwrap();
+    ctx.caller.user_id = Some(user.id);
     let provider = ctx
         .db
         .create_provider(
@@ -1257,13 +1277,12 @@ async fn organization_chat_default_undo_preserves_the_agent_default_and_rejects_
     )
     .await
     .unwrap();
-    assert!(
-        run(
-            "restore_entity_revision",
-            json!({"entity_ref":org,"revision":2,"expected_revision":4,"fields":["chat_model_id"]}),
-            &ctx
-        )
-        .await
-        .is_err()
-    );
+    let stale = run(
+        "restore_entity_revision",
+        json!({"entity_ref":org,"revision":2,"expected_revision":4,"fields":["chat_model_id"]}),
+        &ctx,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(stale.code.as_deref(), Some("entity_revision_changed"));
 }
