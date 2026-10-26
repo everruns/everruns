@@ -413,6 +413,25 @@ impl PhaseReads {
         }
     }
 
+    /// The worker wrote the session's status. This phase's memo forgets the
+    /// session; the turn's kept reads take the new status and keep the rest,
+    /// since a status write changes nothing else they hold.
+    pub fn session_status_written(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        status: everruns_contracts::runtime::session::SessionExecutionState,
+    ) {
+        if let Some(turn) = &self.turn {
+            turn.set_session_status(org_id, id, status);
+        }
+        self.with_state(|s| {
+            s.sessions.remove(&(org_id, id));
+            s.turn_contexts
+                .retain(|&(org, session, _), _| (org, session) != (org_id, id));
+        });
+    }
+
     /// Forget the session after a write, so the next read sees it. The turn
     /// context carries the session too.
     pub fn invalidate_session(&self, org_id: i64, id: Uuid) {
@@ -772,6 +791,24 @@ mod tests {
         next.invalidate_session(key.0, key.1);
         read_in_turn(&next, key, &calls).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn a_status_write_keeps_the_turns_reads_with_the_new_status() {
+        use everruns_contracts::runtime::session::SessionExecutionState;
+        let turn = TurnSlot::default();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+
+        let reason = PhaseReads::new().with_turn(turn.clone());
+        read_in_turn(&reason, key, &calls).await.unwrap();
+        reason.session_status_written(key.0, key.1, SessionExecutionState::Active);
+
+        // The next phase's setup is answered from the turn, status patched.
+        let act = PhaseReads::new().with_turn(turn);
+        let got = read_in_turn(&act, key, &calls).await.unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(got.status, SessionExecutionState::Active);
     }
 
     #[tokio::test]
