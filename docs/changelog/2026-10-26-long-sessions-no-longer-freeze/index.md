@@ -7,7 +7,7 @@ significance: minor
 products: [platform, cloud]
 surfaces: [api]
 links:
-  prs: [everruns/everruns#4946]
+  prs: [everruns/everruns#4948]
 ---
 
 Every turn loads the session's message history from the control plane. Once a
