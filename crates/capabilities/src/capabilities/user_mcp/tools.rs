@@ -208,6 +208,25 @@ pub struct ListMcpCatalogTool;
 
 #[async_trait]
 impl Tool for ListMcpCatalogTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            match phase {
+                ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
+                    "Listing approved MCP servers"
+                }
+                ToolNarrationPhase::Completed => "Listed approved MCP servers",
+                ToolNarrationPhase::Failed => "Listing approved MCP servers failed",
+            }
+            .to_string(),
+        )
+    }
+
     fn name(&self) -> &str {
         CATALOG_TOOL
     }

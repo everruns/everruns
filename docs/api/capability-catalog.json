@@ -1720,6 +1720,7 @@
         "connect_mcp_server",
         "disable_user_mcp_server",
         "enable_user_mcp_server",
+        "list_mcp_catalog",
         "list_user_mcp_servers",
         "remove_user_mcp_server"
       ]

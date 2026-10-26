@@ -436,6 +436,25 @@ async fn catalog_discovery_is_readonly_and_hosts_without_catalogs_refuse_explici
     let catalog = tool(json!({"manage": true}), "list_mcp_catalog");
     assert_eq!(catalog.hints().readonly, Some(true));
     assert!(!matches!(catalog.policy(), ToolPolicy::RequiresApproval));
+    let call = everruns_contracts::tool_types::ToolCall {
+        id: "catalog-narration".into(),
+        name: catalog.name().into(),
+        arguments: json!({}),
+    };
+    use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    for phase in [
+        ToolNarrationPhase::Started,
+        ToolNarrationPhase::Waiting,
+        ToolNarrationPhase::Completed,
+        ToolNarrationPhase::Failed,
+    ] {
+        assert!(
+            catalog
+                .narrate(&call, phase, None, ToolNarrationContext::default())
+                .unwrap()
+                .contains("approved MCP servers")
+        );
+    }
     let bare = ToolContext::new(SessionId::new());
     assert!(error_text(&catalog.execute_with_context(json!({}), &bare).await).contains("no store"));
     let context = context(Arc::new(MemoryStore::default()));
