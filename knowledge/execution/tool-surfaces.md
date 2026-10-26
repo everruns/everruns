@@ -26,6 +26,16 @@ the effective plan. `tools_in_shell` chooses CLI by default or hybrid with
 Yolop has not adopted the new core surface plan; its integration remains future
 work described below.
 
+The Platform capability also supports an explicit native inventory surface for
+the managed Platform Chat. Its static `operations.json` catalog is generated
+from the server inventory, and all 333 public, noninternal, nondurable
+operations are projected as prefixed native functions. Workers do not link the
+server crate. Invocation uses the platform's existing authorized dispatch;
+the inventory is not a cached authorization grant. Platform Chat bounds native
+disclosure through `tool_search` and retains the Bashkit shell route for
+aggregation. See [Platform Chat](../harnesses/platform-chat.md) and the public
+[Platform capability reference](../../docs/capabilities/platform.md).
+
 ## Why the server should expose operations
 
 Cloudflare already documents a
@@ -152,12 +162,19 @@ chooses available routes; the model chooses a call among them.
 
 Search returns stable operation identity plus the available native alias and
 CLI spelling from that same mapping. CLI `tools search` and bounded native
-`tool_search` use the same authorized index; legacy native search retains its
-existing matcher. The shared index includes MCP server descriptions as well as
-operation names and descriptions, so CLI and bounded native queries resolve the
-same domain context without listing thousands of descriptions at startup.
-Names remain stable when a different tool is revealed. CLI supports JSON input
-so nested objects, arrays and enums retain the original schema meaning.
+`tool_search` use the same authorization-scoped index; legacy native search
+retains its existing matcher. The index uses operation and schema metadata,
+MCP server names and descriptions, and declared capability IDs, names and
+descriptions, never full system prompts. Server context and owner capability
+text contribute once per MCP source; built-in operations share one capability
+context contribution per capability, regardless of the number of operations.
+A capability- or server-only query returns bounded source browse/refinement,
+not an arbitrary batch of operations; an operation query reveals its selected
+schema through the existing `tool_search` disclosure path. Replacing or
+detaching a source rebuilds the index, and current scope is checked at search
+and dispatch. Names remain stable when a different tool is revealed. CLI
+supports JSON input so nested objects, arrays and enums retain the original
+schema meaning.
 
 Both adapters validate canonical arguments, check current permissions and
 approval, and preserve cancellation and operation-level audit. The CLI catalog,

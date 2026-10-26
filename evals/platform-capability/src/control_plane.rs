@@ -14,7 +14,7 @@
 //!   schema, so `discover` returns the text a model actually reads;
 //! * `commands.json`, the shared CLI contract, so `everruns agents list --limit`
 //!   is parsed by the same `clap::Command` the server builds;
-//! * `harness.json`, the shipped system prompt and tool schemas.
+//! * `harness.json`, the historical CLI system prompt and shell schema.
 //!
 //! What it therefore cannot measure: authorization, real validation beyond
 //! argument shape, anything about persistence, and any behaviour that depends
@@ -33,7 +33,7 @@ use invocation::{Invocation, native_schema};
 const CATALOG: &str = include_str!("../catalog.json");
 /// Historical Platform Chat: system prompt and the three platform tool schemas.
 const LEGACY_HARNESS: &str = include_str!("../harness-legacy.json");
-/// Platform Chat: system prompt and the one `bash` tool schema.
+/// Historical CLI Platform Chat: captured prompt and the one `bash` schema.
 const HARNESS: &str = include_str!("../harness.json");
 /// Node help, rendered by the shipped tree. Discovery in the shell surface is `--help` and
 /// almost nothing else, so hand-rolling it would grade the hand-rolled text.

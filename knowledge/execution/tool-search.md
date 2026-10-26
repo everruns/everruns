@@ -64,27 +64,42 @@ matcher and its catalog presentation are unchanged by the bounded index.
 
 With bounded mode enabled, a registry-revision `ToolSearchIndex` uses BM25-style
 lexical ranking over operation names and descriptions, schema property names
-and descriptions, and MCP server names and configured descriptions. The index
-stores metadata, not duplicate schemas. Server context is scored once per
-server, so one large source does not get a vote for every tool it owns. CLI
-`tools search` uses the same server-aware index; generic native search uses it
-when bounded mode is enabled. Name, description and schema fields use separate
-IDF and length normalization so verbose schemas and shared envelope terms cannot
-dilute distinctive names. Complete names written with spaces or hyphens resolve
-like underscore spellings; canonical MCP namespace separators remain intact.
+and descriptions, MCP server names and configured descriptions, and declared
+capability IDs, names and descriptions. It does not index full system prompts.
+The index stores metadata, not duplicate schemas. MCP server context and its
+owner capability text are each scored once per MCP source; built-in operations
+share one capability-context score per capability. Adding operations does not
+multiply a source or capability's contribution by its tool count. CLI
+`tools search` and bounded native search use the same authorization-scoped
+index. Name, description, schema and source context remain distinct retrieval
+fields so verbose schemas and shared envelope terms cannot dilute distinctive
+names. Complete names written with spaces or hyphens resolve like underscore
+spellings; canonical MCP namespace separators remain intact.
+For an owned operation, the index also recognizes an unqualified exact alias
+by stripping only its declared owner ID prefix, after normalizing that ID's
+hyphens to underscores: owner `platform` can match
+`platform_update_agent` as `update_agent` or `update agent`. This alias does
+not change the canonical invocation name. A capability-name-only query remains
+a source browse/refinement and does not match every operation sharing its
+prefix. Reattachment indexes only the declared capability ID, name and
+description; updated descriptions invalidate the index, and unregistering a
+source removes its prior context.
 
 The DB-backed host preserves attached or preset server descriptions in listed
 tools and deferred placeholders, including across the worker transport. A
 worker receives retrieval metadata alongside the definitions; it still resolves
 execution through current server configuration and authorization.
 
-Search applies the current visible-operation allowlist before ranking. A
-server description may help find common operations such as `search`, `get`, or
-`list`, while server-qualified tool identities keep same-named operations
-separate. A match on server metadata alone returns a server refinement, not
-arbitrary operation schemas. The index is invalidated when the runtime registry changes. A
-selected name is resolved against that registry before schema disclosure or
-execution.
+Search applies the current visible-operation allowlist before ranking. A server
+or capability description may help find relevant operation sources. An exact
+capability/server-context-only query returns bounded capability or server
+browse/refinement; it does not choose an arbitrary first group of operation
+schemas. A follow-up query that names an operation loads only the selected
+schema through the existing disclosure path. Server-qualified tool identities
+keep same-named operations separate. The index is rebuilt when metadata or the
+runtime registry changes, including capability replacement or detachment. A
+selected operation is resolved against the current registry before schema
+disclosure or execution.
 
 ## Bounded mode
 

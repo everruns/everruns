@@ -56,6 +56,172 @@ fn definitions(count: usize) -> Vec<ToolDefinition> {
         .collect()
 }
 
+fn capability_tool(name: &str, id: &str, title: &str, purpose: &str) -> ToolDefinition {
+    let mut definition = builtin(name, "Process one item", json!({"type":"object"}));
+    let ToolDefinition::Builtin(tool) = &mut definition else {
+        unreachable!()
+    };
+    tool.hints.capability_id = Some(id.to_owned());
+    tool.hints.capability_name = Some(title.to_owned());
+    tool.hints.capability_description = Some(purpose.to_owned());
+    definition
+}
+
+fn bounded_tool(result_bytes: usize) -> ToolSearchTool {
+    ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes,
+        }),
+    }
+}
+
+#[tokio::test]
+async fn capability_purpose_refines_without_loading_opaque_operations() {
+    let definitions: Vec<_> = (0..600)
+        .map(|position| {
+            capability_tool(
+                &format!("opaque_{position:04}"),
+                "stockroom",
+                "Stockroom",
+                "Warehouse fulfillment inventory",
+            )
+        })
+        .collect();
+    let context = context(&definitions);
+    let tool = bounded_tool(1024);
+    let ToolExecutionResult::Success(result) = tool
+        .execute_with_context(json!({"query":"warehouse fulfillment"}), &context)
+        .await
+    else {
+        panic!("source refinement should fit")
+    };
+    assert_eq!(result["tools"], json!([]));
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(
+        result["available_capabilities"],
+        json!([{"id":"stockroom","name":"Stockroom"}])
+    );
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    assert!(!serde_json::to_string(&result).unwrap().contains("opaque_"));
+
+    let ToolExecutionResult::Success(refined) = tool
+        .execute_with_context(json!({"query":"opaque_0017"}), &context)
+        .await
+    else {
+        panic!("exact operation refinement should fit")
+    };
+    assert_eq!(refined["loaded"], json!(["opaque_0017"]));
+    assert_eq!(
+        refined["tools"][0]["parameters"],
+        definitions[17].full_parameters().clone()
+    );
+    let mut request = RuntimeMessage::assistant("");
+    request.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "refinement",
+            TOOL_SEARCH_TOOL_NAME,
+            json!({"query":"opaque_0017"}),
+        ),
+    )];
+    let disclosure = tool_disclosure(&[
+        request,
+        RuntimeMessage::tool_result("refinement", Some(refined), None),
+    ]);
+    let projected = hook(disclosure).transform(definitions);
+    assert_eq!(projected.len(), 1);
+    assert_eq!(projected[0].name(), "opaque_0017");
+}
+
+#[tokio::test]
+async fn mixed_source_refinements_and_fallbacks_share_scope_count_and_byte_bounds() {
+    let mut definitions = Vec::new();
+    for position in 0..24 {
+        definitions.push(capability_tool(
+            &format!("opaque_{position:04}"),
+            &format!("stockroom_{position:02}"),
+            &format!("Stockroom {position:02}"),
+            "Warehouse fulfillment inventory",
+        ));
+        let mut server = builtin(
+            format!("mcp_atlas_{position:02}__opaque"),
+            "Process one item",
+            json!({"type":"object"}),
+        );
+        let ToolDefinition::Builtin(tool) = &mut server else {
+            unreachable!()
+        };
+        tool.hints.metadata = Some(json!({"mcp_server":{
+            "name":format!("atlas_{position:02}"),"description":"Warehouse fulfillment inventory"}}));
+        definitions.push(server);
+    }
+    definitions.push(capability_tool(
+        "private_opaque",
+        "private_capability",
+        "Private",
+        "Secret documents",
+    ));
+    let mut context = context(&definitions);
+    Arc::make_mut(context.visible_tool_names.as_mut().unwrap()).remove("private_opaque");
+    for limit in [1024, 32768] {
+        for query in [
+            "warehouse fulfillment",
+            "unknownphenomenon",
+            "secret documents",
+        ] {
+            let ToolExecutionResult::Success(result) = bounded_tool(limit)
+                .execute_with_context(json!({"query":query}), &context)
+                .await
+            else {
+                panic!("source hints should fit")
+            };
+            assert_eq!(result["tools"], json!([]));
+            assert_eq!(result["loaded"], json!([]));
+            let servers = result["available_servers"].as_array().unwrap();
+            let capabilities = result
+                .get("available_capabilities")
+                .and_then(Value::as_array);
+            assert!(servers.len() + capabilities.map_or(0, Vec::len) <= 16);
+            assert!(serde_json::to_vec(&result).unwrap().len() <= limit);
+            let output = serde_json::to_string(&result).unwrap();
+            assert!(!output.contains("private_capability"));
+            assert!(!output.contains("private_opaque"));
+            if query == "unknownphenomenon" {
+                assert!(!servers.is_empty());
+                assert!(!capabilities.unwrap().is_empty());
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn capability_browse_hints_cannot_crowd_out_omitted_operation_refinement() {
+    let mut definition = capability_tool(
+        "opaque_zeta",
+        "stockroom",
+        &"界".repeat(400),
+        "Warehouse fulfillment inventory",
+    );
+    let ToolDefinition::Builtin(tool) = &mut definition else {
+        unreachable!()
+    };
+    tool.parameters = json!({"type":"object","description":"x".repeat(2000)});
+    let context = context(&[definition]);
+    let ToolExecutionResult::Success(result) = bounded_tool(1024)
+        .execute_with_context(json!({"query":"opaque_zeta"}), &context)
+        .await
+    else {
+        panic!("omitted operation hint should fit")
+    };
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(result["omitted_tools"], json!(["opaque_zeta"]));
+    assert_eq!(result["omitted_for_byte_budget"], 1);
+    assert!(result.get("available_capabilities").is_none());
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+}
+
 fn context(definitions: &[ToolDefinition]) -> ToolContext {
     let mut registry = ToolRegistry::new();
     for definition in definitions {

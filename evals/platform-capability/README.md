@@ -3,8 +3,15 @@
 A [Mira](https://github.com/everruns/mira) study of platform administration.
 The hosted subject drives real Platform Chat over HTTP. The offline subject
 compares CLI, eager native and bounded native interfaces over captured real platform
-operation descriptors and a shared simulated backend. Production Platform Chat
-remains CLI-only; this experiment does not add native platform tools to it.
+operation descriptors and a shared simulated backend. Platform Chat now registers
+individual `platform_` functions with bounded discovery and keeps the shell for
+composition; see the [capability reference](../../docs/capabilities/platform.md).
+The recorded comparison predates that production switch: its CLI prompt is a
+frozen snapshot, and its native arms use 344 unprefixed captured operations.
+The production catalog excludes 11 infrastructure-only durable operations and
+registers 333 public operations. These historical runs do not qualify the new
+managed composition or production model behavior. The invocation schema builder
+is shared with production; fixture dispatch and state remain simulated.
 
 The hosted subject exercises authorization, worker dispatch and persistence.
 The offline subject exercises model interface use, canonical JSON schemas, real
@@ -129,7 +136,7 @@ artifacts are generated from the server and checked against it —
 | Artifact | What it carries | Guard |
 |---|---|---|
 | `catalog.json` | all captured commands (currently 344), real descriptions and schemas | `the_eval_catalog_matches_inventory` |
-| `harness.json` | Platform Chat's system prompt and tool schemas | `the_eval_harness_matches_the_shipped_one` |
+| `harness.json` | Frozen CLI Platform Chat prompt and current shell schema | `the_eval_cli_snapshot_uses_the_current_shell_schema` |
 | `harness-legacy.json` | Historical three-tool baseline | Frozen comparison artifact |
 | `help.json` | `--help` for the root and every node, rendered by the shipped tree | `the_eval_help_matches_the_shipped_tree` |
 | `commands.json` | the shared CLI contract | `the_checked_in_contract_matches_inventory` |
@@ -485,8 +492,9 @@ endpoint, not universal surface rankings or invoice reconciliation.
 This experiment deliberately exposes every platform schema. The separate
 [MCP scale study](../mcp-scale/README.md) measures bounded native discovery,
 which keeps unselected schemas outside the model prompt. Its native results
-must not be pooled with this eager-native arm. The production Platform Chat
-composition remains CLI; this experiment does not add a production native route.
+must not be pooled with this eager-native arm. Platform Chat used the CLI
+composition when this historical experiment ran; it now uses the separate
+bounded native composition described above.
 
 An initial eight-trial CLI attempt scored 7/8 because the old script heuristic
 misclassified a harmless mutation `--help;` command as a write. The state and

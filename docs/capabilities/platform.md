@@ -9,7 +9,7 @@ appliesTo: [platform, cloud]
 | **ID** | `platform` |
 | **Category** | Platform |
 | **Risk** | High |
-| **Tools** | `discover`, `query`, `execute` by default; `everruns` in the session shell with `surface: shell` |
+| **Tools** | `discover`, `query`, `execute` by default; `platform_<wire_name>` functions with `surface: native`; `everruns` in the session shell with `surface: shell` |
 | **Dependencies** | `skills`; `session_file_system` when embedded docs are enabled |
 | **Mounts** | `/workspace/docs`, the Everruns documentation, read-only, when embedded docs are enabled |
 
@@ -24,11 +24,41 @@ the capability is high-risk and follows the normal admin-only assignment rule.
 
 ## Interfaces and built-in skills
 
-Platform Chat uses `{"ref":"platform","config":{"surface":"shell"}}`.
-This exposes the same operations through `everruns <noun> <verb>` in its shell,
-with progressive `--help`, JSON output, pipes, and workspace redirection. It
-hides the three tools described below. Omitting `surface` retains those tools.
-Both interfaces use the same command authorization and documentation mounts.
+Platform Chat uses `{"ref":"platform","config":{"surface":"native"}}`.
+This registers all 333 public, nondurable, noninternal inventory operations as
+individual `platform_<wire_name>` functions. The schema wraps the canonical
+typed payload in `params`; `reason` and `context_revision` remain separate
+metadata for change history. Names use the `platform_` prefix to avoid clashes
+with other tools. An omitted `surface` keeps the legacy `discover`, `query`,
+and `execute` tools; `{"surface":"shell"}` exposes the existing `everruns`
+command interface instead.
+
+Native calls use the same authorized platform dispatch as the CLI. The static
+`operations.json` catalog is generated from the server inventory, and workers
+do not link the server crate. Feature flags and permissions are checked again
+when a call runs. Like the local CLI grammar, this catalog spans public operations
+across feature flags; disabled operations remain discoverable but cannot execute.
+Platform Chat also uses bounded `tool_search` with a threshold of 1, so only selected
+operation schemas join the active tool list. Search can match native operation
+names and descriptions, plus declared capability names and descriptions. Its
+defaults are 32 optional
+schemas, 64 KiB of active schemas, and 32 KiB of search results. Bashkit Worker
+and the `everruns` shell remain available for loops, filtering, and aggregation across many operations;
+use native functions for individual operations and the shell for composition.
+
+For example, search for `platform_list_agents`, then call that function on the
+next step with:
+
+```json
+{
+  "params": {
+    "limit": 5
+  }
+}
+```
+
+For a change, put `reason` and the manager-context `context_revision` beside
+`params`, rather than inside the entity payload.
 
 Workspace builds also ship three read-only skills with this capability:
 

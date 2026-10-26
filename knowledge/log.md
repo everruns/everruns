@@ -49,6 +49,19 @@
   database before migrations; `reset` is the only command that deletes data. See
   [Local Setup and Kubernetes](operations/local-setup.md).
 
+## 2026-10-25
+
+* **Native Platform Chat operations.** Documented the managed agent's prefixed
+  native operation surface, bounded schema discovery, shared dispatch authority,
+  and retained shell aggregation path. Search includes declared capability
+  context, with source-only refinement and the same authorization-scoped index
+  for native and CLI lookup. Added a production qualification procedure while
+  preserving the historical offline comparison's catalog and provider
+  limitations. See [Platform Chat](harnesses/platform-chat.md),
+  [tool search](execution/tool-search.md),
+  [tool surfaces](execution/tool-surfaces.md), and
+  [TC006](test-cases/agents/platform_chat/TC006_matched_platform_surfaces.md).
+
 ## 2026-10-24
 
 * **Chat across app pages.** Bind every adopted app page to explicit context, live

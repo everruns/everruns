@@ -191,6 +191,71 @@ fn install_cli_surface(context: &mut ToolContext, registry: &ToolRegistry) {
     context.tool_surface_plan = plan;
 }
 
+#[tokio::test]
+async fn capability_purpose_search_refines_sources_and_keeps_help_and_calls_in_scope() {
+    let policy = Arc::new(Policy::default());
+    let mut context = context(Some(policy), true);
+    let mut registry = ToolRegistry::new();
+    for (name, id, title) in [
+        ("opaque_zeta", "stockroom", "Stockroom"),
+        ("opaque_omega", "private_stockroom", "Private Stockroom"),
+        ("mcp_atlas__opaque", "mcp_capability", "Remote Inventory"),
+    ] {
+        registry.register(EchoTool {
+            hints: ToolHints {
+                capability_id: Some(id.into()),
+                capability_name: Some(title.into()),
+                capability_description: Some("Warehouse fulfillment inventory".into()),
+                ..Default::default()
+            },
+            ..EchoTool::named(name)
+        });
+    }
+    registry.register(ToolsMarkerTool);
+    install_cli_surface(&mut context, &registry);
+    context.tool_registry = Some(Arc::new(registry));
+    context.visible_tool_names = Some(Arc::new(std::collections::HashSet::from([
+        "opaque_zeta".into(),
+        "mcp_atlas__opaque".into(),
+        TOOLS_COMMAND.into(),
+    ])));
+
+    let catalog = catalog::Catalog::from_context(&context);
+    assert!(catalog.search("warehouse fulfillment", 10).is_empty());
+    let sources = catalog.source_matches("warehouse fulfillment", 10);
+    assert_eq!(sources.len(), 2);
+    assert!(
+        sources
+            .iter()
+            .any(|source| source.id == "stockroom" && source.name == "Stockroom")
+    );
+    assert!(sources.iter().any(|source| source.id == "atlas"));
+
+    let output = run("tools search warehouse fulfillment", &context).await;
+    let stdout = output["stdout"].as_str().unwrap();
+    assert!(stdout.contains("Matching sources"), "{output}");
+    assert!(stdout.contains("Stockroom (stockroom)"), "{output}");
+    assert!(stdout.contains("tools atlas --help"), "{output}");
+    assert!(!stdout.contains("private_stockroom"), "{output}");
+    assert!(!stdout.contains("opaque-zeta"), "{output}");
+    let output = run("tools search opaque-zeta", &context).await;
+    assert!(
+        output["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("tools opaque-zeta")
+    );
+    let output = run("tools opaque-zeta --help", &context).await;
+    assert!(output["stdout"].as_str().unwrap().contains("Input schema"));
+    let output = run("tools opaque-zeta '{\"repo\":\"inventory\"}'", &context).await;
+    assert!(
+        output["stdout"].as_str().unwrap().contains("inventory"),
+        "{output}"
+    );
+    let output = run("tools opaque-omega --help", &context).await;
+    assert_eq!(error_code(&output), "unknown_command", "{output}");
+}
+
 async fn run(script: &str, context: &ToolContext) -> Value {
     match BashTool::default()
         .execute_with_context(json!({"commands": script}), context)

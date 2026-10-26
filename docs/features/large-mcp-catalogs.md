@@ -52,15 +52,19 @@ deployment settings.
 ## Search and schema disclosure
 
 In bounded native mode (`tool_search` with `bounded: true`) and in the `tools`
-CLI, search uses a shared authorized index over server names and descriptions,
-tool names and descriptions, and parameter schema text. A server description
-can help find generic operations such as `search`, `get`, or `list`. Results
-retain the server and operation identity, so same-named tools on different
-servers remain distinct. If only a server description matches, search returns
-a server refinement rather than labeling its tools as operation matches. The
-CLI marks these separately and points to `tools <server> --help`. Legacy native
-`tool_search` keeps its existing matcher and does not use this server-aware
-index.
+CLI, search uses one authorization-scoped index over server names and
+descriptions, operation names and descriptions, parameter schema text, and
+declared capability IDs, names and descriptions. It does not index full system
+prompts. Server context and owning capability text are scored once per MCP
+source; built-in operations share one capability context contribution per
+capability, independent of operation count. Results retain source and operation
+identity, so same-named tools on different servers remain distinct. A query
+matching only a capability or server description returns a bounded source
+browse/refinement, not an arbitrary group of operation schemas. Follow with an
+operation query to load selected schemas through the existing disclosure path.
+The CLI marks source matches separately and points to `tools <server> --help`.
+Legacy native `tool_search` keeps its existing matcher and does not use this
+shared index.
 
 When a query names an exact operation, search returns matching authorized
 identities without padding the result with weaker description matches. An
@@ -73,6 +77,13 @@ parameter schema does not bury a strong name or description match. Complete
 operation names accept spaces, hyphens or underscores: `update agent` can find
 a registered `update_agent` operation. Current authorization still determines
 which identities can appear.
+
+For owned operations, search also accepts an unqualified exact alias after
+stripping only the declared owner ID prefix, with that ID's hyphens normalized
+to underscores. For example, `platform_update_agent` can match `update_agent`
+or `update agent`, while calls still use the canonical `platform_update_agent`
+name. A capability-name-only query remains a bounded source browse/refinement;
+it does not match every operation under that prefix.
 
 By default, `tool_search` keeps its existing behavior. To opt into bounded
 schema disclosure, set `bounded` and the three limits on the capability:
@@ -109,7 +120,8 @@ history limit.
 
 Tool search applies the current attachment and authorization rules before
 returning matches, and the shell catalog is built from the current turn's
-visible-tool scope. Search, help, and invocation all stay within that scope;
+visible-tool scope. Replacing or detaching a capability or MCP source rebuilds
+the index. Search, help, and invocation all stay within the current scope;
 deferred child tools retain the scope of their server placeholder. The runtime
 checks authority again when an operation is called. Removing a server or
 revoking its connection therefore makes its operations unavailable even if a

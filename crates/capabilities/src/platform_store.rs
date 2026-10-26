@@ -383,6 +383,10 @@ pub mod tests {
             Ok(arguments.to_string())
         }
 
+        async fn platform_run(&self, command: &str, params: serde_json::Value) -> Result<String> {
+            Ok(serde_json::json!({"command": command, "params": params}).to_string())
+        }
+
         async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
             if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
                 return Ok(Some(harness));

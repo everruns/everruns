@@ -1,12 +1,13 @@
 //! Shared lexical retrieval for native discovery and command adapters.
 //!
 //! The index contains metadata, never execution authority. Callers supply the
-//! current scope on every search. Server descriptions are scored once per
-//! authorized server, independently of how many operations that server owns.
+//! current scope on every search. Source context is scored once per authorized
+//! server or capability, independently of how many operations it owns.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::tool_types::ToolDefinition;
+use serde::Serialize;
 use serde_json::Value;
 
 const EXACT_NAME_BONUS: f64 = 10_000.0;
@@ -28,7 +29,28 @@ fn normalized_tool_name(name: &str) -> String {
 struct Document {
     name: String,
     lengths: [usize; 3],
-    server: Option<String>,
+    source: Option<String>,
+}
+
+/// The owner context used to refine a search without revealing arbitrary tools.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Ord, PartialOrd)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolSearchSourceKind {
+    McpServer,
+    Capability,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Ord, PartialOrd)]
+pub struct ToolSearchSource {
+    pub kind: ToolSearchSourceKind,
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+struct Source {
+    info: ToolSearchSource,
+    terms: HashMap<String, usize>,
 }
 
 /// One ranked canonical tool identity. Resolve it against the current registry
@@ -39,6 +61,8 @@ pub struct ToolSearchHit {
     pub score: f64,
     pub tool_match: bool,
     pub server_match: bool,
+    /// Present only when the query matches this tool's source context.
+    pub source: Option<ToolSearchSource>,
 }
 
 /// An immutable index for one registry revision. No schemas are duplicated in
@@ -46,7 +70,7 @@ pub struct ToolSearchHit {
 #[derive(Debug, Clone, Default)]
 pub struct ToolSearchIndex {
     documents: Vec<Document>,
-    sources: BTreeMap<String, HashMap<String, usize>>,
+    sources: BTreeMap<String, Source>,
     postings: HashMap<String, Vec<(usize, [usize; 3])>>,
     exact_names: HashMap<String, Vec<usize>>,
 }
@@ -119,42 +143,111 @@ impl ToolSearchIndex {
         definitions.sort_by(|left, right| left.name().cmp(right.name()));
         let mut index = Self::default();
         for definition in definitions {
-            let context = definition
-                .hints()
-                .metadata
-                .as_ref()
-                .and_then(|metadata| metadata.get("mcp_server"));
+            let hints = definition.hints();
+            let metadata = hints.metadata.as_ref();
+            let context = metadata.and_then(|metadata| metadata.get("mcp_server"));
+            let capability = metadata.and_then(|metadata| metadata.get("capability"));
+            let capability_id = hints.capability_id.as_deref().or_else(|| {
+                capability
+                    .and_then(|context| context.get("id"))
+                    .and_then(Value::as_str)
+            });
+            let capability_name = hints
+                .capability_name
+                .as_deref()
+                .or_else(|| {
+                    capability
+                        .and_then(|context| context.get("name"))
+                        .and_then(Value::as_str)
+                })
+                .or(capability_id);
+            let capability_description = hints.capability_description.as_deref().or_else(|| {
+                capability
+                    .and_then(|context| context.get("description"))
+                    .and_then(Value::as_str)
+            });
             let parsed = super::mcp_server::parse_mcp_tool_name(definition.name());
             let server = context
                 .and_then(|context| context.get("name"))
                 .and_then(Value::as_str)
-                .map(str::to_owned)
-                .or_else(|| parsed.as_ref().map(|(name, _)| name.clone()));
-            if let Some(server) = &server {
-                index.sources.entry(server.clone()).or_insert_with(|| {
+                .or_else(|| parsed.as_ref().map(|(name, _)| name.as_str()));
+            // An MCP tool remains a member of its server, even when a
+            // capability supplied it. Combine both contexts in one source so
+            // it cannot get two source votes or distort source-level IDF.
+            let source_info = server
+                .map(|server| ToolSearchSource {
+                    kind: ToolSearchSourceKind::McpServer,
+                    id: server.to_owned(),
+                    name: server.chars().take(256).collect(),
+                })
+                .or_else(|| {
+                    capability_id.map(|id| ToolSearchSource {
+                        kind: ToolSearchSourceKind::Capability,
+                        id: id.to_owned(),
+                        name: capability_name.unwrap_or(id).chars().take(256).collect(),
+                    })
+                });
+            let source = source_info.map(|info| {
+                let prefix = match info.kind {
+                    ToolSearchSourceKind::McpServer => "mcp:",
+                    ToolSearchSourceKind::Capability => "capability:",
+                };
+                let key = format!("{prefix}{}", info.id);
+                index.sources.entry(key.clone()).or_insert_with(|| {
                     let mut terms = HashMap::new();
-                    add_terms(&mut terms, server, 2);
+                    add_terms(&mut terms, &info.id, 1);
+                    add_terms(&mut terms, &info.name, 1);
                     if let Some(description) = context
                         .and_then(|context| context.get("description"))
                         .and_then(Value::as_str)
                     {
-                        add_terms(&mut terms, description, 1);
+                        add_terms(
+                            &mut terms,
+                            &description.chars().take(4096).collect::<String>(),
+                            1,
+                        );
                     }
-                    terms
+                    if let Some(id) = capability_id {
+                        add_terms(&mut terms, id, 1);
+                    }
+                    if let Some(name) = capability_name {
+                        add_terms(&mut terms, &name.chars().take(256).collect::<String>(), 1);
+                    }
+                    if let Some(description) = capability_description {
+                        add_terms(
+                            &mut terms,
+                            &description.chars().take(4096).collect::<String>(),
+                            1,
+                        );
+                    }
+                    Source { info, terms }
                 });
-            }
+                key
+            });
             // Keep operation names, descriptions and schemas as independent
             // fields. Schema verbosity and shared invocation-envelope terms
             // must not dilute an operation's own name or description.
             let mut fields: [HashMap<String, usize>; 3] = Default::default();
-            add_terms(
-                &mut fields[0],
-                parsed
-                    .as_ref()
-                    .map(|(_, name)| name.as_str())
-                    .unwrap_or(definition.name()),
-                1,
-            );
+            let operation_name = parsed
+                .as_ref()
+                .map(|(_, name)| name.as_str())
+                .or_else(|| {
+                    // Only the declared owner's exact namespace is context.
+                    // Match MCP's operation aliases without stripping arbitrary
+                    // leading words from ordinary, unowned tool names.
+                    let id = capability_id?;
+                    definition
+                        .name()
+                        .strip_prefix(&format!("{id}_"))
+                        .or_else(|| {
+                            definition
+                                .name()
+                                .strip_prefix(&format!("{}_", id.replace('-', "_")))
+                        })
+                        .filter(|operation| !operation.is_empty())
+                })
+                .unwrap_or(definition.name());
+            add_terms(&mut fields[0], operation_name, 1);
             add_terms(&mut fields[1], definition.description(), 1);
             schema_terms(definition.full_parameters(), &mut fields[2]);
             let lengths = std::array::from_fn(|field| fields[field].values().sum());
@@ -170,10 +263,10 @@ impl ToolSearchIndex {
                 .entry(normalized_tool_name(definition.name()))
                 .or_default()
                 .push(position);
-            if let Some((_, operation)) = &parsed {
+            if operation_name != definition.name() {
                 index
                     .exact_names
-                    .entry(normalized_tool_name(operation))
+                    .entry(normalized_tool_name(operation_name))
                     .or_default()
                     .push(position);
             }
@@ -187,14 +280,87 @@ impl ToolSearchIndex {
             index.documents.push(Document {
                 name: definition.name().to_owned(),
                 lengths,
-                server,
+                source,
             });
         }
         index
     }
 
+    /// Deduplicated owner contexts with at least one currently authorized tool.
+    pub fn sources(&self, allowed: impl Fn(&str) -> bool) -> Vec<ToolSearchSource> {
+        self.documents
+            .iter()
+            .filter(|document| allowed(&document.name))
+            .filter_map(|document| document.source.as_ref())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|key| self.sources[key].info.clone())
+            .collect()
+    }
+
+    /// Rank matching owner contexts once each, independently of tool count.
+    /// This keeps bounded refinements from being consumed by sibling tools.
+    pub fn search_sources(
+        &self,
+        query: &str,
+        limit: usize,
+        allowed: impl Fn(&str) -> bool,
+    ) -> Vec<ToolSearchSource> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        let sources = self
+            .documents
+            .iter()
+            .filter(|document| allowed(&document.name))
+            .filter_map(|document| document.source.as_deref())
+            .collect();
+        let terms = tokens(query).into_iter().collect();
+        let mut matches: Vec<_> = self
+            .score_sources(&terms, &sources)
+            .into_iter()
+            .filter(|(_, score)| *score > 0.0)
+            .collect();
+        matches.sort_by(|(left, left_score), (right, right_score)| {
+            right_score
+                .total_cmp(left_score)
+                .then_with(|| self.sources[*left].info.cmp(&self.sources[*right].info))
+        });
+        matches
+            .into_iter()
+            .take(limit)
+            .map(|(key, _)| self.sources[key].info.clone())
+            .collect()
+    }
+
+    fn score_sources<'a>(
+        &self,
+        terms: &HashSet<String>,
+        sources: &HashSet<&'a str>,
+    ) -> HashMap<&'a str, f64> {
+        sources
+            .iter()
+            .map(|source| {
+                let score = terms
+                    .iter()
+                    .filter(|term| self.sources[*source].terms.contains_key(*term))
+                    .map(|term| {
+                        let frequency = sources
+                            .iter()
+                            .filter(|source| self.sources[**source].terms.contains_key(term))
+                            .count();
+                        (1.0 + (sources.len() as f64 - frequency as f64 + 0.5)
+                            / (frequency as f64 + 0.5))
+                            .ln()
+                    })
+                    .sum();
+                (*source, score)
+            })
+            .collect()
+    }
+
     /// Search only identities admitted by the caller's current authorization
-    /// view. Forbidden documents do not contribute to IDF or server ranking.
+    /// view. Forbidden documents do not contribute to IDF or source ranking.
     pub fn search(
         &self,
         query: &str,
@@ -246,27 +412,9 @@ impl ToolSearchIndex {
             .iter()
             .zip(&visible)
             .filter(|(_, allowed)| **allowed)
-            .filter_map(|(document, _)| document.server.as_deref())
+            .filter_map(|(document, _)| document.source.as_deref())
             .collect();
-        let source_scores: HashMap<_, _> = sources
-            .iter()
-            .map(|source| {
-                let score = terms
-                    .iter()
-                    .filter(|term| self.sources[*source].contains_key(*term))
-                    .map(|term| {
-                        let frequency = sources
-                            .iter()
-                            .filter(|source| self.sources[**source].contains_key(term))
-                            .count();
-                        (1.0 + (sources.len() as f64 - frequency as f64 + 0.5)
-                            / (frequency as f64 + 0.5))
-                            .ln()
-                    })
-                    .sum::<f64>();
-                (*source, score)
-            })
-            .collect();
+        let source_scores = self.score_sources(&terms, &sources);
         let mut scores = vec![0.0; self.documents.len()];
         for term in &terms {
             let Some(postings) = self.postings.get(term) else {
@@ -312,7 +460,7 @@ impl ToolSearchIndex {
             .filter(|(position, _)| visible[*position])
             .filter_map(|(position, document)| {
                 let source_score = document
-                    .server
+                    .source
                     .as_deref()
                     .and_then(|source| source_scores.get(source))
                     .copied()
@@ -327,7 +475,16 @@ impl ToolSearchIndex {
                         name: document.name.clone(),
                         score,
                         tool_match,
-                        server_match: source_score > 0.0,
+                        server_match: source_score > 0.0
+                            && document.source.as_ref().is_some_and(|key| {
+                                self.sources[key].info.kind == ToolSearchSourceKind::McpServer
+                            }),
+                        source: document
+                            .source
+                            .as_ref()
+                            .and_then(|key| self.sources.get(key))
+                            .filter(|_| source_score > 0.0)
+                            .map(|source| source.info.clone()),
                     }
                 })
             })
@@ -758,5 +915,402 @@ mod tests {
                 .is_empty()
         );
         assert!(ToolSearchIndex::new(&[updated]).search("geothermal", 8, |_| true)[0].server_match);
+    }
+
+    fn capability_operation(
+        name: &str,
+        id: &str,
+        display: &str,
+        description: &str,
+    ) -> ToolDefinition {
+        let mut definition = operation("unused", "unused", "Read one item");
+        if let ToolDefinition::Builtin(tool) = &mut definition {
+            tool.name = name.to_owned();
+            tool.hints.metadata = None;
+            tool.hints.capability_id = Some(id.to_owned());
+            tool.hints.capability_name = Some(display.to_owned());
+            tool.hints.capability_description = Some(description.to_owned());
+        }
+        definition
+    }
+
+    #[test]
+    fn capability_context_discovers_by_id_name_and_description_without_revealing_operations() {
+        let definition = capability_operation(
+            "peek",
+            "internal_stock",
+            "Warehouse",
+            "Fulfillment logistics",
+        );
+        let index = ToolSearchIndex::new(&[definition]);
+        let expected = ToolSearchSource {
+            kind: ToolSearchSourceKind::Capability,
+            id: "internal_stock".into(),
+            name: "Warehouse".into(),
+        };
+        for query in ["internal_stock", "warehouse", "logistics"] {
+            let hits = index.search(query, 8, |_| true);
+            assert_eq!(hits.len(), 1, "{query}");
+            assert_eq!(hits[0].source, Some(expected.clone()));
+            assert!(!hits[0].tool_match);
+            assert!(!hits[0].server_match);
+            assert!(index.search_operations(query, 8, |_| true).is_empty());
+        }
+        assert_eq!(index.sources(|_| true), vec![expected]);
+        let operation = index.search_operations("peek", 8, |_| true);
+        assert!(operation[0].tool_match);
+        assert!(operation[0].source.is_none());
+    }
+
+    #[test]
+    fn legacy_capability_attribution_and_metadata_context_remain_searchable() {
+        let mut definition =
+            capability_operation("peek", "internal_stock", "Warehouse", "Logistics");
+        if let ToolDefinition::Builtin(tool) = &mut definition {
+            tool.hints.capability_description = None;
+        }
+        let legacy = ToolSearchIndex::new(&[definition.clone()]);
+        assert_eq!(legacy.search("warehouse", 8, |_| true).len(), 1);
+        assert_eq!(legacy.search("internal_stock", 8, |_| true).len(), 1);
+        if let ToolDefinition::Builtin(tool) = &mut definition {
+            tool.hints.capability_id = None;
+            tool.hints.capability_name = None;
+            tool.hints.metadata = Some(json!({"capability": {
+                "id": "internal_stock", "name": "Warehouse", "description": "Logistics"
+            }}));
+        }
+        let metadata = ToolSearchIndex::new(&[definition]);
+        assert_eq!(metadata.search("logistics", 8, |_| true).len(), 1);
+        assert_eq!(metadata.sources(|_| true)[0].id, "internal_stock");
+    }
+
+    #[test]
+    fn mcp_and_capability_context_have_equal_weight_and_distinct_source_identity() {
+        let native = capability_operation(
+            "peek",
+            "atlas",
+            "Atlas",
+            "Warehouse inventory and fulfillment",
+        );
+        let mut remote = operation("atlas", "get", "Read one item");
+        if let ToolDefinition::Builtin(tool) = &mut remote {
+            tool.hints.capability_id = Some("connector".into());
+            tool.hints.capability_name = Some("Logistics".into());
+            tool.hints.capability_description = Some("Warehouse inventory and fulfillment".into());
+        }
+        let index = ToolSearchIndex::new(&[native, remote]);
+        let hits = index.search("warehouse fulfillment", 8, |_| true);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].score, hits[1].score);
+        assert_eq!(
+            index.sources(|_| true).len(),
+            2,
+            "source ids must be namespaced"
+        );
+        let remote = index.search("logistics", 8, |_| true);
+        assert_eq!(remote.len(), 1);
+        assert!(remote[0].server_match);
+        assert_eq!(
+            remote[0].source.as_ref().unwrap().kind,
+            ToolSearchSourceKind::McpServer
+        );
+        assert_eq!(remote[0].source.as_ref().unwrap().id, "atlas");
+        assert_eq!(remote[0].score, (1.0_f64 + 1.5 / 1.5).ln());
+        assert!(index.search_operations("logistics", 8, |_| true).is_empty());
+    }
+
+    #[test]
+    fn hundreds_of_capability_operations_do_not_multiply_source_context() {
+        let one = capability_operation("peek", "stock", "Warehouse", "Fulfillment logistics");
+        let small =
+            ToolSearchIndex::new(&[one.clone(), operation("cloud", "get", "Read one item")]);
+        let mut definitions = vec![one, operation("cloud", "get", "Read one item")];
+        definitions.extend((0..500).map(|n| {
+            capability_operation(
+                &format!("inspect_{n:04}"),
+                "stock",
+                "Warehouse",
+                "Fulfillment logistics",
+            )
+        }));
+        let large = ToolSearchIndex::new(&definitions);
+        assert_eq!(large.sources(|_| true).len(), 2);
+        assert_eq!(
+            small.search("logistics", 8, |_| true)[0].score,
+            large.search("logistics", 8, |_| true)[0].score,
+        );
+        assert!(large.search_operations("logistics", 8, |_| true).is_empty());
+    }
+
+    #[test]
+    fn forbidden_capabilities_do_not_change_statistics_or_leak_metadata() {
+        let authorized =
+            capability_operation("peek", "stock", "Warehouse", "Fulfillment logistics");
+        let forbidden =
+            capability_operation("secret", "classified", "Secret source", "Logistics zephyr");
+        let isolated = ToolSearchIndex::new(std::slice::from_ref(&authorized));
+        let index = ToolSearchIndex::new(&[authorized, forbidden]);
+        let allowed = |name: &str| name == "peek";
+        assert_eq!(
+            index.search("logistics", 8, allowed)[0].score,
+            isolated.search("logistics", 8, |_| true)[0].score
+        );
+        assert!(index.search("zephyr", 8, allowed).is_empty());
+        assert_eq!(index.sources(allowed), isolated.sources(|_| true));
+        assert!(index.sources(|_| false).is_empty());
+    }
+
+    #[test]
+    fn exact_operation_survives_broad_capability_context_and_context_augments_real_hits() {
+        let target = capability_operation("release_invoice", "billing", "Accounting", "Payables");
+        let mut definitions = vec![target.clone()];
+        definitions.extend((0..500).map(|n| {
+            capability_operation(
+                &format!("inspect_{n:04}"),
+                "control",
+                "Release invoice",
+                "Billing payables",
+            )
+        }));
+        let index = ToolSearchIndex::new(&definitions);
+        let exact = index.search("release invoice", 8, |_| true);
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0].name, "release_invoice");
+        assert!(exact[0].source.is_none());
+        let hits = index.search_operations("release payables", 8, |_| true);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].tool_match);
+        assert_eq!(hits[0].source.as_ref().unwrap().id, "billing");
+        assert!(!hits[0].server_match);
+        assert!(index.search_operations("release", 8, |_| true)[0].score < hits[0].score);
+    }
+
+    #[test]
+    fn capability_context_is_bounded_and_never_indexes_system_prompt() {
+        let id = "stable_identifier".repeat(30);
+        let mut definition = capability_operation(
+            "peek",
+            &id,
+            &format!("{} hiddenname", "a".repeat(256)),
+            &format!("{} hiddendescription", "b".repeat(4096)),
+        );
+        if let ToolDefinition::Builtin(tool) = &mut definition {
+            tool.hints.metadata = Some(json!({
+                "system_prompt": "secretinstructions",
+                "capability": {"system_prompt": "privatesystemprompt"},
+            }));
+        }
+        let index = ToolSearchIndex::new(&[definition]);
+        for query in [
+            "hiddenname",
+            "hiddendescription",
+            "secretinstructions",
+            "privatesystemprompt",
+        ] {
+            assert!(index.search(query, 8, |_| true).is_empty(), "{query}");
+        }
+        let source = &index.sources(|_| true)[0];
+        assert_eq!(source.id, id, "stable ids must not be truncated");
+        assert_eq!(source.name.chars().count(), 256);
+    }
+
+    #[test]
+    fn capability_context_change_invalidates_registry_index_without_changing_provider_schema() {
+        let original = capability_operation("peek", "stock", "Warehouse", "Turquoise");
+        let updated = capability_operation("peek", "stock", "Warehouse", "Geothermal");
+        assert!(crate::tool_changes::same_for_model(&original, &updated));
+        let mut registry = ToolRegistry::new();
+        registry.register(CatalogTool(original));
+        let previous = registry.search_index();
+        registry.register(CatalogTool(updated));
+        let current = registry.search_index();
+        assert!(!Arc::ptr_eq(&previous, &current));
+        assert_eq!(previous.search("turquoise", 8, |_| true).len(), 1);
+        assert!(current.search("turquoise", 8, |_| true).is_empty());
+        assert_eq!(current.search("geothermal", 8, |_| true).len(), 1);
+        registry.unregister("peek");
+        assert!(registry.search_index().sources(|_| true).is_empty());
+    }
+
+    #[test]
+    fn source_search_deduplicates_before_limiting_and_obeys_scope() {
+        let mut definitions: Vec<_> = (0..100)
+            .map(|n| {
+                capability_operation(
+                    &format!("alpha_{n:03}"),
+                    "alpha",
+                    "Warehouse",
+                    "Fulfillment",
+                )
+            })
+            .collect();
+        definitions.push(capability_operation(
+            "zulu",
+            "zulu",
+            "Warehouse",
+            "Fulfillment",
+        ));
+        let index = ToolSearchIndex::new(&definitions);
+        let sources = index.search_sources("warehouse", 2, |_| true);
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].id, "alpha");
+        assert_eq!(sources[1].id, "zulu");
+        assert_eq!(index.search_sources("warehouse", 1, |_| true).len(), 1);
+        assert_eq!(
+            index.search_sources("warehouse", 2, |name| name == "zulu"),
+            vec![sources[1].clone()]
+        );
+        assert!(index.search_sources("warehouse", 2, |_| false).is_empty());
+        assert!(index.search_sources("warehouse", 0, |_| true).is_empty());
+        assert!(index.search_sources("unmatched", 2, |_| true).is_empty());
+    }
+
+    #[test]
+    fn capability_namespace_is_source_context_and_suffix_is_an_exact_operation_alias() {
+        let index = ToolSearchIndex::new(&[
+            capability_operation(
+                "platform_update_agent",
+                "platform",
+                "Platform",
+                "Control plane",
+            ),
+            capability_operation(
+                "platform_list_agents",
+                "platform",
+                "Platform",
+                "Control plane",
+            ),
+        ]);
+        let hits = index.search("platform", 8, |_| true);
+        assert_eq!(hits.len(), 2);
+        assert!(
+            hits.iter()
+                .all(|hit| !hit.tool_match && hit.source.is_some())
+        );
+        assert!(index.search_operations("platform", 8, |_| true).is_empty());
+        for query in [
+            "update_agent",
+            "update agent",
+            "update-agent",
+            "platform_update_agent",
+            "platform update agent",
+        ] {
+            let hits = index.search_operations(query, 8, |_| true);
+            assert_eq!(hits.len(), 1, "{query}");
+            assert_eq!(hits[0].name, "platform_update_agent");
+            assert!(hits[0].score >= EXACT_NAME_BONUS);
+        }
+    }
+
+    #[test]
+    fn capability_operation_aliases_preserve_qualified_identity_ambiguity_and_scope() {
+        let index = ToolSearchIndex::new(&[
+            capability_operation(
+                "platform_update_agent",
+                "platform",
+                "Platform",
+                "Control plane",
+            ),
+            capability_operation(
+                "analytics_update_agent",
+                "analytics",
+                "Analytics",
+                "Reports",
+            ),
+            capability_operation(
+                "misc_update_record",
+                "misc",
+                "Miscellaneous",
+                "Agent records",
+            ),
+        ]);
+        for query in ["update_agent", "update agent", "update-agent"] {
+            let hits = index.search_operations(query, 8, |_| true);
+            let names: HashSet<_> = hits.iter().map(|hit| hit.name.as_str()).collect();
+            assert_eq!(names.len(), 2, "{query}");
+            assert!(names.contains("platform_update_agent"));
+            assert!(names.contains("analytics_update_agent"));
+            let scoped = index.search_operations(query, 8, |name| name.starts_with("platform_"));
+            assert_eq!(scoped.len(), 1);
+            assert_eq!(scoped[0].name, "platform_update_agent");
+        }
+        for name in ["platform_update_agent", "analytics_update_agent"] {
+            let hits = index.search_operations(name, 8, |_| true);
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].name, name);
+        }
+    }
+
+    #[test]
+    fn capability_namespace_accepts_normalized_hyphens_and_keeps_mcp_aliases() {
+        let mut remote = operation("atlas", "update_agent", "Read one item");
+        if let ToolDefinition::Builtin(tool) = &mut remote {
+            tool.hints.capability_id = Some("mcp_atlas".into());
+        }
+        let index = ToolSearchIndex::new(&[
+            capability_operation(
+                "team_platform_update_agent",
+                "team-platform",
+                "Management",
+                "Control plane",
+            ),
+            remote,
+        ]);
+        let hits = index.search_operations("update agent", 8, |_| true);
+        assert_eq!(hits.len(), 2);
+        assert!(hits.iter().all(|hit| hit.score >= EXACT_NAME_BONUS));
+        assert_eq!(
+            hits[0].score, hits[1].score,
+            "equivalent operation names must rank equally"
+        );
+        let source = index.search("team platform", 8, |_| true);
+        assert_eq!(source.len(), 1);
+        assert!(!source[0].tool_match);
+        assert_eq!(source[0].source.as_ref().unwrap().id, "team-platform");
+    }
+
+    #[test]
+    fn unowned_names_and_nonmatching_owner_prefixes_remain_operation_text() {
+        let mut unowned = capability_operation(
+            "platform_update_agent",
+            "platform",
+            "Platform",
+            "Control plane",
+        );
+        if let ToolDefinition::Builtin(tool) = &mut unowned {
+            tool.hints.capability_id = None;
+            tool.hints.capability_name = None;
+            tool.hints.capability_description = None;
+        }
+        let index = ToolSearchIndex::new(&[
+            unowned,
+            capability_operation(
+                "platformish_update_agent",
+                "platform",
+                "Platform",
+                "Control plane",
+            ),
+            capability_operation(
+                "different_update_agent",
+                "platform",
+                "Platform",
+                "Control plane",
+            ),
+        ]);
+        let unowned = index.search_operations("platform", 8, |_| true);
+        assert_eq!(unowned.len(), 1);
+        assert_eq!(unowned[0].name, "platform_update_agent");
+        assert!(unowned[0].source.is_none());
+        for (query, expected) in [
+            ("platformish", "platformish_update_agent"),
+            ("different", "different_update_agent"),
+        ] {
+            let hits = index.search_operations(query, 8, |_| true);
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].name, expected);
+        }
+        let partial = index.search_operations("update agent", 8, |_| true);
+        assert_eq!(partial.len(), 3);
+        assert!(partial.iter().all(|hit| hit.score < EXACT_NAME_BONUS));
     }
 }

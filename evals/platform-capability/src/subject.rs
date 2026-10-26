@@ -357,7 +357,7 @@ impl Subject for EverrunsServerSubject {
             .and_then(Value::as_bool)
             == Some(true)
         {
-            return Transcript::infra_error("surface-comparison fixtures require EVERRUNS_EVAL_MODE=offline; hosted Platform Chat remains CLI-only".to_string());
+            return Transcript::infra_error("surface-comparison fixtures require EVERRUNS_EVAL_MODE=offline; matched fixture surfaces are offline-only; hosted Platform Chat uses its managed capability configuration".to_string());
         }
         if std::env::var("EVERRUNS_EVAL_SURFACE").is_ok() {
             return Transcript::infra_error("EVERRUNS_EVAL_SURFACE selects an offline comparison; set EVERRUNS_EVAL_MODE=offline".to_string());

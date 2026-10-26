@@ -15,7 +15,10 @@ tags:
 Verify the offline comparison's invocation and state evidence before interpreting
 its pass rate or token measurements. This is a synthetic interface qualification;
 production authorization, transactions and persistence require the hosted cases.
-Production Platform Chat remains CLI-only.
+Production Platform Chat uses bounded native discovery for individual
+operations and retains the shell for aggregation. This case's prior offline
+comparison remains historical evidence and does not qualify the production
+models or provider inline tool-change paths.
 
 ## Preconditions
 
@@ -70,6 +73,33 @@ Production Platform Chat remains CLI-only.
    uncached input plus cache reads equals total input, reasoning remains a subset
    of output, and missing billed-cost coverage is explicit.
 
+## Production Surface Check
+
+1. Start a new Platform Chat conversation and verify the platform capability
+   exposes `tool_search` plus the prefixed native operation surface. Search for
+   one read operation and one update operation; verify revealed schemas use
+   canonical `params` payloads and the change call carries a reason and the
+   revision read as separate metadata.
+2. Ask for an aggregation across many resources. Verify the assistant uses the
+   `everruns` shell for the loop/filtering work and reports the requested
+   aggregate. Confirm the active optional schema count, serialized schema bytes,
+   and search result bytes stay within configured defaults (32, 64 KiB, and
+   32 KiB respectively).
+3. Restart the worker and repeat a native lookup. Then revoke the operation's
+   feature flag or permission and verify the same call is denied at dispatch,
+   even if its schema was previously disclosed.
+4. Search using only the declared Platform capability name or description.
+   Verify the response is a bounded capability/source browse or refinement and
+   does not include an arbitrary first group of operation schemas. Refine with
+   an exact native operation name and verify its schema is disclosed through
+   `tool_search`; call it only after that schema is active.
+5. Attach a shared MCP source with an owner capability description and search
+   using a phrase found only in that declared context. Verify the source can be
+   refined to its operations, then detach the source or replace its capability
+   metadata and confirm the next search reflects the current attachment and
+   description. Native and shell searches must stay within current authorization
+   scope, including for same-named operations on different MCP sources.
+
 ## Expected Result
 
 All matched tasks pass with exact state preservation and valid invocation metadata.
@@ -78,5 +108,7 @@ operations. Raw attempts, infrastructure failures, provider cache observations
 and task scores remain distinguishable. Large-result diagnostics are reported
 separately from the original eight-task comparison.
 
-This case is acceptance coverage, not a claim of execution. Recorded runs and
+The production surface check must be run against the managed Platform Chat
+deployment before claiming production model coverage. This case is acceptance
+coverage, not a claim of execution. Recorded runs and
 their limits belong in the [study results](../../../../evals/platform-capability/README.md).

@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use everruns_contracts::runtime::mcp_deferred::deferred_mcp_server_prefix;
 use everruns_contracts::runtime::mcp_server::parse_mcp_tool_name;
-use everruns_contracts::runtime::tool_catalog::ToolSearchIndex;
+use everruns_contracts::runtime::tool_catalog::{ToolSearchIndex, ToolSearchSource};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::Tool;
+use everruns_contracts::tool_types::{ToolDefinition, ToolHints};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -41,6 +42,8 @@ pub(crate) struct Entry {
     /// The command word as typed (`list-pulls`).
     pub command: String,
     pub tool: Arc<dyn Tool>,
+    /// Registry owner context survives a deferred-load index rebuild.
+    pub hints: ToolHints,
     /// Deferred children are authorized through their listed parent placeholder.
     pub scope_parent: Option<String>,
 }
@@ -65,6 +68,7 @@ pub(crate) struct Pending {
     pub source: String,
     /// The placeholder tool, whose description says what the server is for.
     pub placeholder: Arc<dyn Tool>,
+    pub hints: ToolHints,
 }
 
 /// Every tool the shell may call, in a stable order, plus the deferred
@@ -105,6 +109,9 @@ impl Catalog {
                 let Some(tool) = registry.get(name) else {
                     continue;
                 };
+                let Some(definition) = registry.tool_definition(name) else {
+                    continue;
+                };
                 if context
                     .visible_tool_names
                     .as_ref()
@@ -127,6 +134,7 @@ impl Catalog {
                         prefix: prefix.to_string(),
                         source: spell(prefix),
                         placeholder: tool.clone(),
+                        hints: definition.hints().clone(),
                     });
                     continue;
                 }
@@ -140,6 +148,7 @@ impl Catalog {
                     source,
                     command,
                     tool: tool.clone(),
+                    hints: definition.hints().clone(),
                     scope_parent: None,
                 });
             }
@@ -256,6 +265,7 @@ impl Catalog {
                 source: Some(spell(&server)),
                 command: spell(&tool_name),
                 tool,
+                hints: definition.hints().clone(),
                 scope_parent: Some(parent_name.clone()),
             });
         }
@@ -288,11 +298,11 @@ impl Catalog {
         let definitions: Vec<_> = self
             .entries
             .iter()
-            .map(|entry| entry.tool.to_definition())
+            .map(|entry| with_hints(entry.tool.to_definition(), &entry.hints))
             .chain(
                 self.pending
                     .iter()
-                    .map(|pending| pending.placeholder.to_definition()),
+                    .map(|pending| with_hints(pending.placeholder.to_definition(), &pending.hints)),
             )
             .collect();
         if !definitions.is_empty() {
@@ -469,31 +479,25 @@ impl Catalog {
             .collect()
     }
 
-    /// Authorized servers whose metadata matched, but whose operation did not.
+    /// Authorized sources whose metadata matched.
     /// These are browse suggestions, never operation matches.
-    pub fn source_matches(&self, query: &str, limit: usize) -> Vec<String> {
+    pub fn source_matches(&self, query: &str, limit: usize) -> Vec<ToolSearchSource> {
         if query.trim().is_empty() {
             return Vec::new();
         }
         let Some(index) = &self.search_index else {
             return Vec::new();
         };
-        let mut sources = Vec::new();
-        for hit in index.search(query, limit, |name| self.searchable_names.contains(name)) {
-            if !hit.server_match || hit.tool_match {
-                continue;
-            }
-            let source = parse_mcp_tool_name(&hit.name)
-                .map(|(server, _)| spell(&server))
-                .or_else(|| deferred_mcp_server_prefix(&hit.name).map(spell));
-            if let Some(source) = source
-                && !sources.contains(&source)
-            {
-                sources.push(source);
-            }
-        }
-        sources
+        index.search_sources(query, limit, |name| self.searchable_names.contains(name))
     }
+}
+
+fn with_hints(mut definition: ToolDefinition, hints: &ToolHints) -> ToolDefinition {
+    match &mut definition {
+        ToolDefinition::Builtin(tool) => tool.hints = hints.clone(),
+        ToolDefinition::ClientSide(tool) => tool.hints = hints.clone(),
+    }
+    definition
 }
 
 /// Append complete, byte-bounded rows. Every row is shortened at a UTF-8
@@ -546,7 +550,7 @@ fn omission_note(omitted_servers: usize, omitted_tools: usize) -> String {
     format!("  ... {details} omitted; use `tools search <words>` to find operations.\n")
 }
 
-fn bounded_line(line: &str) -> String {
+pub(super) fn bounded_line(line: &str) -> String {
     if line.len() <= MAX_HELP_LINE_BYTES {
         return line.to_string();
     }
@@ -677,6 +681,7 @@ mod tests {
                     command: format!("event-{index:04}"),
                     source: Some("telemetry".into()),
                     tool: Arc::new(NamedTool(tool_name.clone())),
+                    hints: ToolHints::default(),
                     tool_name,
                     scope_parent: None,
                 }
@@ -708,6 +713,7 @@ mod tests {
                 source: None,
                 command: name.replace('_', "-"),
                 tool: Arc::new(NamedTool(name.to_string())),
+                hints: ToolHints::default(),
                 scope_parent: None,
             });
         }
@@ -801,6 +807,7 @@ mod tests {
                 source: None,
                 command: format!("existing-{index}"),
                 tool: parent.clone(),
+                hints: ToolHints::default(),
                 scope_parent: None,
             })
             .collect::<Vec<_>>();
@@ -814,6 +821,7 @@ mod tests {
                 prefix: "docs".into(),
                 source: "docs".into(),
                 placeholder: parent,
+                hints: ToolHints::default(),
             }],
             search_index: None,
             surface_plan: ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli),

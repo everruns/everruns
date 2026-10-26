@@ -65,6 +65,7 @@ use crate::tool_context::ToolContext;
 use async_trait::async_trait;
 use everruns_contracts::runtime::capabilities::ToolDisclosure;
 use everruns_contracts::runtime::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
+use everruns_contracts::runtime::tool_catalog::ToolSearchSourceKind;
 use everruns_contracts::tool_changes::ToolChanges;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -680,7 +681,6 @@ impl ToolSearchTool {
         let mut loaded = Vec::new();
         let mut omitted = 0usize;
         let mut active_bytes = 2usize;
-        let mut matching_sources = std::collections::BTreeSet::new();
         let output = |matches: &[Value],
                       loaded: &[String],
                       omitted,
@@ -720,20 +720,12 @@ impl ToolSearchTool {
             omitted_tools.pop();
         }
         for hit in hits.into_iter().take(considered) {
-            let Some(tool) = registry.get(&hit.name) else {
+            let Some(definition) = registry.tool_definition(&hit.name) else {
                 continue;
             };
-            let definition = tool.to_definition();
             if !hit.tool_match {
-                // A server-domain match identifies a source, not a particular
-                // operation. Ask for refinement rather than promoting the
-                // first alphabetical operations from a large server.
-                if hit.server_match
-                    && let Some((source, _)) =
-                        crate::mcp_server::parse_mcp_tool_name(definition.name())
-                {
-                    matching_sources.insert(source);
-                }
+                // Source context identifies a capability or server, not a
+                // particular operation. Only operation matches reveal schemas.
                 continue;
             }
             let separator = usize::from(!loaded.is_empty());
@@ -779,23 +771,50 @@ impl ToolSearchTool {
         let mut result = output(&matches, &loaded, omitted, &servers, &omitted_tools);
         if matches.is_empty() {
             // Bounded source browse, never a fallback listing every operation.
-            let sources: std::collections::BTreeSet<_> = if matching_sources.is_empty() {
-                registry
-                    .tool_names()
+            let matching_sources = index.search_sources(query, 16, |name| {
+                name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name)
+            });
+            let sources: Vec<_> = if matching_sources.is_empty() {
+                let (servers, capabilities): (Vec<_>, Vec<_>) = index
+                    .sources(|name| name != TOOL_SEARCH_TOOL_NAME && allowed.contains(name))
                     .into_iter()
-                    .filter(|name| allowed.contains(*name))
-                    .filter_map(|name| {
-                        crate::mcp_server::parse_mcp_tool_name(name)
-                            .map(|(source, _)| source)
-                            .or_else(|| crate::deferred_mcp_server_prefix(name).map(str::to_string))
+                    .partition(|source| source.kind == ToolSearchSourceKind::McpServer);
+                let (mut servers, mut capabilities) =
+                    (servers.into_iter(), capabilities.into_iter());
+                // Give both source types room in the shared browse bound.
+                (0..16)
+                    .filter_map(|position| {
+                        if position % 2 == 0 {
+                            servers.next().or_else(|| capabilities.next())
+                        } else {
+                            capabilities.next().or_else(|| servers.next())
+                        }
                     })
                     .collect()
             } else {
-                matching_sources
+                matching_sources.into_iter().collect()
             };
             let mut sources: Vec<_> = sources.into_iter().take(16).collect();
             loop {
-                result["available_servers"] = json!(sources);
+                result["available_servers"] = json!(
+                    sources
+                        .iter()
+                        .filter(|source| source.kind == ToolSearchSourceKind::McpServer)
+                        .map(|source| &source.id)
+                        .collect::<Vec<_>>()
+                );
+                let capabilities: Vec<_> = sources
+                    .iter()
+                    .filter(|source| source.kind == ToolSearchSourceKind::Capability)
+                    .map(|source| json!({"id":source.id,"name":source.name}))
+                    .collect();
+                if capabilities.is_empty() {
+                    if let Some(result) = result.as_object_mut() {
+                        result.remove("available_capabilities");
+                    }
+                } else {
+                    result["available_capabilities"] = json!(capabilities);
+                }
                 if serialized_size(&result, limits.result_bytes).is_some() || sources.is_empty() {
                     break;
                 }

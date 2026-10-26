@@ -87,9 +87,10 @@ subchats and history remain available with either Adoption feature off.
 
 ## Platform access and memory
 
-Platform Chat uses the `everruns` command in its session shell to discover operations,
-read authoritative state, perform requested changes, and verify results. Product docs
-are mounted read-only at `/workspace/docs`. The Platform capability also supplies
+Platform Chat uses native `platform_<wire_name>` functions for individual operations,
+with bounded `tool_search` to find and reveal schemas as needed. Its `everruns` command
+and session shell remain available for loops, filtering, and aggregation across many
+operations. Product docs are mounted read-only at `/workspace/docs`. The Platform capability also supplies
 `everruns`, `everruns-cli`, and `everruns-agent-authoring` skills for product
 orientation, command workflows, and agent design. Discover and activate them
 through [Agent Skills](/capabilities/agent-skills/) as needed.

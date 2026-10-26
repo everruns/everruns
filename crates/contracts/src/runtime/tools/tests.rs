@@ -503,3 +503,56 @@ fn success_with_details_wraps_and_unwraps_scalar_values() {
     assert_eq!(tool_result.result, Some(serde_json::json!("done")));
     assert_eq!(tool_result.details, Some(serde_json::json!({"n": 1})));
 }
+
+
+#[test]
+fn capability_context_is_searchable_and_refreshes_without_overriding_execution() {
+    let mut registry = ToolRegistry::new();
+    registry.register(EchoTool);
+    let canonical = registry.get("echo").unwrap().to_definition();
+    let described = canonical.clone().with_capability_context(
+        "minerals",
+        Some("Mineral operations"),
+        "Scandium prospecting",
+    );
+    registry.set_capability_contexts(&[described.clone()]);
+    assert_eq!(
+        registry.tool_definition("echo").unwrap().full_parameters(),
+        canonical.full_parameters()
+    );
+    let first = registry.search_index();
+    let hits = first.search("scandium", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert!(!hits[0].tool_match);
+    assert_eq!(hits[0].source.as_ref().unwrap().id, "minerals");
+    registry.set_capability_contexts(&[described]);
+    assert!(Arc::ptr_eq(&first, &registry.search_index()));
+
+    let changed = canonical.clone().with_capability_context(
+        "minerals",
+        Some("Mineral operations"),
+        "Tungsten prospecting",
+    );
+    registry.set_capability_contexts(&[changed]);
+    let second = registry.search_index();
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert!(second.search("scandium", 8, |_| true).is_empty());
+    assert_eq!(second.search("tungsten", 8, |_| true).len(), 1);
+    assert_eq!(first.search("scandium", 8, |_| true).len(), 1);
+
+    registry.register(EchoTool);
+    assert!(
+        registry
+            .search_index()
+            .search("tungsten", 8, |_| true)
+            .is_empty()
+    );
+    assert!(
+        registry
+            .tool_definition("echo")
+            .unwrap()
+            .hints()
+            .capability_id
+            .is_none()
+    );
+}

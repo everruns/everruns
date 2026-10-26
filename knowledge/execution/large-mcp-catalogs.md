@@ -205,17 +205,26 @@ same-named tools on different servers must never route by a guessed string split
 
 The cached registry index records tool name, description and searchable schema
 property names/descriptions. It also records MCP server names and configured
-descriptions, scoring a server once regardless of its tool count. Server
-description text can find generic operations such as `search` or `get` without
-turning metadata into execution instructions. The native bounded search and
-CLI `tools search` use this server-aware index. Legacy native `tool_search`
-remains unchanged unless `bounded: true` is opted in.
+descriptions plus declared capability IDs, names and descriptions; full system
+prompts are not indexed. Server context and owner capability text are each
+scored once per MCP source. Built-in operations share one capability-context
+score per capability, independent of operation count. This context can help
+find a relevant source without turning metadata into execution instructions.
+The native bounded search and CLI `tools search` use this same index. Legacy
+native `tool_search` remains unchanged unless `bounded: true` is opted in.
 
 Search receives the current visible operation set; forbidden documents do not
 contribute to ranking. A selected result is resolved against the live registry
 and checked again by the normal execution policy. Server namespacing keeps
 same-named operations on different servers distinct. The index is metadata, not
 authority, and a registry revision invalidates it.
+
+An exact capability- or server-context-only query returns a bounded source
+browse/refinement, not an arbitrary first set of operations. A follow-up query
+for an operation loads its selected schema through the existing `tool_search`
+disclosure path. Source and operation results use the same authorization
+scope. Replacing or detaching a capability or MCP source rebuilds the index;
+search and dispatch check current scope.
 
 Bounded native search returns at most eight schemas, within a default 32 KiB
 response. `max_result_bytes` may be configured from 1 KiB through 64 KiB.
