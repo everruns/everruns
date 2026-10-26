@@ -137,12 +137,16 @@ See `crates/server/src/auth/cli_auth.rs` for implementation.
   under the new one — which is how a user ended up with several precreated
   Platform Chat threads. Header selection removes the window; see
   `apps/ui/src/lib/api/active-org.ts`.
-- The browser cache is scoped by the same value: React Query hashes every key
-  under the active organization (`apps/ui/src/lib/query-client.ts`), so cache
+- The browser resource cache is scoped by the same value: React Query hashes
+  resource keys under the active organization (`apps/ui/src/lib/query-client.ts`), so cache
   identity matches the organization a request was actually sent with, and a
   call site that omits the org from its key still cannot read another
   organization's data. Server-rendered prefetches hash under the request's
-  `everruns_org` cookie so their entries survive hydration.
+  `everruns_org` cookie so their entries survive hydration. Only account identity
+  and public authentication configuration keep organization-independent keys;
+  re-keying these after a switch would make their next refresh tear down mounted
+  pages through the authentication loading gate. Token lists and all other resource
+  keys remain isolated; normal sign-out clears the account cache too.
 
 ### Login Page Contract
 

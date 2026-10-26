@@ -29,7 +29,11 @@ export function usePageSettingsDraft<T extends Record<string, unknown>>(options:
   const values = override?.key === key ? override.values : options.values;
   const dirty = JSON.stringify(values) !== JSON.stringify(options.values);
   const setValues = (next: T) => {
-    if (!saving.current) setOverride({ key, values: next });
+    if (!saving.current) {
+      setOverride(
+        JSON.stringify(next) === JSON.stringify(options.values) ? null : { key, values: next },
+      );
+    }
   };
   const chat = usePageFormDraft({
     entityType: options.entityType,

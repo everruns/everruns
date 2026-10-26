@@ -155,6 +155,10 @@ a tenant administrator role alone is insufficient. Monitoring reflects its visib
 live, paused or replay state. These bounded scalar projections supplement the
 existing scoped query summaries and never include arbitrary payloads or errors.
 Settings navigation and viewport-based grids stack to the available page pane.
+Account identity/configuration keep stable cache keys across organization switches,
+so a later account refresh does not remount the page; see
+[Authentication](../security/authentication.md). Organization label/role refreshes
+update the active membership without switching its identity or resetting page caches.
 
 Other operational pages, credential setup, approvals and financial actions
 provide read-only context and retain their normal page controls. A missing

@@ -143,3 +143,18 @@ it("retains the reviewed draft after a save failure and lets the person retry", 
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   expect(save).toHaveBeenLastCalledWith({ name: "Keep me", enabled: true });
 });
+
+it("follows refreshed settings after a manual edit returns to the saved value", () => {
+  const tree = (name: string) => (
+    <PageChatProvider value={mode}>
+      <Settings name={name} />
+    </PageChatProvider>
+  );
+  const { rerender } = render(tree("Saved"));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Temporary" } });
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Saved" } });
+  expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  rerender(tree("Refreshed"));
+  expect(screen.getByLabelText("Name")).toHaveValue("Refreshed");
+  expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+});
