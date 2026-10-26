@@ -89,6 +89,14 @@ Streaming content uses delta events with accumulated state:
 
 Deltas are batched at ~100ms to reduce volume. When a provider stream breaks after some text, the runtime retries it under the same `message_id`: it emits `output.message.started` for that message again, and `accumulated` starts over. Render `accumulated`, or clear the text you added up on a repeated `output.message.started`.
 
+## Inspecting raw events in the UI
+
+The session's **Events** tab shows bounded raw JSON previews. Long strings,
+deeply nested values and large collections are shortened so screenshots and
+large tool results do not force the browser to lay out entire payloads in each
+table row. A notice identifies shortened previews. **Copy** still includes the
+complete original event; stored events and API responses are unchanged.
+
 ## Forward-compatibility
 
 Events follow a defined contract. Consumers must tolerate evolution:
