@@ -3,7 +3,7 @@
 // durable/server-backed hosts reuse the same input/reason/act wiring without
 // depending on the application facade.
 
-use crate::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
+use crate::capabilities::{SystemPromptContext, collect_capability_tools_with_configs};
 use crate::engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
