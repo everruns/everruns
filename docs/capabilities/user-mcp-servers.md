@@ -50,16 +50,24 @@ nothing from it.
 
 Added only when `manage` is on. They act on the list of the person who sent
 the message, the same list as **Settings > My MCP servers**, and never on the
-organization catalog.
+organization catalog. Read-only discovery can list approved organization presets
+before the agent chooses one to add.
 
 | Tool | What it does | Shared approval |
 |---|---|---|
 | `list_user_mcp_servers` | Lists the person's servers and those added to this conversation only: enabled, signed in, and whether this agent skips one because its own server has the same name | No |
+| `list_mcp_catalog` | Lists approved organization presets with their exact catalog names, sanitized endpoint URLs, descriptions and authentication modes. Follow `next_cursor` until null, including after an empty page | No |
 | `add_user_mcp_server` | Adds a catalog server (`{"catalog": "linear"}`), or a server by URL when `allow_custom_urls` is on. With `"scope": "chat"` it is added to this conversation only | In normal/protective mode |
 | `remove_user_mcp_server` | Removes a server, from this conversation or from the list | In protective mode |
 | `enable_user_mcp_server` | Turns a server on | In normal/protective mode |
 | `disable_user_mcp_server` | Turns a server off without removing it | In protective mode |
 | `connect_mcp_server` | Shows the person a Connect card for a server that needs a sign-in | No |
+
+Before adding a catalog server, use `list_mcp_catalog` and pass a returned name
+as `catalog` to `add_user_mcp_server`. Catalog names are chosen by the organization;
+they need not match the provider's name. Discovery returns bounded pages of active
+presets with short descriptions, never credentials or headers, and does not contact servers or begin OAuth.
+It has the same verified-person and single-participant restrictions as management.
 
 `add_user_mcp_server` and `enable_user_mcp_server` declare that they require
 approval through the agent's shared [Tool Approval](/capabilities/tool-approval/)

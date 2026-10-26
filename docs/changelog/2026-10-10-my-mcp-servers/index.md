@@ -35,3 +35,7 @@ Adding or enabling a server follows [Tool Approval](/capabilities/tool-approval/
 ## Update 2026-10-25
 
 The list is **Settings > MCP servers**. See [Personal settings pages](/changelog/2026-10-25-personal-settings-pages/).
+
+## Update 2026-10-26
+
+Agents can discover approved presets: [MCP catalog discovery](/changelog/2026-10-26-discover-approved-mcp-servers/).

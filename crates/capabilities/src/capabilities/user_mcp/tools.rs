@@ -41,6 +41,7 @@ fn narrate_user_mcp(
 }
 
 pub(super) const LIST_TOOL: &str = "list_user_mcp_servers";
+pub(super) const CATALOG_TOOL: &str = "list_mcp_catalog";
 pub(super) const ADD_TOOL: &str = "add_user_mcp_server";
 pub(super) const REMOVE_TOOL: &str = "remove_user_mcp_server";
 pub(super) const ENABLE_TOOL: &str = "enable_user_mcp_server";
@@ -70,6 +71,7 @@ pub(super) fn connect_tools() -> Vec<Box<dyn Tool>> {
 pub(super) fn manage_tools(allow_custom_urls: bool) -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(ListUserMcpServersTool),
+        Box::new(ListMcpCatalogTool),
         Box::new(AddUserMcpServerTool { allow_custom_urls }),
         Box::new(RemoveUserMcpServerTool),
         Box::new(SetUserMcpServerEnabledTool { enabled: true }),
@@ -198,6 +200,69 @@ impl Tool for ListUserMcpServersTool {
 }
 
 // ============================================================================
+// catalog discovery
+// ============================================================================
+
+/// Read-only discovery stays on the same verified-person store as management.
+pub struct ListMcpCatalogTool;
+
+#[async_trait]
+impl Tool for ListMcpCatalogTool {
+    fn name(&self) -> &str {
+        CATALOG_TOOL
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("List Approved MCP Catalog")
+    }
+
+    fn description(&self) -> &str {
+        "Discover approved MCP servers in the current organization's catalog before adding one. Returns exact catalog names, endpoint URLs without credentials, descriptions and auth modes. Pass the chosen name to add_user_mcp_server's catalog argument; do not guess it from the provider name. Continue with next_cursor until null, even after an empty page. This does not add servers, contact them or start OAuth."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({"type": "object", "properties": {
+            "cursor": {"type": "string", "description": "Opaque next_cursor from the previous catalog page; omit for the first page."}
+        }, "additionalProperties": false})
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints {
+            readonly: Some(true),
+            ..Default::default()
+        }
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(NO_STORE)
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match store(context) {
+            Ok(store) => store,
+            Err(error) => return error,
+        };
+        let cursor = match arguments.get("cursor") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(cursor)) => Some(cursor.as_str()),
+            _ => return ToolExecutionResult::tool_error("cursor must be a string"),
+        };
+        match store.list_catalog(cursor).await {
+            Ok(page) => ToolExecutionResult::success(json!(page)),
+            Err(error) => store_error(error),
+        }
+    }
+}
+
+// ============================================================================
 // add
 // ============================================================================
 
@@ -243,7 +308,7 @@ impl Tool for AddUserMcpServerTool {
         let mut properties = json!({
             "catalog": {
                 "type": "string",
-                "description": "Name of the server in the organization's MCP catalog, e.g. 'linear'."
+                "description": "Exact catalog name returned by list_mcp_catalog; do not guess the name from the provider or URL."
             },
             "name": {
                 "type": "string",
