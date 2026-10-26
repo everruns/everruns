@@ -34,14 +34,14 @@ importers:
   .:
     dependencies:
       '@astrojs/check':
-        specifier: ^0.9.10
-        version: 0.9.10(prettier@3.9.6)(typescript@6.0.3)
+        specifier: ^0.9.11
+        version: 0.9.11(@emnapi/runtime@1.11.3)(prettier@3.9.6)(typescript@6.0.3)
       '@astrojs/markdown-satteri':
         specifier: ^0.4.4
         version: 0.4.4
       '@astrojs/starlight':
         specifier: ^0.42.6
-        version: 0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
+        version: 0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
       '@fontsource-variable/geist':
         specifier: ^5.3.0
         version: 5.3.0
@@ -49,11 +49,11 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       astro:
-        specifier: ^7.4.0
-        version: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+        specifier: ^7.4.1
+        version: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       js-yaml:
-        specifier: ^4.3.2
-        version: 4.3.2
+        specifier: ^5.5.0
+        version: 5.5.0
       marked:
         specifier: ^18.1.1
         version: 18.1.1
@@ -71,16 +71,16 @@ importers:
         version: 4.5.0
       starlight-links-validator:
         specifier: 0.27.0
-        version: 0.27.0(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+        version: 0.27.0(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
       starlight-llms-txt:
         specifier: ^0.12.0
-        version: 0.12.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+        version: 0.12.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
       starlight-openapi:
         specifier: ^0.27.0
-        version: 0.27.0(patch_hash=384e6a27fda2a99bfeac157233d68310837571f829a0f16bbfe794711c32933e)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(openapi-types@12.1.3)
+        version: 0.27.0(patch_hash=384e6a27fda2a99bfeac157233d68310837571f829a0f16bbfe794711c32933e)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(openapi-types@12.1.3)
       starlight-sidebar-topics:
         specifier: ^0.9.0
-        version: 0.9.0(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+        version: 0.9.0(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -97,8 +97,12 @@ packages:
     resolution: {integrity: sha512-xfh4xVJD62gG6spIc7lwxoWT+l16nZu1ELyU8FkjaP/oD2yP09EvLAU6KhtudN9aML2Khhs9pY6Slr7KGTES3w==}
     engines: {node: '>= 16'}
 
-  '@astrojs/check@0.9.10':
-    resolution: {integrity: sha512-zgx/UQMozdjOa3bOxjgeCFdtpE3c9rRX6xHwa+2QXvy8z8Akifu2AtubHyv/zzC2znO8dl8fFWL4K+Ba9kS8HQ==}
+  '@astrojs/astro2tsx@0.1.3':
+    resolution: {integrity: sha512-GMDC7Eo0myBUA/QLBl0u+OcegJ8LiBhccmNZR34KmprQNP8gQUJlWlOOZWUsxNA2rNS6GuPYcGDyLoPnjmn4/Q==}
+    engines: {node: ^20.19.0 || >=22.12.0}
+
+  '@astrojs/check@0.9.11':
+    resolution: {integrity: sha512-TcDC2KT3t0XHFv/geBsA02/HuVXuzLwAfAzLPG2FvBW/DL3tzxu2voVaqcKSN56dN2DNlYC/3FKrmxrDs6actg==}
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0 || ^6.0.0
@@ -174,17 +178,14 @@ packages:
     resolution: {integrity: sha512-1k1acnX7DepIiea9U9/Y+d1hdAFfylu1ZQQkkYgRSwBOBAsXInolyZuh/2tax+83vu/A+hOYP6P3+265RvMTvw==}
     engines: {node: '>=22.12.0'}
 
-  '@astrojs/compiler@2.13.1':
-    resolution: {integrity: sha512-f3FN83d2G/v32ipNClRKgYv30onQlMZX1vCeZMjPsMMPl1mDpmbl0+N5BYo4S/ofzqJyS5hvwacEo0CCVDn/Qg==}
-
   '@astrojs/internal-helpers@0.10.0':
     resolution: {integrity: sha512-Ry2R3VPeIN4uPCSA4xQc+e+vsJXkalKpEbDc07hV+a/o5Bs2N/s/uDcPJH/05L19DKh9tAy7e6JM3YZ6Cxfezw==}
 
   '@astrojs/internal-helpers@0.13.0':
     resolution: {integrity: sha512-20jxQqnSmpskcGyad7N5l6Xf1gz0UCa6lNde44bEBdaXGpncEYfAZJ142r2ZgzBaG4dUyzGmhqZWv1INU2eiHQ==}
 
-  '@astrojs/language-server@2.16.13':
-    resolution: {integrity: sha512-ekOa+CYprEq5n4EJC1qTIAhLk49HZIUQuFwrEuF+3JK/pdMaYnWoREFUI2A0KEPOJiFA2kamBzKzbYljDvUxLg==}
+  '@astrojs/language-server@2.17.2':
+    resolution: {integrity: sha512-WzqCBYo0RtKrkPLPMnTz2+UOQPosaFhoG/PvoSyPIgBU0BKeS6qeaYv7Rscq7P1LxJdoN0VosQF2h2TZTsIGHg==}
     hasBin: true
     peerDependencies:
       prettier: ^3.0.0
@@ -731,9 +732,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@jridgewell/sourcemap-codec@1.5.5':
-    resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
-
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
@@ -1183,6 +1181,9 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
+  argparse@3.0.3:
+    resolution: {integrity: sha512-Sn98ftV3KfsO8xfLPHG6oT8y+b0yvbrLgZjgPDXsharNY15tTAjqIsIju4S32nl6/iEUNNE4v+yL2Zhm8ooP3w==}
+
   aria-query@5.3.2:
     resolution: {integrity: sha512-COROpnaoap1E2F000S62r6A60uHZnmlvomhfyT2DlTcrY1OrBKn2UhH7qn5wTC9zMvD0AY7csdPSNwKP+7WiQw==}
     engines: {node: '>= 0.4'}
@@ -1199,8 +1200,8 @@ packages:
     peerDependencies:
       astro: ^4.0.0-beta || ^5.0.0-beta || ^3.3.0 || ^6.0.0-beta || ^7.0.0
 
-  astro@7.4.0:
-    resolution: {integrity: sha512-6ThZU2bp7asGSceVcnh3r23dE88HpYN5vxtnCWYYrjr8lpQjx4eDW6/W8WgNlcc+T/b8zHmQ/EcS4DpQG4ZoOg==}
+  astro@7.4.1:
+    resolution: {integrity: sha512-mzWNEWSef1VQDgFku6Gp0v8Qx53NOkNlOIDQcX9ovxAZ1QXic6cks/FFo+gxPM9anXuat4X1FhB61KTk3XFvgg==}
     engines: {node: '>=22.22.0', npm: '>=9.6.5', pnpm: '>=7.1.0'}
     hasBin: true
     peerDependencies:
@@ -1258,10 +1259,6 @@ packages:
   chevrotain@13.2.0:
     resolution: {integrity: sha512-GTouk5YzgBxlTPCaDn5q0q2EJKkrYmnPF+HmF8v0Qo4r3iyPG7HJivkN1wthCXZcm3sIcZFpGTRovLPNdJNRCA==}
     engines: {node: '>=22.0.0'}
-
-  chokidar@4.0.3:
-    resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
-    engines: {node: '>= 14.16.0'}
 
   chokidar@5.0.0:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
@@ -1966,6 +1963,10 @@ packages:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
+  js-yaml@5.5.0:
+    resolution: {integrity: sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==}
+    hasBin: true
+
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
@@ -2451,10 +2452,6 @@ packages:
 
   radix3@1.1.2:
     resolution: {integrity: sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA==}
-
-  readdirp@4.1.2:
-    resolution: {integrity: sha512-GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==}
-    engines: {node: '>= 14.18.0'}
 
   readdirp@5.1.1:
     resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
@@ -3059,8 +3056,8 @@ packages:
   vscode-nls@5.2.0:
     resolution: {integrity: sha512-RAaHx7B14ZU04EU31pT+rKz2/zSl7xMsfIZuo8pd+KZO6PXtQmpevpq3vxvWNcrGbdmhM/rr5Uw5Mz+NBfhVng==}
 
-  vscode-uri@3.1.0:
-    resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
+  vscode-uri@3.2.0:
+    resolution: {integrity: sha512-m2gXo3bn0G1kT9InzMf07fTbqMbGtyckj3bH5ktLO+1Ssv+yiATZ4dhwaQv9UZWxJh6E9IFGnQyjgWVDWVBDrg==}
 
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
@@ -3101,8 +3098,8 @@ packages:
     resolution: {integrity: sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==}
     engines: {node: '>=12'}
 
-  yargs@18.1.0:
-    resolution: {integrity: sha512-2rAgRKu54VsHkqI0/tYkmluGXHD4KW7yZoycuqDQ15QOTnc2VVfy0nN/1eMhnQLO00A+dwtK20xuCnc1YGeUyg==}
+  yargs@18.2.0:
+    resolution: {integrity: sha512-9OpKOLeaoNFecEp7P6iYbzze/5CqWoH7N3SMs/6y1XF4nMvFMspEGZzJ6uFi9MmQwXhyzqYoSEKO3tvA3Z/o2w==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=23}
 
   yocto-queue@1.2.2:
@@ -3127,14 +3124,22 @@ snapshots:
       '@types/json-schema': 7.0.15
       js-yaml: 4.3.2
 
-  '@astrojs/check@0.9.10(prettier@3.9.6)(typescript@6.0.3)':
+  '@astrojs/astro2tsx@0.1.3(@emnapi/runtime@1.11.3)':
     dependencies:
-      '@astrojs/language-server': 2.16.13(prettier@3.9.6)(typescript@6.0.3)
-      chokidar: 4.0.3
+      '@emnapi/core': 1.11.3
+      '@napi-rs/wasm-runtime': 1.2.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
+    transitivePeerDependencies:
+      - '@emnapi/runtime'
+
+  '@astrojs/check@0.9.11(@emnapi/runtime@1.11.3)(prettier@3.9.6)(typescript@6.0.3)':
+    dependencies:
+      '@astrojs/language-server': 2.17.2(@emnapi/runtime@1.11.3)(prettier@3.9.6)(typescript@6.0.3)
+      chokidar: 5.0.0
       kleur: 4.1.5
       typescript: 6.0.3
-      yargs: 18.1.0
+      yargs: 18.2.0
     transitivePeerDependencies:
+      - '@emnapi/runtime'
       - prettier
       - prettier-plugin-astro
 
@@ -3189,8 +3194,6 @@ snapshots:
     dependencies:
       '@astrojs/compiler-binding': 0.5.1
 
-  '@astrojs/compiler@2.13.1': {}
-
   '@astrojs/internal-helpers@0.10.0':
     dependencies:
       '@types/hast': 3.0.5
@@ -3213,11 +3216,10 @@ snapshots:
       unified: 11.0.5
       yaml: 2.8.4
 
-  '@astrojs/language-server@2.16.13(prettier@3.9.6)(typescript@6.0.3)':
+  '@astrojs/language-server@2.17.2(@emnapi/runtime@1.11.3)(prettier@3.9.6)(typescript@6.0.3)':
     dependencies:
-      '@astrojs/compiler': 2.13.1
+      '@astrojs/astro2tsx': 0.1.3(@emnapi/runtime@1.11.3)
       '@astrojs/yaml2ts': 0.2.4
-      '@jridgewell/sourcemap-codec': 1.5.5
       '@volar/kit': 2.4.28(typescript@6.0.3)
       '@volar/language-core': 2.4.28
       '@volar/language-server': 2.4.28
@@ -3232,10 +3234,11 @@ snapshots:
       volar-service-typescript-twoslash-queries: 0.0.71(@volar/language-service@2.4.28)
       volar-service-yaml: 0.0.71(@volar/language-service@2.4.28)
       vscode-html-languageservice: 5.6.2
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       prettier: 3.9.6
     transitivePeerDependencies:
+      - '@emnapi/runtime'
       - typescript
 
   '@astrojs/markdown-remark@7.2.0':
@@ -3267,13 +3270,13 @@ snapshots:
       github-slugger: 2.0.0
       satteri: 0.10.5
 
-  '@astrojs/mdx@6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))':
+  '@astrojs/mdx@6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))':
     dependencies:
       '@astrojs/internal-helpers': 0.10.0
       '@astrojs/markdown-remark': 7.2.0
       '@mdx-js/mdx': 3.1.1
       acorn: 8.18.0
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       es-module-lexer: 2.3.2
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -3302,17 +3305,17 @@ snapshots:
       sitemap: 9.0.1
       zod: 4.6.7
 
-  '@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)':
+  '@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)':
     dependencies:
       '@astrojs/markdown-satteri': 0.4.4
-      '@astrojs/mdx': 6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+      '@astrojs/mdx': 6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
       '@astrojs/sitemap': 3.7.4
       '@pagefind/default-ui': 1.5.2
       '@types/hast': 3.0.5
       '@types/js-yaml': 4.0.9
       '@types/mdast': 4.0.4
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
-      astro-expressive-code: 0.44.2(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      astro-expressive-code: 0.44.2(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
       bcp-47: 2.1.1
       hast-util-format: 1.1.0
       hast-util-select: 6.0.4
@@ -3468,7 +3471,6 @@ snapshots:
     dependencies:
       '@emnapi/wasi-threads': 1.2.3
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/runtime@1.11.1':
     dependencies:
@@ -3478,7 +3480,6 @@ snapshots:
   '@emnapi/runtime@1.11.3':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
@@ -3488,7 +3489,6 @@ snapshots:
   '@emnapi/wasi-threads@1.2.3':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@esbuild/aix-ppc64@0.28.1':
     optional: true
@@ -3713,8 +3713,6 @@ snapshots:
   '@img/sharp-win32-x64@0.35.5':
     optional: true
 
-  '@jridgewell/sourcemap-codec@1.5.5': {}
-
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
   '@mdx-js/mdx@3.1.1':
@@ -3763,7 +3761,6 @@ snapshots:
       '@emnapi/core': 1.11.3
       '@emnapi/runtime': 1.11.3
       '@tybys/wasm-util': 0.10.4
-    optional: true
 
   '@oslojs/encoding@1.1.0': {}
 
@@ -3904,7 +3901,6 @@ snapshots:
   '@tybys/wasm-util@0.10.4':
     dependencies:
       tslib: 2.8.1
-    optional: true
 
   '@types/braces@3.0.5': {}
 
@@ -4090,7 +4086,7 @@ snapshots:
       typesafe-path: 0.2.2
       typescript: 6.0.3
       vscode-languageserver-textdocument: 1.0.12
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   '@volar/language-core@2.4.28':
     dependencies:
@@ -4106,14 +4102,14 @@ snapshots:
       vscode-languageserver: 9.0.1
       vscode-languageserver-protocol: 3.18.2
       vscode-languageserver-textdocument: 1.0.12
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   '@volar/language-service@2.4.28':
     dependencies:
       '@volar/language-core': 2.4.28
       vscode-languageserver-protocol: 3.18.2
       vscode-languageserver-textdocument: 1.0.12
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   '@volar/source-map@2.4.28': {}
 
@@ -4121,7 +4117,7 @@ snapshots:
     dependencies:
       '@volar/language-core': 2.4.28
       path-browserify: 1.0.1
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   '@vscode/emmet-helper@2.11.0':
     dependencies:
@@ -4129,7 +4125,7 @@ snapshots:
       jsonc-parser: 2.3.1
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.18.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   '@vscode/l10n@0.0.18': {}
 
@@ -4181,19 +4177,21 @@ snapshots:
 
   argparse@2.0.1: {}
 
+  argparse@3.0.3: {}
+
   aria-query@5.3.2: {}
 
   array-iterate@2.0.1: {}
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.44.2(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
+  astro-expressive-code@0.44.2(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
     dependencies:
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       rehype-expressive-code: 0.44.2
       url-extras: 0.1.0
 
-  astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4):
+  astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4):
     dependencies:
       '@astrojs/compiler-rs': 0.5.1
       '@astrojs/internal-helpers': 0.13.0
@@ -4329,10 +4327,6 @@ snapshots:
       '@chevrotain/regexp-to-ast': 13.2.0
       '@chevrotain/types': 13.2.0
       '@chevrotain/utils': 13.2.0
-
-  chokidar@4.0.3:
-    dependencies:
-      readdirp: 4.1.2
 
   chokidar@5.0.0:
     dependencies:
@@ -5193,6 +5187,10 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
+  js-yaml@5.5.0:
+    dependencies:
+      argparse: 3.0.3
+
   json-schema-traverse@1.0.0: {}
 
   jsonc-parser@2.3.1: {}
@@ -5943,8 +5941,6 @@ snapshots:
 
   radix3@1.1.2: {}
 
-  readdirp@4.1.2: {}
-
   readdirp@5.1.1: {}
 
   recma-build-jsx@1.0.0:
@@ -6241,11 +6237,11 @@ snapshots:
     dependencies:
       through: 2.3.8
 
-  starlight-links-validator@0.27.0(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
+  starlight-links-validator@0.27.0(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
     dependencies:
       '@astrojs/markdown-satteri': 0.4.4
-      '@astrojs/starlight': 0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      '@astrojs/starlight': 0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       github-slugger: 2.0.0
       hast-util-from-html: 2.0.3
       is-absolute-url: 5.0.0
@@ -6259,13 +6255,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  starlight-llms-txt@0.12.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
+  starlight-llms-txt@0.12.0(patch_hash=53834c0eab77784a3fa910dd0cc64377a2c67d64439f2c4968935c8222831d87)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
     dependencies:
-      '@astrojs/mdx': 6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
-      '@astrojs/starlight': 0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
+      '@astrojs/mdx': 6.0.2(@astrojs/markdown-satteri@0.4.4)(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))
+      '@astrojs/starlight': 0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
       '@types/hast': 3.0.5
       '@types/micromatch': 4.0.10
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       github-slugger: 2.0.0
       hast-util-select: 6.0.4
       micromatch: 4.0.8
@@ -6279,22 +6275,22 @@ snapshots:
       - '@astrojs/markdown-satteri'
       - supports-color
 
-  starlight-openapi@0.27.0(patch_hash=384e6a27fda2a99bfeac157233d68310837571f829a0f16bbfe794711c32933e)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(openapi-types@12.1.3):
+  starlight-openapi@0.27.0(patch_hash=384e6a27fda2a99bfeac157233d68310837571f829a0f16bbfe794711c32933e)(@astrojs/markdown-satteri@0.4.4)(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(openapi-types@12.1.3):
     dependencies:
       '@astrojs/markdown-satteri': 0.4.4
-      '@astrojs/starlight': 0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
+      '@astrojs/starlight': 0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
       '@readme/openapi-parser': 4.1.2(openapi-types@12.1.3)
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       github-slugger: 2.0.0
       httpsnippet: 3.0.10
       url-template: 3.1.1
     transitivePeerDependencies:
       - openapi-types
 
-  starlight-sidebar-topics@0.9.0(@astrojs/starlight@0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
+  starlight-sidebar-topics@0.9.0(@astrojs/starlight@0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3))(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)):
     dependencies:
-      '@astrojs/starlight': 0.42.6(astro@7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
-      astro: 7.4.0(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
+      '@astrojs/starlight': 0.42.6(astro@7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4))(typescript@6.0.3)
+      astro: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       picomatch: 4.0.7
 
   std-env@4.3.0: {}
@@ -6403,8 +6399,7 @@ snapshots:
 
   ts-dedent@2.3.0: {}
 
-  tslib@2.8.1:
-    optional: true
+  tslib@2.8.1: {}
 
   typesafe-path@0.2.2: {}
 
@@ -6550,7 +6545,7 @@ snapshots:
     dependencies:
       vscode-css-languageservice: 6.3.10
       vscode-languageserver-textdocument: 1.0.12
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
 
@@ -6559,7 +6554,7 @@ snapshots:
       '@emmetio/css-parser': 0.4.1
       '@emmetio/html-matcher': 1.3.0
       '@vscode/emmet-helper': 2.11.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
 
@@ -6567,20 +6562,20 @@ snapshots:
     dependencies:
       vscode-html-languageservice: 5.6.2
       vscode-languageserver-textdocument: 1.0.12
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
 
   volar-service-prettier@0.0.71(@volar/language-service@2.4.28)(prettier@3.9.6):
     dependencies:
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
       prettier: 3.9.6
 
   volar-service-typescript-twoslash-queries@0.0.71(@volar/language-service@2.4.28):
     dependencies:
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
 
@@ -6591,13 +6586,13 @@ snapshots:
       typescript-auto-import-cache: 0.3.6
       vscode-languageserver-textdocument: 1.0.12
       vscode-nls: 5.2.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
 
   volar-service-yaml@0.0.71(@volar/language-service@2.4.28):
     dependencies:
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
       yaml-language-server: 1.23.0
     optionalDependencies:
       '@volar/language-service': 2.4.28
@@ -6607,14 +6602,14 @@ snapshots:
       '@vscode/l10n': 0.0.18
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.17.5
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   vscode-html-languageservice@5.6.2:
     dependencies:
       '@vscode/l10n': 0.0.18
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.18.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   vscode-json-languageservice@4.1.8:
     dependencies:
@@ -6622,7 +6617,7 @@ snapshots:
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.18.0
       vscode-nls: 5.2.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
 
   vscode-jsonrpc@8.2.0: {}
 
@@ -6650,7 +6645,7 @@ snapshots:
 
   vscode-nls@5.2.0: {}
 
-  vscode-uri@3.1.0: {}
+  vscode-uri@3.2.0: {}
 
   web-namespaces@2.0.1: {}
 
@@ -6682,7 +6677,7 @@ snapshots:
       vscode-languageserver: 9.0.1
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.18.0
-      vscode-uri: 3.1.0
+      vscode-uri: 3.2.0
       yaml: 2.8.4
 
   yaml@2.8.4: {}
@@ -6701,7 +6696,7 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
-  yargs@18.1.0:
+  yargs@18.2.0:
     dependencies:
       cliui: 9.0.1
       escalade: 3.2.0
