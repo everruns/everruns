@@ -113,8 +113,8 @@ aws-lc-rs = "1"
 
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
-bashkit = { version = "0.19.0", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
-bashkit-scripted-tool = { version = "0.19.0", default-features = false, features = ["jq", "python"] }
+bashkit = { version = "0.20.1", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
+bashkit-scripted-tool = { version = "0.20.1", default-features = false, features = ["jq", "python"] }
 
 everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
