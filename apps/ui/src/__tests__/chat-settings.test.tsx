@@ -50,7 +50,7 @@ jest.mock("@/components/models/model-picker", () => ({
   ),
 }));
 beforeEach(() => {
-  global.structuredClone = value => JSON.parse(JSON.stringify(value));
+  global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
   mockOrganization = { id: "org-1", chat_model_id: "model-chat", default_model_id: "model-agent" };
   mockCanManage = true;
   mockMutate.mockReset().mockImplementation(async (patch) => ({ ...mockOrganization, ...patch }));
