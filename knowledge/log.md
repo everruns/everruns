@@ -2,6 +2,8 @@
 
 ## 2026-10-26
 
+- Recorded that HTTP credential bindings inject on `web_fetch` and Bashkit only. Daytona, E2B, and Modal commands stay outside that contract. See [Bound Secrets](security/bound-secrets.md).
+
 - Added bounded, read-only organization catalog discovery to [User MCP servers](integrations/user-mcp-servers.md), preserving verified initiating-person management authorization and removing credentials from display endpoints.
 
 ## 2026-10-25

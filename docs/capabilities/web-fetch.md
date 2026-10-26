@@ -121,6 +121,11 @@ token echoes are redacted before the result enters chat or events. Declare all
 claim tokens, assertions, access tokens, and refresh tokens the service returns;
 arbitrary encodings such as base64 are outside this redaction guarantee.
 
+The same binding is what Bashkit HTTP uses. A command inside a Daytona, E2B, or
+Modal sandbox runs without it: those machines do not receive `$NAME`, and their
+outbound HTTPS is not rewritten with the secret. Modal can still inject a
+GitHub connection token outside the VM; that path is separate from this binding.
+
 Manage personal credentials in **Settings > Connections**, service
 credentials on their virtual user, agent credentials on the agent's
 **Credentials** tab, organization credentials in **Settings > Organization**,
