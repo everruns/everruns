@@ -378,7 +378,7 @@ export default function OrganizationPage() {
 
             <SettingsGroup
               title="Models"
-              description="Override the platform model fallback used when agents or sessions do not set their own model."
+              description="Default for agents and sessions without an explicit model. Everruns Chat has its own selection in Chat settings."
               status={canManage ? <AutoSaveBadge saveState={saveStates.models} /> : null}
               error={saveStates.models.error}
             >

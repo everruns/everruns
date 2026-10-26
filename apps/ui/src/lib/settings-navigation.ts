@@ -1,5 +1,6 @@
 import {
   AccountIcon,
+  ChatIcon,
   FeaturesIcon,
   HealthIcon,
   OrganizationIcon,
@@ -33,6 +34,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         ],
         icon: OrganizationIcon,
         description: "Manage organization defaults and memberships",
+      },
+      {
+        name: "Chat",
+        href: "/settings/chat",
+        keywords: ["chat", "model", "default", "assistant"],
+        icon: ChatIcon,
+        description: "Choose the organization model for Everruns Chat",
       },
       {
         name: "Team members",
