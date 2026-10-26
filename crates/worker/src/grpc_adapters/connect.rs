@@ -13,7 +13,7 @@
 use std::time::Duration;
 
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_internal_protocol::WorkerServiceClient;
+use everruns_internal_protocol::{MAX_GRPC_MESSAGE_SIZE, WorkerServiceClient};
 use tonic::transport::Channel;
 
 use super::checkpoint_availability::CheckpointAvailability;
@@ -22,13 +22,6 @@ use crate::grpc_durable_store::GrpcClientAuth;
 
 /// Default deadline of one control-plane call (`WORKER_GRPC_REQUEST_TIMEOUT_SECS`).
 pub const DEFAULT_GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
-
-/// Max gRPC message size (16MB)
-///
-/// Image data no longer flows through gRPC — workers fetch images via presigned
-/// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-/// to accommodate metadata, proto messages, and session file content.
-const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
 
 impl GrpcClient {
     /// Connect to the control plane gRPC server, each call bounded by
