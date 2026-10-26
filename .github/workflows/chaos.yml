@@ -54,7 +54,7 @@ env:
 jobs:
   chaos:
     name: Chaos Harness (2 servers, 3 workers, kills)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 75
     services:
       valkey:

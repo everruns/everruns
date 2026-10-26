@@ -21,7 +21,7 @@ concurrency:
 jobs:
   compile:
     if: inputs.experiment != 'rust-profiles'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -102,7 +102,7 @@ jobs:
   execute:
     name: Archived tests (${{ matrix.cache }}, ${{ matrix.database }})
     needs: compile
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 20
     strategy:
       fail-fast: false

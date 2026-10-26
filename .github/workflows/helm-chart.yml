@@ -42,7 +42,7 @@ env:
 jobs:
   check:
     name: Helm Chart Lint
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -57,7 +57,7 @@ jobs:
 
   kind:
     name: Helm Chart on kind
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: check
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     timeout-minutes: 30

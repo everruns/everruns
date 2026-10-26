@@ -73,7 +73,7 @@ jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
   changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     outputs:
       run_ci: ${{ steps.ci_event.outputs.run_ci }}
       mode: ${{ steps.plan.outputs.mode }}
@@ -511,7 +511,7 @@ jobs:
 
   format:
     name: Format Check
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -530,7 +530,7 @@ jobs:
 
   lockfile:
     name: Lockfile Check
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -571,7 +571,7 @@ jobs:
 
   msrv:
     name: Published Crate MSRV
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 25
@@ -608,7 +608,7 @@ jobs:
 
   knowledge:
     name: Knowledge Bundle (OKF v0.2)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.knowledge == 'true'
     timeout-minutes: 10
@@ -631,7 +631,7 @@ jobs:
   # neutral contract instead of growing a competing one.
   test-support-isolation:
     name: Test-Support Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -652,7 +652,7 @@ jobs:
   # contracts, and Framework/provider trees ship no OTLP/exporter subtree.
   observability-isolation:
     name: Observability Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -674,7 +674,7 @@ jobs:
   # opt-in execution stacks.
   environment-capability-isolation:
     name: Environment Capability Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -695,7 +695,7 @@ jobs:
   # Framework consumers can exclude the optional bundle.
   portable-builtins-isolation:
     name: Portable Built-ins Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -718,7 +718,7 @@ jobs:
   # the resolved execution snapshot, and carry no everruns-capabilities edge.
   agent-record-isolation:
     name: Agent-Record Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -740,7 +740,7 @@ jobs:
   # feature subtree in provider-only builds.
   provider-isolation:
     name: Provider Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -760,7 +760,7 @@ jobs:
   # and the engine-in-a-celld-cell example builds and passes its tests.
   wasm-portability:
     name: Wasm Portability Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 25
@@ -790,7 +790,7 @@ jobs:
   # interpreter, exporter, OpenAPI, and structural-parser implementations.
   core-kernel-dependencies:
     name: Core Kernel Dependency Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -812,7 +812,7 @@ jobs:
   # the worker and server. Also owns the database-driver boundary check.
   durable-isolation:
     name: Durable Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -849,7 +849,7 @@ jobs:
   # compatibility owners, credential-bearing models, and new undocumented API.
   core-public-api:
     name: Core Public API Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 25
@@ -874,7 +874,7 @@ jobs:
   # carries portable implementations and neutral contracts only.
   hosted-capability-isolation:
     name: Hosted Capability Isolation Guard
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
@@ -892,7 +892,7 @@ jobs:
 
   migration-immutability:
     name: Migration Immutability
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     # Also on main: two PRs that each pass alone can merge one migration
     # version twice, and the push run is what reports that.
@@ -916,7 +916,7 @@ jobs:
   # each crate's integration targets, with explicit reasons for exclusions.
   repo-guards:
     name: Repository Guards
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true'
     timeout-minutes: 10
@@ -950,7 +950,7 @@ jobs:
 
   clippy:
     name: Clippy Lints
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 30
@@ -982,7 +982,7 @@ jobs:
   # Keeps server compilation in the integration job that already builds it.
   focused-rust:
     name: Affected Rust (${{ matrix.group }})
-    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'namespace-profile-everruns' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.mode == 'pr' && needs.changes.outputs.has_tests == 'true'
     timeout-minutes: 30
@@ -1032,8 +1032,8 @@ jobs:
   unit-test:
     name: Unit Tests (Pure)
     # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
-    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
-    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    # (e.g. a larger Namespace profile); defaults to namespace-profile-everruns.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'namespace-profile-everruns' }}
     needs: changes
     # A docs/framework-only change still runs, but only the facade-cli leg
     # does work: it compiles the Framework docs snippets (crates/docs-snippets).
@@ -1247,7 +1247,7 @@ jobs:
   # Serialized because a handful of tests mutate process-wide env vars.
   worker-test:
     name: Worker Tests (Durable Execution)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 30
@@ -1284,7 +1284,7 @@ jobs:
 
   shell-test:
     name: Shell Tests (Repo Scripts)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.shell == 'true'
     timeout-minutes: 20
@@ -1339,7 +1339,7 @@ jobs:
   # Live Daytona API tests — only when crates/integrations/src/daytona/** changes and secret exists
   daytona-live-test:
     name: Daytona Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     timeout-minutes: 10
@@ -1381,7 +1381,7 @@ jobs:
   # Live E2B API tests — only when crates/integrations/src/e2b/** changes
   e2b-live-test:
     name: E2B Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     timeout-minutes: 10
@@ -1426,8 +1426,8 @@ jobs:
   integration-test:
     name: Integration Tests (PostgreSQL Shards)
     # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
-    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
-    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    # (e.g. a larger Namespace profile); defaults to namespace-profile-everruns.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'namespace-profile-everruns' }}
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 40
@@ -1654,7 +1654,7 @@ jobs:
 
   slack-live-test:
     name: Slack Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: (needs.changes.outputs.mode == 'nightly' || needs.changes.outputs.mode == 'full') && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     # 30, like the S3 job sharing this cache: when the `integration-v2` and sqlx
@@ -1772,7 +1772,7 @@ jobs:
 
   live-provider-matrix:
     name: Live Provider Matrix
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     timeout-minutes: 45
@@ -1860,7 +1860,7 @@ jobs:
   # S3 client path — not just the in-memory object_store backend.
   s3-integration-test:
     name: Integration Tests (S3 Blob Backend)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 30
@@ -2021,8 +2021,8 @@ jobs:
   build-binaries:
     name: Build Release Binaries
     # Opt-in larger runners via the CI_RUNNER_LABEL repo variable
-    # (e.g. ubuntu-latest-8-core); defaults to standard runners.
-    runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
+    # (e.g. a larger Namespace profile); defaults to namespace-profile-everruns.
+    runs-on: ${{ vars.CI_RUNNER_LABEL || 'namespace-profile-everruns' }}
     needs: changes
     if: (needs.changes.outputs.mode != 'pr' || needs.changes.outputs.sdk_compat == 'true' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.sdk_compat == 'true' || needs.changes.outputs.docker == 'true' || needs.changes.outputs.chaos == 'true' || needs.changes.outputs.budget_e2e == 'true' || (needs.changes.outputs.provider_live == 'true' && needs.changes.outputs.offline == 'true')) && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40
@@ -2120,7 +2120,7 @@ jobs:
   # retain the server/worker llmsim coverage without fetching provider keys.
   chaos-test:
     name: Chaos Harness (shared CI binaries)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
     - changes
     - build-binaries
@@ -2218,7 +2218,7 @@ jobs:
   # Compile concurrently with the CI binaries; the execution job only downloads.
   workflow-test-build:
     name: Compile Workflow Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || (needs.changes.outputs.provider_live == 'true' && needs.changes.outputs.offline == 'true')) && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 30
@@ -2253,7 +2253,7 @@ jobs:
 
   workflow-test:
     name: Workflow Tests (Server + Worker)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
       - build-binaries
@@ -2520,7 +2520,7 @@ jobs:
   # `unit-test`.
   cli-e2e-test:
     name: CLI E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
       - build-binaries
@@ -2607,7 +2607,7 @@ jobs:
 
   sdk-compat-matrix:
     name: SDK Compat Matrix
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_sdk_compat != 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     outputs:
@@ -2624,7 +2624,7 @@ jobs:
 
   sdk-compat-test:
     name: SDK Compat (${{ matrix.language }} / ${{ matrix.cohort }} / v${{ matrix.version }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
       - build-binaries
@@ -2717,7 +2717,7 @@ jobs:
   # API-only generation avoids the server/worker/CLI binary dependency.
   openapi-check:
     name: OpenAPI Spec Freshness
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
@@ -2763,7 +2763,7 @@ jobs:
 
   ui-build:
     name: UI Build, Lint & Test
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
     timeout-minutes: 25
@@ -2854,7 +2854,7 @@ jobs:
 
   ui-e2e:
     name: UI Playwright Smoke
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true' && needs.changes.outputs.skip_ui_e2e != 'true'
     timeout-minutes: 35
@@ -2914,7 +2914,7 @@ jobs:
 
   ui-budget-e2e:
     name: UI Channel Budget Full-Stack E2E
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
       - build-binaries
@@ -3040,7 +3040,7 @@ jobs:
 
   docs-build:
     name: Docs Build & Check
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docs == 'true'
     timeout-minutes: 20
@@ -3181,7 +3181,7 @@ jobs:
   # artifacts it consumes are guaranteed to exist.
   docker-build:
     name: Docker Build
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs:
       - changes
       - build-binaries
@@ -3243,7 +3243,7 @@ jobs:
 
   ci-opt-out-policy:
     name: CI Opt-Out Policy
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
     needs: changes
     timeout-minutes: 10
@@ -3308,7 +3308,7 @@ jobs:
   # Aggregation gate for branch protection.
   ci-success:
     name: Build Check
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: always()
     needs:
       - migration-immutability

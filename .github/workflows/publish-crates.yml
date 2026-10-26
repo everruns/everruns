@@ -44,7 +44,7 @@ env:
 jobs:
   publish:
     name: Publish ${{ github.event.client_payload.package || github.event.inputs.package }}
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     steps:
       - name: Resolve package release
         id: release

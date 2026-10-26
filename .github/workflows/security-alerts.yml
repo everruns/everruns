@@ -50,7 +50,7 @@ concurrency:
 jobs:
   report:
     name: Report Open Alerts
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

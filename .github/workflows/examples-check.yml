@@ -40,7 +40,7 @@ env:
 jobs:
   excluded-examples-check:
     name: Excluded Standalone Crates
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 20
 
     steps:

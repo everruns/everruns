@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   dependency-contract:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

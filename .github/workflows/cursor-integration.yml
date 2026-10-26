@@ -34,7 +34,7 @@ env:
 jobs:
   unit-test:
     name: Cursor Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
 
     steps:
@@ -53,7 +53,7 @@ jobs:
 
   live-test:
     name: Cursor Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     timeout-minutes: 10
 

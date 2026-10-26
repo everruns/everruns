@@ -43,7 +43,7 @@ jobs:
   release-pr:
     name: Release PR Preflight
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -102,7 +102,7 @@ jobs:
     if: >-
       github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     permissions:
       contents: read

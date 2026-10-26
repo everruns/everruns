@@ -33,7 +33,7 @@ env:
 jobs:
   unit-test:
     name: TypeSafe Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
     timeout-minutes: 10
 
@@ -58,7 +58,7 @@ jobs:
   # backstop catches shared-crate regressions that slip past this gate.
   live-test:
     name: TypeSafe Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     timeout-minutes: 10
 

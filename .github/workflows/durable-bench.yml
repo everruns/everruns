@@ -63,7 +63,7 @@ env:
 jobs:
   bench:
     name: Durable Benchmarks (${{ matrix.store }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -141,7 +141,7 @@ jobs:
 
   turn-backends:
     name: Turn Backend Benchmarks (actor runner)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -179,7 +179,7 @@ jobs:
 
   server-turn-latency:
     name: Server Turn Latency (HTTP, gRPC worker, PostgreSQL)
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     # A release build of the whole server (thin LTO) is most of the time.
     timeout-minutes: 75
     env:

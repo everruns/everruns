@@ -28,7 +28,7 @@ jobs:
     # A manual dispatch may pick any branch; only main runs beside the vault
     # token (EVE-1190). Schedules always run on the default branch.
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -109,7 +109,7 @@ jobs:
   framework-examples-live:
     name: Framework Examples (live)
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 40
 
     steps:
@@ -149,7 +149,7 @@ jobs:
   server-live-tests:
     name: Server Live Tests
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     # A debug build of the server's lib tests is most of the time.
     timeout-minutes: 45
 
@@ -202,7 +202,7 @@ jobs:
 
   duckduckgo-integration-test:
     name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -229,7 +229,7 @@ jobs:
 
   container-sandbox-live-test:
     name: Container Sandbox Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
 
     services:

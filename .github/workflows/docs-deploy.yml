@@ -38,7 +38,7 @@ env:
 jobs:
   deploy:
     name: Build and deploy docs
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     timeout-minutes: 30
     defaults:
@@ -97,7 +97,7 @@ jobs:
 
   check-live:
     name: Check live docs and redirects
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     needs: deploy
     if: >-
       always() &&

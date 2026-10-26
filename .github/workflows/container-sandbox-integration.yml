@@ -29,7 +29,7 @@ env:
 jobs:
   unit-test:
     name: Container Sandbox Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
 
     steps:
@@ -49,7 +49,7 @@ jobs:
 
   live-test:
     name: Container Sandbox Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     # Run on PRs that touch the sandbox surface too: EVE-1151's forge-rejection
     # coverage only exists as a live Docker test.
     timeout-minutes: 15

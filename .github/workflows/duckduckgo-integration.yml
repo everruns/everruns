@@ -28,7 +28,7 @@ env:
 jobs:
   integration-test:
     name: DuckDuckGo API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
     timeout-minutes: 5
 
