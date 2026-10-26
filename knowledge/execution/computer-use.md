@@ -184,6 +184,10 @@ for a session on that Sandbox, through the Daytona or E2B session types above.
   needs no feature flag.
 - **One display.** It shares the `computer` exclusive group; resolution drops
   any other computer-use capability from the Agent's list instead of failing.
+- **Display up front.** The provider starts the display as soon as the
+  Sandbox runs and sets `DISPLAY` in its environment, not on the first
+  `computer` action: agents open a browser from the shell before their first
+  screenshot, and a browser started with no X server exits.
 - **Provider images.** E2B defaults the Sandbox to its `desktop` template.
   Daytona uses its default image, which ships the desktop, so a desktop
   template rejects `size` and `snapshot`; the display size goes in through

@@ -406,7 +406,7 @@ pub use everruns_contracts::runtime::computer_use::{
 };
 
 /// Run the display start script; a no-op when Xvfb already runs at `display`.
-async fn start_display(
+pub(super) async fn start_display(
     client: &E2BClient,
     state: &SandboxState,
     display: DisplaySize,

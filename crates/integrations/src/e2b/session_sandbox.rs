@@ -31,6 +31,17 @@ fn is_not_found(error: &str) -> bool {
     error.contains("404 Not Found") || error.contains("(404)") || error.contains("404:")
 }
 
+fn desktop_display(
+    config: &SessionSandboxConfig,
+) -> Option<everruns_contracts::runtime::computer_use::DisplaySize> {
+    config.desktop().map(|settings| {
+        everruns_contracts::runtime::computer_use::ComputerUseConfig::from_value_or_default(
+            &settings,
+        )
+        .display()
+    })
+}
+
 async fn provider_state(
     context: &dyn SessionSandboxContext,
     instance: &SessionSandboxInstance,
@@ -179,20 +190,28 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         }
         let egress =
             super::network::E2BEgress::from_rules(&super::network::session_rules(context, config)?);
+        // GUI programs started from the shell open on the desktop's display.
+        let env_vars = match desktop_display(config) {
+            Some(_) => json!({ "DISPLAY": super::computer::DESKTOP_DISPLAY }),
+            None => json!({}),
+        };
         let created = client
-            .create_sandbox_with_egress(
-                template,
-                timeout,
-                Value::Object(labels),
-                json!({}),
-                &egress,
-            )
+            .create_sandbox_with_egress(template, timeout, Value::Object(labels), env_vars, &egress)
             .await
             .map_err(ToolExecutionResult::tool_error)?;
         let detail = super::tools::detail_from_create(created);
         let instance =
             instance_from_detail(context, detail, timeout, workspace_path, display_name).await?;
         refresh_lease(context, config, &instance).await?;
+        // Bring the display up now, not on the first `computer` action: a
+        // browser the agent starts from the shell needs the X server already
+        // there, or it exits with no display. Pause and resume keep it running.
+        if let Some(display) = desktop_display(config) {
+            let state = provider_state(context, &instance).await?;
+            super::computer::start_display(&client, &state, display)
+                .await
+                .map_err(ToolExecutionResult::tool_error)?;
+        }
         Ok(instance)
     }
 

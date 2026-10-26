@@ -559,10 +559,16 @@ async fn create_daytona_instance(
         // Daytona's default image is the one that ships the desktop; its size
         // is fixed at create time.
         Some(display) => {
-            create_body.env = [(
-                crate::daytona::computer::RESOLUTION_ENV.to_string(),
-                display.to_string(),
-            )]
+            create_body.env = [
+                (
+                    crate::daytona::computer::RESOLUTION_ENV.to_string(),
+                    display.to_string(),
+                ),
+                (
+                    "DISPLAY".to_string(),
+                    crate::daytona::computer::DESKTOP_DISPLAY.to_string(),
+                ),
+            ]
             .into();
         }
         None => create_body.snapshot = Some(snapshot_name(config)?),
@@ -601,6 +607,7 @@ async fn create_daytona_instance(
         if restore && let Some(recovery) = &recovery {
             restore_workspace(client, &sandbox_info.id, &workspace_path, recovery).await?;
         }
+        start_configured_desktop(client, config, &sandbox_info.id).await?;
         Ok::<(), ToolExecutionResult>(())
     }
     .await;
@@ -698,6 +705,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let Some(recovery) = recovery_binding(&context.session_id(), instance)? else {
             let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+            start_configured_desktop(&client, config, &instance.external_id).await?;
             network::apply_to_running(
                 &client,
                 &instance.external_id,
@@ -754,6 +762,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             return Ok(replacement);
         }
         let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+        start_configured_desktop(&client, config, &instance.external_id).await?;
         network::apply_to_running(
             &client,
             &instance.external_id,
@@ -1244,6 +1253,23 @@ fn auto_stop_minutes(config: &SessionSandboxConfig) -> Result<u64, ToolExecution
 
 /// The display size of a sandbox created with a desktop, from
 /// `provider_config.desktop`.
+/// Bring up the desktop of a sandbox created with one as soon as the sandbox
+/// runs, not on the first `computer` action: a browser the agent starts from
+/// the shell needs the X server already there, or it exits with no display.
+async fn start_configured_desktop(
+    client: &DaytonaClient,
+    config: &SessionSandboxConfig,
+    sandbox_id: &str,
+) -> Result<(), ToolExecutionResult> {
+    if desktop_display(config).is_none() {
+        return Ok(());
+    }
+    crate::daytona::computer::start_desktop(client, sandbox_id)
+        .await
+        .map(|_| ())
+        .map_err(ToolExecutionResult::tool_error)
+}
+
 fn desktop_display(config: &SessionSandboxConfig) -> Option<DisplaySize> {
     config
         .desktop()

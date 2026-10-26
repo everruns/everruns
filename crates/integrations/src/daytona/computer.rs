@@ -32,6 +32,11 @@ use crate::daytona::client::DaytonaClient;
 /// Sandbox environment variable the default image reads for the display size.
 pub(crate) const RESOLUTION_ENV: &str = "VNC_RESOLUTION";
 
+/// The X display the default image's desktop runs on. Set as `DISPLAY` in the
+/// sandbox environment so a GUI program started from the shell opens on the
+/// screen the `computer` tool drives.
+pub(crate) const DESKTOP_DISPLAY: &str = ":0";
+
 /// How long the desktop may take to report itself active.
 const DESKTOP_START_TIMEOUT: Duration = Duration::from_secs(60);
 const DESKTOP_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -395,7 +400,10 @@ async fn computer_use(
 
 /// Start the desktop processes unless they already run, wait until the
 /// desktop reports a display, and return its size.
-async fn start_desktop(client: &DaytonaClient, sandbox_id: &str) -> Result<DisplaySize, String> {
+pub(crate) async fn start_desktop(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+) -> Result<DisplaySize, String> {
     let status = computer_use(client, sandbox_id, Method::GET, "/status", None).await?;
     if status.get("status").and_then(Value::as_str) != Some("active") {
         computer_use(client, sandbox_id, Method::POST, "/start", None)

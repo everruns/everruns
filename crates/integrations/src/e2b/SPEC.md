@@ -108,7 +108,9 @@ A Session Sandbox created with `target.options.desktop` starts from the E2B
 capability. See `src/computer.rs` and `knowledge/execution/computer-use.md`.
 
 - **Display**: Xvfb on `:99` at the configured size, the template's xfce
-  session, PNG frames checked against the display size.
+  session, PNG frames checked against the display size. Started at create,
+  with `DISPLAY=:99` in the sandbox environment, so a GUI program the agent
+  starts from the shell opens on it; pause and resume keep it running.
 - **Actions**: `xdotool` argv through envd's process API with no shell; typed
   text is one argument after `--`.
 - **Egress**: the Session Sandbox's own network rules, so the template's
