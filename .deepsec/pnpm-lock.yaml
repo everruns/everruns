@@ -11,7 +11,7 @@ overrides:
   tar: 7.5.22
   undici: ^7.29.1
   zod: 4.6.7
-  '@modelcontextprotocol/sdk': 1.32.1
+  '@modelcontextprotocol/sdk': 1.32.2
   ip-address: 10.7.4
 
 patchedDependencies:
@@ -30,11 +30,11 @@ importers:
   .:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: 1.32.1
-        version: 1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+        specifier: 1.32.2
+        version: 1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       deepsec:
         specifier: ^2.3.10
-        version: 2.3.10(patch_hash=utp3a3tzovh6ivkggz7am64xne)(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+        version: 2.3.10(patch_hash=utp3a3tzovh6ivkggz7am64xne)(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
 
 packages:
 
@@ -87,7 +87,7 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@anthropic-ai/sdk': ^0.105.0
-      '@modelcontextprotocol/sdk': 1.32.1
+      '@modelcontextprotocol/sdk': 1.32.2
       zod: 4.6.7
 
   '@anthropic-ai/sdk@0.105.0':
@@ -222,7 +222,7 @@ packages:
     resolution: {integrity: sha512-gwSvbpiN/17O9TbsqSsE/OzZcpv5Fo4RQjdngGgogtuB9RsyJ8ZHhX5KjHj1bp5N9snN2eK8LDGXSaWW2hof8Q==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
-      '@modelcontextprotocol/sdk': 1.32.1
+      '@modelcontextprotocol/sdk': 1.32.2
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
         optional: true
@@ -308,8 +308,8 @@ packages:
       '@opentelemetry/api':
         optional: true
 
-  '@modelcontextprotocol/sdk@1.32.1':
-    resolution: {integrity: sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==}
+  '@modelcontextprotocol/sdk@1.32.2':
+    resolution: {integrity: sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -1337,10 +1337,10 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.3.288':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk@0.3.288(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
+  '@anthropic-ai/claude-agent-sdk@0.3.288(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
     dependencies:
       '@anthropic-ai/sdk': 0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
-      '@modelcontextprotocol/sdk': 1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@modelcontextprotocol/sdk': 1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       zod: 4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)
     optionalDependencies:
       '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.3.288
@@ -1575,9 +1575,9 @@ snapshots:
 
   '@babel/runtime@7.29.7': {}
 
-  '@earendil-works/pi-agent-core@0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
+  '@earendil-works/pi-agent-core@0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
     dependencies:
-      '@earendil-works/pi-ai': 0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@earendil-works/pi-ai': 0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       ignore: 7.0.5
       typebox: 1.1.38
       yaml: 2.9.0
@@ -1589,11 +1589,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
+  '@earendil-works/pi-ai@0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
     dependencies:
       '@anthropic-ai/sdk': 0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
-      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))
+      '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))
       '@mistralai/mistralai': 2.2.6(@opentelemetry/api@1.9.0)
       '@opentelemetry/api': 1.9.0
       '@smithy/node-http-handler': 4.7.3
@@ -1610,10 +1610,10 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-coding-agent@0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
+  '@earendil-works/pi-coding-agent@0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
     dependencies:
-      '@earendil-works/pi-agent-core': 0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
-      '@earendil-works/pi-ai': 0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@earendil-works/pi-agent-core': 0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@earendil-works/pi-ai': 0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       '@earendil-works/pi-tui': 0.81.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
@@ -1645,14 +1645,14 @@ snapshots:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
 
-  '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))':
+  '@google/genai@1.52.0(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))':
     dependencies:
       google-auth-library: 10.9.1
       p-retry: 4.6.2
       protobufjs: 7.6.5
       ws: 8.21.1
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@modelcontextprotocol/sdk': 1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -1722,7 +1722,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
+  '@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))':
     dependencies:
       '@hono/node-server': 2.1.3(hono@4.13.11)
       ajv: 8.20.0
@@ -2021,10 +2021,10 @@ snapshots:
     dependencies:
       ms: 2.1.3
 
-  deepsec@2.3.10(patch_hash=utp3a3tzovh6ivkggz7am64xne)(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)):
+  deepsec@2.3.10(patch_hash=utp3a3tzovh6ivkggz7am64xne)(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)):
     dependencies:
-      '@anthropic-ai/claude-agent-sdk': 0.3.288(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
-      '@earendil-works/pi-coding-agent': 0.81.1(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@anthropic-ai/claude-agent-sdk': 0.3.288(@anthropic-ai/sdk@0.105.0(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
+      '@earendil-works/pi-coding-agent': 0.81.1(@modelcontextprotocol/sdk@1.32.2(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e)))(ws@8.21.1)(zod@4.6.7(patch_hash=32tidc2gpybepvmnf2wz7s2n4e))
       '@openai/codex': 0.156.1
       '@openai/codex-sdk': 0.156.1
       '@vercel/oidc': 3.8.0
