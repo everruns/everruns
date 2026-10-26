@@ -36,7 +36,7 @@ env:
 jobs:
   unit-test:
     name: Sprites Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
 
     steps:
@@ -56,7 +56,7 @@ jobs:
 
   live-test:
     name: Sprites Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     # Sprites is experimental: the live job runs only on manual dispatch, so a
     # vendor control-plane outage no longer turns pushes to main red. The unit
     # job above still gates every change.

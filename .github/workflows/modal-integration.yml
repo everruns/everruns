@@ -29,7 +29,7 @@ env:
 jobs:
   live-test:
     name: Modal Live API Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     # Only main runs beside the vault token, even on manual dispatch.
     if: github.ref == 'refs/heads/main'
     timeout-minutes: 20

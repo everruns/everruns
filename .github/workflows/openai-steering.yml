@@ -22,7 +22,7 @@ concurrency:
 jobs:
   steering:
     name: Steering protocol (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 5
     strategy:
       matrix:

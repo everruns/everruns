@@ -27,7 +27,7 @@ env:
 jobs:
   offline-evals:
     name: tool_search Reveal Eval Offline Tests
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 20
     defaults:
       run:

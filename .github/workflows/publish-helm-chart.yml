@@ -22,7 +22,7 @@ env:
 jobs:
   publish:
     name: Publish Helm chart
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 10
     steps:
       - name: Validate trusted release tag

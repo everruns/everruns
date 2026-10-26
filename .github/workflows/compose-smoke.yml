@@ -42,7 +42,7 @@ permissions:
 jobs:
   smoke:
     name: Compose Quickstart Smoke (${{ matrix.stack }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     strategy:
       fail-fast: false
       matrix:
@@ -70,7 +70,7 @@ jobs:
   # same published images.
   cli-up:
     name: everruns docker up Smoke
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     timeout-minutes: 30
     env:

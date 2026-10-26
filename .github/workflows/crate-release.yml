@@ -43,7 +43,7 @@ concurrency:
 
 jobs:
   release-crates:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     permissions:
       contents: write # create crate/<package>/v<version> tags
       actions: write # dispatch the Publish Crate workflow

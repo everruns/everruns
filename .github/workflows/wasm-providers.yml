@@ -28,7 +28,7 @@ permissions:
 jobs:
   workerd:
     name: Provider calls inside workerd
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7

@@ -17,7 +17,7 @@ permissions:
 jobs:
   # Check if this is a release commit - always runs to suppress "no jobs ran" notifications
   check-release:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     outputs:
       is_release: ${{ steps.check.outputs.is_release }}
     steps:
@@ -47,7 +47,7 @@ jobs:
   release:
     needs: check-release
     if: needs.check-release.outputs.is_release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
 
     permissions:
       contents: write

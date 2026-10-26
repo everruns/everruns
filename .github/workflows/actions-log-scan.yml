@@ -42,7 +42,7 @@ concurrency:
 jobs:
   scan:
     name: Scan Recent Run Logs
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-everruns
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
