@@ -225,6 +225,20 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
             .await
     }
 
+    async fn deliver_occurrence(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        occurrence: everruns_contracts::typed_id::MessageId,
+    ) -> Result<()> {
+        let Some(_delivery) = self.routes.deliver_or_claim(session_id, content) else {
+            return Ok(());
+        };
+        self.inner
+            .deliver_occurrence(session_id, content, occurrence)
+            .await
+    }
+
     async fn create_session(
         &self,
         harness_id: HarnessId,
