@@ -1,6 +1,6 @@
 "use client";
+
 import { useState } from "react";
-import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
 import Link from "next/link";
 import { useVirtualUser, useUpdateVirtualUser } from "@/hooks/use-virtual-users";
 import { usePageTitle } from "@/hooks";
@@ -9,26 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
-import { ConnectionsPanel } from "@/components/connections/connections-panel";
-import { PendingConnectionMigrations } from "@/components/connections/pending-connection-migrations";
-import { UserMcpServersPanel } from "@/components/connections/user-mcp-servers-panel";
-import { ConnectedClientsPanel } from "@/components/connections/connected-clients-panel";
 import type { UpdateVirtualUserRequest } from "@/lib/api/types";
-export default function AgentExperiencePage() {
-  usePageTitle("My agent experience", "Settings");
+
+export default function UserProfilePage() {
+  usePageTitle("Profile", "Settings");
   const profile = useVirtualUser("me");
   const update = useUpdateVirtualUser();
   const [changes, setChanges] = useState<UpdateVirtualUserRequest>({});
-  if (profile.isLoading) return <p>Loading your agent experience…</p>;
-  if (!profile.data)
-    return <p className="text-destructive">Your virtual user could not be loaded.</p>;
+  if (profile.isLoading) return <p>Loading your profile…</p>;
+  if (!profile.data) return <p className="text-destructive">Your profile could not be loaded.</p>;
   const user = profile.data;
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-semibold">My agent experience</h2>
+        <h2 className="text-xl font-semibold">Profile</h2>
         <p className="text-sm text-muted-foreground">
-          Your profile, MCP servers and connections for chats in this organization.
+          Your name, locale, and timezone for chats in this organization.
         </p>
         <Link className="text-sm text-primary underline" href={`/virtual-users/${user.id}`}>
           View virtual user
@@ -76,14 +72,6 @@ export default function AgentExperiencePage() {
         </Button>
         {update.error && <p className="text-destructive">{update.error.message}</p>}
       </form>
-      <PendingConnectionMigrations />
-      <UserMcpServersPanel />
-      <ConnectedClientsPanel />
-      <ScopedCredentialsPanel
-        key={user.id}
-        owner={{ scope: "virtual_user", owner_id: "me", usage: "user" }}
-      />
-      <ConnectionsPanel />
     </div>
   );
 }

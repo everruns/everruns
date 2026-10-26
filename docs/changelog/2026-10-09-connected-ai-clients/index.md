@@ -24,3 +24,8 @@ client's refresh tokens, and its next request is refused.
 one. Every MCP request checks that its grant is still live.
 
 See [Use Everruns in AI tools](/getting-started/use-in-ai-tools/) and [#4461](https://github.com/everruns/everruns/pull/4461).
+
+## Update 2026-10-25
+
+Connected AI clients are their own page, **Settings > AI clients**. See
+[Personal settings pages](/changelog/2026-10-25-personal-settings-pages/).

@@ -54,8 +54,7 @@ provisioned by Everruns and cannot be edited or archived.
 6. Select **Done**, then **Save changes**.
 
 Bashkit is available without a provider connection. Managed providers are shown as unavailable
-when their integration is not installed. User credentials live under **Settings → My agent
-experience**, Agent credentials under the Agent's Virtual User, and organization credentials under
+when their integration is not installed. User credentials live under **Settings → Connections**, Agent credentials under the Agent's Virtual User, and organization credentials under
 **Sandboxes → Provider Accounts**. A fixed Agent policy fixes this choice; Session creation cannot
 override it. Do not put credentials in target options or bootstrap commands.
 

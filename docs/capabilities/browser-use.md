@@ -29,7 +29,7 @@ reads the open tabs from the toolset's browser state. The actions, the safety
 rules, and the limits are the same either way.
 
 The browser is the session's persistent [Browserless](/capabilities/browserless/)
-browser. Connect Browserless from **Settings → My agent experience** first.
+browser. Connect Browserless from **Settings → Connections** first.
 The agent shares that browser with the Browserless tools and with
 [Computer Use](/capabilities/computer-use/), so a page one opens is a page the
 others see.

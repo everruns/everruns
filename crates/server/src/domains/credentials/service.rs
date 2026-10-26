@@ -878,7 +878,7 @@ pub(crate) async fn mcp_rows(
                     ),
                     ResourceScope::VirtualUser => {
                         if record.usage == "user" {
-                            "/settings/agent-experience".into()
+                            "/settings/connections".into()
                         } else {
                             format!(
                                 "/virtual-users/{}?tab=connections",

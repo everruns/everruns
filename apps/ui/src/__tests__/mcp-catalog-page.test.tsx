@@ -155,9 +155,9 @@ describe("McpCatalogPage", () => {
     render(<McpCatalogPage />);
 
     expect(screen.getByText("You cannot view the MCP catalog")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open My agent experience" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open MCP servers" })).toHaveAttribute(
       "href",
-      "/settings/agent-experience",
+      "/settings/mcp-servers",
     );
     expect(screen.queryByRole("button", { name: "Add Server" })).not.toBeInTheDocument();
     expect(screen.queryByText("microsoft_learn")).not.toBeInTheDocument();

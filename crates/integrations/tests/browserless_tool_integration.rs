@@ -83,7 +83,7 @@ async fn test_screenshot_tool_missing_api_token() {
     match result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(
-                msg.contains("not configured") || msg.contains("Settings > My agent experience"),
+                msg.contains("not configured") || msg.contains("Settings > Connections"),
                 "Got: {msg}"
             );
         }
@@ -172,7 +172,7 @@ async fn test_navigate_tool_no_connection_resolver() {
     match result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(
-                msg.contains("not configured") || msg.contains("Settings > My agent experience"),
+                msg.contains("not configured") || msg.contains("Settings > Connections"),
                 "Got: {msg}"
             );
         }

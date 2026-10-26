@@ -118,7 +118,7 @@ pub const DAYTONA_SANDBOX_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 // State Management Helpers
 // ============================================================================
 
-/// Resolve Daytona API key via user connection (Settings > My agent experience).
+/// Resolve Daytona API key via user connection (Settings > Connections).
 pub async fn get_api_key(
     context: &dyn SessionSandboxContext,
 ) -> Result<String, ToolExecutionResult> {

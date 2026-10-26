@@ -47,7 +47,7 @@ Verified against `origin/main` at `c79edc4` and saas `main`.
 
 | Path | Credential | Acts on GitHub as | Where it is set up | Where it lives |
 |---|---|---|---|---|
-| Shared Everruns App, person connection | Installation of the deployment App (`GITHUB_APP_*`), stored on the person's virtual user | `everruns[bot]` (installation token), not the person | Settings > My agent experience | `api/user_connections/github_setup.rs`, `GitHubAppTokenMinter` in `storage/connection_resolver/mod.rs` |
+| Shared Everruns App, person connection | Installation of the deployment App (`GITHUB_APP_*`), stored on the person's virtual user | `everruns[bot]` (installation token), not the person | Settings > Connections | `api/user_connections/github_setup.rs`, `GitHubAppTokenMinter` in `storage/connection_resolver/mod.rs` |
 | Per-agent App | App created from a manifest, stored as the service virtual user's `github` connection | `<agent-app>[bot]` | Agent > Integrations, under Triggers | `github_apps.rs`, `api/github_apps.rs` |
 | `github` capability tools | `get_connection_token(session, "github")`: the invoking person's connection when the turn has a person, otherwise the agent's | Whichever of the two above was picked, implicitly | Capability on the agent | `crates/integrations/src/github/` |
 | GitHub MCP preset | `acts as service`: the agent's `github` connection (connection-backed preset). `acts as user`: a separate OAuth grant `mcp_oauth_<server>` through the preset's OAuth client | Agent bot, or the person | Agent MCP sheet | `setup/seed/mcp_servers.rs`, `domains/mcp_servers/connection_backed.rs` |
@@ -267,7 +267,7 @@ The agent page gets one **GitHub** section: identity (bot name, avatar step,
 which kind), installations (account, repositories, permissions, missing
 permissions), usage report, and links to the agent's GitHub triggers and
 GitHub channel. Triggers and the channel need the identity and link to it
-instead of hosting its setup. Settings > My agent experience shows the
+instead of hosting its setup. Settings > Connections shows the
 person's `person` connection; Settings > Organization shows the shared App.
 
 ### D8. Talking is a channel, listening is a trigger

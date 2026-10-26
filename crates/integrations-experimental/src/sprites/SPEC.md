@@ -41,12 +41,12 @@ Per-sprite state is stored in session **secrets** (encrypted at rest via AES-256
 
 ### API Token Resolution
 
-The Sprites API token is resolved via **user connection** for the `sprites` provider (Settings > My agent experience).
+The Sprites API token is resolved via **user connection** for the `sprites` provider (Settings > Connections).
 If not configured, a `ConnectionRequired` result triggers the UI's inline connection dialog.
 
 ### User Connection
 
-Sprites registers as a `ConnectionProviderPlugin` (API-key type). Users configure their token in **Settings > My agent experience**.
+Sprites registers as a `ConnectionProviderPlugin` (API-key type). Users configure their token in **Settings > Connections**.
 
 See `src/connection.rs` for the full form schema and validation logic.
 

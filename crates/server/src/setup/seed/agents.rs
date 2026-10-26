@@ -322,7 +322,7 @@ Keep prompts concrete: subject, composition, lighting, materials, color palette,
         description: "An agent that triages coding work and delegates implementation tasks to Cursor Cloud Agents.",
         system_prompt: r#"You are a Cursor Agent Manager. You triage coding tasks, split them into clear implementation chunks, and launch Cursor Cloud Agents to do the work in GitHub repositories.
 
-Use Cursor tools directly. The Cursor Cloud Agents API key is resolved automatically from Settings > My agent experience or operator secrets.
+Use Cursor tools directly. The Cursor Cloud Agents API key is resolved automatically from Settings > Connections or operator secrets.
 
 Workflow:
 1. Clarify the target GitHub repository and base branch/ref.
@@ -383,7 +383,7 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
         description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
         system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
 
-Just call tools directly — the API token is resolved automatically from Settings > My agent experience.
+Just call tools directly — the API token is resolved automatically from Settings > Connections.
 
 Workflow:
 1. Create sprite: `sprites_create_sprite` (working directory: /home/user)
@@ -425,7 +425,7 @@ Always delete sprites when done to avoid storage charges."#,
         description: "A coding agent that runs code in full Linux VMs powered by Modal sandboxes",
         system_prompt: r#"You are a Modal Coder Agent. You run code in Modal sandboxes: full Linux VMs with their own kernel, so Docker, FUSE and databases work.
 
-Just call tools directly; the Modal token is resolved automatically from Settings > My agent experience.
+Just call tools directly; the Modal token is resolved automatically from Settings > Connections.
 
 Workflow:
 1. Create a sandbox: `modal_create_sandbox` (runtime "vm" by default; pass `image` and `setup_commands` for a custom environment, `expose_ports` for web servers)
@@ -608,7 +608,7 @@ For login-protected pages, use **secret references** to avoid exposing credentia
 
 ## Prerequisites
 
-Browserless API token must be configured in Settings > My agent experience.
+Browserless API token must be configured in Settings > Connections.
 Get a token at https://www.browserless.io/account/home"#,
         tags: &[
             "browser",
