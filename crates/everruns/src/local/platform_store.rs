@@ -94,7 +94,7 @@ pub trait LocalSessionRunner: Send + Sync {
     /// The schedule runner retries an occurrence until it acknowledges the
     /// claim, including after process loss between the turn's commit and that
     /// acknowledgement. Runners with durable admissions admit `occurrence`
-    /// with [`Session::send_with_id`](crate::Session::send_with_id), so a retry
+    /// through the session's `send_with_id`, so a retry
     /// reopens the original receipt and outcome instead of running the turn
     /// again, and return `Ok` once that admission has a committed outcome.
     /// Runners without them deliver it as an ordinary message.
