@@ -622,7 +622,7 @@ impl ProviderResolverService {
         let id: ProviderId = provider_id
             .parse()
             .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
             return Ok(None);
         };
         let Some(api_key) = self.resolve_api_key(&provider)? else {
@@ -661,7 +661,7 @@ impl ProviderResolverService {
         let id: ProviderId = provider_id
             .parse()
             .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
-        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+        let Some(provider) = self.db.get_provider_config(org_id, id.uuid()).await? else {
             return Ok(None);
         };
         crate::domains::user_connections::chatgpt::check_session(&self.db, &provider, session)
