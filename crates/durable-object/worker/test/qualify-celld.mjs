@@ -61,10 +61,20 @@ async function until(label, fn, ms = 90000) {
   }
   throw new Error(`timeout: ${label}; logs: ${run}`);
 }
+// freePort releases a port before its owner binds it, so a later port-0 bind can
+// be given the same port. Port-0 binds skip every port already handed out.
+const reserved = new Set();
 async function listen(server, port = 0) {
   servers.push(server);
-  await new Promise((r, j) => server.once("error", j).listen(port, "127.0.0.1", r));
-  return server.address().port;
+  for (;;) {
+    await new Promise((r, j) => server.once("error", j).listen(port, "127.0.0.1", r));
+    const bound = server.address().port;
+    if (port !== 0 || !reserved.has(bound)) {
+      reserved.add(bound);
+      return bound;
+    }
+    await new Promise((r) => server.close(r));
+  }
 }
 async function freePort() {
   const s = createServer();
