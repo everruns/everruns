@@ -282,22 +282,28 @@ impl WorkerServiceImpl {
             mcp_tool_definitions.extend(self.build_mcp_tool_definitions(req.org_id, a).await);
         }
         mcp_tool_definitions.extend(local_mcp_tool_definitions);
-        let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
-            self.db.as_ref(),
-            req.org_id,
-            input_message.map(|i| {
-                everruns_contracts::runtime::credential_services::CredentialInvocation {
-                    session_id: session.id,
-                    input_message_id: i,
-                }
-            }),
-        )
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Failed to load MCP credential metadata");
-            Status::internal("Failed to load MCP credential metadata")
-        })?;
-        apply_proto_secret_binding_schemas(&mut mcp_tool_definitions, &binding_metadata);
+        // Binding metadata only hides bound parameters from MCP tool schemas.
+        // With no MCP tools there is nothing to hide, and the lookup resolves
+        // the acting identity twice (about 16 queries), so skip it.
+        if !mcp_tool_definitions.is_empty() {
+            let binding_metadata =
+                crate::domains::agents::credentials::list_secret_binding_metadata(
+                    self.db.as_ref(),
+                    req.org_id,
+                    input_message.map(|i| {
+                        everruns_contracts::runtime::credential_services::CredentialInvocation {
+                            session_id: session.id,
+                            input_message_id: i,
+                        }
+                    }),
+                )
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "Failed to load MCP credential metadata");
+                    Status::internal("Failed to load MCP credential metadata")
+                })?;
+            apply_proto_secret_binding_schemas(&mut mcp_tool_definitions, &binding_metadata);
+        }
 
         Ok(Response::new(GetTurnContextResponse {
             agent: proto_agent,
