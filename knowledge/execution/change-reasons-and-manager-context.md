@@ -140,6 +140,8 @@ cannot set back is named in a warning.
 [Chat mode](../ui/chat-mode.md) uses guarded, selected-field restores across
 supported editable resources. Ordinary updates and restores share a canonical
 resource lock; reviewed saves additionally carry the browser's expected revision.
+Guarded Undo compares transaction-visible current values, even while ordinary
+configuration reads are cached; delayed invalidation cannot authorize an inverse.
 Successful HTTP writes return only the identity and exact committed revision,
 never snapshots or credentials in headers. Existing entities without history get
 an initial-state snapshot only when their first mutation succeeds. This keeps the

@@ -1073,6 +1073,82 @@ async fn guarded_undo_refuses_a_definition_changed_without_a_journal_revision() 
 }
 
 #[tokio::test]
+async fn guarded_undo_bypasses_a_live_stale_configuration_cache() {
+    let ctx = owner();
+    crate::setup::org_init::initialize_org_harnesses(&ctx.db, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    let harness = run(
+        "create_harness",
+        json!({"name":"cached-review","description":"Original"}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let id = harness["id"].as_str().unwrap();
+    let harness_id = id
+        .parse::<everruns_contracts::typed_id::HarnessId>()
+        .unwrap();
+    run(
+        "update_harness",
+        json!({"id":id,"description":"Reviewed"}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    // Hold back invalidation delivery to exercise the interval after commit
+    // when ordinary reads may still see the old configuration.
+    ctx.db.config_row_cache().set_live(true);
+    assert_eq!(
+        ctx.db
+            .get_harness(ctx.org_id(), harness_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("Reviewed")
+    );
+    sqlx::query(
+        "UPDATE harnesses SET description='Unrecorded foreign edit' WHERE id=$1 AND org_id=$2",
+    )
+    .bind(harness_id)
+    .bind(ctx.org_id())
+    .execute(ctx.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        ctx.db
+            .get_harness(ctx.org_id(), harness_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("Reviewed"),
+        "the ordinary cache read must really be stale for this regression"
+    );
+    let failure = run(
+        "restore_entity_revision",
+        json!({"entity_ref":id,"revision":1,"expected_revision":2,"fields":["description"]}),
+        &ctx,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(failure.code.as_deref(), Some("entity_revision_changed"));
+    let actual: String =
+        sqlx::query_scalar("SELECT description FROM harnesses WHERE id=$1 AND org_id=$2")
+            .bind(harness_id)
+            .bind(ctx.org_id())
+            .fetch_one(ctx.db.pool())
+            .await
+            .unwrap();
+    assert_eq!(actual, "Unrecorded foreign edit");
+    assert_eq!(history(&ctx, id).await[0]["revision"], 2);
+    ctx.db.config_row_cache().set_live(false);
+}
+
+#[tokio::test]
 async fn skill_content_history_round_trips_yaml_and_restores_the_instructions() {
     let ctx = owner();
     let original = "---\nname: parity-skill\ndescription: 'A description: with punctuation'\nmetadata:\n  zebra: last\n  alpha: first\n---\n\nOriginal instructions.\n";
