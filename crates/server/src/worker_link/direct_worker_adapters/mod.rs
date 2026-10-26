@@ -1014,10 +1014,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?
             .ok_or_else(|| AgentLoopError::session_not_found(session_id.into()))?;
 
-        // session.agent_id from get_session() is the internal UUID (raw DB FK).
-        // Use get_agent() which queries by internal id.
+        // session.agent_id is the internal UUID; the cached config row by id.
         let (agent, org_mcp_tool_definitions) = if let Some(agent_id) = session.agent_id {
-            let agent_row = self.db.get_agent(org_id, agent_id).await.map_err(|e| {
+            let agent_row = self.db.get_agent_config(org_id, agent_id).await;
+            let agent_row = agent_row.map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
                 store_error("Failed to get agent")
             })?;

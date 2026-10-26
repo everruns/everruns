@@ -15,7 +15,6 @@ use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::EventListener;
 use everruns_core::budget::{BudgetAction, BudgetCheckResult, BudgetPeriod};
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
-use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -209,43 +208,25 @@ impl BudgetService {
             }
         };
 
-        let mut seen = HashSet::new();
-        let mut budgets = Vec::new();
-        for (subject_type, subject_id) in [
-            ("session", Some(scope.session_subject_id.as_str())),
-            ("agent_channel", scope.channel_subject_id.as_deref()),
-            ("agent_trigger", scope.trigger_subject_id.as_deref()),
-            ("agent", scope.agent_subject_id.as_deref()),
-            ("user", scope.user_subject_id.as_deref()),
-            ("org", Some(scope.org_subject_id.as_str())),
-        ] {
-            let Some(subject_id) = subject_id else {
-                continue;
-            };
-            match self
-                .db
-                .list_budgets(org_id, Some(subject_type), Some(subject_id))
-                .await
-            {
-                Ok(rows) => {
-                    for row in rows {
-                        if seen.insert(row.id) {
-                            // Apply lazy period rollover before returning to callers.
-                            let row = self.maybe_reset_period(row).await;
-                            budgets.push(row);
-                        }
-                    }
-                }
-                Err(error) => {
-                    error!(
-                        subject_type,
-                        subject_id,
-                        error = %error,
-                        "Failed to list budgets for hierarchy subject"
-                    );
-                }
+        let rows = match self
+            .db
+            .list_budgets_for_subjects(org_id, scope.lookup())
+            .await
+        {
+            Ok(rows) => rows,
+            Err(error) => {
+                error!(
+                    session_id,
+                    error = %error,
+                    "Failed to list budgets for session hierarchy"
+                );
+                return vec![];
             }
-        }
+        };
+        // Apply lazy period rollover before returning to callers.
+        let mut budgets =
+            futures::future::join_all(rows.into_iter().map(|row| self.maybe_reset_period(row)))
+                .await;
 
         budgets.sort_by(|a, b| {
             a.balance

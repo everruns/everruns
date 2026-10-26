@@ -31,7 +31,7 @@ impl KnowledgeService {
         let agent = if let Some(id) = row.agent_id {
             if self
                 .db
-                .get_agent(org, id)
+                .get_agent_config(org, id)
                 .await?
                 .is_some_and(|a| a.status == "active")
             {

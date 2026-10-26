@@ -83,6 +83,7 @@ impl StorageBackend {
         Self::from_database(self.db.for_background())
             .with_knowledge_blob_store(self.knowledge_blob_store.clone())
             .sharing_org_feature_flags(self)
+            .with_config_row_cache(self.config_rows.clone())
     }
 
     /// Attach an object-storage blob backend for content offload.
@@ -91,9 +92,11 @@ impl StorageBackend {
         blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     ) -> Self {
         let flags = self.org_feature_flags.clone();
+        let config_rows = self.config_rows.clone();
         Self::from_database(self.db.with_blob_store(blob_store))
             .with_knowledge_blob_store(self.knowledge_blob_store)
             .with_org_feature_flag_cache(flags)
+            .with_config_row_cache(config_rows)
     }
 
     /// The configured object-storage blob backend, if any. `None` for

@@ -354,17 +354,16 @@ impl Database {
         sessions.sort();
         sessions.dedup();
         let mut tx = self.pool.begin().await?;
+        // Create-or-lock in one statement: the no-op `DO UPDATE` row-locks an
+        // existing row (waiting out a concurrent creator, then locking what it
+        // committed), and a row this statement inserts is ours until commit.
+        // `DO NOTHING` plus a separate `FOR UPDATE` cost a round trip on every
+        // append; a CTE pairing them would miss a row another transaction
+        // committed while the INSERT waited, since both share one snapshot.
         sqlx::query(
             "INSERT INTO event_sequences (session_id, next_sequence, updated_at) \
              SELECT id, 1, NOW() FROM UNNEST($1::uuid[]) AS id ORDER BY id \
-             ON CONFLICT (session_id) DO NOTHING",
-        )
-        .bind(&sessions)
-        .execute(&mut *tx)
-        .await?;
-        sqlx::query(
-            "SELECT 1 FROM event_sequences WHERE session_id = ANY($1) \
-             ORDER BY session_id FOR UPDATE",
+             ON CONFLICT (session_id) DO UPDATE SET next_sequence = event_sequences.next_sequence",
         )
         .bind(&sessions)
         .execute(&mut *tx)

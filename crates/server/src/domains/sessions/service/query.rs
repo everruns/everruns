@@ -87,7 +87,7 @@ impl SessionService {
             None
         };
         let agent = match row.agent_id {
-            Some(agent_id) => self.db.get_agent(caller.org_id, agent_id).await?,
+            Some(agent_id) => self.db.get_agent_config(caller.org_id, agent_id).await?,
             None => None,
         };
         let mut session = Self::row_to_session(row.clone(), &caller.org_public_id, fallback);
@@ -127,7 +127,7 @@ impl SessionService {
                 .await?
             {
                 Some(agent) => Some(agent),
-                None => self.db.get_agent(org_id, agent_id).await?,
+                None => self.db.get_agent_config(org_id, agent_id).await?,
             };
             if let Some(model_id) = agent.and_then(|agent| agent.default_model_id) {
                 return Ok(Some(model_id));

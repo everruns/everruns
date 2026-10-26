@@ -139,7 +139,7 @@ impl NotificationService {
         }
 
         let agent = match session.agent_id {
-            Some(agent_id) => self.db.get_agent(candidate.org_id, agent_id).await?,
+            Some(agent_id) => self.db.get_agent_config(candidate.org_id, agent_id).await?,
             None => None,
         };
         let agent_name = agent.as_ref().map(|agent| {

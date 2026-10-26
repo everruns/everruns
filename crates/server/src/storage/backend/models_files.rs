@@ -48,7 +48,7 @@ impl StorageBackend {
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
         #[cfg(test)]
         self.record_session_list_lookup().await;
-        dispatch!(self, get_agent_capabilities, agent_id)
+        self.cached_agent_capabilities(agent_id).await
     }
 
     pub async fn get_agent_capabilities_by_agent_ids(
@@ -71,7 +71,7 @@ impl StorageBackend {
     ) -> Result<Vec<HarnessCapabilityRow>> {
         #[cfg(test)]
         self.record_session_list_lookup().await;
-        dispatch!(self, get_harness_capabilities, harness_id)
+        self.cached_harness_capabilities(harness_id).await
     }
 
     pub async fn get_harness_capabilities_by_harness_ids(

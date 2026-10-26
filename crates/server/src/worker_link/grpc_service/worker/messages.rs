@@ -72,7 +72,7 @@ impl WorkerServiceImpl {
 
         // Get agent with capabilities via domain query (optional)
         let mut agent = if let Some(agent_id) = session.agent_id {
-            crate::domains::agents::queries::get_by_public_id(
+            crate::domains::agents::queries::get_for_execution(
                 &self.db,
                 req.org_id,
                 &agent_id.to_string(),
