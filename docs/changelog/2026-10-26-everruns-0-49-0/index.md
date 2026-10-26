@@ -91,6 +91,7 @@ release: "0.49.0"
 - [Install the self-hosted Platform on Kubernetes with Helm](/changelog/2026-10-25-helm-chart/)
 - [Live event delivery recovers after a NATS restart](/changelog/2026-10-25-nats-stream-recovery/)
 - [Give a Daytona or E2B sandbox a desktop](/changelog/2026-10-25-sandbox-desktop/)
+- [Agents see the screenshots and images their tools return](/changelog/2026-10-26-tool-images-reach-model/)
 - [Sandboxes are disposable, their records are kept](/changelog/2026-10-25-sandbox-retention/)
 - [Edit GitHub-synced Agents from either side](/changelog/2026-10-25-two-way-agent-github-sync/)
 

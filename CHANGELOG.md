@@ -29,6 +29,7 @@ Changelog: https://everruns.com/docs/changelog/2026-10-26-everruns-0-49-0/
 
 ### What's Changed
 
+- fix(sandboxes): desktop e2e example, display up front, tool images reach the model ([#4923](https://github.com/everruns/everruns/pull/4923)) by [@chaliy](https://github.com/chaliy)
 - feat(sandboxes): desktop as a Sandbox Template option ([#4921](https://github.com/everruns/everruns/pull/4921)) by [@chaliy](https://github.com/chaliy)
 - fix(streaming): restore missing JetStream event streams ([#4918](https://github.com/everruns/everruns/pull/4918)) by [@chaliy](https://github.com/chaliy)
 - feat(agents): sync local source edits to GitHub ([#4919](https://github.com/everruns/everruns/pull/4919)) by [@chaliy](https://github.com/chaliy)
