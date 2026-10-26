@@ -7,9 +7,12 @@ import { DevChatNavRailPreview } from "@/app/dev/_components/dev-chat-nav-rail-p
 import {
   devCommands,
   devModels,
+  makeInputEvent,
+  makeOutputEvent,
   makePendingImages,
 } from "@/app/dev/_fixtures/chat-runtime-fixtures";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { getTextFromContent, getToolCallsFromContent } from "@/lib/api/types";
 import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
@@ -45,6 +48,38 @@ export default function DevChatComponentsPage() {
   const emptyToolResults = useMemo(() => new Map(), []);
   const emptyToolProgress = useMemo(() => new Map(), []);
   const emptyToolOutputs = useMemo(() => new Map(), []);
+  const automaticUpdateEvents = useMemo(() => {
+    const sessionId = "session-automatic-updates";
+    const wake = (id: string, sequence: number, text: string) =>
+      makeInputEvent({
+        id,
+        sequence,
+        sessionId,
+        text,
+        ts: `2026-10-26T02:2${sequence}:00Z`,
+        metadata: { everruns_origin: "task_wake" },
+      });
+    return [
+      wake(
+        "wake-done",
+        1,
+        'Task "Prepare closed-PR sandbox cleanup" (task_01abc) finished: succeeded.\n- summary: PROPOSAL READY, NOT ENABLED. All closed pull requests, seven days after closure. Keep workspaces paused while open. No deletion, publishing, or external messages.',
+      ),
+      makeOutputEvent({
+        id: "reply-done",
+        sequence: 2,
+        sessionId,
+        ts: "2026-10-26T02:22:08Z",
+        text: "Prepare closed-PR sandbox cleanup is ready as a proposal. Nothing is enabled yet.",
+      }),
+      wake(
+        "wake-ask",
+        3,
+        'Task "Pricing FAQ" (task_02def) is awaiting input: Which tone, plain or formal?',
+      ),
+      wake("wake-failed", 4, 'Task "Nightly digest" (task_03ghi) finished: failed.'),
+    ];
+  }, []);
 
   return (
     <DevPageShell
@@ -119,6 +154,31 @@ export default function DevChatComponentsPage() {
               </p>
               <NoIntelligenceMessage canManage variant="plain" />
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-3" data-testid="automatic-updates">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Automatic updates</h2>
+            <p className="text-sm text-muted-foreground">
+              A thread report is one folded line. Open it to read the report. A wake with nothing to
+              read is the line only.
+            </p>
+          </div>
+          <div className={chatSurfaceStyles.column}>
+            <ChatMessageList
+              events={automaticUpdateEvents}
+              chatEvents={automaticUpdateEvents}
+              sessionId="session-automatic-updates"
+              toolResultsMap={emptyToolResults}
+              toolProgressMap={emptyToolProgress}
+              toolOutputMap={emptyToolOutputs}
+              eventsLoading={false}
+              hasMoreEvents={false}
+              loadingOlderEvents={false}
+              getMessageText={(data) => getTextFromContent(data.message?.content ?? [])}
+              getToolCalls={(data) => getToolCallsFromContent(data.message?.content ?? [])}
+            />
           </div>
         </section>
 

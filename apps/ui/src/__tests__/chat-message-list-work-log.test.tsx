@@ -686,7 +686,7 @@ describe("ChatMessageList platform messages", () => {
     );
   }
 
-  it("shows an automatic update without the task id", () => {
+  it("folds an automatic update and keeps the task id out of the report", () => {
     renderMessages([
       {
         text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
@@ -695,8 +695,36 @@ describe("ChatMessageList platform messages", () => {
     ]);
     expect(screen.getByText("automatic_update")).toBeInTheDocument();
     expect(screen.getByText("task_update_done")).toBeInTheDocument();
+    expect(screen.queryByText("Found v0.44.0.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /automatic_update/ }));
+
     expect(screen.getByText("Found v0.44.0.")).toBeInTheDocument();
     expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+  });
+
+  it("leaves an automatic update with no report as a line", () => {
+    renderMessages([
+      {
+        text: 'Task "Draft" (task_1) finished: failed.',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.getByText("task_update_failed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /automatic_update/ })).not.toBeInTheDocument();
+  });
+
+  it("folds an automatic update it cannot read", () => {
+    renderMessages([
+      {
+        text: "Task exploded in a way the parser misses",
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.queryByText("Task exploded in a way the parser misses")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "automatic_update" }));
+    expect(screen.getByText("Task exploded in a way the parser misses")).toBeInTheDocument();
   });
 
   it("shows a coordinator brief without the worker's instructions", () => {
