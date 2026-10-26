@@ -33,9 +33,6 @@ const CACHE_TTL: Duration = Duration::from_secs(3600);
 /// Max cache entries. Each org+model combo is one entry.
 const CACHE_MAX_ENTRIES: u64 = 1_000;
 
-/// Sentinel UUID for default-model cache key (all zeros is unused by uuidv7).
-const DEFAULT_MODEL_SENTINEL: Uuid = Uuid::nil();
-
 mod environment;
 pub use environment::get_default_api_key_from_env;
 #[cfg(test)]
@@ -145,7 +142,7 @@ pub(crate) struct ResolvedRuntimeProviderConfig {
     pub request_options: everruns_contracts::provider::ProviderRequestOptions,
 }
 
-/// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
+/// Cache key: (org_id, model_uuid). Organization defaults select an identity before lookup.
 type CacheKey = (i64, Uuid);
 
 pub struct ProviderResolverService {
@@ -315,18 +312,14 @@ impl ProviderResolverService {
         Ok(result)
     }
 
-    /// Resolve the default model without provider credentials or endpoint details.
-    /// Cached under sentinel key (org_id, nil UUID).
+    /// Resolve the current organization binding, then reuse the per-model cache.
+    /// The binding must be read on every call: another replica can change it,
+    /// and caching a sentinel would keep the old default for up to an hour.
     pub async fn resolve_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let key = (org_id, DEFAULT_MODEL_SENTINEL);
-
-        if let Some(cached) = self.cache.get(&key).await {
-            return Ok(cached);
-        }
-
-        let result = self.resolve_default_model_uncached(org_id).await?;
-        self.cache.insert(key, result.clone()).await;
-        Ok(result)
+        let Some(row) = self.db.get_default_model(org_id).await? else {
+            return Ok(None);
+        };
+        self.resolve_model(org_id, row.id.uuid()).await
     }
 
     /// Resolve default credentials for a provider type (fail-closed).
@@ -554,37 +547,6 @@ impl ProviderResolverService {
         model_id: Uuid,
     ) -> Result<Option<ResolvedModel>> {
         let model_row = self.db.get_model(org_id, model_id).await?;
-
-        let model_row = match model_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        if crate::domains::models::catalog::service(model_row.provider_metadata.as_ref())
-            != ServiceKind::Chat
-        {
-            anyhow::bail!("Chat model required");
-        }
-        let provider_row = self
-            .db
-            .get_provider(org_id, model_row.provider_id.uuid())
-            .await?;
-
-        let provider_row = match provider_row {
-            Some(row) => row,
-            None => return Ok(None),
-        };
-
-        Ok(Some(ResolvedModel {
-            model_id: model_row.model_id,
-            provider_type: provider_row.provider_type.clone(),
-            provider_id: provider_row.id.to_string(),
-        }))
-    }
-
-    /// Uncached default model resolution.
-    async fn resolve_default_model_uncached(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_default_model(org_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,

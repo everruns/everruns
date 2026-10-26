@@ -82,6 +82,23 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             }
             Some(sol)
         }
+        "gpt-6.1-terra" => {
+            let mut terra = profile(
+                "GPT-6.1 Terra",
+                "gpt-6.1-terra",
+                "Fast visual reasoning, precise computer use, coding, and natural writing.",
+                "2026-10-26",
+                "2026-06-01",
+                [1.00, 5.00, 0.05],
+                efforts(&ALL_EFFORTS),
+            );
+            // The model page confirms tools/search and effort, but not the
+            // other GPT-6 tiers' phase, inline-update, or speed extensions.
+            terra.supports_phases = false;
+            terra.supported_parameters.clear();
+            terra.speed = None;
+            Some(terra)
+        }
         _ => None,
     }
 }

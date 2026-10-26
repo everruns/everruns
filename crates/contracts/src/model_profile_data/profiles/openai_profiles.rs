@@ -46,7 +46,7 @@ fn openai_embedding_profile(name: &str, family: &str, input_cost: f64) -> ModelP
 
 pub(super) fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" | "gpt-6.1-sol" => gpt6::profile_data(model_id),
+        "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" | "gpt-6.1-sol" | "gpt-6.1-terra" => gpt6::profile_data(model_id),
         "text-embedding-3-small" => Some(openai_embedding_profile(
             "Text Embedding 3 Small",
             "text-embedding-3-small",

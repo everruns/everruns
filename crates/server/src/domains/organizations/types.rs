@@ -19,6 +19,9 @@ pub struct OrganizationResponse {
     /// Default LLM model for the organization.
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+    #[schema(value_type = Option<String>)]
+    pub chat_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Optional small chat model, independent of the main chat and decision defaults.
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<everruns_contracts::typed_id::ModelId>,

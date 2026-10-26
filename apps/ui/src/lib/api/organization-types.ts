@@ -1,6 +1,8 @@
 /** Full organization details (from API) */
 export interface Organization {
   small_model_id?: string | null;
+  /** Independent model for the built-in Everruns Chat; null inherits the org default. */
+  chat_model_id?: string | null;
   id: string;
   name: string;
   default_model_id: string | null;
@@ -22,6 +24,8 @@ export interface Organization {
 /** Request to update an organization */
 export interface UpdateOrganizationRequest {
   small_model_id?: string | null;
+  /** Independent model for the built-in Everruns Chat; null inherits the org default. */
+  chat_model_id?: string | null;
   name?: string;
   default_model_id?: string | null;
   default_harness_id?: string;

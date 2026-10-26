@@ -1178,3 +1178,87 @@ async fn system_decisions_follow_the_org_choice_and_never_fall_back() {
         SystemDecisionModel::Deployment
     ));
 }
+#[tokio::test]
+async fn org_default_selection_changes_reach_other_replicas_without_cache_flush() {
+    let db = Arc::new(StorageBackend::test_database());
+    let resolver = ProviderResolverService::new(db.clone(), None);
+    let org_id = DEFAULT_ORG_ID;
+
+    let provider_row = db
+        .create_provider(
+            org_id,
+            CreateProviderRow {
+                name: "OpenAI".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let model = db
+        .create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider_row.id,
+                model_id: "gpt-5.2".to_string(),
+                display_name: "GPT-5.2".to_string(),
+                capabilities: vec![],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Set org default model
+    db.upsert_organization_settings(org_id, Some(model.id.uuid()))
+        .await
+        .unwrap();
+
+    // First call: populates cache
+    let result = resolver
+        .resolve_default_model(DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().model_id, "gpt-5.2");
+
+    resolver.cache.run_pending_tasks().await;
+    assert_eq!(resolver.cache_entry_count(), 1);
+
+    // An update committed by another replica must change the selected identity,
+    // while the resolved-model cache can still retain entries for both models.
+    let next = db
+        .create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider_row.id,
+                model_id: "gpt-6.1-terra".into(),
+                display_name: "Terra".into(),
+                capabilities: vec![],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    db.upsert_organization_settings(org_id, Some(next.id.uuid()))
+        .await
+        .unwrap();
+    assert_eq!(
+        resolver
+            .resolve_default_model(org_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .model_id,
+        "gpt-6.1-terra"
+    );
+}
