@@ -5,6 +5,7 @@ date: 2026-10-25
 kind: feature
 significance: notable
 products: [platform]
+release: "0.49.0"
 surfaces: [operations]
 links:
   docs: [/getting-started/kubernetes/]

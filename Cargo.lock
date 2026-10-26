@@ -2749,7 +2749,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2788,7 +2788,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2815,7 +2815,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capabilities"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-server-lf",
  "anyhow",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2886,7 +2886,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli-contract"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "clap",
  "serde",
@@ -2925,7 +2925,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2988,7 +2988,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3045,7 +3045,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-docs-snippets"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "axum",
  "everruns",
@@ -3062,7 +3062,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3093,7 +3093,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3210,7 +3210,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3271,7 +3271,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-experimental"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3288,7 +3288,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "chrono",
  "everruns-contracts",
@@ -3308,7 +3308,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3402,7 +3402,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-lf",
  "a2a-server-lf",
@@ -3439,7 +3439,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-agentcore"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3458,14 +3458,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-build"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "everruns-serve-celld"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3481,7 +3481,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-serve-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3490,7 +3490,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3589,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server-macros"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3607,7 +3607,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3630,7 +3630,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3647,7 +3647,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.48.0"
+version = "0.49.0"
 dependencies = [
  "anyhow",
  "async-trait",

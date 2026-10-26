@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: fix
 significance: notable
 products: [platform, framework]
+release: "0.49.0"
 surfaces: [operations, code]
 links:
   docs: [/observability/opentelemetry/, /framework/observability/]

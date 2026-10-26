@@ -5,6 +5,7 @@ date: 2026-10-24
 kind: improvement
 significance: minor
 products: [platform]
+release: "0.49.0"
 surfaces: [ui]
 links:
   docs: [/features/ui/, /how-to/define-agents-as-files/]

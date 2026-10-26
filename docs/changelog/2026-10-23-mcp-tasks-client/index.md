@@ -5,6 +5,7 @@ date: 2026-10-23
 kind: feature
 significance: notable
 products: [platform, cloud, framework]
+release: "0.49.0"
 surfaces: [agent]
 links:
   docs: [/features/mcp/]

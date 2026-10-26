@@ -5,6 +5,7 @@ date: 2026-10-17
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api, agent]
 links:
   docs: [/capabilities/automatic-session-titles/, /providers/]

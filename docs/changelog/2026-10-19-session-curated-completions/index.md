@@ -5,6 +5,7 @@ date: 2026-10-19
 kind: feature
 significance: minor
 products: [framework]
+release: "0.49.0"
 surfaces: [code]
 links:
   docs: [/framework/session-controls/]

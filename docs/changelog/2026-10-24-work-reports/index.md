@@ -5,6 +5,7 @@ date: 2026-10-24
 kind: feature
 significance: major
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api]
 links:
   docs: [/features/work-reports/]

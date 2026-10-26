@@ -5,6 +5,7 @@ date: 2026-10-25
 kind: feature
 significance: major
 products: [platform]
+release: "0.49.0"
 surfaces: [cli]
 links:
   docs: [/getting-started/run-locally/]

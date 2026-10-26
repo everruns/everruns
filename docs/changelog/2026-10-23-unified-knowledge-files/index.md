@@ -5,6 +5,7 @@ date: 2026-10-23
 kind: feature
 significance: notable
 products: [platform]
+release: "0.49.0"
 surfaces: [ui, api, agent, cli]
 links:
   docs: [/capabilities/knowledge/]

@@ -5,6 +5,7 @@ date: 2026-10-25
 kind: fix
 significance: minor
 products: [platform]
+release: "0.49.0"
 surfaces: [api, ui]
 links:
   prs: [everruns/everruns#4918]

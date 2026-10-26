@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api, agent]
 links:
   docs: [/features/channels/, /how-to/call-your-agent-from-code/]

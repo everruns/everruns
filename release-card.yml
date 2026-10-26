@@ -1,22 +1,22 @@
-version: 0.48.0
-date: 2026-10-13
+version: 0.49.0
+date: 2026-10-26
 headline:
-  - Agents in Slack,
-  - Stable Agent API.
+  - Docker, Helm,
+  - Work reports.
 summary:
-  - Durable actors replace the workflow model.
-  - Web search tools with citations.
-  - Agents in Slack take DMs and files.
+  - everruns docker up runs the Platform locally.
+  - Agent source syncs with GitHub both ways.
+  - MCP Tasks and large MCP catalogs.
 highlights:
-  - title: Durable actor model
-    description: Sessions run as durable actors instead of workflows and survive worker failures.
-    source: "#4629"
-  - title: Stable Agent API
-    description: "Call one agent from code with a key: stream replies, answer questions, approve tools."
-    source: "#4527"
-  - title: Web search tools
-    description: One web_search tool on Brave, Parallel, Cloudflare or native search, with citations.
-    source: "#4551"
-  - title: Agents in Slack
-    description: One-click Slack apps answer DMs, receive files and post scheduled turns.
-    source: "#4597"
+  - title: Local setup and Helm
+    description: everruns docker up runs the Platform locally; a Helm chart installs it on Kubernetes.
+    source: "#4904"
+  - title: Work reports
+    description: Agents report progress and results in chat, the thread board and the API.
+    source: "#4885"
+  - title: Scoped credentials
+    description: Credentials shared across users, agents and sessions, with secure HTTP capture.
+    source: "#4828"
+  - title: GitHub Agent sync
+    description: Agent source syncs from GitHub, and edits in Everruns commit back.
+    source: "#4919"
