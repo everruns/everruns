@@ -2,6 +2,8 @@
 
 ## 2026-10-26
 
+- Bound server test compilation to avoid concurrent heavy codegen on hosted runners; retained the full selected test inventory and execution concurrency. See [CI Build Time](project/ci-build-time.md).
+
 - Added bounded, read-only organization catalog discovery to [User MCP servers](integrations/user-mcp-servers.md), preserving verified initiating-person management authorization and removing credentials from display endpoints.
 
 * **Shared Chat review.** Adoption uses shared draft diffs, revision-guarded saves,

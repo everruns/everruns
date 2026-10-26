@@ -36,7 +36,11 @@ def discover(lines, package):
 
 def compile_tests(command, package, targets=None, artifacts=None):
     start = time.monotonic()
-    with subprocess.Popen(command, stdout=subprocess.PIPE, text=True) as process:
+    # The server's test-mode library and integration targets each need heavy
+    # codegen. Keep them from competing for hosted runner memory; retain the
+    # selected targets, build profile, cache inputs and test concurrency.
+    env = dict(os.environ, CARGO_BUILD_JOBS='1')
+    with subprocess.Popen(command, stdout=subprocess.PIPE, text=True, env=env) as process:
         def lines():
             for line in process.stdout:
                 if artifacts is not None:
