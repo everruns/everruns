@@ -18222,6 +18222,68 @@
         }
       }
     },
+    "/v1/models/selection": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically apply reviewed enablement changes",
+        "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+        "operationId": "apply_model_selection",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/models/selection/undo": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically undo selected reviewed model enablement changes",
+        "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+        "operationId": "undo_model_selection",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/models/{id}": {
       "get": {
         "tags": [
@@ -20051,6 +20113,60 @@
         ],
         "responses": {
           "204": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Rename connection",
+        "description": "Rename an organization account without replacing credentials.",
+        "operationId": "rename_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameOrganizationConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                }
+              }
+            }
+          }
         },
         "x-docs": {
           "audience": "public",
@@ -42754,6 +42870,11 @@
             },
             "description": "Personal access tokens owned by the user (no sensitive secrets — just metadata)."
           },
+          "profile_history": {
+            "type": "array",
+            "items": {},
+            "description": "Private profile change records owned by the exporting account."
+          },
           "user": {
             "$ref": "#/components/schemas/ExportedUserProfile",
             "description": "Profile data for the exporting user."
@@ -53412,6 +53533,39 @@
           }
         }
       },
+      "ModelSelectionReceipt": {
+        "type": "object",
+        "required": [
+          "id",
+          "from_revision",
+          "revision",
+          "before",
+          "after",
+          "label"
+        ],
+        "properties": {
+          "after": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "boolean"
+          },
+          "from_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ModelSource": {
         "type": "string",
         "description": "How the model was added to the system",
@@ -58294,6 +58448,17 @@
           }
         }
       },
+      "RenameOrganizationConnectionRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "ReportColumn": {
         "type": "object",
         "description": "One column header in a `ReportResult`. The ordered `columns` list\ndeclares the key set of each row in `rows`.",
@@ -59016,6 +59181,14 @@
             "type": "integer",
             "format": "int64",
             "description": "The revision brought back."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The committed inverse's revision, for correlating subsequent reads."
           },
           "warnings": {
             "type": "array",

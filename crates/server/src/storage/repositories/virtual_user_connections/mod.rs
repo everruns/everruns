@@ -278,6 +278,29 @@ impl Database {
         .await?)
     }
 
+    /// Rename metadata without reading or replacing the encrypted credential.
+    pub async fn rename_organization_connection(
+        &self,
+        org_id: i64,
+        connection_id: uuid::Uuid,
+        name: &str,
+    ) -> Result<Option<VirtualUserConnectionRow>> {
+        Ok(sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
+            r#"
+            UPDATE virtual_user_connections c SET name = $3, updated_at = NOW()
+            WHERE c.virtual_user_id IN (
+                SELECT id FROM virtual_users WHERE org_id = $1 AND usage = 'organization'
+            ) AND c.owner_scope = 'organization' AND c.provider <> 'github' AND c.id = $2
+            RETURNING {VirtualUserConnectionRow}
+        "#
+        ))
+        .bind(org_id)
+        .bind(connection_id)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     pub async fn update_organization_connection(
         &self,
         org_id: i64,

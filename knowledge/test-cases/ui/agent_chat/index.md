@@ -13,3 +13,5 @@
 * [TC010: Chat stages settings before Save](TC010_staged_settings.md) - Verify staged settings, explicit Save/Discard, conflicts, permissions and legacy autosave.
 * [TC011: Secondary forms and protected dialogs](TC011_secondary_forms.md) - Verify secondary drafts, refresh preservation, credential boundaries and dialog lifecycle.
 * [TC012: Operational page context](TC012_operational_context.md) - Verify visible status projections, platform authorization and manual action boundaries.
+
+* [TC013: Shared saved review and guarded Undo](TC013_shared_saved_review.md) - Verify diffs, saved inverses, concurrent edits, atomic batches and private account history.

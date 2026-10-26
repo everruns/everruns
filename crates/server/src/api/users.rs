@@ -16,13 +16,12 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
 
-use super::common::ListResponse;
+use super::common::{ApiOptionExt, ApiResultExt, ListResponse};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use crate::auth::middleware::{AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
-use crate::storage::UpdateUser;
 
 pub use crate::auth::middleware::ORG_COOKIE_NAME;
 
@@ -156,6 +155,9 @@ pub struct ExportedPersonalAccessToken {
 /// Full user data export response (GDPR compliance)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportUserDataResponse {
+    /// Private profile change records owned by the exporting account.
+    #[serde(default)]
+    pub profile_history: Vec<serde_json::Value>,
     /// Profile data for the exporting user.
     pub user: ExportedUserProfile,
     /// All organizations the user is a member of, plus their role in each.
@@ -248,26 +250,20 @@ pub async fn update_profile(
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
-) -> Result<Json<ProfileResponse>, StatusCode> {
-    let name = req.name.trim().to_string();
-    if name.is_empty() || name.len() > 255 {
-        return Err(StatusCode::BAD_REQUEST);
+) -> super::common::ApiResult<ProfileResponse> {
+    use crate::domains::common::Command;
+    let profile = crate::domains::users::profile::UpdateAccountProfile {
+        id: auth.id.to_string(),
+        name: req.name,
     }
-
-    let input = UpdateUser {
-        name: Some(name),
-        ..Default::default()
-    };
-
+    .run(&state.ctx(&org))
+    .await?;
     let row = state
         .db
-        .update_user(auth.id, input)
+        .get_user(auth.id)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to update user profile: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .log_internal_error_json("read own profile")?
+        .ok_or_not_found_json("Profile")?;
 
     let mut builder =
         AuditEvent::management(ManagementAction::SettingsUpdated, org.org_id, Some(auth.id))
@@ -281,7 +277,7 @@ pub async fn update_profile(
     Ok(Json(ProfileResponse {
         id: row.id.to_string(),
         email: row.email,
-        name: row.name,
+        name: profile.name,
         avatar_url: row.avatar_url,
     }))
 }

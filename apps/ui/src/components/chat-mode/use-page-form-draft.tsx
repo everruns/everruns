@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { usePageChatMode } from "./chat-mode-context";
 import { createFormDraftController, type FormDraftState } from "./form-draft-controller";
 import type { FieldDiff } from "@/lib/api/types";
+import { PageChangeDiff } from "./page-change-diff";
+import { usePageSavedChangeGuard } from "./page-change-review-provider";
 
 export const draftText = z.string().max(256 * 1024);
 
@@ -29,6 +31,15 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
   const schema = options.schema;
   const enabled = options.enabled ?? true;
   const identity = useMemo(() => crypto.randomUUID(), [scope, schema, adopted, enabled]);
+  const savedGuard = usePageSavedChangeGuard({
+    id: identity,
+    entityType,
+    entityId: options.entityId,
+    formId: options.formId,
+    dirty: options.dirty,
+    baseline: options.baseline,
+    enabled: adopted && enabled,
+  });
   const [changes, setChanges] = useState<{ scope: string; baseline: string; fields: FieldDiff[] }>({
     scope,
     baseline: options.baseline,
@@ -39,7 +50,13 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
   const [observedDirty, setObservedDirty] = useState(options.dirty);
   const [editingBaseline, setEditingBaseline] = useState(options.baseline);
   if (!options.dirty && editingBaseline !== options.baseline) setEditingBaseline(options.baseline);
-  const blocked = adopted && options.dirty && editingBaseline !== options.baseline;
+  const blocked =
+    adopted &&
+    options.dirty &&
+    (editingBaseline !== options.baseline ||
+      savedGuard.conflict ||
+      savedGuard.loading ||
+      !!savedGuard.error);
   if (observedDirty !== options.dirty) {
     setObservedDirty(options.dirty);
     if (!options.dirty && appliedValues.current !== JSON.stringify(options.values)) {
@@ -133,20 +150,27 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
   ]);
   const marks =
     changes.scope === scope && changes.baseline === options.baseline ? changes.fields : [];
-  function undo() {
+  function undo(field?: string) {
     try {
       const value = adapter.read(adapter.describe().binding);
+      const selected = marks.filter((mark) => !field || mark.field === field);
       if (
-        marks.some((mark) => JSON.stringify(value.values[mark.field]) !== JSON.stringify(mark.to))
+        selected.some(
+          (mark) => JSON.stringify(value.values[mark.field]) !== JSON.stringify(mark.to),
+        )
       )
         throw new Error("You edited a Chat-changed field. Undo would overwrite your edit.");
-      if (marks.length)
+      if (selected.length)
         adapter.patch(
           value.binding,
           value.revision,
-          Object.fromEntries(marks.map((mark) => [mark.field, mark.from])),
+          Object.fromEntries(selected.map((mark) => [mark.field, mark.from])),
         );
-      setChanges({ scope, baseline: options.baseline, fields: [] });
+      setChanges({
+        scope,
+        baseline: options.baseline,
+        fields: marks.filter((mark) => !selected.includes(mark)),
+      });
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not undo the draft edit.");
@@ -165,7 +189,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
               : "Review these changes, then save to apply them."}
           </span>
           {!!marks.length && (
-            <Button type="button" size="sm" variant="ghost" onClick={undo}>
+            <Button type="button" size="sm" variant="ghost" onClick={() => undo()}>
               Undo
             </Button>
           )}
@@ -185,6 +209,7 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
             Changed: {marks.map((mark) => mark.field.replaceAll("_", " ")).join(", ")}
           </p>
         )}
+        <PageChangeDiff fields={marks} undo={undo} canUndo={!blocked && options.writable} />
         {error && (
           <p role="alert" className="mt-2 text-destructive">
             {error}
@@ -197,6 +222,8 @@ export function usePageFormDraft<T extends Record<string, unknown>>(
     adapter,
     notice,
     blocked,
+    fields: marks,
+    undo,
     clear: () => setChanges({ scope, baseline: options.baseline, fields: [] }),
   };
 }

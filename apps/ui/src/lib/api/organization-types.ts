@@ -24,8 +24,8 @@ export interface UpdateOrganizationRequest {
   small_model_id?: string | null;
   name?: string;
   default_model_id?: string | null;
-  default_harness_id?: string;
-  base_harness_id?: string;
+  default_harness_id?: string | null;
+  base_harness_id?: string | null;
   /** Default provider per service kind (EVE-569); replaces the whole map. */
   default_provider_per_service?: Record<string, string>;
   system_decisions?: SystemDecisionsSource;

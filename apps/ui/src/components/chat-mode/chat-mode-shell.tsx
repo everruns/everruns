@@ -1,4 +1,5 @@
 "use client";
+import { PageChangeReviewProvider, SavedPageChanges } from "./page-change-review-provider";
 
 import {
   useCallback,
@@ -263,45 +264,48 @@ function EnabledShell({
           </div>
         </section>
         <PageViewRegistryContext.Provider value={viewRegistry}>
-          <section
-            ref={pageContainerRef}
-            tabIndex={-1}
-            className="chat-mode-page relative flex min-h-0 min-w-0 flex-col outline-none"
-            aria-label="Current page"
-          >
-            {open && (
-              <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
-                <Eye className="size-3.5 shrink-0" />
-                <span className="truncate">Showing this page to the chat</span>
-                <PageNavigationHint label="Search pages" description="Find a page or resource.">
-                  <button
-                    type="button"
-                    aria-label="Search pages"
-                    className="ml-auto p-1 hover:bg-muted"
-                    onClick={() => setSearchOpen(true)}
+          <PageChangeReviewProvider>
+            <section
+              ref={pageContainerRef}
+              tabIndex={-1}
+              className="chat-mode-page relative flex min-h-0 min-w-0 flex-col outline-none"
+              aria-label="Current page"
+            >
+              {open && (
+                <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
+                  <Eye className="size-3.5 shrink-0" />
+                  <span className="truncate">Showing this page to the chat</span>
+                  <PageNavigationHint label="Search pages" description="Find a page or resource.">
+                    <button
+                      type="button"
+                      aria-label="Search pages"
+                      className="ml-auto p-1 hover:bg-muted"
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <Search className="size-3.5" />
+                    </button>
+                  </PageNavigationHint>
+                  <PageNavigationHint
+                    label="Open full page"
+                    description="Hide Chat and expand the current page."
                   >
-                    <Search className="size-3.5" />
-                  </button>
-                </PageNavigationHint>
-                <PageNavigationHint
-                  label="Open full page"
-                  description="Hide Chat and expand the current page."
-                >
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Open full page"
-                    onClick={() => changeOpen(false)}
-                  >
-                    <Maximize2 className="size-3.5" />
-                  </Button>
-                </PageNavigationHint>
-              </div>
-            )}
-            <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
-              {children}
-            </main>
-          </section>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Open full page"
+                      onClick={() => changeOpen(false)}
+                    >
+                      <Maximize2 className="size-3.5" />
+                    </Button>
+                  </PageNavigationHint>
+                </div>
+              )}
+              <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
+                {children}
+              </main>
+              <SavedPageChanges />
+            </section>
+          </PageChangeReviewProvider>
         </PageViewRegistryContext.Provider>
         <IconRail open={open} navigation={navigation} />
       </div>

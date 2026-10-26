@@ -137,16 +137,31 @@ acknowledgement and the reason apply as for a hand-written update, and it
 records as `restored` with the revision it brought back. A field the update
 cannot set back is named in a warning.
 
-Agent [Chat mode](../ui/chat-mode.md) also uses guarded, selected-field restores.
-These require an expected revision and lock the Agent before checking it;
-Agent definition updates take the same row lock. The inverse and its nested
-update/history run in one transaction. A stale revision or selected field the
-update cannot restore fails without committing any of the inverse. The ordinary
-full-history restore retains its existing warning behavior.
+[Chat mode](../ui/chat-mode.md) uses guarded, selected-field restores across
+supported editable resources. Ordinary updates and restores share a canonical
+resource lock; reviewed saves additionally carry the browser's expected revision.
+Successful HTTP writes return only the identity and exact committed revision,
+never snapshots or credentials in headers. Existing entities without history get
+an initial-state snapshot only when their first mutation succeeds. This keeps the
+first edit reversible without recording failed attempts.
+
+The inverse and nested update/history run in one command transaction. PostgreSQL
+schedule configuration joins that transaction on the same pool; a store that
+cannot join is refused before guarded Undo. Remote MCP subscription changes retain
+their direct workflow. A stale revision or selected field the normal update cannot
+restore fails without committing the inverse. Model-selection batches sort resource
+locks and commit all child updates/history together; their inverse checks every
+child revision. Ordinary full-history restore retains its warning behavior.
+
+Account profile revisions live in an owner-only global journal, excluded from
+organization history and manager notes. An organization role cannot grant access
+to another account's revisions. Account export includes that journal and account
+deletion erases it. Organization account names and Sandbox Template metadata keep
+credential and execution payloads out of their snapshots.
 
 Secrets enter history only as markers under `$secrets`: set or not, plus an
 HMAC fingerprint keyed from the primary encryption key, so a leaked row reveals
-only "changed or not". Restore never sends secret-bearing fields, keeps current
+only "changed or not". Restore never sends historical secret-bearing fields, keeps current
 values and warns when a fingerprint differs: bringing an old key back would
 resurrect a credential someone rotated on purpose, and storing ciphertext would
 make history a second secret store (TM-API-030).
@@ -219,9 +234,9 @@ agent, so a pinned configuration is one restore away. Fork lineage stays.
   recorded.
 - Restoring a deleted entity is not supported, and `agents copy --revision N`
   is not built: copying a past state means restoring it first.
-- The UI menu is on nine detail pages (agent, harness, skill, provider,
-  knowledge index, memory, observer, eval, virtual user); other kinds use the
-  CLI and API. Only the agent page has the reason field and the notes hint.
+- The normal entity menu is on the existing detail pages. Adoption also offers
+  shared History entrypoints for the active reviewed page and retained receipts.
+  Protected actions and create forms do not acquire destructive inverse actions.
 - Open: whether `agents export` and `agents copy` should carry context, whether
   high-churn kinds need a history cap, and whether Platform Chat's memory notes
   about an entity belong in its context.

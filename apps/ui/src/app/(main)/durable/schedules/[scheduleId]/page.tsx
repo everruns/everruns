@@ -252,19 +252,27 @@ function EditScheduleDialog({
     const request: UpdateScheduleRequest = {};
 
     if (description !== (schedule.description || "")) {
-      request.description = description || undefined;
+      request.description = description || (chat.adopted ? null : undefined);
     }
     if (cronExpression !== schedule.cron_expression) {
       request.cron_expression = cronExpression;
     }
     if (maxConcurrent !== (schedule.max_concurrent?.toString() || "")) {
-      request.max_concurrent = maxConcurrent ? parseInt(maxConcurrent, 10) : undefined;
+      request.max_concurrent = maxConcurrent
+        ? parseInt(maxConcurrent, 10)
+        : chat.adopted
+          ? null
+          : undefined;
     }
     if (catchUpMissed !== schedule.catch_up_missed) {
       request.catch_up_missed = catchUpMissed;
     }
     if (maxCatchUp !== (schedule.max_catch_up?.toString() || "")) {
-      request.max_catch_up = maxCatchUp ? parseInt(maxCatchUp, 10) : undefined;
+      request.max_catch_up = maxCatchUp
+        ? parseInt(maxCatchUp, 10)
+        : chat.adopted
+          ? null
+          : undefined;
     }
 
     try {

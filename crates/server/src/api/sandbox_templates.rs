@@ -328,6 +328,17 @@ pub async fn revise_sandbox_template(
         |error| ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY),
     )?;
     validate_organization_connection(&state, org.org_id, &request.spec).await?;
+    let review = crate::domains::change_history::rest::RestChange::begin(
+        state.db.clone(),
+        Caller::from(&org),
+        "revise_sandbox_template",
+        crate::domains::change_history::EntityKind::SandboxTemplate,
+        crate::domains::change_history::ChangeAction::Updated,
+        Some(&sandbox_template_id.to_string()),
+        &["display_name", "description"],
+    )
+    .await
+    .map_err(<(StatusCode, Json<ErrorResponse>)>::from)?;
     let current = state
         .db
         .get_sandbox_template(org.org_id, sandbox_template_id)
@@ -340,23 +351,23 @@ pub async fn revise_sandbox_template(
                 .into_response(StatusCode::CONFLICT),
         );
     }
-    Ok(Json(
-        state
-            .db
-            .revise_sandbox_template(
-                org.org_id,
-                sandbox_template_id,
-                &request.spec,
-                request.display_name.as_deref(),
-                request
-                    .description
-                    .as_ref()
-                    .map(|description| description.as_deref()),
-            )
-            .await
-            .log_internal_error_json("revise Sandbox Template")?
-            .ok_or_not_found_json("Sandbox Template")?,
-    ))
+    let updated = state
+        .db
+        .revise_sandbox_template(
+            org.org_id,
+            sandbox_template_id,
+            &request.spec,
+            request.display_name.as_deref(),
+            request
+                .description
+                .as_ref()
+                .map(|description| description.as_deref()),
+        )
+        .await
+        .log_internal_error_json("revise Sandbox Template")?
+        .ok_or_not_found_json("Sandbox Template")?;
+    review.finish(&sandbox_template_id.to_string()).await;
+    Ok(Json(updated))
 }
 
 #[utoipa::path(description = "Archive a user-managed Sandbox Template without changing pinned Sessions.", delete, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "sandbox-templates")]

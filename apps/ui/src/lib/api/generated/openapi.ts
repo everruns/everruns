@@ -4525,6 +4525,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/models/selection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically apply reviewed enablement changes
+     * @description Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.
+     */
+    post: operations["apply_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/models/selection/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Atomically undo selected reviewed model enablement changes
+     * @description Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.
+     */
+    post: operations["undo_model_selection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/models/{id}": {
     parameters: {
       query?: never;
@@ -5020,7 +5060,11 @@ export interface paths {
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Rename connection
+     * @description Rename an organization account without replacing credentials.
+     */
+    patch: operations["rename_connection"];
     trace?: never;
   };
   "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
@@ -14160,6 +14204,8 @@ export interface components {
       organizations: components["schemas"]["ExportedOrganization"][];
       /** @description Personal access tokens owned by the user (no sensitive secrets — just metadata). */
       personal_access_tokens: components["schemas"]["ExportedPersonalAccessToken"][];
+      /** @description Private profile change records owned by the exporting account. */
+      profile_history?: unknown[];
       /** @description Profile data for the exporting user. */
       user: components["schemas"]["ExportedUserProfile"];
     };
@@ -19973,6 +20019,16 @@ export interface components {
       source: string;
       vendor?: components["schemas"]["ModelVendor"] | null;
     };
+    ModelSelectionReceipt: {
+      after: boolean;
+      before: boolean;
+      /** Format: int64 */
+      from_revision: number;
+      id: string;
+      label: string;
+      /** Format: int64 */
+      revision: number;
+    };
     /**
      * @description How the model was added to the system
      * @example predefined
@@ -22900,6 +22956,9 @@ export interface components {
        */
       redact_content?: boolean;
     };
+    RenameOrganizationConnectionRequest: {
+      name: string;
+    };
     /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
      *     declares the key set of each row in `rows`.
@@ -23378,6 +23437,11 @@ export interface components {
        * @description The revision brought back.
        */
       restored_revision: number;
+      /**
+       * Format: int64
+       * @description The committed inverse's revision, for correlating subsequent reads.
+       */
+      revision?: number | null;
       /** @description Secrets kept at their current value that differ from the revision. */
       warnings: string[];
     };
@@ -43329,6 +43393,46 @@ export interface operations {
       };
     };
   };
+  apply_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
+  undo_model_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelSelectionReceipt"][];
+        };
+      };
+    };
+  };
   get_model: {
     parameters: {
       query?: never;
@@ -44507,6 +44611,32 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  rename_connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        org: string;
+        connection_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RenameOrganizationConnectionRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationConnectionResponse"];
+        };
       };
     };
   };

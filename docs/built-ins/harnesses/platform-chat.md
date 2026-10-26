@@ -41,8 +41,8 @@ this form; sandbox policy uses its dedicated editor.
 
 For separately requested saved-resource operations, Platform Chat still uses
 platform commands. Page context does not disable those operations, and a failed
-form edit is never permission to bypass review by saving directly. Agent saves attributed to the conversation receive persisted-change
-markers and **Undo all**. That Undo creates a history entry and checks the saved
+form edit is never permission to bypass review by saving directly. Supported resource saves attributed to the conversation receive saved-change
+review and **Undo all**. That Undo creates a history entry and checks the saved
 revision; unsupported inverses fail without saving. If a saved definition changes
 while your draft is dirty, the page keeps the draft and blocks Save until you
 discard it and review the latest definition.
@@ -63,7 +63,17 @@ choices and Playground setup. Connection credentials, approvals, financial actio
 and operational buttons retain their normal manual controls. Operational context
 includes bounded status rows and the current Monitoring view. Chat reports when a
 page or field is read-only; it does not work around that through a server write.
-Saved-change markers and inverse **Undo all** remain specific to Agent definitions.
+Supported existing-resource editors share saved **Before/After** review,
+field-level **Undo**, **Undo all** and **History**. Save checks the version you
+started editing; Undo refuses to overwrite newer changes. Reviews follow you
+between pages in the same organization. Model selections save and undo as one
+batch. Account and Sandbox Template metadata inverses preserve current credentials
+and execution settings. Profile history is private to its owner.
+
+New-resource forms still require Create. Undo does not delete newly created
+resources or reverse invitations, payments, issued tokens or queued tasks.
+Protected values keep their manual controls. An inverse that no longer passes
+validation stays visible with an error for review.
 Chat mode is independent of the **Chat threads** opt-in.
 
 ## Platform access and memory

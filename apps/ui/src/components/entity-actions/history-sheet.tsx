@@ -15,6 +15,7 @@
 // See knowledge/execution/change-reasons-and-manager-context.md (UI).
 
 import { useMemo, useState } from "react";
+import { HistoryResourceKind } from "@/hooks/history-resource-kind";
 import Link from "next/link";
 import { ArrowLeft, KeyRound, RotateCcw } from "lucide-react";
 import { ChangeReasonField } from "@/components/entity-actions/change-reason-field";
@@ -51,7 +52,7 @@ import { entityKindLabel, type EntityKind } from "@/components/entity-actions/en
 
 interface HistorySheetProps {
   entityRef: string;
-  kind: EntityKind;
+  kind: EntityKind | (string & {});
   entityName: string;
   /** Managers may restore; readers only look. */
   canRestore: boolean;
@@ -60,6 +61,7 @@ interface HistorySheetProps {
 }
 
 const ACTION_LABELS: Record<string, string> = {
+  baseline: "Initial state recorded",
   created: "Created",
   updated: "Updated",
   deleted: "Deleted",
@@ -90,7 +92,14 @@ const SURFACE_LABELS: Record<string, string> = {
   internal: "Internal",
 };
 
-export function HistorySheet({
+export function HistorySheet(props: HistorySheetProps) {
+  return (
+    <HistoryResourceKind.Provider value={props.kind}>
+      <HistorySheetContents {...props} />
+    </HistoryResourceKind.Provider>
+  );
+}
+function HistorySheetContents({
   entityRef,
   kind,
   entityName,
@@ -119,7 +128,7 @@ export function HistorySheet({
           <DrawerTitle>History</DrawerTitle>
           <DrawerDescription>
             Changes to {entityName}, newest first. Open one to compare it with the current{" "}
-            {entityKindLabel(kind)}.
+            {entityKindLabel(kind as EntityKind) ?? kind.replaceAll("_", " ")}.
           </DrawerDescription>
         </DrawerHeader>
         <div className="flex-1 p-5">

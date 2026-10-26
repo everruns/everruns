@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from "react";
 import { z } from "zod";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
 import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { Badge } from "@/components/ui/badge";
@@ -208,7 +209,7 @@ export function ModelSelectionDrawer({
   mode: "enable" | "edit";
   recommend: boolean;
   showProvider?: boolean;
-  onApply: (selected: Set<string>) => void;
+  onApply: (selected: Set<string>, reviewedModels: ModelWithProvider[]) => void;
   applying: boolean;
   error?: string | null;
 }) {
@@ -253,13 +254,16 @@ function ModelSelectionBody({
   mode: "enable" | "edit";
   recommend: boolean;
   showProvider?: boolean;
-  onApply: (selected: Set<string>) => void;
+  onApply: (selected: Set<string>, reviewedModels: ModelWithProvider[]) => void;
   onCancel: () => void;
   applying: boolean;
   error?: string | null;
 }) {
+  const adopted = !!usePageChatMode();
+  const [reviewedModels, setReviewedModels] = useState(() => models.map((model) => ({ ...model })));
+  const displayedModels = adopted ? reviewedModels : models;
   const [selected, setSelected] = useState(() => initialSelection(models, { recommend }));
-  const choices = JSON.stringify(models.map((model) => model.id).sort());
+  const choices = JSON.stringify(displayedModels.map((model) => model.id).sort());
   const schema = useMemo(() => {
     const ids = new Set<string>(JSON.parse(choices));
     return z.strictObject({
@@ -273,7 +277,10 @@ function ModelSelectionBody({
     open: true,
     values: [...selected].sort(),
     saved: [...initialSelection(models, { recommend })].sort(),
-    apply: (ids) => setSelected(new Set(ids)),
+    apply: (ids) => {
+      setSelected(new Set(ids));
+      if (adopted) setReviewedModels(models.map((model) => ({ ...model })));
+    },
   });
   const chat = usePageFormDraft({
     schema,
@@ -295,7 +302,7 @@ function ModelSelectionBody({
         <DrawerDescription>{description}</DrawerDescription>
       </DrawerHeader>
       <ModelSelectionList
-        models={models}
+        models={displayedModels}
         selected={selected}
         onSelectedChange={setSelected}
         showProvider={showProvider}
@@ -311,7 +318,10 @@ function ModelSelectionBody({
           <Button
             variant="ghost"
             disabled={applying}
-            onClick={() => setSelected(initialSelection(models, { recommend }))}
+            onClick={() => {
+              setSelected(initialSelection(models, { recommend }));
+              setReviewedModels(models.map((model) => ({ ...model })));
+            }}
           >
             Discard
           </Button>
@@ -320,10 +330,10 @@ function ModelSelectionBody({
           Cancel
         </Button>
         <Button
-          onClick={() => !chat.blocked && onApply(selected)}
+          onClick={() => !chat.blocked && onApply(selected, displayedModels)}
           disabled={applying || chat.blocked}
         >
-          {applying ? "Saving…" : selectionActionLabel(models, selected, mode)}
+          {applying ? "Saving…" : selectionActionLabel(displayedModels, selected, mode)}
         </Button>
       </DrawerFooter>
     </>

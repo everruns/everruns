@@ -70,7 +70,8 @@ async fn a_change_is_recorded_with_its_reason_fields_actor_and_surface() {
     .unwrap();
 
     let entries = history(&ctx, &id).await;
-    assert_eq!(entries.len(), 1, "{entries:?}");
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    assert_eq!(entries[1]["action"], "baseline");
     let entry = &entries[0];
     assert_eq!(entry["entity_kind"], "workspace");
     assert_eq!(entry["entity_ref"], id.as_str());
@@ -114,7 +115,7 @@ async fn updates_and_deletes_find_their_subject_in_the_params() {
         .iter()
         .map(|entry| entry["action"].as_str().unwrap())
         .collect();
-    assert_eq!(actions, ["deleted", "updated", "updated"]);
+    assert_eq!(actions, ["deleted", "updated", "updated", "baseline"]);
     assert_eq!(entries[1]["changed_fields"], json!(["name"]));
     assert_eq!(entries[1]["reason"], "rename for clarity");
     // A change without a reason is still recorded: people may omit one.
@@ -195,7 +196,7 @@ async fn a_failed_command_and_a_read_record_nothing() {
     run("list_workspaces", json!({}), &ctx).await.unwrap();
 
     let all = run("list_org_history", json!({}), &ctx).await.unwrap();
-    assert_eq!(all.as_array().map(Vec::len), Some(1), "{all}");
+    assert_eq!(all.as_array().map(Vec::len), Some(2), "{all}");
 }
 
 #[tokio::test]

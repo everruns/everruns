@@ -142,7 +142,10 @@ export function OrganizationAccountDialog({
                 onChange={(event) =>
                   setFields((current) => ({ ...current, [field.name]: event.target.value }))
                 }
-                required={field.required}
+                required={
+                  field.required &&
+                  !(chat.adopted && account && !Object.values(fields).some((value) => value.trim()))
+                }
                 placeholder={field.placeholder}
                 autoComplete="off"
               />

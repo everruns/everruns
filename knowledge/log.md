@@ -4,6 +4,12 @@
 
 - Added bounded, read-only organization catalog discovery to [User MCP servers](integrations/user-mcp-servers.md), preserving verified initiating-person management authorization and removing credentials from display endpoints.
 
+* **Shared Chat review.** Adoption uses shared draft diffs, revision-guarded saves,
+  saved review and inverse Undo across supported page editors. Model selections
+  use atomic batches; profile history is owner-only and global; schedule inverses
+  share the PostgreSQL transaction. See [Chat mode](ui/chat-mode.md) and
+  [Change history](execution/change-reasons-and-manager-context.md).
+
 ## 2026-10-25
 
 - Added opt-in two-way Agent source synchronization with durable conditional GitHub commits, conflict retention, source-path preservation and explicit direction changes. See [Agent sources](runtime-resources/agent-sources.md).

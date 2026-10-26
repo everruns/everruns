@@ -57,7 +57,10 @@ service. The provider record itself is described in
 - **Built for scale.** Enabled models are the default view once any exist, rows
   render 50 at a time, and bulk changes go through the selection drawer rather
   than row by row. Bulk enable is a batch of per-model updates from the client;
-  there is no bulk endpoint.
+  the legacy flow uses separate updates. With Adoption Chat mode, the drawer
+  applies reviewed booleans in an atomic batch and returns child revisions for
+  guarded per-model or whole-batch Undo. It retains its picker-open baseline until
+  Discard/reopen, so background catalog refresh cannot silently rebase dirty work.
 - **Defaults say when they cannot be used.** Pickers are searchable. A default
   that is missing, disabled, stale or on a provider without a key gets a warning
   on its row. The decision default accepts calibrated models only. When system

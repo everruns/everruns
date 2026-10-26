@@ -747,6 +747,11 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
+                let mutation_key = super::change_history::mutation_guard::subject(
+                    ctx,
+                    Self::change(),
+                    &serde_json::to_value(&self).unwrap_or(Value::Null),
+                );
                 // Boxed: the command's future is deep, and both arms below
                 // would otherwise hold it inline on the stack.
                 let body = Box::pin(async {
@@ -770,7 +775,15 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                     Ok(output)
                 });
                 // The mutation and its history commit together, or neither does.
-                if Self::transactional() {
+                if let Some(key) = mutation_key {
+                    super::change_history::mutation_guard::run(
+                        ctx,
+                        key,
+                        Self::transactional(),
+                        body,
+                    )
+                    .await
+                } else if Self::transactional() {
                     crate::storage::transaction::scope(&ctx.db, body, CommandError::internal).await
                 } else {
                     body.await

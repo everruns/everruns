@@ -165,8 +165,48 @@ provide read-only context and retain their normal page controls. A missing
 writable form is not permission to save the adjacent page through server commands.
 Separately requested saved-resource operations retain the normal Platform Chat
 command flow; a failed form patch must never be reinterpreted as permission for
-a direct server save. Saved-change attribution and versioned inverse Undo remain
-Agent-specific.
+a direct server save.
+
+### Shared saved review
+
+Every supported existing-resource editor uses the same Adoption-only review
+controller as Agents. A local draft shows Before/After values with field and
+whole-draft Undo. Normal Save stays a user action. Before Save, the browser checks
+the resource revision captured when editing began; the server checks it again
+under the same resource lock ordinary writers and inverse Undo use. The response
+identifies the exact committed revision, so a later writer cannot enter this
+browser's review accidentally. Independent settings forms sharing an organization
+also share that organization's conflict boundary.
+
+Saved reviews survive page navigation within the organization. They show
+Before/After, per-field Undo, Undo all and History. Undo requires the reviewed
+revision, the resource's current manage policy and no dirty local draft. A newer
+save refuses the inverse without overwriting it. A failed review read after a
+successful Save is reported as saved; reloading history rebuilds the review
+without resubmitting the mutation. Only the active page and mounted forms poll;
+retained review groups are bounded. Organization changes dispose their receipts
+and reject late callbacks. Reload keeps server history, while temporary review
+markers start afresh.
+
+The exact resource mappings live in
+[`page-resource-history.ts`](../../apps/ui/src/components/chat-mode/page-resource-history.ts).
+Model selection applies reviewed boolean changes in one transaction and returns
+per-model revisions; Undo all is also atomic. It compares the picker-open values,
+so a background catalog refresh cannot silently replace that baseline. Account
+names and Sandbox Template metadata have inverses that preserve current credentials
+and execution specifications. Channel configuration inverses use an explicit public
+projection merged into current configuration; tokens, sign-in and approval policy
+are never replayed. Provider diagnostics preserve current headers. Profile history
+is private to the account owner, independent of the active tenant, and is included
+in account export and erasure.
+
+Creation and irreversible actions retain draft review followed by their existing
+submit controls. Undo does not delete a newly created resource, revoke an issued
+token, unsend an invitation, replay a payment or dequeue a task. Protected settings
+and arbitrary execution payloads remain manual. An inverse whose old values no
+longer pass normal validation is refused with the review retained. Guarded schedule
+Undo requires the durable PostgreSQL store to share the command transaction;
+external stores and remote MCP subscription effects require direct review.
 
 Dialogs and drawers originating in the right page portal into its stable container.
 Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
@@ -224,36 +264,26 @@ reads manager context before editing, and reports that the result is unsaved.
 An unavailable or stale draft is not permission to fall back to a server write.
 Without a browser adapter, the existing platform-command editing flow remains.
 
-## Attributing and undoing Agent changes
+## Attributing saved changes
 
-Use [entity history](../execution/change-reasons-and-manager-context.md), which
-already records the originating session and numbered snapshots. Do not infer
-saves by matching tool-output prose, and do not use the administrator audit log.
-While Chat is open, the Agent adapter polls history and refreshes the existing
-entity query when a new revision appears. Only revisions attributed to this
-permanent Chat receive gold markers. A different caller's revision establishes
-a new baseline. Multiple Chat saves between polls belong to the same inverse.
+[Entity history](../execution/change-reasons-and-manager-context.md) records the
+originating session and numbered snapshots. The shared review controller follows
+only changes attributed to this permanent Chat or a correlated browser Save. It
+never infers a mutation from tool-output prose or the administrator audit log.
+A foreign writer ends the uninterrupted Chat sequence, including writes between
+polls. Undo can reach only the Chat sequence after that writer.
 
-The initial implementation marks definition **fields**: instructions, primary
-configuration, and supported More rows and their settings sheets. A page toast
-counts those fields. Dismissal clears presentation state and leaves saves intact.
-Markers survive Back to app while the page remains mounted. A reload establishes
-a fresh observation baseline; historical changes remain available in History.
+Agents retain inline gold field markers for instructions and supported settings;
+all pages use the shared saved-review panel described above. Dismissal clears
+presentation state and leaves saved configuration and history intact. A reload
+starts a fresh observation baseline while History remains available.
 
-Undo uses the existing restore command with a selected field list and expected
-Agent revision. It acquires the Agent row lock before reading the current
-revision; ordinary Agent updates acquire the same lock before reading the
-definition. Validation, permissions, manager context, history, and the inverse
-commit in one transaction. A stale revision fails with a conflict. A selected
-field that the update API cannot restore also fails and rolls back completely;
-it must never disappear from the UI as if the inverse succeeded. Secrets are
-excluded. Undo all restores only the marked fields and preserves unrelated
-configuration. Each inverse is a new history entry.
-
-Draft values remain unsaved until the operator uses Save. If the saved Agent changes while a dirty draft is
-open, keep the draft and block Save until Discard reloads the saved definition.
-Dismissing Chat's toast does not remove this conflict. Otherwise an operator
-could silently save an older prompt over the Chat's work.
+Selected-field Undo runs through the resource's normal update validation,
+permissions and manager context. Unsupported old values refuse the inverse and
+keep its receipt; the UI must not treat a failed inverse as a successful Undo.
+Secrets and protected authority remain current. A dirty form keeps its values
+when the saved definition changes and blocks Save until Discard rebases it.
+Dismissing review markers does not remove that conflict.
 
 ## Integration decisions and next slices
 
@@ -270,8 +300,8 @@ could silently save an older prompt over the Chat's work.
   never navigate by scraping arbitrary shell output or assistant prose.
 - **Related resources:** MCP capabilities/configuration stored in the Agent
   definition follow its history. Credential values, independent connection
-  grants, channel state and other child resources require their own attribution
-  adapters and safe inverse policies; restoring an Agent must not restore a secret.
+  grants and child resources use their own authorization and inverse policies;
+  restoring an Agent must not restore an independent resource or a secret.
 - **Resource history:** shared context and form drafts do not imply saved-change
   attribution or inverse Undo. Add those only with that resource's authorization
   and revision-guarded history contract; do not clone the shell per page.
