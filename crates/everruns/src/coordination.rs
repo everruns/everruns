@@ -60,8 +60,8 @@ use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::conversation;
 use everruns_core::host::{
-    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE,
-    RuntimeSessionStore, SessionBuilder,
+    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
+    EventReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE, RuntimeSessionStore, SessionBuilder,
 };
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
@@ -509,6 +509,52 @@ impl LocalSessionRunner for EngineSessionRunner {
             .get_session(session_id)
             .await?
             .map(|_| "idle".to_string()))
+    }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        let engine = self.owner(session_id)?;
+        let agent = engine
+            .agent(session_id)
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        let backends = engine
+            .backends_for(&agent)
+            .await
+            .map_err(crate::agent::BackendInitError::into_agent_loop)?;
+        latest_terminal_turn_status(backends.host.event_log.clone(), session_id).await
+    }
+}
+
+/// Outcome of the session's latest turn, read from its canonical journal:
+/// `completed`, `failed`, `cancelled` or `sealed`, matching what hosted
+/// platform stores report for a settled child. `None` when no turn has
+/// finished, or when a later turn started and has not finished yet, so an idle
+/// session never reads as a success it did not have.
+pub(crate) async fn latest_terminal_turn_status(
+    event_log: Arc<dyn everruns_core::host::EventLog>,
+    session_id: SessionId,
+) -> Result<Option<String>> {
+    let limit = EventReadLimit::new(256).map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let mut request = EventReadRequest::new(session_id, limit);
+    let mut status = None;
+    loop {
+        let page = event_log
+            .read_page(request)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        for event in &page.events {
+            status = match event.event_type() {
+                everruns_core::TURN_STARTED => None,
+                everruns_core::TURN_COMPLETED => Some("completed"),
+                everruns_core::TURN_FAILED => Some("failed"),
+                everruns_core::TURN_CANCELLED => Some("cancelled"),
+                everruns_core::TURN_SEALED => Some("sealed"),
+                _ => continue,
+            };
+        }
+        let Some(cursor) = page.next_cursor else {
+            return Ok(status.map(str::to_string));
+        };
+        request = EventReadRequest::from_cursor(cursor, limit);
     }
 }
 

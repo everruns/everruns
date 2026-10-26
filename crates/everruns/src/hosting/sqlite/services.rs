@@ -502,6 +502,14 @@ impl LocalSessionRunner for HostedSessionRunner {
             Err(error) => Err(error),
         }
     }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        crate::coordination::latest_terminal_turn_status(
+            self.hosting.reader(session_id).event_log,
+            session_id,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -597,6 +605,86 @@ mod tests {
             .unwrap();
         assert_eq!(record.parent_session_id, Some(parent));
         assert_eq!(record.title.as_deref(), Some("Thread"));
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::*;
+    use crate::hosting::AgentBuild;
+    use everruns_contracts::typed_id::MessageId;
+
+    fn engine_with(profile: &SqliteHosting, build: &AgentBuild, model: crate::Model) -> crate::Engine {
+        let agent = crate::Agent::builder()
+            .instructions("Answer briefly.")
+            .model(model)
+            .build()
+            .unwrap();
+        crate::Engine::builder()
+            .hosting(profile.clone())
+            .register(build.clone(), agent)
+            .build()
+    }
+
+    async fn child_of(
+        engine: &crate::Engine,
+        profile: &SqliteHosting,
+        build: &AgentBuild,
+    ) -> (LocalPlatformStore, Arc<HostedSessionRunner>, SessionId) {
+        let parent = SessionId::new();
+        engine.create_registered(parent, build).await.unwrap();
+        let runner = Arc::new(HostedSessionRunner {
+            engine: engine.downgrade(),
+            hosting: profile.clone(),
+            registry: profile.task_registry(),
+        });
+        let child = runner
+            .create_session(HarnessId::new(), None, Some("Child"), None, Some(parent))
+            .await
+            .unwrap();
+        (LocalPlatformStore::new(runner.clone()), runner, child.id)
+    }
+
+    /// A native child is idle after success, failure and cancellation alike.
+    /// Waiting on it reports the finished turn's outcome, which is what lets a
+    /// foreground subagent task settle (EVE-1310); a child that never ran a
+    /// turn stays a nonterminal `idle`.
+    #[tokio::test]
+    async fn waiting_on_a_native_child_reports_its_turn_outcome() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+
+        let ok = AgentBuild::new("assistant", "ok-v1");
+        let engine = engine_with(&profile, &ok, crate::Model::simulated("Done."));
+        let (store, runner, child) = child_of(&engine, &profile, &ok).await;
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "idle");
+        runner.send_message(child, "work on it").await.unwrap();
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "completed");
+
+        let session = engine.resume(child).await.unwrap();
+        let message = MessageId::new();
+        session.send_with_id(message, "stop this").await.unwrap();
+        let admission = session.admission(message).await.unwrap().unwrap();
+        admission.cancel(uuid::Uuid::new_v4()).await.unwrap();
+        engine.activate(child).await.unwrap();
+        assert_eq!(
+            admission.wait().await.unwrap().stop_reason,
+            TurnStopReason::Cancelled
+        );
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "cancelled");
+
+        let profile = SqliteHosting::open(directory.path().join("failing.db")).unwrap();
+        let failing = AgentBuild::new("assistant", "failing-v1");
+        let engine = engine_with(
+            &profile,
+            &failing,
+            crate::Model::simulated_with_config(everruns_llmsim::LlmSimConfig::error(
+                "provider unavailable",
+            )),
+        );
+        let (store, runner, child) = child_of(&engine, &profile, &failing).await;
+        assert!(runner.send_message(child, "work on it").await.is_err());
+        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "failed");
     }
 }
 
