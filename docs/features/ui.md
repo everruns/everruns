@@ -44,8 +44,10 @@ on mobile.
 
 Idle conversations remain **Open**. **Resolve thread** puts one away without losing its
 history; **Reopen thread** lets you continue. Background work shows its actual progress,
-input requests, and failures. Disabling the feature restores the existing Chat interface
-and preserves conversations and their URLs.
+input requests, and failures. When a thread reports back, the conversation shows one
+folded line, such as "Releases is done". Open the line to read the report. The
+coordinator still receives the full text and answers in the conversation. Disabling the
+feature restores the existing Chat interface and preserves conversations and their URLs.
 
 ## Dashboard
 
