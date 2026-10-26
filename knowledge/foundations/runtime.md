@@ -417,8 +417,8 @@ due-ordering and the batch limit so inactive sessions cannot consume a batch or
 starve deliverable work. The runner heartbeats live claims, recovers stale
 claims, advances recurring cron occurrences in their IANA timezone, and
 disables successful one-shots. It delivers the stored prompt through the host's
-existing `LocalSessionRunner::send_message` implementation; storage never owns
-session execution. Failed deliveries retain the occurrence and diagnostic
+`LocalSessionRunner::deliver_occurrence`, which defaults to `send_message`;
+storage never owns session execution. Failed deliveries retain the occurrence and diagnostic
 error, then wait `claim_timeout` before retry so a disappearing route cannot
 cause poll-rate claim churn. Shutdown stops new claims and waits for an active
 delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
@@ -435,9 +435,14 @@ timers are journal entries and any due-work index is derived from them.
 
 This boundary provides at-least-once delivery across process failure. Atomic
 claims prevent duplicate delivery by concurrent healthy runners, but a crash
-after `send_message` accepts the prompt and before SQLite commits completion
-can retry that occurrence. Hosts should keep scheduled turns idempotent across
-that unavoidable external-delivery window.
+after the host accepts the prompt and before SQLite commits completion can
+retry that occurrence. Each occurrence therefore carries a stable admission
+identity derived from the schedule, its trigger count and its due time. Hosts
+with durable admissions (registered SQLite Engine hosting) admit it with
+`send_with_id`, so a retry reopens the original admission and outcome and the
+turn runs once; any committed outcome, a failed turn included, completes the
+occurrence. Other hosts deliver it as an ordinary message and should keep
+scheduled turns idempotent across that external-delivery window.
 
 ## Context and Capabilities
 
