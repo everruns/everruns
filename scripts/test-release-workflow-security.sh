@@ -10,7 +10,6 @@ import re
 workflows = [
     Path(".github/workflows/cli-binaries.yml"),
     Path(".github/workflows/docker-publish.yml"),
-    Path(".github/workflows/server-worker-binaries.yml"),
     Path(".github/workflows/publish-crates.yml"),
     Path(".github/workflows/release.yml"),
     Path(".github/workflows/crate-release.yml"),
