@@ -52,7 +52,11 @@ Command/Ctrl-J on an app page opens the selected personal Chat instance beside
 that page, defaulting to permanent Chat. The shell retains one mounted conversation
 and its composer when moving between full Chat and the page workspace. Back to
 app hides the conversation without tearing down its stream or composer. An
-organization switch destroys the shell's state. Delegated child conversations
+organization switch destroys the shell's state. The mounted conversation settles
+already-owned page tool requests even after the split closes: the same original
+binding may finish, while navigation returns an unavailable-page result instead
+of leaving the turn waiting or touching a different form. Full Chat never claims
+a new page binding. Delegated child conversations
 are not selected as page editors. Page context is enabled only beside non-Chat
 pages, and the conversation list does not register filters as adjacent-page state.
 

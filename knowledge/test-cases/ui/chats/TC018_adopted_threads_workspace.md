@@ -43,7 +43,12 @@ tags:
    selected; closing work detail removes its task selection rather than resetting Chat.
 10. Verify wide, 390px, light/dark and reduced-motion layouts, drawer focus, and that
     hiding page-side Chat closes any panel portal. The panel must fit the actual Chat pane.
-11. Switch organizations while Chat or a draft is open. Confirm no composer, task,
+11. Send a page-draft request, then open full Chat before its tool result arrives.
+    Confirm it reports that the original form is unavailable, changes no other page,
+    and lets the conversation continue. Repeat by only hiding Chat while staying
+    on the same form: the authorized request may finish on that original draft.
+    A fresh full Chat must never acquire a page binding.
+12. Switch organizations while Chat or a draft is open. Confirm no composer, task,
     page context or review state crosses organizations; disable enrollment and recheck.
 
 ## Expected Result

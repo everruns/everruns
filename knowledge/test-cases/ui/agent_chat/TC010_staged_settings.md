@@ -44,7 +44,7 @@ Verify the settings reviewed beside Chat are the settings saved through ordinary
 7. Repeat at desktop and narrow pane widths, dark mode and reduced motion. Settings
    navigation must fit the pane, controls remain reachable and Back to app preserves drafts.
 
-7. Open Settings → Chat. Verify its independent model is read by Chat, mouse and
+8. Open Settings → Chat. Verify its independent model is read by Chat, mouse and
    Chat edits stay in the live draft, and Save/Discard use the same stale guard.
    Save a choice, inspect Before/After, then Undo it. Clearing the choice restores
    inheritance; neither Save nor Undo changes the agents/sessions default. Refresh
