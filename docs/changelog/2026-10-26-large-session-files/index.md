@@ -21,3 +21,16 @@ With object storage on (`STORAGE_BLOB_BACKEND=s3`), a file can be up to 2 GiB an
 Deployments that keep file bytes in PostgreSQL keep the previous 100 MiB and 500 MiB limits. Both
 are set with `SESSION_FILE_SINGLE_MAX_BYTES` and `SESSION_FILE_MAX_BYTES`
 ([environment variables](/sre/environment-variables/)).
+
+```bash
+# Upload a recording as the raw request body
+curl -X PUT "$EVERRUNS_URL/v1/workspaces/$WORKSPACE_ID/fs/_/upload/recordings/demo.mp4" \
+  -H "Authorization: Bearer $EVERRUNS_API_KEY" \
+  -H "Content-Type: video/mp4" \
+  --data-binary @demo.mp4
+
+# Fetch the first megabyte; the server answers 206 Partial Content
+curl "$EVERRUNS_URL/v1/workspaces/$WORKSPACE_ID/fs/_/download/recordings/demo.mp4" \
+  -H "Authorization: Bearer $EVERRUNS_API_KEY" \
+  -H "Range: bytes=0-1048575" -o first-mb.mp4
+```
