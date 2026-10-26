@@ -6,6 +6,8 @@ kind: feature
 significance: minor
 products: [platform, cloud]
 surfaces: [ui, api]
+links:
+  docs: [/providers/openai/]
 ---
 
 **Settings → Chat** now has its own organization model selector. Changing it leaves
@@ -24,3 +26,5 @@ and tool support. The API accepts an independent patch:
 
 This clears only the Chat selection. GPT 6.1 Terra profiles are also available
 for OpenAI Responses and OpenRouter, using their respective provider model IDs.
+
+See [OpenAI provider setup](/providers/openai/) for Responses configuration.
