@@ -15,6 +15,9 @@ pub mod nats_task_notifications;
 // Notification broadcaster for push-based user inbox delivery
 pub mod notification_notifications;
 
+// Clears cached feature flag overrides when the table changes
+pub mod org_feature_flag_invalidation;
+
 // PostgreSQL LISTEN/NOTIFY listener connection guardrails
 pub mod pg_listener_config;
 
