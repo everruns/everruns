@@ -121,7 +121,7 @@ export function SidebarUserMenu({
               <NotificationMenuSub />
               <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
                 <AccountIcon className="icon-sharp mr-2 h-4 w-4" />
-                Profile
+                Account
               </DropdownMenuItem>
               {requiresAuth && (
                 <DropdownMenuItem onClick={() => navigate("/settings/personal-access-tokens")}>

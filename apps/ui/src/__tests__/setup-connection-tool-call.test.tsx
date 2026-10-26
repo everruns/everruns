@@ -134,7 +134,7 @@ describe("SetupConnectionToolCall", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open connections" }));
     expect(open).toHaveBeenCalledWith(
-      "/settings/agent-experience",
+      "/settings/connections",
       "_blank",
       "noopener,noreferrer",
     );

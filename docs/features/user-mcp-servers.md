@@ -23,7 +23,7 @@ This is the third place an MCP server can live:
 
 ## Add a server
 
-Open **Settings > My agent experience > My MCP servers** and choose **Add server**.
+Open **Settings > MCP servers** and choose **Add server**.
 
 - **From catalog**: pick a server your organization already registered, such as
   Linear. It uses the catalog entry's OAuth client, so signing in to it here and

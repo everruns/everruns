@@ -41,12 +41,12 @@ Per-sandbox state is stored in session **secrets** (encrypted at rest via AES-25
 
 ### API Key Resolution
 
-The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > My agent experience).
+The Daytona API key is resolved via **user connection** for the `daytona` provider (Settings > Connections).
 If not configured, a `ToolError` guides the user to set up in Settings.
 
 ### User Connection
 
-Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > My agent experience**:
+Daytona registers as a `ConnectionProviderPlugin` (API-key type). Users configure their key in **Settings > Connections**:
 
 1. User enters API key (from [Daytona Dashboard](https://app.daytona.io) > API Keys)
 2. Key validated via `GET /sandbox` endpoint
@@ -247,7 +247,7 @@ The trust-boundary decision and rationale are documented at the top of `crates/i
 
 ## Security
 
-- **API Key**: Stored in user connections (Settings > My agent experience), encrypted at rest (TM-DAYTONA-004)
+- **API Key**: Stored in user connections (Settings > Connections), encrypted at rest (TM-DAYTONA-004)
 - **Single auth token**: Both Management and Toolbox APIs use the same Bearer token
 - **Sandbox Isolation**: Each sandbox is an isolated environment (TM-DAYTONA-005)
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes

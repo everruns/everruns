@@ -30,7 +30,8 @@ See [User MCP servers](/features/user-mcp-servers/), the
 
 ## Update 2026-10-16
 
-Adding or enabling a personal MCP server now follows the agent's shared
-[Tool Approval](/capabilities/tool-approval/) mode. Normal and protective modes
-ask first; absent or off permits autonomous management. OAuth consent remains
-separate. See [the fix](/changelog/2026-10-16-user-mcp-approval-policy/).
+Adding or enabling a server follows [Tool Approval](/capabilities/tool-approval/). See [the fix](/changelog/2026-10-16-user-mcp-approval-policy/).
+
+## Update 2026-10-25
+
+The list is **Settings > MCP servers**. See [Personal settings pages](/changelog/2026-10-25-personal-settings-pages/).

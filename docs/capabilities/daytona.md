@@ -24,7 +24,7 @@ Sandbox IDs and remain independent of the provider-facing tool namespace.
 ## Set up
 
 1. In the [Daytona Dashboard](https://app.daytona.io), open **API Keys** in your account settings, select **Create New API Key**, and copy the key.
-2. In Everruns, open **Settings → My agent experience**, find **Daytona**, select **Connect**, and paste the key.
+2. In Everruns, open **Settings → Connections**, find **Daytona**, select **Connect**, and paste the key.
 
 Once connected, agents with the Daytona capability can use the tools below.
 

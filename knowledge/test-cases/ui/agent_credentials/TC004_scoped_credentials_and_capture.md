@@ -20,7 +20,7 @@ tags:
 
 ## Steps
 
-1. Open agent Credentials, Settings > My agent experience, a service virtual user,
+1. Open agent Credentials, Settings > Connections, a service virtual user,
    Settings > Organization, and a session's Credentials action. Confirm each names
    its owner/usage and shows loading, empty, populated, and error states cleanly.
 2. Declare an HTTPS header/form binding. Confirm declaration accepts metadata

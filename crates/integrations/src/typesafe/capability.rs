@@ -142,7 +142,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     }
 
     Err(ToolExecutionResult::tool_error(
-        "TypeSafe API key not configured. Connect TypeSafe in Settings > My agent experience, \
+        "TypeSafe API key not configured. Connect TypeSafe in Settings > Connections, \
          or use `secret_store set TYPESAFE_API_KEY <your-key>`. \
          Get a key at https://typesafe.ai",
     ))
@@ -494,10 +494,7 @@ mod tests {
 
         let error = get_api_key(&context).await.unwrap_err();
         let rendered = format!("{error:?}");
-        assert!(
-            rendered.contains("Settings > My agent experience"),
-            "{rendered}"
-        );
+        assert!(rendered.contains("Settings > Connections"), "{rendered}");
         assert!(rendered.contains(TYPESAFE_API_KEY_SECRET), "{rendered}");
     }
 }

@@ -66,7 +66,7 @@ export function SetupConnectionToolCall({
   const needsConnectionsPage =
     !hasStructuredSetup && !providerLookupPending && !providerCanOpenDialog;
   const usesSetupPage = hasStructuredSetup || needsConnectionsPage;
-  const effectiveSetupUrl = needsConnectionsPage ? "/settings/agent-experience" : safeSetupUrl;
+  const effectiveSetupUrl = needsConnectionsPage ? "/settings/connections" : safeSetupUrl;
   const setupTitle =
     subject === "agent"
       ? `${displayName} connection required for this agent`

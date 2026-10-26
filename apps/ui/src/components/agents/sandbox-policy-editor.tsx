@@ -711,8 +711,8 @@ function TemplateSpecEditor({
             ) : null}
             <p className="text-xs text-muted-foreground">
               Personal connections are managed in{" "}
-              <Link href="/settings/agent-experience" className="underline underline-offset-2">
-                My agent experience
+              <Link href="/settings/connections" className="underline underline-offset-2">
+                Connections
               </Link>
               ; Agent connections belong to its Virtual User.
             </p>

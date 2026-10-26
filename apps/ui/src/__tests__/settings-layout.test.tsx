@@ -108,7 +108,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(10);
+    expect(screen.getAllByRole("link")).toHaveLength(13);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
@@ -119,7 +119,10 @@ describe("SettingsLayout", () => {
     ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
     ["/settings/profile", "Account"],
-    ["/settings/agent-experience", "My agent experience"],
+    ["/settings/user-profile", "Profile"],
+    ["/settings/connections", "Connections"],
+    ["/settings/mcp-servers", "MCP servers"],
+    ["/settings/ai-clients", "AI clients"],
   ])("highlights the active navigation item for %s", (pathname, linkName) => {
     mockPathname.mockReturnValue(pathname);
     render(

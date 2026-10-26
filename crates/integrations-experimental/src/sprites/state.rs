@@ -72,7 +72,7 @@ pub const SPRITES_LEASE_DURATION_SECONDS: u32 = 30 * 60;
 // State Management Helpers
 // ============================================================================
 
-/// Resolve Sprites API token via user connection (Settings > My agent experience).
+/// Resolve Sprites API token via user connection (Settings > Connections).
 pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
     if let Some(resolver) = context.connection_resolver.as_ref() {
         match resolver

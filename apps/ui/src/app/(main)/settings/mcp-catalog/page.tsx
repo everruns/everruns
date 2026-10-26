@@ -5,7 +5,7 @@ import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 // Settings > Organization > MCP catalog: the admin registry of MCP presets.
 // It moved here from the main navigation (knowledge/integrations/user-mcp-servers.md,
 // step 8). People who cannot manage it do not see the Settings entry; personal MCP
-// servers and grants live in Settings > My agent experience.
+// servers and grants live in Settings > MCP servers.
 
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useMemo, useState } from "react";
@@ -390,10 +390,10 @@ export default function McpCatalogPage() {
         <EmptyState
           icon={<McpIcon />}
           title="You cannot view the MCP catalog"
-          description="Ask an organization admin for access. MCP servers you add for yourself live in Settings, My agent experience."
+          description="Ask an organization admin for access. MCP servers you add for yourself live in Settings, MCP servers."
           action={
-            <LinkButton href="/settings/agent-experience" variant="outline">
-              Open My agent experience
+            <LinkButton href="/settings/mcp-servers" variant="outline">
+              Open MCP servers
             </LinkButton>
           }
         />

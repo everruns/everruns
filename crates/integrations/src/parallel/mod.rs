@@ -144,7 +144,7 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
                 "auth": {
                     "type": "string",
                     "title": "Authentication",
-                    "description": "Free works without setup. API key uses Settings > My agent experience.",
+                    "description": "Free works without setup. API key uses Settings > Connections.",
                     "default": "free",
                     "oneOf": [
                         { "const": "free", "title": "Free" },

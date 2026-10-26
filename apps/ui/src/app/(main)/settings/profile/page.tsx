@@ -23,7 +23,7 @@ function getInitials(name: string): string {
 }
 
 export default function ProfilePage() {
-  usePageTitle("Profile", "Settings");
+  usePageTitle("Account", "Settings");
   const { user } = useAuth();
   const updateProfile = useUpdateProfile();
 
@@ -35,7 +35,7 @@ export default function ProfilePage() {
     values: { name },
     entityId: user?.id,
     entityType: "profile",
-    label: "Profile",
+    label: "Account",
     baseline: user?.name ?? "",
     dirty: hasChanges,
     writable: !!user && !updateProfile.isPending,
@@ -68,8 +68,8 @@ export default function ProfilePage() {
     <div className="space-y-8">
       <section>
         <div className="mb-6">
-          <h2 className="text-xl font-semibold">Profile</h2>
-          <p className="text-sm text-muted-foreground">Manage your personal profile.</p>
+          <h2 className="text-xl font-semibold">Account</h2>
+          <p className="text-sm text-muted-foreground">Your Everruns sign-in name and email.</p>
         </div>
 
         {chatDraft.notice}

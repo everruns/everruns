@@ -253,7 +253,7 @@ in [leased resources](../../crates/contracts/src/runtime/leased_resource.rs) and
 
 ## Console proxy and settings
 
-Existing Chats and Settings > My agent experience resolve through the default self
+Existing Chats and Settings > Profile, Connections, MCP servers, and AI clients resolve through the default self
 binding and call the same virtual-user services used by external consumers.
 Legacy `/user/connections` routes may be thin adapters during cutover; they
 must not keep separate storage, resolver rules, or writes. Cache keys include
@@ -294,7 +294,10 @@ scope visible where it affects which account an action uses.
 |---|---|
 | Chats | Uses the current org's default end-user virtual user automatically. Retain threads, pins, archives, and the agent picker. No routine virtual-user picker. |
 | Settings: Account | Management profile, security/PATs, and console preferences. Sidebar footer continues to show the signed-in Everruns account. |
-| Settings: My agent experience | Chat profile, language/timezone defaults, and Connections for the default virtual user. Show the selected org. Preserve the existing connections URL as a shortcut to this view. |
+| Settings: Profile | Name, locale, and timezone for the default virtual user in the selected org. |
+| Settings: Connections | Provider sign-ins and credentials for that virtual user. `/settings/connections` is the page. `/settings/agent-experience` opens Profile, or Connections when the query is an OAuth result. |
+| Settings: MCP servers | MCP servers the person adds and signs in to. |
+| Settings: AI clients | AI apps approved to use Everruns as that person. |
 | Settings: Members | Label as Team members to identify console operators and organization roles. |
 | Identities navigation | Replace with Virtual users, scoped to the selected org. Search/filter by end-user/service usage, lifecycle, and identity source. |
 | Virtual-user detail | Overview, Connections, Linked identities, and Sessions. Show usage, lifecycle, and links to assigned agents for service accounts. |
@@ -302,9 +305,8 @@ scope visible where it affects which account an action uses.
 | Session inspector | Participants and per-operation acting identity. Show management authorization separately in audit details. |
 | External chat/setup | Consumer-facing profile and connection setup through verified runtime auth. No console navigation or org membership requirement. |
 
-My agent experience and Virtual users > detail > Connections render the
-same connection component over the same virtual-user service. `/settings/connections`
-redirects to My agent experience. Permissions and
+Settings > Connections and Virtual users > detail > Connections render the
+same connection component over the same virtual-user service. Permissions and
 available actions depend on self-service versus service-account administration;
 the current management policy must not expose every end user's private grants.
 Administrative inspection is not impersonation, and there is no generic
@@ -440,7 +442,7 @@ The [API contract](../runtime-resources/virtual-users-api.md) links the exact ro
 
 Existing identity IDs retain their `identity_` prefix. Usage is immutable in ordinary profile updates.
 Single-org legacy credentials move once; multi-org credentials remain in a restricted migration queue
-until their owner chooses an org in Settings → My agent experience. The queue is never a runtime credential source.
+until their owner chooses an org in Settings → Connections. The queue is never a runtime credential source.
 Associated leases retain their organization-scoped runtime owner. Cleanup pauses until that owner has an explicit grant; selecting a destination cannot transfer another organization's resources.
 
 Runtime credentials expire after 15 minutes, bind one live endpoint and verified binding, and permit
