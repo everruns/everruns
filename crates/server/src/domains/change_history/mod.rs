@@ -123,8 +123,12 @@ pub async fn agent_session_intent(
     session: everruns_contracts::typed_id::SessionId,
     surface: ChangeSurface,
 ) -> ChangeIntent {
-    let via_agent_id = match db.get_session(org_id, session).await {
-        Ok(Some(row)) => row.agent_id.map(|agent| agent.to_string()),
+    // A session's agent never changes, so the cached lineage answers this for
+    // every command a turn runs instead of a session read each.
+    let via_agent_id = match db.session_lineage(session).await {
+        Ok(Some(lineage)) if lineage.org_id == org_id => {
+            lineage.agent_id.map(|agent| agent.to_string())
+        }
         _ => None,
     };
     ChangeIntent {

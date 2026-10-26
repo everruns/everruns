@@ -75,6 +75,23 @@ pub async fn verify_session(
     ctx: &Ctx,
     session_id: SessionId,
 ) -> Result<SessionFileAccess, CommandError> {
+    // The worker running this session's turn (it holds the session's lease)
+    // reads its files on every tool call. Its access does not depend on the
+    // owner, and the org and workspace never change, so the cached lineage is
+    // enough; everyone else gets the full row and the owner check below.
+    if ctx.acting_for_session == Some(session_id) {
+        let lineage = ctx
+            .db
+            .session_lineage(session_id)
+            .await
+            .map_err(classify_storage)?
+            .filter(|lineage| lineage.org_id == ctx.org_id())
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+        return Ok(SessionFileAccess {
+            workspace_key: lineage.workspace_id,
+            user_memory_allowed: true,
+        });
+    }
     let row = ctx
         .db
         .get_session(ctx.org_id(), session_id)

@@ -90,6 +90,7 @@ macro_rules! dispatch {
 pub struct StorageBackend {
     db: Database,
     identity: identity_cache::IdentityCache,
+    org_feature_flags: org_feature_flag_cache::OrgFeatureFlagCache,
     knowledge_blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
 }
 
@@ -115,6 +116,7 @@ impl StorageBackend {
         Self {
             db,
             identity: identity_cache::IdentityCache::new(),
+            org_feature_flags: Default::default(),
             knowledge_blob_store: None,
         }
     }
@@ -147,6 +149,8 @@ mod harnesses_sessions;
 mod identity;
 mod identity_cache;
 pub use identity_cache::SessionLineage;
+mod org_feature_flag_cache;
+pub use org_feature_flag_cache::{ORG_FEATURE_FLAGS_CHANNEL, OrgFeatureFlagCache};
 mod knowledge;
 mod manager_context;
 mod models_files;

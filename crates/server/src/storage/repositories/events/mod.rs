@@ -199,7 +199,7 @@ impl Database {
         .await?;
 
         self.enqueue_event_projection(&row).await;
-        if Self::is_trace_event_type(&row.event_type) {
+        if Self::ends_trace_turn(&row.event_type) {
             self.schedule_session_trace_projection(row.session_id.uuid());
         }
         Ok(row)
@@ -279,7 +279,7 @@ impl Database {
         tx.commit().await?;
 
         self.enqueue_event_projection(&row).await;
-        if Self::is_trace_event_type(&row.event_type) {
+        if Self::ends_trace_turn(&row.event_type) {
             self.schedule_session_trace_projection(row.session_id.uuid());
         }
         Ok(row)
@@ -407,9 +407,7 @@ impl Database {
         let mut traced: Vec<Uuid> = Vec::new();
         for row in ordered {
             self.enqueue_event_projection(row).await;
-            if Self::is_trace_event_type(&row.event_type)
-                && !traced.contains(&row.session_id.uuid())
-            {
+            if Self::ends_trace_turn(&row.event_type) && !traced.contains(&row.session_id.uuid()) {
                 traced.push(row.session_id.uuid());
             }
         }

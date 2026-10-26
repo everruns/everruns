@@ -687,7 +687,15 @@ async fn actor_detail(
         .ok_or_else(|| {
             ErrorResponse::new("Actor not found").into_response(StatusCode::NOT_FOUND)
         })?;
-    // Authorization is complete before the unscoped trace index is read.
+    // Authorization is complete before the unscoped trace index is read. The
+    // write path projects a turn only when it ends, so bring the open turn's
+    // steps in first.
+    state
+        .db
+        .database()
+        .catch_up_session_trace_fully(session.uuid())
+        .await
+        .log_internal_error_json("project monitoring actor steps")?;
     let (history, steps) = tokio::try_join!(
         state.db.monitoring_lease_events(org, session.uuid()),
         state.db.monitoring_steps(session.uuid()),

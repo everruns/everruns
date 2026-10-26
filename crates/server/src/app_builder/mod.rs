@@ -598,6 +598,8 @@ impl ServerAppBuilder {
         let notification_broadcaster = if let Some(database_url) =
             resolve_listener_database_url()?.as_ref()
         {
+            let flags = db.org_feature_flag_cache().clone();
+            crate::live_updates::org_feature_flag_invalidation::spawn(database_url.clone(), flags);
             let broadcaster =
                 crate::live_updates::notification_notifications::NotificationNotificationBroadcaster::new(
                     database_url.clone(),
