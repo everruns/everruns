@@ -381,7 +381,7 @@ fn readable_error(error: &str) -> String {
     }
 }
 
-async fn computer_use(
+pub(crate) async fn computer_use(
     client: &DaytonaClient,
     sandbox_id: &str,
     method: Method,

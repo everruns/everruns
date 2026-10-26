@@ -163,6 +163,21 @@ unless the template names another one built on it. On Daytona it uses Daytona's 
 which ships the desktop, so a desktop template cannot also choose a size or snapshot. Every action
 returns a screenshot, which costs image tokens.
 
+### Recordings
+
+Daytona desktops are recorded as video. Recording starts when the agent first uses the desktop in
+a turn and stops when the Session goes idle. The video is saved read-only to
+`/recordings/desktop-<start time>.mp4` in the Session's files, so it stays after the Sandbox is
+deleted, and the chat shows it under the turn with a player and a download link. Recordings count
+toward the Session's file storage, and one larger than 100 MB is not kept. Set `record` to `false`
+in the desktop settings to turn recording off:
+
+```json
+{ "desktop": { "record": false, "display_width": 1280, "display_height": 800 } }
+```
+
+E2B desktops are not recorded yet.
+
 ## Recovery after compute loss
 
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.

@@ -4,6 +4,7 @@
 
 pub mod commands;
 pub mod queries;
+pub mod recordings;
 pub mod service;
 pub mod types;
 

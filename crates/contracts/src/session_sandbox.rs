@@ -59,13 +59,48 @@ impl SessionSandboxConfig {
     /// Whether the sandbox is created with a desktop: `provider_config.desktop`
     /// is `true` or an object of computer-use settings (display size and
     /// action limits).
+    ///
+    /// The `record` key is not a computer-use setting and is left out; read it
+    /// with [`Self::desktop_recording`].
     pub fn desktop(&self) -> Option<Value> {
         match self.provider_config.get("desktop") {
             Some(Value::Bool(true)) => Some(Value::Object(Default::default())),
-            Some(settings @ Value::Object(_)) => Some(settings.clone()),
+            Some(Value::Object(settings)) => {
+                let mut settings = settings.clone();
+                settings.remove(DESKTOP_RECORD_KEY);
+                Some(Value::Object(settings))
+            }
             _ => None,
         }
     }
+
+    /// Whether the desktop is recorded as video: on for every desktop unless
+    /// `provider_config.desktop.record` is `false`.
+    pub fn desktop_recording(&self) -> bool {
+        self.desktop().is_some()
+            && self
+                .provider_config
+                .get("desktop")
+                .and_then(|desktop| desktop.get(DESKTOP_RECORD_KEY))
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+    }
+}
+
+/// Key of `provider_config.desktop` that turns desktop recording off.
+pub const DESKTOP_RECORD_KEY: &str = "record";
+
+/// A finished recording of a sandbox desktop, collected from the provider.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DesktopRecording {
+    /// File name to store it under, e.g. `2026-10-26T19-50-00Z.mp4`.
+    pub file_name: String,
+    /// Length in seconds, when the provider reports it.
+    pub duration_seconds: Option<f64>,
+    /// Size of the video file in bytes.
+    pub size_bytes: u64,
+    /// The video, or `None` when it was larger than the collection limit.
+    pub content: Option<Vec<u8>>,
 }
 
 impl Default for SessionSandboxConfig {
@@ -489,6 +524,19 @@ pub trait SessionSandboxProvider: Send + Sync {
         )))
     }
 
+    /// Stop the desktop's recordings and hand back the finished ones, removing
+    /// them from the sandbox. Called when the Session goes idle, so each turn's
+    /// desktop work becomes one video. Providers that cannot record keep the
+    /// default: nothing to collect.
+    async fn collect_desktop_recordings(
+        &self,
+        _context: &dyn SessionSandboxContext,
+        _config: &SessionSandboxConfig,
+        _instance: &SessionSandboxInstance,
+    ) -> Result<Vec<DesktopRecording>, ToolExecutionResult> {
+        Ok(Vec::new())
+    }
+
     async fn status(
         &self,
         context: &dyn SessionSandboxContext,
@@ -529,4 +577,34 @@ fn default_provider_config() -> Value {
 fn default_output_mode() -> String {
     // EVE-489: persistence-first default for exec-style sandbox tools.
     "auto".to_string()
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    use super::*;
+
+    fn config(provider_config: Value) -> SessionSandboxConfig {
+        SessionSandboxConfig {
+            provider: "daytona".to_string(),
+            provider_config,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn desktops_are_recorded_unless_turned_off() {
+        assert!(config(json!({"desktop": true})).desktop_recording());
+        assert!(config(json!({"desktop": {"display_width": 800}})).desktop_recording());
+        assert!(!config(json!({"desktop": {"record": false}})).desktop_recording());
+        assert!(!config(json!({})).desktop_recording());
+        assert!(!config(json!({"desktop": false, "record": true})).desktop_recording());
+    }
+
+    #[test]
+    fn the_record_switch_is_not_a_computer_use_setting() {
+        let settings = config(json!({"desktop": {"record": false, "display_width": 800}}))
+            .desktop()
+            .unwrap();
+        assert_eq!(settings, json!({"display_width": 800}));
+    }
 }

@@ -38,6 +38,7 @@ mod naming;
 mod network;
 pub mod openapi_spec;
 mod owned;
+pub mod recording;
 mod session_sandbox_provider;
 pub mod state;
 pub mod tools;

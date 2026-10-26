@@ -22,8 +22,10 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::Value;
 
+use crate::sandbox_state::load_state_for_provider;
 use crate::session_sandbox::{
-    SessionSandboxConfig, create_session_sandbox_provider, ensure_session_sandbox_running,
+    DesktopRecording, SessionSandboxConfig, SessionSandboxStatus, create_session_sandbox_provider,
+    ensure_session_sandbox_running,
 };
 
 pub const SANDBOX_DESKTOP_CAPABILITY_ID: &str = "sandbox_desktop";
@@ -156,6 +158,30 @@ impl ComputerBackend for SandboxDesktopBackend {
             .open_desktop(context, config, &state.instance, display)
             .await
     }
+}
+
+/// Stop and take the recordings of the Session's desktop, when it has a
+/// running Sandbox created with a recorded desktop. The server calls this when
+/// the Session goes idle; it never starts or resumes a Sandbox.
+pub async fn collect_desktop_recordings(
+    context: &ToolContext,
+    config: &SessionSandboxConfig,
+) -> Result<Vec<DesktopRecording>, ToolExecutionResult> {
+    if !config.desktop_recording() {
+        return Ok(Vec::new());
+    }
+    let Some(state) = load_state_for_provider(context, &config.provider).await? else {
+        return Ok(Vec::new());
+    };
+    if state.status != SessionSandboxStatus::Running {
+        return Ok(Vec::new());
+    }
+    let Some(provider) = create_session_sandbox_provider(&config.provider) else {
+        return Ok(Vec::new());
+    };
+    provider
+        .collect_desktop_recordings(context, config, &state.instance)
+        .await
 }
 
 #[cfg(test)]
