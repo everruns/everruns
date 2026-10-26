@@ -32,6 +32,7 @@ use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use super::address::{self, AddressPolicy, ResolveError};
 use super::limiter::Limiter;
 use super::limits::LimitsCache;
+use super::signals::Refusal;
 use super::usage::UsageAggregator;
 use everruns_core::host::{ProxyTokenError, verify_proxy_authorization};
 
@@ -141,7 +142,14 @@ impl Proxy {
             method: request.method_for_log(),
         };
 
+        let signal = |refusal: Refusal| {
+            if let Some(org) = &claims.org {
+                self.usage.signals().refused(org, refusal, now);
+            }
+        };
+
         if !address::port_allowed(request.port) {
+            signal(Refusal::Port);
             log.refused("port_blocked", 403);
             let _ = reply(&mut client, 403, "egress to this port is not allowed").await;
             return;
@@ -174,6 +182,7 @@ impl Proxy {
         {
             Ok(admission) => admission,
             Err(refusal) => {
+                signal(Refusal::Rate);
                 log.refused(refusal.as_str(), 429);
                 let _ = reply(&mut client, 429, refusal.reason()).await;
                 return;
@@ -183,6 +192,7 @@ impl Proxy {
         // connect: it consumed a slot and shows the attempt on the meter.
         if let Some(org) = &claims.org {
             self.usage.record(org, session, now, 0, 0, 1);
+            self.usage.signals().host(org, &request.host, now);
         }
 
         let addrs = match address::resolve(&request.host, request.port, self.options.address_policy)
@@ -192,13 +202,17 @@ impl Proxy {
             Err(err) => {
                 let (decision, status, message) = match err {
                     ResolveError::PortBlocked => {
+                        signal(Refusal::Port);
                         ("port_blocked", 403, "egress to this port is not allowed")
                     }
-                    ResolveError::NotPublic => (
-                        "non_public_address",
-                        403,
-                        "destination resolves to a non-public address",
-                    ),
+                    ResolveError::NotPublic => {
+                        signal(Refusal::Private);
+                        (
+                            "non_public_address",
+                            403,
+                            "destination resolves to a non-public address",
+                        )
+                    }
                     ResolveError::NoAddress => {
                         ("dns_failure", 502, "destination host does not resolve")
                     }

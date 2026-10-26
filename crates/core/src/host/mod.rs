@@ -36,6 +36,8 @@ pub mod dreaming;
 #[cfg(feature = "direct-egress")]
 mod egress;
 #[cfg(feature = "direct-egress")]
+mod egress_deny_feeds;
+#[cfg(feature = "direct-egress")]
 mod egress_proxy;
 #[cfg(feature = "direct-egress")]
 mod egress_reputation;
@@ -104,6 +106,8 @@ pub use compute::{
 pub use compute::{HostCompute, HostComputeSession};
 #[cfg(feature = "direct-egress")]
 pub use egress::DirectEgressService;
+#[cfg(feature = "direct-egress")]
+pub use egress_deny_feeds::{DenyFeeds, EGRESS_DENY_FEEDS_ENV};
 #[cfg(feature = "direct-egress")]
 pub use egress_proxy::{
     EGRESS_PROXY_SECRET_ENV, EGRESS_PROXY_URL_ENV, MAX_PROXY_TOKEN_FUTURE_SECS,
