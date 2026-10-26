@@ -61,6 +61,7 @@ class ReleaseSourceTests(unittest.TestCase):
             env.update(EVENT_NAME=event, GIT_REF="refs/tags/v0.46.0", REF_NAME="v0.46.0", COMMIT_SHA=RELEASE)
             result = source.resolve(env)
             self.assertEqual((result["ref"], result["is_release"], result["is_latest"]), (RELEASE, "true", "true"))
+            self.assertEqual(json.loads(result["arches"]), ["amd64", "arm64"])
 
     def test_pr_retains_merge_checkout_and_head_sha_tags(self):
         env = self.env()
@@ -68,6 +69,23 @@ class ReleaseSourceTests(unittest.TestCase):
         result = source.resolve(env)
         self.assertEqual((result["ref"], result["sha"], result["tag"], result["is_latest"], result["platforms"]),
                          (MAIN, PR, "", "false", "linux/amd64"))
+        self.assertEqual(json.loads(result["arches"]), ["amd64"])
 
-unittest.main()
+if not unittest.main(exit=False).result.wasSuccessful():
+    raise SystemExit(1)
+PY
+
+# The release binaries compile in the workflow's rust container; keep it on the
+# same image Dependabot maintains in Dockerfile.unified.
+python3 - <<'PY'
+import re
+from pathlib import Path
+
+dockerfile = re.search(r"^FROM --platform=\$BUILDPLATFORM (rust:\S+) AS builder-base$",
+                       Path("docker/Dockerfile.unified").read_text(), re.M).group(1)
+workflow = re.search(r"^      image: (rust:\S+)$",
+                     Path(".github/workflows/docker-publish.yml").read_text(), re.M).group(1)
+if dockerfile != workflow:
+    raise SystemExit(f"docker-publish.yml builds with {workflow}, Dockerfile.unified with {dockerfile}")
+print(f"release binaries and Dockerfile.unified share {workflow}")
 PY
