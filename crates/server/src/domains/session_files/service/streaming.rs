@@ -126,11 +126,7 @@ impl WorkspaceFileService {
         }
         let size = info.size_bytes.max(0) as u64;
         let resolved = match range {
-            Some(request) => Some(
-                request
-                    .resolve(size)
-                    .ok_or(RangeNotSatisfiable { size })?,
-            ),
+            Some(request) => Some(request.resolve(size).ok_or(RangeNotSatisfiable { size })?),
             None => None,
         };
         let known_type = guessed_content_type(&path);
@@ -245,11 +241,7 @@ impl WorkspaceFileService {
         };
         let size = bytes.len() as u64;
         let resolved = match range {
-            Some(request) => Some(
-                request
-                    .resolve(size)
-                    .ok_or(RangeNotSatisfiable { size })?,
-            ),
+            Some(request) => Some(request.resolve(size).ok_or(RangeNotSatisfiable { size })?),
             None => None,
         };
         let content_type = guessed_content_type(&file.path).unwrap_or_else(|| {
@@ -281,7 +273,9 @@ impl WorkspaceFileService {
 }
 
 fn guessed_content_type(path: &str) -> Option<String> {
-    mime_guess::from_path(path).first_raw().map(ToOwned::to_owned)
+    mime_guess::from_path(path)
+        .first_raw()
+        .map(ToOwned::to_owned)
 }
 
 #[cfg(test)]
@@ -543,7 +537,11 @@ mod service_tests {
         )
         .await
         .unwrap();
-        let copy = svc.open_file(sid, "/copy.webm", None).await.unwrap().unwrap();
+        let copy = svc
+            .open_file(sid, "/copy.webm", None)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(collect(copy).await, b"short");
     }
 }

@@ -313,8 +313,8 @@ async fn peer_cannot_read_other_users_private_memory() {
         Path((ws(), SECRET_PATH.to_string())),
         HeaderMap::new(),
     )
-        .await
-        .expect_err("download must be denied");
+    .await
+    .expect_err("download must be denied");
     assert_forbidden_without_leak(err);
     let err = preview_path(
         peer.clone(),
@@ -436,8 +436,8 @@ async fn owner_keeps_full_access_to_own_private_memory() {
         Path((ws(), SECRET_PATH.to_string())),
         HeaderMap::new(),
     )
-        .await
-        .expect("owner can download");
+    .await
+    .expect("owner can download");
     let _ = create_path(
         owner.clone(),
         st(),

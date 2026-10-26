@@ -29,8 +29,7 @@ pub(super) mod knowledge_mounts;
 use knowledge_mounts::KnowledgeRoute;
 mod mounts;
 mod search;
-mod streaming;
-pub use streaming::{ByteRangeRequest, OpenedFile, RangeNotSatisfiable};
+pub mod streaming;
 
 /// Input for creating a file
 pub struct CreateFileInput {
@@ -268,7 +267,6 @@ impl WorkspaceFileService {
 
         self.ensure_parent_path_writable(session_id, &path).await?;
 
-        // Check if already exists
         if let Some(existing) = self.db.get_session_file_info(session_id, &path).await? {
             if existing.is_directory {
                 return Ok(Self::row_to_file_info_from_info(existing));

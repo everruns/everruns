@@ -241,9 +241,10 @@ impl Database {
                     .ok_or_else(|| anyhow::anyhow!("File not found: {path}"))?,
                 None => {
                     self.create_session_file(CreateSessionFileRow {
-                        session_id: crate::kernel_imports::contracts::typed_id::SessionId::from_uuid(
-                            workspace_id,
-                        ),
+                        session_id:
+                            crate::kernel_imports::contracts::typed_id::SessionId::from_uuid(
+                                workspace_id,
+                            ),
                         path: path.to_string(),
                         content: Some(content),
                         is_directory: false,
@@ -284,8 +285,7 @@ impl Database {
         // blob GC reclaims it.
         let mut tx = self.pool.begin().await?;
         let row = match existing {
-            Some(_) => {
-                let row = sqlx::query_as::<_, SessionFileInfoRow>(
+            Some(_) => sqlx::query_as::<_, SessionFileInfoRow>(
                     r#"
                     UPDATE workspace_files
                     SET content = NULL,
@@ -302,9 +302,7 @@ impl Database {
                 .bind(is_readonly)
                 .fetch_optional(&mut *tx)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("File changed while uploading: {path}"))?;
-                row
-            }
+                .ok_or_else(|| anyhow::anyhow!("File changed while uploading: {path}"))?,
             None => {
                 sqlx::query_as::<_, SessionFileInfoRow>(
                     r#"
@@ -421,9 +419,9 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some((key, sha)) = pointer {
-            let blob = self
-                .blob_store()
-                .ok_or_else(|| anyhow::anyhow!("file {path} is offloaded but no blob store is configured"))?;
+            let blob = self.blob_store().ok_or_else(|| {
+                anyhow::anyhow!("file {path} is offloaded but no blob store is configured")
+            })?;
             // A zero-length range never reaches the store (S3 rejects it).
             let body = match range {
                 Some(ref r) if r.is_empty() => empty(),
@@ -445,7 +443,7 @@ impl Database {
         };
         // SQL substring is 1-based.
         let (bytes,): (Option<Vec<u8>>,) = sqlx::query_as(
-            "SELECT substring(content FROM $2 FOR $3) FROM workspace_files WHERE id = $1",
+            "SELECT substring(content FROM $2::int FOR $3::int) FROM workspace_files WHERE id = $1",
         )
         .bind(info.id)
         .bind(offset + 1)
@@ -684,11 +682,12 @@ impl Database {
             // offloaded file the sidecar holds the current SHA-256; for a
             // still-inline file (pre-offload row) compare the column directly.
             let expected_sha = content_sha256(&expected_content);
-            let current_sha: Option<(String,)> =
-                sqlx::query_as("SELECT content_sha256 FROM workspace_file_blobs WHERE file_id = $1")
-                    .bind(existing.id)
-                    .fetch_optional(&mut *tx)
-                    .await?;
+            let current_sha: Option<(String,)> = sqlx::query_as(
+                "SELECT content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(existing.id)
+            .fetch_optional(&mut *tx)
+            .await?;
 
             let matches = match (&current_sha, &existing.content) {
                 (Some((sha,)), _) => *sha == expected_sha,

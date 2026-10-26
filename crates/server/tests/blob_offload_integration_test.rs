@@ -647,7 +647,10 @@ async fn offloaded_file_streams_whole_and_ranges() {
         .await
         .expect("open")
         .expect("present");
-    assert_eq!(whole.content_sha256.as_deref(), Some(content_sha256(&body).as_str()));
+    assert_eq!(
+        whole.content_sha256.as_deref(),
+        Some(content_sha256(&body).as_str())
+    );
     assert_eq!(collect(whole).await, body);
 
     let range = backend

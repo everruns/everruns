@@ -13,5 +13,6 @@ pub mod virtual_mount_registry;
 pub use commands::*;
 pub use grep::*;
 pub use memory_mounts::{MemoryMount, MemoryMountRouter};
+pub use service::streaming::{ByteRangeRequest, OpenedFile, RangeNotSatisfiable};
 pub use service::*;
 pub use virtual_mount_registry::VirtualMountRegistry;

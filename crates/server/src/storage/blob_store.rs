@@ -13,9 +13,9 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::Engine;
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use everruns_core::config::{env_bool, env_opt_string, env_string};
-use bytes::Bytes;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 use object_store::{
@@ -62,8 +62,11 @@ pub trait BlobStore: Send + Sync {
     /// already clamped to the object size by the caller). Returns `Ok(None)`
     /// when absent. Large files (recordings, uploads) are served through this
     /// so the control plane never holds a whole object in memory.
-    async fn get_stream(&self, key: &str, range: Option<Range<u64>>)
-    -> Result<Option<BlobByteStream>>;
+    async fn get_stream(
+        &self,
+        key: &str,
+        range: Option<Range<u64>>,
+    ) -> Result<Option<BlobByteStream>>;
 
     /// Delete the object at `key`. A missing object is not an error (idempotent).
     async fn delete(&self, key: &str) -> Result<()>;
@@ -372,7 +375,8 @@ impl BlobStore for ObjectStoreBlobStore {
             .put_multipart_opts(&path, opts)
             .await
             .with_context(|| format!("blob multipart start failed for key {key}"))?;
-        let mut writer = object_store::WriteMultipart::new_with_chunk_size(upload, STREAM_PART_BYTES);
+        let mut writer =
+            object_store::WriteMultipart::new_with_chunk_size(upload, STREAM_PART_BYTES);
         let mut hasher = Sha256::new();
         let mut size_bytes: u64 = 0;
         let written: Result<()> = async {

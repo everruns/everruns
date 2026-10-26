@@ -28,9 +28,9 @@ pub use crate::domains::session_files::types::{
     GrepRequest, MoveFileRequest, SearchRequest, StatRequest, UpdateFileRequest,
 };
 use crate::domains::session_files::{
-    CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile, GetWorkspaceFile,
-    GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile, SearchWorkspaceFiles,
-    ByteRangeRequest, RangeNotSatisfiable, StatWorkspaceFile, UpdateWorkspaceFile,
+    ByteRangeRequest, CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile,
+    GetWorkspaceFile, GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile,
+    RangeNotSatisfiable, SearchWorkspaceFiles, StatWorkspaceFile, UpdateWorkspaceFile,
     WorkspaceFileService, queries as q,
 };
 use crate::storage::StorageBackend;
