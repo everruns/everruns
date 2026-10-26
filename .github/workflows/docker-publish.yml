@@ -54,6 +54,7 @@ jobs:
       is_release: ${{ steps.source.outputs.is_release }}
       is_latest: ${{ steps.source.outputs.is_latest }}
       platforms: ${{ steps.source.outputs.platforms }}
+      arches: ${{ steps.source.outputs.arches }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Resolve immutable build source
@@ -68,13 +69,77 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python3 scripts/docker-release-source.py
 
-  # Build all Rust images on a single runner so the shared builder-all stage
-  # is compiled once (per architecture) instead of 3x across separate runners.
+  # Release binaries are compiled natively, one runner per architecture and
+  # binary group, all in parallel. Compiling inside Docker meant a single
+  # runner building amd64 and then arm64 back to back with an empty cargo cache
+  # (cache mounts do not survive ephemeral runners): 2h23m for 0.49.0, while
+  # the same binaries compile natively in 25-35 min. The `rust` container keeps
+  # the bookworm glibc the runtime images ship, so the binaries run in them.
+  # Groups split the server crate's binaries so no job links more than two:
+  # each thin-LTO link of the server crate is minutes long on a 4-core runner.
+  build-binaries:
+    name: Build ${{ matrix.group }} binaries (${{ matrix.arch }})
+    needs: resolve-source
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
+    timeout-minutes: 90
+    # Same image as docker/Dockerfile.unified's builder, which Dependabot bumps;
+    # scripts/test-docker-release-source.sh fails when the two drift apart.
+    container:
+      image: rust:1.99.1-slim-bookworm
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(needs.resolve-source.outputs.arches) }}
+        group: [server, tools, worker]
+
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git pkg-config clang
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.ref }}
+
+      # rust-toolchain.toml pins the toolchain; rustup installs it on first use.
+      - name: Build release binaries
+        env:
+          ARCH: ${{ matrix.arch }}
+          GROUP: ${{ matrix.group }}
+        run: |
+          set -euo pipefail
+          case "$GROUP" in
+            server) bins=(everruns-server everruns-egress-proxy); pkg=everruns-server ;;
+            tools) bins=(reencrypt-secrets everruns-migrate); pkg=everruns-server ;;
+            worker) bins=(everruns-worker); pkg=everruns-worker ;;
+            *) echo "unknown binary group: $GROUP" >&2; exit 1 ;;
+          esac
+          args=(-p "$pkg")
+          for bin in "${bins[@]}"; do args+=(--bin "$bin"); done
+          cargo build --locked --release "${args[@]}"
+          mkdir -p "out/$ARCH"
+          for bin in "${bins[@]}"; do cp "target/release/$bin" "out/$ARCH/"; done
+          if [ "$GROUP" = tools ]; then
+            cargo install sqlx-cli --no-default-features --features postgres,rustls --locked --root /tmp/sqlx-cli
+            cp /tmp/sqlx-cli/bin/sqlx "out/$ARCH/"
+          fi
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: bin-${{ matrix.arch }}-${{ matrix.group }}
+          path: out/
+          retention-days: 7
+          compression-level: 1
+
+  # Images only package the binaries above, so this takes minutes. QEMU is
+  # still needed for the admin image's one RUN step (useradd) on arm64.
   build-rust-images:
     name: Build Rust Images
-    needs: resolve-source
+    needs: [resolve-source, build-binaries]
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
       contents: read
       packages: write
@@ -84,17 +149,19 @@ jobs:
         with:
           ref: ${{ needs.resolve-source.outputs.ref }}
 
-      # QEMU needed for multi-arch builds (ARM64 cross-compilation)
+      - name: Download binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: bin
+
       - name: Set up QEMU
         if: github.event_name != 'pull_request'
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-        with:
-          buildkitd-config-inline: |
-            [worker.oci]
-              max-parallelism = 1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -103,7 +170,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Server image ---
       - name: Extract metadata (server)
         id: meta-server
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
@@ -122,16 +188,13 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          file: docker/Dockerfile.unified
+          file: docker/Dockerfile.prebuilt
           target: server
           platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-server.outputs.tags }}
           labels: ${{ steps.meta-server.outputs.labels }}
-          cache-from: type=gha,scope=docker-rust
-          cache-to: type=gha,mode=max,scope=docker-rust
 
-      # --- Worker image ---
       - name: Extract metadata (worker)
         id: meta-worker
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
@@ -150,18 +213,14 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          file: docker/Dockerfile.unified
+          file: docker/Dockerfile.prebuilt
           target: worker
           platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
-          cache-from: type=gha,scope=docker-rust
-          cache-to: type=gha,mode=max,scope=docker-rust
 
-      # --- Admin image (skip on PRs — not needed for CI validation) ---
       - name: Extract metadata (admin)
-        if: github.event_name != 'pull_request'
         id: meta-admin
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
@@ -176,18 +235,60 @@ jobs:
             type=raw,value=${{ needs.resolve-source.outputs.sha }}
 
       - name: Build and push admin
-        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          file: docker/Dockerfile.unified
+          file: docker/Dockerfile.prebuilt
           target: admin
           platforms: ${{ needs.resolve-source.outputs.platforms }}
           push: true
           tags: ${{ steps.meta-admin.outputs.tags }}
           labels: ${{ steps.meta-admin.outputs.labels }}
-          cache-from: type=gha,scope=docker-rust
-          cache-to: type=gha,mode=max,scope=docker-rust
+
+  # Publishes the same binaries the images carry as GitHub release assets.
+  # Kept apart from the compile jobs so only this short job holds a token that
+  # can write to the release.
+  upload-release-binaries:
+    name: Upload Server & Worker Binaries
+    needs: [resolve-source, build-binaries]
+    if: needs.resolve-source.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: bin-*
+          merge-multiple: true
+          path: bin
+
+      - name: Package and upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve-source.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A hand-pushed tag can arrive before its GitHub release exists.
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::warning::No GitHub release for $RELEASE_TAG; binaries not uploaded"
+            exit 0
+          fi
+          for arch in amd64 arm64; do
+            case "$arch" in
+              amd64) target=x86_64-unknown-linux-gnu ;;
+              arm64) target=aarch64-unknown-linux-gnu ;;
+            esac
+            for bin in everruns-server everruns-worker; do
+              archive="$bin-$target.tar.gz"
+              chmod 0755 "bin/$arch/$bin"
+              tar -C "bin/$arch" -czf "$archive" "$bin"
+              sha256sum "$archive" > "$archive.sha256"
+              gh release upload "$RELEASE_TAG" "$archive" "$archive.sha256" --clobber
+            done
+          done
 
   # UI image builds independently (different Dockerfile, Node.js stack)
   build-ui-image:

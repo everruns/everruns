@@ -361,7 +361,9 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 2. Release title: `vX.Y.Z`
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Release card: `release-card-vX.Y.Z.png`, rendered from the reviewed `release-card.yml`
-5. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
+5. Docker images tagged with version, plus the server and worker binaries they carry as
+   `everruns-{server,worker}-<target>.tar.gz` release assets (both from Docker Publish, triggered
+   via `workflow_dispatch` from Release workflow)
 6. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
 7. crates.io packages ship at the same version; each is published from its own
    trusted `crate/<package>/v<version>` tag by the **Publish Crate** workflow
@@ -402,9 +404,28 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 - **SHA tags**: Generated on every build for traceability (short + full SHA).
 - **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
 
+#### How images are built
+
+Release binaries compile once per architecture on native runners (`ubuntu-latest` for amd64,
+`ubuntu-24.04-arm` for arm64), all in parallel, split into three groups so no job links more than
+two binaries of the server crate: server + egress proxy, admin tools (`reencrypt-secrets`,
+`everruns-migrate`, `sqlx`), and worker. The jobs run inside the same `rust:*-slim-bookworm` image
+as `docker/Dockerfile.unified`'s builder, so the binaries link against the bookworm glibc the
+distroless and `debian:bookworm-slim` runtime bases ship. `docker/Dockerfile.prebuilt` then
+packages them into multi-arch images in minutes, and the same binaries are uploaded as release
+assets, so a downloaded binary and the image carry identical files.
+
+Why: until 0.49.0 the images compiled inside Docker. One 4-core runner built amd64 and then arm64
+back to back (BuildKit `max-parallelism = 1`), and every release started from an empty cargo cache
+because BuildKit cache mounts do not survive ephemeral runners; the GitHub Actions layer cache could
+not help since the source layer changes every release. 0.49.0 spent 2h23m there (64 min amd64,
+69 min arm64, 6 min exporting a cache that was never reused), the critical path of the whole
+release, while a separate workflow compiled the same server and worker natively in 25-35 min.
+`docker/Dockerfile.unified` stays for building images from source locally.
+
 #### Trigger rationale
 
-Docker images are expensive to build, the slow path is `linux/arm64` via QEMU cross-compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
+Docker images are expensive to build, even with native per-architecture compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
 
 The current trigger shape (`docker-publish.yml`):
 
