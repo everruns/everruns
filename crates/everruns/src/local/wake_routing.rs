@@ -282,6 +282,10 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>> {
         self.inner.get_session_status(session_id).await
     }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        self.inner.latest_terminal_turn_status(session_id).await
+    }
 }
 
 #[cfg(test)]

@@ -126,6 +126,16 @@ pub trait LocalSessionRunner: Send + Sync {
 
     /// Current session status string, or `None` if the session is unknown.
     async fn get_session_status(&self, session_id: SessionId) -> Result<Option<String>>;
+
+    /// Outcome of the session's latest finished turn (`completed`, `failed`,
+    /// `cancelled` or `sealed`), or `None` when no turn has finished since the
+    /// last one started. An idle session only says it can take another turn,
+    /// so [`LocalPlatformStore::wait_for_idle`] reports this outcome instead
+    /// and delegation can settle the child's task with the matching state.
+    /// Runners that cannot tell return `None` and keep reporting `idle`.
+    async fn latest_terminal_turn_status(&self, _session_id: SessionId) -> Result<Option<String>> {
+        Ok(None)
+    }
 }
 
 fn unsupported(op: &str) -> AgentLoopError {
@@ -208,10 +218,20 @@ impl PlatformStore for LocalPlatformStore {
     ) -> Result<String> {
         // `send_message` runs the turn synchronously to completion in the local
         // host, so by the time a caller polls, the session is already idle.
-        self.runner
+        let status = self
+            .runner
             .get_session_status(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::session_not_found(session_id))
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        // Idle follows success, failure and cancellation alike. Report the
+        // finished turn's outcome so a foreground subagent settles its task
+        // (EVE-1310); a never-started child stays a nonterminal `idle`.
+        if status == "idle"
+            && let Some(outcome) = self.runner.latest_terminal_turn_status(session_id).await?
+        {
+            return Ok(outcome);
+        }
+        Ok(status)
     }
 
     // ---- Platform-management-only: explicit unsupported ---------------------
