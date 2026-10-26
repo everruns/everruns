@@ -238,6 +238,38 @@ describe("SandboxPolicyEditor with a Modal template", () => {
     render(<SandboxPolicyEditor value={e2bPolicy()} onChange={onChange} />);
     expect(screen.getByLabelText("Outbound network")).toHaveTextContent("Open");
   });
+
+  it("turns the E2B desktop on and off as a template option", () => {
+    const onChange = jest.fn();
+    render(<SandboxPolicyEditor value={e2bPolicy()} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Desktop" }));
+    expect(onChange.mock.lastCall[0].templates.e2b.target.options).toEqual({
+      template: "base",
+      timeout_seconds: 3600,
+      desktop: true,
+    });
+  });
+
+  it("gives a Daytona desktop the default image instead of a size or snapshot", () => {
+    const onChange = jest.fn();
+    const base = daytonaPolicy();
+    const daytona = base.templates!.daytona;
+    const value: SandboxPolicy = {
+      ...base,
+      templates: {
+        daytona: {
+          ...daytona,
+          target: { ...daytona.target, options: { size: "large", snapshot: "custom" } },
+        },
+      },
+    };
+    const { rerender } = render(<SandboxPolicyEditor value={value} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Desktop" }));
+    expect(onChange.mock.lastCall[0].templates.daytona.target.options).toEqual({ desktop: true });
+
+    rerender(<SandboxPolicyEditor value={onChange.mock.lastCall[0]} onChange={onChange} />);
+    expect(screen.getByLabelText("Snapshot")).toBeDisabled();
+  });
 });
 
 describe("SandboxPolicyEditor retention", () => {

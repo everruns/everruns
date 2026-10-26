@@ -100,22 +100,19 @@ Lifecycle management.
   - `timeout_seconds` (optional; used for `resume`)
 - **Returns**: `{ sandbox_id, action, success, timeout_seconds? }`
 
-## Desktop computer use (experimental)
+## Sandbox desktop
 
-The crate also contributes `computer_use_desktop`, an experimental capability
-that backs the provider-neutral `computer` tool with a full desktop in a
-session-owned sandbox from the E2B `desktop` template. See
-`src/computer.rs` and `knowledge/execution/computer-use.md`.
+A Session Sandbox created with `target.options.desktop` starts from the E2B
+`desktop` template (unless the template names another), and
+`E2BSessionSandboxProvider::open_desktop` drives it for the `sandbox_desktop`
+capability. See `src/computer.rs` and `knowledge/execution/computer-use.md`.
 
 - **Display**: Xvfb on `:99` at the configured size, the template's xfce
   session, PNG frames checked against the display size.
 - **Actions**: `xdotool` argv through envd's process API with no shell; typed
   text is one argument after `--`.
-- **Ownership**: the sandbox id is kept under the reserved session storage key
-  `computer_use.display.e2b` and re-checked through the session-scoped state
-  lookup on every call; the sandbox is leased and resumed when paused.
-- **Egress**: the same E2B network policy as `e2b_create_sandbox`: E2B
-  enforces the session network access list inside the desktop.
+- **Egress**: the Session Sandbox's own network rules, so the template's
+  outbound network policy covers the desktop.
 
 ## Metadata
 

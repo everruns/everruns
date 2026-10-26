@@ -1,5 +1,6 @@
 //! Daytona implementation of the provider-neutral session_sandbox contract.
 
+use everruns_contracts::runtime::computer_use::{ComputerSession, ComputerUseConfig, DisplaySize};
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
     OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
@@ -554,7 +555,18 @@ async fn create_daytona_instance(
 ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
     let workspace_path = workspace_path(config);
     let mut create_body = create_body(&sandbox_labels(context).await, auto_stop_minutes(config)?);
-    create_body.snapshot = Some(snapshot_name(config)?);
+    match desktop_display(config) {
+        // Daytona's default image is the one that ships the desktop; its size
+        // is fixed at create time.
+        Some(display) => {
+            create_body.env = [(
+                crate::daytona::computer::RESOLUTION_ENV.to_string(),
+                display.to_string(),
+            )]
+            .into();
+        }
+        None => create_body.snapshot = Some(snapshot_name(config)?),
+    }
     network::apply_to_create(&mut create_body, &network::egress_rules(context, config)?);
     if let Some(recovery) = &recovery {
         create_body.volumes = vec![SandboxVolume {
@@ -773,6 +785,30 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             provider_state: instance.provider_state.clone(),
             metadata: json!({ "remote_state": "started" }),
         })
+    }
+
+    async fn open_desktop(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        display: DisplaySize,
+    ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
+        if desktop_display(config).is_none() {
+            return Err(ToolExecutionResult::tool_error(
+                "this Daytona sandbox was created without a desktop",
+            ));
+        }
+        let api_key = get_managed_api_key(context, &config.credential).await?;
+        let client = build_client(api_key, config);
+        let session = crate::daytona::computer::DaytonaDesktopSession::start(
+            client,
+            instance.external_id.clone(),
+            display,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
+        Ok(Box::new(session))
     }
 
     async fn pause(
@@ -1204,6 +1240,14 @@ fn auto_stop_minutes(config: &SessionSandboxConfig) -> Result<u64, ToolExecution
             "session_sandbox Daytona auto_stop_minutes must be between 1 and 60",
         ))
     }
+}
+
+/// The display size of a sandbox created with a desktop, from
+/// `provider_config.desktop`.
+fn desktop_display(config: &SessionSandboxConfig) -> Option<DisplaySize> {
+    config
+        .desktop()
+        .map(|settings| ComputerUseConfig::from_value_or_default(&settings).display())
 }
 
 fn snapshot_name(config: &SessionSandboxConfig) -> Result<String, ToolExecutionResult> {

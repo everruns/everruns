@@ -398,15 +398,16 @@ mod tests {
             everruns_capabilities::integrations_catalog::capability_plugins(),
             |_| true,
         );
+        registry.register(everruns_capabilities::capabilities::SandboxDesktopCapability);
         let both = vec![
             AgentCapabilityConfig::new("computer_use"),
             AgentCapabilityConfig::new("current_time"),
-            AgentCapabilityConfig::new("computer_use_desktop"),
+            AgentCapabilityConfig::new("sandbox_desktop"),
         ];
         let error = exclusive_capability_conflict(&both, &registry).expect("conflict");
         assert_eq!(
             error.message(),
-            "Capabilities 'computer_use' and 'computer_use_desktop' cannot be enabled together: \
+            "Capabilities 'computer_use' and 'sandbox_desktop' cannot be enabled together: \
              each provides the computer tool; keep one"
         );
         assert!(exclusive_capability_conflict(&both[..2], &registry).is_none());

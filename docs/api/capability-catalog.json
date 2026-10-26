@@ -407,48 +407,6 @@
       ]
     },
     {
-      "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": "computer-use",
-      "feature_flag": "daytona_computer_use",
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "computer_use_daytona",
-      "name": "Daytona Desktop Computer Use",
-      "status": "available",
-      "tools": [
-        "computer"
-      ]
-    },
-    {
-      "category": "Sandboxes",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": "computer-use",
-      "feature_flag": "e2b_computer_use",
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "computer_use_desktop",
-      "name": "Desktop Computer Use",
-      "status": "available",
-      "tools": [
-        "computer"
-      ]
-    },
-    {
       "category": "Execution",
       "dependencies": [
         "session_storage"
@@ -1250,6 +1208,25 @@
         "attach_resource",
         "discover_resources",
         "list_attached_resources"
+      ]
+    },
+    {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": "computer-use",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "sandbox_desktop",
+      "name": "Sandbox Desktop",
+      "status": "available",
+      "tools": [
+        "computer"
       ]
     },
     {

@@ -1,61 +1,36 @@
-//! Computer use on a Daytona sandbox desktop (experimental).
+//! The desktop of a Daytona Sandbox created with a desktop.
 //!
-//! The provider-neutral `computer` tool (`everruns_contracts::runtime::computer_use`)
-//! drives a display through [`ComputerBackend`]. This backend's display is the
-//! desktop Daytona's default sandbox image ships (Xvfb, xfce, x11vnc), driven
-//! through the toolbox's Computer Use API: `/computeruse/mouse/*`,
-//! `/computeruse/keyboard/*` and `/computeruse/screenshot`. The display size is
-//! set once, at create time, with the image's `VNC_RESOLUTION` variable.
+//! A Sandbox Template with `target.options.desktop` makes the session sandbox
+//! provider create the primary Sandbox from Daytona's default image, which
+//! ships a desktop (Xvfb, xfce, x11vnc), sized at create time with the image's
+//! `VNC_RESOLUTION` variable. The `sandbox_desktop` capability drives it
+//! through [`DaytonaDesktopSession`] and the toolbox Computer Use API:
+//! `/computeruse/mouse/*`, `/computeruse/keyboard/*` and
+//! `/computeruse/screenshot`.
 //!
 //! Decision: the native Computer Use API, not xdotool through `exec`. Every
 //! action is a JSON request to the sandbox daemon, so no shell ever sees text
 //! the model typed. Keys the daemon has no name for are refused by the daemon
 //! with a readable error rather than emulated.
 //!
-//! Security: the sandbox is the session's own. Its id lives under a session
-//! storage key reserved from `kv_store` (`COMPUTER_USE_DISPLAY_KV_PREFIX`), and
-//! is re-checked through `get_sandbox_state`, which runs
-//! `verify_owned_external_resource_if_available`. It is leased like any
-//! `daytona_create_sandbox` sandbox, so session cleanup deletes it.
-//!
-//! Security: egress is the Daytona sandbox's network policy, the same as
-//! `daytona_create_sandbox`: Daytona enforces the session network access list
-//! for every process on the desktop (`network.rs`, TM-DAYTONA-015).
+//! Security: egress is the Sandbox's Daytona network policy: the template rule
+//! and the session network access list (`network.rs`, TM-DAYTONA-015).
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use reqwest::Method;
 use serde_json::{Value, json};
-use tracing::warn;
 
-use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
-use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, RiskLevel};
 use everruns_contracts::runtime::computer_use::{
-    COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
-    ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
-    MouseButton, Screenshot, parse_key_combo, parse_modifiers, png_base64_image,
-    png_base64_screenshot,
+    ComputerAction, ComputerSession, DisplaySize, Modifier, MouseButton, Screenshot,
+    parse_key_combo, parse_modifiers, png_base64_image, png_base64_screenshot,
 };
-use everruns_contracts::runtime::tool_context::ToolContext;
-use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
 use crate::daytona::client::DaytonaClient;
-use crate::daytona::client_test_override::daytona_client_from_context;
-use crate::daytona::naming::{create_body, create_sandbox_with_unique_name};
-use crate::daytona::network;
-use crate::daytona::state::{
-    SandboxState, delete_sandbox_state, get_api_key, get_sandbox_state, release_sandbox_lease,
-    save_sandbox_state, touch_sandbox_lease,
-};
-use crate::daytona::{AUTO_STOP_INTERVAL_MINUTES, DAYTONA_WORKSPACE_PATH};
-
-/// Capability id of desktop computer use on Daytona.
-pub const DAYTONA_COMPUTER_USE_CAPABILITY_ID: &str = "computer_use_daytona";
 
 /// Sandbox environment variable the default image reads for the display size.
-const RESOLUTION_ENV: &str = "VNC_RESOLUTION";
+pub(crate) const RESOLUTION_ENV: &str = "VNC_RESOLUTION";
 
 /// How long the desktop may take to report itself active.
 const DESKTOP_START_TIMEOUT: Duration = Duration::from_secs(60);
@@ -64,11 +39,6 @@ const DESKTOP_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// A screenshot waits this long after the last input, so the frame shows
 /// what the input did rather than the screen just before it.
 const SETTLE_DELAY: Duration = Duration::from_millis(300);
-
-/// Session storage key holding the desktop sandbox id.
-fn desktop_sandbox_key() -> String {
-    format!("{COMPUTER_USE_DISPLAY_KV_PREFIX}daytona")
-}
 
 // ============================================================================
 // Action -> Computer Use API requests
@@ -406,168 +376,6 @@ fn readable_error(error: &str) -> String {
     }
 }
 
-// ============================================================================
-// Backend
-// ============================================================================
-
-/// The `computer` backend on a session-owned Daytona sandbox desktop.
-pub struct DaytonaDesktopComputerBackend;
-
-#[async_trait]
-impl ComputerBackend for DaytonaDesktopComputerBackend {
-    fn id(&self) -> &str {
-        "daytona_desktop"
-    }
-
-    fn supports_navigation(&self) -> bool {
-        false
-    }
-
-    async fn acquire(
-        &self,
-        context: &ToolContext,
-        display: DisplaySize,
-    ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
-        let api_key = get_api_key(context).await?;
-        let client = daytona_client_from_context(api_key, context);
-        let mut state = desktop_sandbox(&client, context, display).await?;
-        let reported = start_desktop(&client, &state.sandbox_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
-        if reported != display {
-            // The size is fixed at create time: a sandbox made for another
-            // configured size is replaced rather than driven off target.
-            let note = format!("desktop is {reported}, configured {display}");
-            warn!("computer_use: {note}; opening a new sandbox");
-            discard_sandbox(&client, context, &state.sandbox_id).await;
-            state = create_desktop_sandbox(&client, context, display).await?;
-            let reported = start_desktop(&client, &state.sandbox_id)
-                .await
-                .map_err(ToolExecutionResult::tool_error)?;
-            if reported != display {
-                return Err(ToolExecutionResult::tool_error(format!(
-                    "the sandbox desktop is {reported}, not the configured {display}"
-                )));
-            }
-        }
-        Ok(Box::new(DaytonaDesktopSession {
-            client,
-            sandbox_id: state.sandbox_id,
-            display,
-            last_input: None,
-        }))
-    }
-}
-
-/// The session's desktop sandbox: the recorded one if it is still this
-/// session's and usable (started when stopped), otherwise a new one.
-async fn desktop_sandbox(
-    client: &DaytonaClient,
-    context: &ToolContext,
-    display: DisplaySize,
-) -> Result<SandboxState, ToolExecutionResult> {
-    let storage = context
-        .storage_store
-        .as_ref()
-        .ok_or_else(|| ToolExecutionResult::tool_error("Storage not available in this context"))?;
-    let recorded = storage
-        .get_value(context.session_id, &desktop_sandbox_key())
-        .await
-        .ok()
-        .flatten();
-    if let Some(sandbox_id) = recorded {
-        // The key is reserved from kv_store, and ownership is re-checked here
-        // (TM-DAYTONA-005), so a stale or foreign id never reaches Daytona.
-        match get_sandbox_state(context, &sandbox_id).await {
-            Ok(state) => match wake_sandbox(client, &state.sandbox_id).await {
-                Ok(()) => {
-                    touch_sandbox_lease(context, &state, None).await?;
-                    return Ok(state);
-                }
-                Err(e) => {
-                    warn!("computer_use: desktop sandbox is unusable, opening a new one: {e}");
-                    discard_sandbox(client, context, &state.sandbox_id).await;
-                }
-            },
-            Err(_) => warn!("computer_use: recorded desktop sandbox is unavailable"),
-        }
-    }
-    create_desktop_sandbox(client, context, display).await
-}
-
-/// Bring a recorded sandbox to `started`. Auto-stop ends the desktop's
-/// processes, which [`start_desktop`] starts again.
-async fn wake_sandbox(client: &DaytonaClient, sandbox_id: &str) -> Result<(), String> {
-    let info = client.get_sandbox(sandbox_id).await?;
-    match info.state.as_str() {
-        "started" => Ok(()),
-        "stopped" | "archived" => {
-            client.start_sandbox(sandbox_id).await?;
-            client.wait_for_ready(sandbox_id).await
-        }
-        "starting" | "restoring" | "creating" | "pending_build" => {
-            client.wait_for_ready(sandbox_id).await
-        }
-        other => Err(format!("sandbox is {other}")),
-    }
-}
-
-async fn create_desktop_sandbox(
-    client: &DaytonaClient,
-    context: &ToolContext,
-    display: DisplaySize,
-) -> Result<SandboxState, ToolExecutionResult> {
-    let mut labels = serde_json::Map::new();
-    labels.insert("everruns".to_string(), json!("true"));
-    labels.insert(
-        "everruns.session_id".to_string(),
-        json!(context.session_id.to_string()),
-    );
-    labels.insert("everruns.purpose".to_string(), json!("computer_use"));
-    // No snapshot: Daytona's default image is the one that ships the desktop.
-    let mut body = create_body(&labels, AUTO_STOP_INTERVAL_MINUTES);
-    body.env = [(RESOLUTION_ENV.to_string(), display.to_string())].into();
-    network::apply_to_create(&mut body, &network::tool_egress_rules(context)?);
-    let (info, name) = create_sandbox_with_unique_name(client, "everruns-computer-use", body)
-        .await
-        .map_err(ToolExecutionResult::tool_error)?;
-    let state = SandboxState {
-        sandbox_id: info.id,
-        workspace_path: DAYTONA_WORKSPACE_PATH.to_string(),
-        started_at: chrono::Utc::now().to_rfc3339(),
-    };
-    // Recorded and leased before waiting, so a failed start is still cleaned up.
-    save_sandbox_state(context, &state).await?;
-    touch_sandbox_lease(context, &state, Some(name.canonical_name)).await?;
-    if let Some(storage) = context.storage_store.as_ref()
-        && let Err(e) = storage
-            .set_value(
-                context.session_id,
-                &desktop_sandbox_key(),
-                &state.sandbox_id,
-            )
-            .await
-    {
-        warn!("computer_use: failed to record the desktop sandbox: {e}");
-    }
-    client
-        .wait_for_ready(&state.sandbox_id)
-        .await
-        .map_err(ToolExecutionResult::tool_error)?;
-    Ok(state)
-}
-
-/// Delete a desktop sandbox this session no longer uses. Best effort: the
-/// lease and Daytona's auto-delete catch whatever fails here.
-async fn discard_sandbox(client: &DaytonaClient, context: &ToolContext, sandbox_id: &str) {
-    if let Err(e) = client.delete_sandbox(sandbox_id).await {
-        warn!("computer_use: failed to delete the old desktop sandbox: {e}");
-        return;
-    }
-    let _ = release_sandbox_lease(context, sandbox_id).await;
-    let _ = delete_sandbox_state(context, sandbox_id).await;
-}
-
 async fn computer_use(
     client: &DaytonaClient,
     sandbox_id: &str,
@@ -835,94 +643,6 @@ impl ComputerSession for DaytonaDesktopSession {
         // session lease (refreshed on acquire) bound its lifetime.
     }
 }
-
-// ============================================================================
-// Capability
-// ============================================================================
-
-const DESKTOP_PROMPT_NOTE: &str = " The display is a Linux desktop, not a browser page: \
-there is no navigate action, so open applications from the desktop and type addresses into them.";
-
-/// Provider-neutral computer use on a Daytona sandbox desktop.
-pub struct DaytonaDesktopComputerUseCapability;
-
-impl Capability for DaytonaDesktopComputerUseCapability {
-    fn id(&self) -> &str {
-        DAYTONA_COMPUTER_USE_CAPABILITY_ID
-    }
-
-    fn name(&self) -> &str {
-        "Daytona Desktop Computer Use"
-    }
-
-    fn description(&self) -> &str {
-        "Let the agent see and operate a full Linux desktop in a Daytona sandbox the way a person \
-         does: it takes screenshots and clicks, types, scrolls, and presses keys at screen \
-         coordinates, in any desktop app. Works with any model that accepts images. Daytona \
-         limits the sandbox to the session's network access list. Cannot be combined \
-         with another computer use capability: each provides the `computer` tool."
-    }
-
-    fn status(&self) -> CapabilityStatus {
-        CapabilityStatus::Available
-    }
-
-    fn risk_level(&self) -> RiskLevel {
-        RiskLevel::High
-    }
-
-    fn icon(&self) -> Option<&str> {
-        Some("monitor")
-    }
-
-    fn category(&self) -> Option<&str> {
-        Some("Sandboxes")
-    }
-
-    fn system_prompt_addition(&self) -> Option<&str> {
-        Some(&DESKTOP_SYSTEM_PROMPT)
-    }
-
-    fn tools(&self) -> Vec<Box<dyn Tool>> {
-        self.tools_with_config(&Value::Null)
-    }
-
-    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(ComputerTool::new(
-            Arc::new(DaytonaDesktopComputerBackend),
-            ComputerUseConfig::from_value_or_default(config),
-        ))]
-    }
-
-    fn config_schema(&self) -> Option<Value> {
-        Some(ComputerUseConfig::json_schema())
-    }
-
-    fn validate_config(&self, config: &Value) -> Result<(), String> {
-        ComputerUseConfig::from_value(config).map(|_| ())
-    }
-
-    fn driver_options(&self, config: &Value) -> Vec<(String, Value)> {
-        ComputerUseConfig::from_value_or_default(config).driver_options()
-    }
-
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec!["session_storage"]
-    }
-
-    fn exclusive_group(&self) -> Option<&'static str> {
-        // One display per agent: every computer-use backend provides the
-        // `computer` tool.
-        Some(COMPUTER_TOOL_NAME)
-    }
-
-    fn features(&self) -> Vec<&'static str> {
-        vec![LEASED_RESOURCES_FEATURE]
-    }
-}
-
-static DESKTOP_SYSTEM_PROMPT: std::sync::LazyLock<String> =
-    std::sync::LazyLock::new(|| format!("{COMPUTER_USE_SYSTEM_PROMPT}{DESKTOP_PROMPT_NOTE}"));
 
 #[cfg(test)]
 #[path = "computer_tests.rs"]

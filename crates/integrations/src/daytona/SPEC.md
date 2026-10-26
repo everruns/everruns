@@ -378,15 +378,16 @@ Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workfl
 - **Category**: `Execution`
 - **Dependencies**: `["session_storage"]`
 
-## Desktop computer use (experimental)
+## Sandbox desktop
 
-The module also contributes `computer_use_daytona` (flag `daytona_computer_use`),
-which backs the provider-neutral `computer` tool with the desktop of a
-session-owned sandbox from Daytona's default image. See `computer.rs` and
+A Session Sandbox created with `target.options.desktop` uses Daytona's default
+image (size and snapshot are rejected), and
+`DaytonaSessionSandboxProvider::open_desktop` drives it for the
+`sandbox_desktop` capability. See `computer.rs` and
 `knowledge/execution/computer-use.md`.
 
 - **Display**: sized at create time by `VNC_RESOLUTION`; started through
-  `/computeruse/start`; a sandbox of another size is replaced.
+  `/computeruse/start`.
 - **Actions**: one JSON request per input to `/computeruse/mouse/*` and
   `/computeruse/keyboard/*`; no `exec`, no shell.
 - **Frames**: `/computeruse/screenshot`, PNG checked against the display size.

@@ -31,6 +31,7 @@ pub mod platform_management;
 mod platform_skills;
 pub mod poppy_client;
 pub mod research;
+pub mod sandbox_desktop;
 mod sandbox_workspace;
 pub mod session_sandbox;
 pub mod session_schedule;
@@ -111,6 +112,7 @@ pub use poppy_client::{
     POPPY_CLIENT_CAPABILITY_ID, PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
 };
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
+pub use sandbox_desktop::{SANDBOX_DESKTOP_CAPABILITY_ID, SandboxDesktopCapability};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
     SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
@@ -217,6 +219,7 @@ pub fn register_hosted_capabilities(
     // profiles get an honest availability error instead of a missing-capability
     // failure. Concrete providers remain deployment-owned plugins.
     registry.register(SessionSandboxCapability);
+    registry.register(sandbox_desktop::SandboxDesktopCapability);
     registry.register(ResearchCapability);
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);

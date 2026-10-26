@@ -55,6 +55,19 @@ pub struct SessionSandboxConfig {
     pub init: SessionSandboxInitConfig,
 }
 
+impl SessionSandboxConfig {
+    /// Whether the sandbox is created with a desktop: `provider_config.desktop`
+    /// is `true` or an object of computer-use settings (display size and
+    /// action limits).
+    pub fn desktop(&self) -> Option<Value> {
+        match self.provider_config.get("desktop") {
+            Some(Value::Bool(true)) => Some(Value::Object(Default::default())),
+            Some(settings @ Value::Object(_)) => Some(settings.clone()),
+            _ => None,
+        }
+    }
+}
+
 impl Default for SessionSandboxConfig {
     fn default() -> Self {
         Self {
@@ -445,6 +458,23 @@ pub trait SessionSandboxProvider: Send + Sync {
         _revision: Option<&str>,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         Ok(instance.clone())
+    }
+
+    /// Open the desktop of a sandbox created with a desktop
+    /// (`provider_config.desktop`), started at `display` size. Providers
+    /// without desktops keep the default refusal.
+    #[cfg(feature = "runtime")]
+    async fn open_desktop(
+        &self,
+        _context: &dyn SessionSandboxContext,
+        _config: &SessionSandboxConfig,
+        _instance: &SessionSandboxInstance,
+        _display: crate::runtime::computer_use::DisplaySize,
+    ) -> Result<Box<dyn crate::runtime::computer_use::ComputerSession>, ToolExecutionResult> {
+        Err(ToolExecutionResult::tool_error(format!(
+            "the {} sandbox has no desktop",
+            self.id()
+        )))
     }
 
     async fn status(
