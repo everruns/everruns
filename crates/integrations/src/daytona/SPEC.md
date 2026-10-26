@@ -387,7 +387,9 @@ image (size and snapshot are rejected), and
 `knowledge/execution/computer-use.md`.
 
 - **Display**: sized at create time by `VNC_RESOLUTION`; started through
-  `/computeruse/start`.
+  `/computeruse/start` once the sandbox runs (create and resume), with
+  `DISPLAY=:0` in the sandbox environment, so a GUI program the agent starts
+  from the shell opens on it.
 - **Actions**: one JSON request per input to `/computeruse/mouse/*` and
   `/computeruse/keyboard/*`; no `exec`, no shell.
 - **Frames**: `/computeruse/screenshot`, PNG checked against the display size.

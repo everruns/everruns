@@ -34,6 +34,8 @@ half of that capability an embedding host owns.
 [Focused Framework API examples](../crates/everruns/examples/) cover persistence,
 session history, workspaces, cancellation, structured questions, and other
 individual features.
+[Desktop X review](desktop-x-review/) runs against a Platform server: an agent
+reads an X profile on a Daytona or E2B Sandbox desktop.
 [Portable agent folders](agents/) use TOML instructions and asset definitions
 that import into the Platform or load in Framework and serve hosts.
 [Serve examples](serve/) run agents as HTTP services with `everruns-serve`:

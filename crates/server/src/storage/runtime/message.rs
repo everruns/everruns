@@ -259,8 +259,14 @@ fn event_to_message(
     }
 }
 
-/// Convert ToolCompletedData to a ToolResult message
-fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
+/// Convert ToolCompletedData to a ToolResult message.
+///
+/// Every path that hands a transcript to the model goes through here (the
+/// worker's gRPC and in-process message loads too): image parts become
+/// `ContentPart::Image` next to the result so drivers send them as images. A
+/// copy that serialized the whole part list into the result text left the
+/// model with base64 inside a truncated string and no screenshot.
+pub(crate) fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
     // Separate text and image parts from the result content
     let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> = Vec::new();
     let metadata = tool_result_metadata(&data);

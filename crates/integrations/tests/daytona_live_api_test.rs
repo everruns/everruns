@@ -1207,6 +1207,25 @@ async fn test_live_session_sandbox_desktop() {
         .expect("desktop session sandbox create failed");
     let _guard = SandboxGuard::new(instance.external_id.clone());
 
+    // The desktop is up before the first `computer` action, and the shell
+    // points at it, so a browser started from the shell lands on screen.
+    let probe = provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &everruns_contracts::session_sandbox::SessionSandboxExecRequest {
+                command: r#"test -S "/tmp/.X11-unix/X${DISPLAY#:}" && echo "display $DISPLAY""#
+                    .to_string(),
+                cwd: None,
+                timeout_ms: Some(30_000),
+                output_mode: "auto".to_string(),
+            },
+        )
+        .await
+        .unwrap_or_else(|e| panic!("exec failed: {e:?}"));
+    assert_eq!(probe.stdout.trim(), "display :0", "{probe:?}");
+
     let display = DisplaySize {
         width: 1024,
         height: 768,
