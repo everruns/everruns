@@ -62,6 +62,12 @@ the validated Platform Chat parent of a delegated child. It never hosts a second
 conversation or a second composer. Existing task links remain usable without
 automatically enabling new delegation.
 
+The core **Settings → Chat** page uses the same guarded draft, saved review and
+Undo flow for its independent Chat model. That setting applies to permanent Chat
+and fresh subchats; it does not replace agent/session defaults. A new subchat's
+model preview waits for organization settings and follows the same default
+selection order as the server. See [model resolution](../foundations/models.md).
+
 ### Proposed flag schema (not migrated)
 
 The existing keys remain compatible and retain their current organization

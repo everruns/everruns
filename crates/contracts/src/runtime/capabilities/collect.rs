@@ -527,6 +527,30 @@ pub async fn collect_capabilities_with_configs(
     registry: &CapabilityRegistry,
     ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
+    collect(capability_configs, registry, ctx, true).await
+}
+
+/// [`collect_capabilities_with_configs`] for a caller that runs tools and never
+/// builds a prompt, such as the tool executor.
+///
+/// Dynamic system-prompt and conversation-context contributions are skipped:
+/// they can read the session's files (AGENTS.md, the skills directory) on every
+/// call, and the result would be thrown away. Everything else, tools and hooks
+/// included, is collected exactly as for a prompt.
+pub async fn collect_capability_tools_with_configs(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+) -> CollectedCapabilities {
+    collect(capability_configs, registry, ctx, false).await
+}
+
+async fn collect(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    ctx: &SystemPromptContext,
+    dynamic_prompts: bool,
+) -> CollectedCapabilities {
     // Write paths reject capabilities sharing an exclusive group, and
     // dependency resolution fails on them. Stored config that predates that
     // check can still reach here through a resolution fallback: drop every
@@ -780,7 +804,8 @@ pub async fn collect_capabilities_with_configs(
             let all_tools_yielded = tool_count > 0 && capability_tools.is_empty();
 
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
-            if !all_tools_yielded
+            if dynamic_prompts
+                && !all_tools_yielded
                 && let Some(contribution) = effective
                     .system_prompt_contribution_with_config(ctx, cap_config.config_value())
                     .await
@@ -796,9 +821,10 @@ pub async fn collect_capabilities_with_configs(
             // from filesystem). Renders as the leading user-role message of
             // every turn, never as system prompt, so untrusted workspace
             // content cannot share privilege with harness safety instructions.
-            if let Some(contribution) = effective
-                .conversation_context_contribution_with_config(ctx, cap_config.config_value())
-                .await
+            if dynamic_prompts
+                && let Some(contribution) = effective
+                    .conversation_context_contribution_with_config(ctx, cap_config.config_value())
+                    .await
             {
                 conversation_context_attributions.push(SystemPromptAttribution {
                     capability_id: cap_id.to_string(),

@@ -49164,6 +49164,13 @@
                   ],
                   "description": "Base harness used when session creation omits harness_id."
                 },
+                "chat_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+                },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
@@ -55533,6 +55540,13 @@
               "null"
             ],
             "description": "Base harness used when session creation omits harness_id."
+          },
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
           },
           "created_at": {
             "type": "string",
@@ -69550,6 +69564,13 @@
             ],
             "description": "Base harness to use when a session is started without an explicit harness_id.",
             "example": "harness_01933b5a000070008000000000000601"
+          },
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools."
           },
           "default_harness_id": {
             "type": [

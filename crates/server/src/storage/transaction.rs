@@ -146,13 +146,13 @@ async fn begin_connection(pool: &PgPool) -> Result<PoolConnection<Postgres>, sql
 
 /// Commit the transaction open on `connection` on a task of its own, so a
 /// caller cancelled while `COMMIT` is in flight cannot queue a rollback behind
-/// it; see `everruns_durable::commit_transaction` (EVERRUNS-35).
+/// it, nor a rejected `COMMIT` a stray one; see
+/// `everruns_durable::commit_transaction` (EVERRUNS-35).
 async fn commit_connection(mut connection: PoolConnection<Postgres>) -> Result<(), sqlx::Error> {
     let commit = tokio::spawn(async move {
-        let result = PgTransactionManager::commit(&mut connection).await;
-        if result.is_err() {
-            PgTransactionManager::start_rollback(&mut connection);
-        }
+        let result = everruns_durable::commit_in_place(&mut connection).await;
+        // Only a failed connection is still counted open: queue its rollback.
+        PgTransactionManager::start_rollback(&mut connection);
         result
     })
     .await;

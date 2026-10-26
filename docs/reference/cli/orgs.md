@@ -98,6 +98,7 @@ everruns orgs update [OPTIONS] --org <org>
 |---|---|
 | `--agentid-agents-per-owner <AGENTID_AGENTS_PER_OWNER>` | How many agents one AgentID owner may sign in to this organization's Public Chat channels. |
 | `--base-harness-id <BASE_HARNESS_ID>` | Base harness to use when a session is started without an explicit harness_id. |
+| `--chat-model-id <CHAT_MODEL_ID>` | Independent model for the built-in Everruns Chat. |
 | `--default-harness-id <DEFAULT_HARNESS_ID>` | Default harness to preselect in the UI for new sessions. Mutually exclusive with `default_har... |
 | `--default-harness-name <DEFAULT_HARNESS_NAME>` | Alternative to `default_harness_id` — looked up by stable name within the org. Mutually exclu... |
 | `--default-model-id <DEFAULT_MODEL_ID>` | Default LLM model for this organization. |

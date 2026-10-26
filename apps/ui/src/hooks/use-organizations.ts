@@ -66,7 +66,7 @@ export function useUpdateOrganization() {
             queryKey: queryKeys.organizations.detail(org),
           }),
         );
-        if (data.default_model_id !== undefined) {
+        if (data.default_model_id !== undefined || data.chat_model_id !== undefined) {
           refreshes.push(
             queryClient.invalidateQueries({ queryKey: queryKeys.sessions.scoped(org) }),
           );

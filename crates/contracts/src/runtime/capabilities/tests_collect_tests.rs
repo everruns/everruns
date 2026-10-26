@@ -740,6 +740,28 @@ async fn prompt_collection_preserves_exact_sections_attribution_and_base_order()
     }
 }
 
+#[tokio::test]
+async fn tool_collection_keeps_tools_and_skips_prompt_contributions() {
+    let registry = fixture_registry();
+    let configs: Vec<_> = ["prompt_tool_fixture", "second_prompt_fixture"]
+        .into_iter()
+        .map(|id| AgentCapabilityConfig::with_config(CapabilityId::new(id), serde_json::json!({})))
+        .collect();
+    let full = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    let tools = collect_capability_tools_with_configs(&configs, &registry, &test_ctx()).await;
+    assert_eq!(full.system_prompt_parts.len(), 2);
+    assert!(tools.system_prompt_parts.is_empty());
+    assert!(tools.conversation_context_parts.is_empty());
+    let names = |c: &CollectedCapabilities| {
+        c.tools
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(&tools), names(&full));
+    assert_eq!(names(&tools), vec!["write_todos"]);
+}
+
 #[test]
 fn feature_projection_preserves_order_and_distinct_dependency_features() {
     let mut registry = CapabilityRegistry::new();

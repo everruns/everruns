@@ -223,7 +223,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --base-harness-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --small-model-id --system-decisions --web-search-defaults
+orgs update	--agentid-agents-per-owner --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason

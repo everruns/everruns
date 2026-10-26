@@ -8824,6 +8824,13 @@
         "help": "Base harness to use when a session is started without an explicit harness_id."
       },
       {
+        "field": "chat_model_id",
+        "long": "chat-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Independent model for the built-in Everruns Chat."
+      },
+      {
         "field": "default_harness_id",
         "long": "default-harness-id",
         "kind": "string",

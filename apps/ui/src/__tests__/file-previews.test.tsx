@@ -23,6 +23,7 @@ import {
   MarkdownPreview,
   SVGPreview,
   HtmlPreview,
+  VideoPreview,
   PdfPreview,
   parseFrontmatter,
 } from "@/components/files/file-previews";
@@ -103,6 +104,11 @@ describe("preview classification", () => {
       ["ico", "image", true],
       ["pdf", "pdf", true],
       ["svg", "svg", true],
+      ["mp4", "video", true],
+      ["webm", "video", true],
+      ["mov", "video", true],
+      ["mkv", "video", true],
+      ["constructor", "binary", false],
       ["exe", "binary", false],
       ["bin", "binary", false],
       ["dll", "binary", false],
@@ -241,6 +247,26 @@ describe("ImagePreview", () => {
         );
       }
     }
+  });
+});
+
+describe("VideoPreview", () => {
+  it("streams from the download URL when given one and falls back to the base64 bytes", () => {
+    const { rerender } = render(
+      <VideoPreview
+        content="AAAA"
+        extension="mp4"
+        src="/api/v1/workspaces/w/fs/_/download/recordings/a.mp4"
+        fileName="a.mp4"
+      />,
+    );
+    const video = screen.getByLabelText("a.mp4");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute("src", "/api/v1/workspaces/w/fs/_/download/recordings/a.mp4");
+    expect(video).toHaveAttribute("controls");
+
+    rerender(<VideoPreview content="AAAA" extension="WEBM" fileName="a.webm" />);
+    expect(screen.getByLabelText("a.webm")).toHaveAttribute("src", "data:video/webm;base64,AAAA");
   });
 });
 

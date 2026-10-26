@@ -193,6 +193,24 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
     )
     .await;
 
+    // A stored batch enqueues every projected row in one statement.
+    let projected = || CreateEventRow {
+        session_id: session.id,
+        event_type: "turn.completed".to_string(),
+        ts: Utc::now(),
+        context: json!({}),
+        data: json!({}),
+        metadata: None,
+        tags: None,
+    };
+    let batch = repo.create_events(vec![projected(), projected()]).await;
+    let batch = batch.expect("create event batch");
+    assert_eq!(batch.len(), 2);
+    for row in batch {
+        let id = row.id.uuid().to_string();
+        assert_one_outbox(repo, "event", &id, "event_projection").await;
+    }
+
     let provider_prefix = format!("conf-{label}-{}", Uuid::now_v7());
     let first = repo
         .create_provider(

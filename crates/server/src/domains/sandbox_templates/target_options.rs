@@ -4,6 +4,7 @@
 use crate::domains::sandbox_templates::record::{
     SandboxDurability, SandboxTargetKind, SandboxTemplateSpec,
 };
+use everruns_contracts::session_sandbox::DESKTOP_RECORD_KEY;
 use serde_json::{Map, Value};
 
 pub(super) fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> {
@@ -154,16 +155,27 @@ fn validate_e2b_options(
 }
 
 /// `target.options.desktop`: `true`, `false`, or the computer-use settings
-/// (display size, action limits) of the primary Sandbox's desktop. Returns
+/// (display size, action limits, and `record: false` to skip the video) of
+/// the primary Sandbox's desktop. Returns
 /// whether the desktop is on.
 fn validate_desktop_option(provider: &str, options: &Map<String, Value>) -> Result<bool, String> {
     match options.get("desktop") {
         None | Some(Value::Bool(false)) => Ok(false),
         Some(Value::Bool(true)) => Ok(true),
-        Some(settings @ Value::Object(_)) => {
-            everruns_core::computer_use::ComputerUseConfig::from_value(settings).map_err(
-                |error| format!("{provider} target.options.desktop is not valid: {error}"),
-            )?;
+        Some(Value::Object(settings)) => {
+            let mut settings = settings.clone();
+            // `record` turns the desktop video off; it is not a computer-use setting.
+            if let Some(record) = settings.remove(DESKTOP_RECORD_KEY)
+                && !record.is_boolean()
+            {
+                return Err(format!(
+                    "{provider} target.options.desktop.record must be true or false"
+                ));
+            }
+            everruns_core::computer_use::ComputerUseConfig::from_value(&Value::Object(settings))
+                .map_err(|error| {
+                    format!("{provider} target.options.desktop is not valid: {error}")
+                })?;
             Ok(true)
         }
         Some(_) => Err(format!(

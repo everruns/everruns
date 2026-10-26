@@ -17650,6 +17650,8 @@ export interface components {
         agentid_agents_per_owner?: number | null;
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
+        /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+        chat_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
@@ -21100,6 +21102,8 @@ export interface components {
       agentid_agents_per_owner?: number | null;
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
+      /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
+      chat_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
@@ -28811,6 +28815,11 @@ export interface components {
        * @example harness_01933b5a000070008000000000000601
        */
       base_harness_id?: string | null;
+      /**
+       * @description Independent model for the built-in Everruns Chat. Omit to preserve; null inherits
+       *     the agents/sessions default. Must be an available shared chat model with tools.
+       */
+      chat_model_id?: string | null;
       /**
        * @description Default harness to preselect in the UI for new sessions.
        *     Mutually exclusive with `default_harness_name`.

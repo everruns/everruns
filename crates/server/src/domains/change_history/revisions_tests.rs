@@ -1187,3 +1187,83 @@ async fn skill_content_history_round_trips_yaml_and_restores_the_instructions() 
         content
     );
 }
+
+#[tokio::test]
+async fn organization_chat_default_undo_preserves_the_agent_default_and_rejects_stale_undo() {
+    let ctx = owner();
+    let provider = ctx
+        .db
+        .create_provider(
+            ctx.org_id(),
+            crate::storage::CreateProviderRow {
+                name: "Chat review fixture".into(),
+                provider_type: "llmsim".into(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    let mut models = Vec::new();
+    for name in ["agent-default", "chat-default"] {
+        let mut profile = everruns_contracts::ModelProfile::minimal(name);
+        profile.tool_call = true;
+        let model = ctx
+            .db
+            .create_model(
+                ctx.org_id(),
+                crate::storage::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: name.into(),
+                    display_name: name.into(),
+                    capabilities: vec![],
+                    is_favorite: false,
+                    enabled: true,
+                    source: "manual".into(),
+                    provider_metadata: Some(json!({"discovered_profile": profile})),
+                },
+            )
+            .await
+            .unwrap();
+        models.push(json!(model.id));
+    }
+    let org = ctx.caller.org_public_id.clone();
+    let selected = run(
+        "update_org",
+        json!({"org":org,"default_model_id":models[0],"chat_model_id":models[1]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    assert_eq!(selected["chat_model_id"], models[1]);
+    let cleared = run("update_org", json!({"org":org,"chat_model_id":null}), &ctx)
+        .await
+        .unwrap();
+    assert!(cleared["chat_model_id"].is_null());
+    let restored = run(
+        "restore_entity_revision",
+        json!({"entity_ref":org,"revision":2,"expected_revision":3,"fields":["chat_model_id"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    assert_eq!(restored["entity"]["chat_model_id"], models[1]);
+    assert_eq!(restored["entity"]["default_model_id"], models[0]);
+    run(
+        "update_org",
+        json!({"org":org,"small_model_id":models[0]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    assert!(
+        run(
+            "restore_entity_revision",
+            json!({"entity_ref":org,"revision":2,"expected_revision":4,"fields":["chat_model_id"]}),
+            &ctx
+        )
+        .await
+        .is_err()
+    );
+}

@@ -156,7 +156,7 @@ async fn organization_settings_require_database_admin_role() {
         .await
         .unwrap();
 
-    for field in ["default_model_id", "small_model_id"] {
+    for field in ["default_model_id", "small_model_id", "chat_model_id"] {
         let response = app
             .clone()
             .oneshot(update_default_org_json_request(
@@ -937,5 +937,170 @@ async fn organization_small_model_is_independent_validated_and_clearable() {
     let (status, org) = send(json!({"small_model_id":null})).await;
     assert_eq!(status, StatusCode::OK);
     assert!(org["small_model_id"].is_null());
+    assert_eq!(org["default_model_id"], main.to_string());
+}
+
+#[tokio::test]
+async fn organization_chat_model_is_independent_validated_and_clearable() {
+    use crate::storage::{CreateModelRow, CreateProviderRow, UpdateModel};
+    use serde_json::json;
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let provider = db
+        .create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "Shared".into(),
+                provider_type: "llmsim".into(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    let model_row = |name: &str, metadata: Option<serde_json::Value>| CreateModelRow {
+        provider_id: provider.id,
+        model_id: name.into(),
+        display_name: name.into(),
+        capabilities: vec![],
+        is_favorite: false,
+        enabled: true,
+        source: "manual".into(),
+        provider_metadata: metadata.or_else(|| {
+            let mut profile = everruns_contracts::ModelProfile::minimal(name);
+            profile.tool_call = true;
+            Some(json!({"discovered_profile":profile}))
+        }),
+    };
+    let main = db
+        .create_model(DEFAULT_ORG_ID, model_row("main", None))
+        .await
+        .unwrap()
+        .id;
+    let chat = db
+        .create_model(DEFAULT_ORG_ID, model_row("chat", None))
+        .await
+        .unwrap()
+        .id;
+    let decision = db
+        .create_model(
+            DEFAULT_ORG_ID,
+            model_row(
+                "decision",
+                Some(json!({"everruns_catalog":{"service":"decisions"}})),
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+    let no_tools = db
+        .create_model(
+            DEFAULT_ORG_ID,
+            model_row(
+                "no-tools",
+                Some(json!({
+                    "discovered_profile": everruns_contracts::ModelProfile::minimal("no-tools")
+                })),
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+    let foreign_org = db
+        .create_organization(crate::storage::CreateOrganizationRow {
+            public_id: generate_org_public_id(),
+            name: "Foreign".into(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    let foreign = db
+        .create_model(foreign_org.org_id, model_row("foreign", None))
+        .await
+        .unwrap()
+        .id;
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            (
+                status,
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+            )
+        }
+    };
+    let (status, org) = send(json!({"default_model_id":main,"chat_model_id":chat})).await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    assert_eq!(org["chat_model_id"], chat.to_string());
+    let (_, org) = send(json!({})).await;
+    assert_eq!(org["chat_model_id"], chat.to_string());
+    assert_eq!(org["default_model_id"], main.to_string());
+    db.update_model(
+        DEFAULT_ORG_ID,
+        chat.uuid(),
+        UpdateModel {
+            enabled: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let (_, org) = send(json!({})).await;
+    assert_eq!(org["chat_model_id"], chat.to_string());
+    for id in [
+        chat,
+        decision,
+        no_tools,
+        foreign,
+        everruns_contracts::typed_id::ModelId::new(),
+    ] {
+        assert_eq!(
+            send(json!({"chat_model_id":id})).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(settings.chat_model_id, Some(chat));
+        assert_eq!(settings.default_model_id, Some(main));
+    }
+    db.update_provider(
+        DEFAULT_ORG_ID,
+        provider.id.uuid(),
+        crate::storage::UpdateProvider {
+            status: Some("disabled".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        send(json!({"chat_model_id":main})).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert!(
+        db.patch_organization_settings(
+            DEFAULT_ORG_ID,
+            crate::storage::UpdateOrganizationSettings {
+                chat_model_id: UpdateField::Set(foreign),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err()
+    );
+    let (status, org) = send(json!({"chat_model_id":null})).await;
+    assert_eq!(status, StatusCode::OK, "{org}");
+    assert!(org["chat_model_id"].is_null());
     assert_eq!(org["default_model_id"], main.to_string());
 }

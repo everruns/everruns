@@ -668,6 +668,7 @@ async fn build_organization_response(
         name: org.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         small_model_id: settings.as_ref().and_then(|s| s.small_model_id),
+        chat_model_id: settings.as_ref().and_then(|s| s.chat_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

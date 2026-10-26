@@ -1,5 +1,5 @@
-// Agent and harness configuration rows, cached in memory while they can be
-// kept exact.
+// Agent, harness and provider configuration rows, cached in memory while they
+// can be kept exact.
 //
 // Why: every RPC and listener of a turn resolves the same agent and harness
 // chain again (turn context, capability checks, session titles, notifications,
@@ -7,8 +7,9 @@
 //
 // Decision: the same contract as the feature flag cache
 // (`org_feature_flag_cache.rs`). Triggers on `agents`, `agent_capabilities`,
-// `harnesses` and `harness_capabilities` notify `config_rows_changed` with
-// `agent:<id>` or `harness:<id>` on every committed change, whoever wrote it,
+// `harnesses`, `harness_capabilities` and `providers` notify
+// `config_rows_changed` with `agent:<id>`, `harness:<id>` or `provider:<id>` on
+// every committed change, whoever wrote it,
 // and every listening server drops that entry. Reads are served from memory
 // only while the listener is connected; a lost connection clears everything.
 // A read that overlapped an invalidation is not stored, and reads inside a
@@ -32,7 +33,7 @@ use moka::sync::Cache;
 use uuid::Uuid;
 
 use super::StorageBackend;
-use crate::storage::{AgentCapabilityRow, AgentRow, HarnessCapabilityRow, HarnessRow};
+use crate::storage::{AgentCapabilityRow, AgentRow, HarnessCapabilityRow, HarnessRow, ProviderRow};
 
 const CAPACITY: u64 = 20_000;
 /// Bounds memory and a row written with notifications somehow off; exactness
@@ -51,6 +52,7 @@ struct Inner {
     agent_capabilities: Cache<Uuid, Vec<AgentCapabilityRow>>,
     harnesses: Cache<Uuid, HarnessRow>,
     harness_capabilities: Cache<Uuid, Vec<HarnessCapabilityRow>>,
+    providers: Cache<Uuid, ProviderRow>,
     /// The invalidation listener is connected and listening.
     live: AtomicBool,
     /// Bumped by every invalidation.
@@ -71,6 +73,7 @@ impl Default for ConfigRowCache {
             agent_capabilities: cache(),
             harnesses: cache(),
             harness_capabilities: cache(),
+            providers: cache(),
             live: AtomicBool::new(false),
             generation: AtomicU64::new(0),
         }))
@@ -82,16 +85,19 @@ impl Default for ConfigRowCache {
 pub enum ConfigRowChange {
     Agent(Uuid),
     Harness(Uuid),
+    Provider(Uuid),
 }
 
 impl ConfigRowChange {
-    /// `agent:<uuid>` or `harness:<uuid>`; anything else is `None`.
+    /// `agent:<uuid>`, `harness:<uuid>` or `provider:<uuid>`; anything else is
+    /// `None`.
     pub fn parse(payload: &str) -> Option<Self> {
         let (kind, id) = payload.split_once(':')?;
         let id = id.parse().ok()?;
         match kind {
             "agent" => Some(Self::Agent(id)),
             "harness" => Some(Self::Harness(id)),
+            "provider" => Some(Self::Provider(id)),
             _ => None,
         }
     }
@@ -123,6 +129,7 @@ impl ConfigRowCache {
                 self.0.harnesses.invalidate(&id);
                 self.0.harness_capabilities.invalidate(&id);
             }
+            ConfigRowChange::Provider(id) => self.0.providers.invalidate(&id),
         }
     }
 
@@ -132,6 +139,7 @@ impl ConfigRowCache {
         self.0.agent_capabilities.invalidate_all();
         self.0.harnesses.invalidate_all();
         self.0.harness_capabilities.invalidate_all();
+        self.0.providers.invalidate_all();
     }
 
     fn generation(&self) -> u64 {
@@ -241,6 +249,18 @@ impl StorageBackend {
         Ok(row.filter(|row| row.org_id == org_id))
     }
 
+    /// A provider row, from memory while the cache is exact. Callers that
+    /// show or edit a provider read it fresh through `get_provider`.
+    pub async fn get_provider_config(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
+        let cache = &self.config_rows;
+        let row = cache
+            .read_through(&cache.0.providers, id, async {
+                self.db.get_provider(org_id, id).await
+            })
+            .await?;
+        Ok(row.filter(|row| row.org_id == org_id))
+    }
+
     pub(super) async fn cached_harness_capabilities(
         &self,
         harness_id: Uuid,
@@ -269,6 +289,10 @@ mod tests {
         assert_eq!(
             ConfigRowChange::parse(&format!("harness:{id}")),
             Some(ConfigRowChange::Harness(id))
+        );
+        assert_eq!(
+            ConfigRowChange::parse(&format!("provider:{id}")),
+            Some(ConfigRowChange::Provider(id))
         );
         assert_eq!(ConfigRowChange::parse("agent:nope"), None);
         assert_eq!(ConfigRowChange::parse(&format!("model:{id}")), None);

@@ -640,6 +640,7 @@ impl ServerAppBuilder {
         )
         .with_virtual_registry(virtual_registry.clone());
         if let Some(service) = &session_sandbox_service {
+            service.bind_events(&event_service);
             session_service = session_service.with_session_sandbox_service(service.clone());
         }
         sessions_state.session_service = Arc::new(session_service);

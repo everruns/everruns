@@ -79,6 +79,7 @@ impl Command for UpdateOrg {
         let UpdateOrganizationRequest {
             name,
             default_model_id,
+            chat_model_id,
             small_model_id,
             mut default_harness_id,
             default_harness_name,
@@ -126,6 +127,7 @@ impl Command for UpdateOrg {
         }
         for (selection, label) in [
             (default_model_id.as_ref(), "Default model"),
+            (chat_model_id.as_ref(), "Chat model"),
             (small_model_id.as_ref(), "Small model"),
         ] {
             if let Some(Some(id)) = selection {
@@ -142,6 +144,20 @@ impl Command for UpdateOrg {
                     return Err(CommandError::bad_request(format!(
                         "{label} must be an enabled model"
                     )));
+                }
+                if label == "Chat model" {
+                    if model.provider_status != "active"
+                        || (!model.provider_api_key_set && model.provider_type != "llmsim")
+                    {
+                        return Err(CommandError::bad_request(
+                            "Chat model must have an available provider",
+                        ));
+                    }
+                    if crate::domains::models::catalog::profile(model.provider_metadata.as_ref())
+                        .is_some_and(|profile| !profile.tool_call)
+                    {
+                        return Err(CommandError::bad_request("Chat model must support tools"));
+                    }
                 }
                 if model.provider_type == "chatgpt" {
                     return Err(CommandError::bad_request(
@@ -190,6 +206,7 @@ impl Command for UpdateOrg {
             .await?
             .ok_or_else(|| CommandError::not_found("Organization"))?;
         if default_model_id.is_some()
+            || chat_model_id.is_some()
             || small_model_id.is_some()
             || default_harness_id.is_some()
             || base_harness_id.is_some()
@@ -206,6 +223,7 @@ impl Command for UpdateOrg {
                     row.org_id,
                     UpdateOrganizationSettings {
                         default_model_id: model_field(default_model_id),
+                        chat_model_id: model_field(chat_model_id),
                         small_model_id: model_field(small_model_id),
                         default_harness_id: default_harness_id
                             .map_or(UpdateField::Unchanged, UpdateField::from_option),

@@ -19,6 +19,9 @@ pub struct OrganizationResponse {
     /// Default LLM model for the organization.
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// Default for the built-in Everruns Chat. None inherits the agents/sessions default.
+    #[schema(value_type = Option<String>)]
+    pub chat_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Optional small chat model, independent of the main chat and decision defaults.
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<everruns_contracts::typed_id::ModelId>,
@@ -77,6 +80,11 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
+    /// Independent model for the built-in Everruns Chat. Omit to preserve; null inherits
+    /// the agents/sessions default. Must be an available shared chat model with tools.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<String>)]
+    pub chat_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
     /// Shared small chat model for lightweight work. Omit to preserve the selection;
     /// pass null to clear it. Does not change the main chat or decision default.
     #[serde(default, deserialize_with = "double_option")]

@@ -12,11 +12,20 @@ const mockCreate = jest.fn();
 const mockSend = jest.fn();
 const mockReplace = jest.fn();
 let mockSubmitError: string | undefined;
+let mockChatModel: string | undefined;
+let mockAgentModel: string | undefined;
+let mockModels: Array<{ id: string; enabled: boolean; healthy: boolean; capabilities: string[] }> =
+  [];
+let mockDraftModel: { id: string } | undefined;
 jest.mock("next/navigation", () => ({ useRouter: () => ({ replace: mockReplace }) }));
+jest.mock("@/hooks/use-organizations", () => ({
+  useOrganization: () => ({ data: { chat_model_id: mockChatModel } }),
+}));
 jest.mock("@/hooks/use-agents", () => ({
   useAgent: () => ({
     data: {
       id: "agent_platform",
+      default_model_id: mockAgentModel,
       name: "platform-chat",
       intro_markdown: "Hello",
       starters: [{ text: "Show agents" }],
@@ -24,8 +33,8 @@ jest.mock("@/hooks/use-agents", () => ({
   }),
 }));
 jest.mock("@/hooks/use-providers", () => ({
-  useModels: () => ({ data: [] }),
-  useDefaultModel: () => ({ data: null }),
+  useModels: () => ({ data: mockModels }),
+  useDefaultModel: () => ({ data: { id: "model-agent" } }),
 }));
 jest.mock("@/hooks/use-sessions", () => ({
   useCreateSession: () => ({ mutateAsync: mockCreate }),
@@ -37,7 +46,16 @@ jest.mock("@/lib/api/messages", () => ({
   sendUserMessageWithImages: (...args: unknown[]) => mockSend(...args),
 }));
 jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
-  SessionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SessionProvider: ({
+    children,
+    draftModel,
+  }: {
+    children: React.ReactNode;
+    draftModel?: { id: string };
+  }) => {
+    mockDraftModel = draftModel;
+    return <>{children}</>;
+  },
 }));
 jest.mock("@/components/chat/chat-panel", () => ({
   ChatPanel: ({
@@ -61,6 +79,10 @@ jest.mock("@/components/chat/chat-panel", () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockSubmitError = undefined;
+  mockChatModel = undefined;
+  mockAgentModel = undefined;
+  mockModels = [];
+  mockDraftModel = undefined;
   mockCreate.mockResolvedValue({ id: "ses_side" });
   mockSend.mockResolvedValue({});
 });
@@ -83,4 +105,20 @@ it("reuses a created session after the first message fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Show agents" }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
   expect(mockCreate).toHaveBeenCalledTimes(1);
+});
+
+it("previews the independent Chat default while preserving explicit Agent selection", () => {
+  mockChatModel = "model-chat";
+  mockModels = ["model-agent", "model-chat"].map((id) => ({
+    id,
+    enabled: true,
+    healthy: true,
+    capabilities: [],
+  }));
+  const { rerender } = render(<NewChatPageClient />);
+  expect(mockDraftModel?.id).toBe("model-chat");
+  mockAgentModel = "model-agent";
+  rerender(<NewChatPageClient />);
+  expect(mockDraftModel?.id).toBe("model-agent");
+  expect(mockCreate).not.toHaveBeenCalled();
 });

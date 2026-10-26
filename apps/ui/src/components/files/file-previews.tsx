@@ -121,6 +121,12 @@ const CODE_EXTENSIONS = new Set([
 ]);
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
+const VIDEO_MIME_TYPES: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  mkv: "video/x-matroska",
+};
 const markdownComponents = { a: MarkdownLink };
 
 // Map file extensions to Shiki language identifiers
@@ -166,6 +172,7 @@ export type PreviewType =
   | "svg"
   | "html"
   | "pdf"
+  | "video"
   | "text"
   | "binary";
 
@@ -181,6 +188,7 @@ export function getPreviewType(extension: string, encoding: "text" | "base64"): 
     // BOUNDARY at the top of this module.
     if (ext === "pdf") return "pdf";
     if (IMAGE_EXTENSIONS.has(ext)) return "image";
+    if (Object.hasOwn(VIDEO_MIME_TYPES, ext)) return "video";
     return "binary";
   }
 
@@ -211,6 +219,12 @@ interface PreviewProps {
    * server (e.g. initial-files preview), which fall back to a static render.
    */
   htmlPreviewSrc?: string;
+  /**
+   * URL of the file's raw bytes. Videos stream from it, so the player can
+   * seek without holding the whole file in a data: URL. Without it a video
+   * plays from its base64 content.
+   */
+  videoSrc?: string;
 }
 
 export function CodePreview({ content, extension }: { content: string; extension: string }) {
@@ -482,6 +496,37 @@ export function ImagePreview({
 }
 
 /**
+ * Video files (desktop recordings, screen captures). `<video>` only decodes
+ * media, it runs nothing from the file, so no sandbox is needed.
+ */
+export function VideoPreview({
+  content,
+  extension,
+  src,
+  fileName,
+}: {
+  content: string;
+  extension: string;
+  src?: string;
+  fileName: string;
+}) {
+  const mimeType = VIDEO_MIME_TYPES[extension.toLowerCase()] ?? "video/mp4";
+  return (
+    <div className="h-full p-4 flex items-center justify-center bg-black/90">
+      {/* Screen recordings have no speech to caption. */}
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        aria-label={fileName}
+        controls
+        preload="metadata"
+        src={src ?? `data:${mimeType};base64,${content}`}
+        className="max-w-full max-h-full"
+      />
+    </div>
+  );
+}
+
+/**
  * Decode user-supplied SVG bytes to a string.
  *
  * `text` encoding is already an SVG source string. `base64` encoding decodes
@@ -660,7 +705,13 @@ export function PdfPreview({ content }: { content: string }) {
   );
 }
 
-export function FilePreview({ content, extension, encoding, htmlPreviewSrc }: PreviewProps) {
+export function FilePreview({
+  content,
+  extension,
+  encoding,
+  htmlPreviewSrc,
+  videoSrc,
+}: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
   switch (previewType) {
@@ -681,6 +732,15 @@ export function FilePreview({ content, extension, encoding, htmlPreviewSrc }: Pr
     case "image":
       return (
         <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />
+      );
+    case "video":
+      return (
+        <VideoPreview
+          content={content}
+          extension={extension}
+          src={videoSrc}
+          fileName={`file.${extension}`}
+        />
       );
     default:
       return null;

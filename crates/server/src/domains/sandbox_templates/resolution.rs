@@ -1350,5 +1350,16 @@ mod tests {
                 .contains("cannot be combined with desktop")
         );
         assert!(rejected("modal", json!({"desktop": true})).contains("desktop"));
+        assert!(
+            rejected("daytona", json!({"desktop": {"record": "no"}}))
+                .contains("desktop.record must be true or false")
+        );
+    }
+
+    #[test]
+    fn desktop_option_accepts_turning_the_recording_off() {
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
+        value.target.options = json!({"desktop": {"record": false, "display_width": 1280}});
+        assert!(resolve_spec(&value).is_ok());
     }
 }
