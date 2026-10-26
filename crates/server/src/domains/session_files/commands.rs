@@ -1319,4 +1319,29 @@ mod tests {
             "{err:?}"
         );
     }
+
+    /// The session's own runtime is answered from cached identity, which must
+    /// still hold the org boundary: declaring a session from another org finds
+    /// nothing.
+    #[tokio::test]
+    async fn declared_runtime_in_another_org_does_not_find_the_session() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID + 1), db, None)
+            .acting_for_session(session.id);
+
+        let err = GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("another org's runtime must not reach the session");
+        assert!(matches!(err.kind, CommandErrorKind::NotFound(_)), "{err:?}");
+    }
 }
