@@ -4,6 +4,7 @@ use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use crate::auth::middleware::{AuthError, AuthMethod};
 use crate::auth::routes::AuthConfigResponse;
 use crate::domains::organizations::record::OrgMembership;
+use crate::storage::UpdateField;
 use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyExt;
