@@ -75,6 +75,7 @@ hmac.workspace = true
 hex.workspace = true
 object_store.workspace = true
 base64.workspace = true
+bytes.workspace = true
 reqwest = { workspace = true, features = ["multipart"] }
 # secp256k1 signing for the x402 payment rail. EIP-712 hashing is in-tree
 # (domains/payments/eip712.rs); see knowledge/project/dependency-surface.md.

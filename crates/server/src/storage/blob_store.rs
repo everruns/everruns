@@ -15,12 +15,15 @@ use async_trait::async_trait;
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use everruns_core::config::{env_bool, env_opt_string, env_string};
+use bytes::Bytes;
 use futures::StreamExt;
+use futures::stream::BoxStream;
 use object_store::{
-    Attribute, Attributes, ObjectStore, ObjectStoreExt, PutOptions, PutPayload,
-    path::Path as ObjectPath,
+    Attribute, Attributes, GetOptions, GetRange, ObjectStore, ObjectStoreExt, PutOptions,
+    PutPayload, path::Path as ObjectPath,
 };
 use std::borrow::Cow;
+use std::ops::Range;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -40,8 +43,27 @@ pub trait BlobStore: Send + Sync {
     /// hot path).
     async fn put(&self, key: &str, bytes: Vec<u8>, metadata: &BlobMetadata) -> Result<()>;
 
+    /// Store a stream of bytes at `key` without holding it in memory (a
+    /// multipart upload), hashing it on the way. Fails with
+    /// [`BlobTooLarge`] once more than `max_bytes` arrive; nothing is stored
+    /// then.
+    async fn put_stream(
+        &self,
+        key: &str,
+        body: BlobByteStream,
+        max_bytes: u64,
+        metadata: &BlobMetadata,
+    ) -> Result<StreamedBlob>;
+
     /// Fetch the bytes stored at `key`. Returns `Ok(None)` when absent.
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
+
+    /// Stream the bytes stored at `key`, optionally only `range` (half-open,
+    /// already clamped to the object size by the caller). Returns `Ok(None)`
+    /// when absent. Large files (recordings, uploads) are served through this
+    /// so the control plane never holds a whole object in memory.
+    async fn get_stream(&self, key: &str, range: Option<Range<u64>>)
+    -> Result<Option<BlobByteStream>>;
 
     /// Delete the object at `key`. A missing object is not an error (idempotent).
     async fn delete(&self, key: &str) -> Result<()>;
@@ -79,6 +101,30 @@ pub struct BlobObject {
     /// Object size in bytes, used to report bytes reclaimed.
     pub size_bytes: u64,
 }
+
+/// What [`BlobStore::put_stream`] stored.
+#[derive(Debug, Clone)]
+pub struct StreamedBlob {
+    pub size_bytes: u64,
+    /// Hex SHA-256 of the stored bytes.
+    pub content_sha256: String,
+}
+
+/// A streamed write went past its size limit.
+#[derive(Debug, thiserror::Error)]
+#[error("File too large: more than the {limit} byte limit")]
+pub struct BlobTooLarge {
+    pub limit: u64,
+}
+
+/// Multipart part size for streamed writes. S3 needs at least 5 MiB per part
+/// (except the last); 8 MiB keeps memory per upload small.
+const STREAM_PART_BYTES: usize = 8 * 1024 * 1024;
+/// Parts uploaded concurrently per streamed write.
+const STREAM_PART_CONCURRENCY: usize = 4;
+
+/// Chunked object bytes returned by [`BlobStore::get_stream`].
+pub type BlobByteStream = BoxStream<'static, Result<Bytes>>;
 
 /// Shared, cheaply-cloneable handle to the active blob backend.
 pub type SharedBlobStore = Arc<dyn BlobStore>;
@@ -168,6 +214,13 @@ pub fn workspace_file_key(
     format!(
         "workspaces/{workspace_id}/files/{file_id}/sha256/{content_sha256}/revisions/{revision_id}"
     )
+}
+
+/// Object key for a workspace file written as a stream, where the content
+/// hash is only known once the upload finished. The hash lives in the sidecar
+/// row instead.
+pub fn workspace_file_stream_key(workspace_id: Uuid, file_id: Uuid, revision_id: Uuid) -> String {
+    format!("workspaces/{workspace_id}/files/{file_id}/revisions/{revision_id}")
 }
 
 /// Object key for an image's primary data blob.
@@ -300,6 +353,59 @@ impl BlobStore for ObjectStoreBlobStore {
         Ok(())
     }
 
+    async fn put_stream(
+        &self,
+        key: &str,
+        mut body: BlobByteStream,
+        max_bytes: u64,
+        metadata: &BlobMetadata,
+    ) -> Result<StreamedBlob> {
+        use sha2::{Digest, Sha256};
+
+        let path = self.object_path(key);
+        let opts = object_store::PutMultipartOptions {
+            attributes: metadata.to_attributes(),
+            ..Default::default()
+        };
+        let upload = self
+            .inner
+            .put_multipart_opts(&path, opts)
+            .await
+            .with_context(|| format!("blob multipart start failed for key {key}"))?;
+        let mut writer = object_store::WriteMultipart::new_with_chunk_size(upload, STREAM_PART_BYTES);
+        let mut hasher = Sha256::new();
+        let mut size_bytes: u64 = 0;
+        let written: Result<()> = async {
+            while let Some(chunk) = body.next().await {
+                let chunk = chunk?;
+                size_bytes += chunk.len() as u64;
+                if size_bytes > max_bytes {
+                    return Err(BlobTooLarge { limit: max_bytes }.into());
+                }
+                hasher.update(&chunk);
+                writer
+                    .wait_for_capacity(STREAM_PART_CONCURRENCY)
+                    .await
+                    .with_context(|| format!("blob multipart part failed for key {key}"))?;
+                writer.put(chunk);
+            }
+            Ok(())
+        }
+        .await;
+        if let Err(error) = written {
+            let _ = writer.abort().await;
+            return Err(error);
+        }
+        writer
+            .finish()
+            .await
+            .with_context(|| format!("blob multipart finish failed for key {key}"))?;
+        Ok(StreamedBlob {
+            size_bytes,
+            content_sha256: hex::encode(hasher.finalize()),
+        })
+    }
+
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let path = self.object_path(key);
         match self.inner.get(&path).await {
@@ -312,6 +418,31 @@ impl BlobStore for ObjectStoreBlobStore {
             }
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(e) => Err(anyhow::Error::from(e).context(format!("blob get failed for key {key}"))),
+        }
+    }
+
+    async fn get_stream(
+        &self,
+        key: &str,
+        range: Option<Range<u64>>,
+    ) -> Result<Option<BlobByteStream>> {
+        let path = self.object_path(key);
+        let opts = GetOptions {
+            range: range.map(GetRange::Bounded),
+            ..Default::default()
+        };
+        match self.inner.get_opts(&path, opts).await {
+            Ok(result) => {
+                let key = key.to_string();
+                let stream = result.into_stream().map(move |chunk| {
+                    chunk.with_context(|| format!("blob stream failed for key {key}"))
+                });
+                Ok(Some(stream.boxed()))
+            }
+            Err(object_store::Error::NotFound { .. }) => Ok(None),
+            Err(e) => {
+                Err(anyhow::Error::from(e).context(format!("blob get_stream failed for key {key}")))
+            }
         }
     }
 

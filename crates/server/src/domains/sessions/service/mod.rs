@@ -43,7 +43,7 @@ use crate::server::ResourceLimitsConfig;
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
-    CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+    CreateEventRow, CreateMemoryRow, CreateSessionRow, MemoryFileRow,
     MemoryRow, SessionListFilters, StorageBackend, UpdateSession, UpsertSessionKeyValue,
     UpsertSessionSecret,
 };

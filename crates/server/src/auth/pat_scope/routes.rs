@@ -838,6 +838,11 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Read,
     ),
     ("POST", "/v1/workspaces/{workspace_id}/fs/_/stat", Read),
+    (
+        "PUT",
+        "/v1/workspaces/{workspace_id}/fs/_/upload/{path}",
+        Write,
+    ),
     ("DELETE", "/v1/workspaces/{workspace_id}/fs/{path}", Write),
     ("GET", "/v1/workspaces/{workspace_id}/fs/{path}", Read),
     ("POST", "/v1/workspaces/{workspace_id}/fs/{path}", Write),
