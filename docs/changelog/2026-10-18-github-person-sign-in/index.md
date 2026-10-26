@@ -5,6 +5,7 @@ date: 2026-10-18
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui, api]
 links:
   docs: [/how-to/summarize-github-pull-requests/]

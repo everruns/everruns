@@ -5,6 +5,7 @@ date: 2026-10-21
 kind: feature
 significance: major
 products: [platform, framework, cloud]
+release: "0.49.0"
 surfaces: [agent]
 links:
   docs: [/features/large-mcp-catalogs/, /capabilities/tool-search/, /capabilities/tools-in-shell/]

@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: fix
 significance: notable
 products: [platform, framework, cloud]
+release: "0.49.0"
 surfaces: [agent]
 links:
   docs: [/features/mcp/#reading-a-servers-resources]

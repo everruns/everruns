@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: improvement
 significance: minor
 products: [platform, cloud, framework]
+release: "0.49.0"
 surfaces: [api]
 links:
   docs: [/explanation/durable-execution/]

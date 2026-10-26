@@ -5,6 +5,7 @@ date: 2026-10-16
 kind: improvement
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [agent]
 links:
   docs: [/capabilities/platform/, /getting-started/use-in-ai-tools/]

@@ -5,6 +5,7 @@ date: 2026-10-18
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [api, cli, agent]
 links:
   docs: [/features/agent-triggers/]

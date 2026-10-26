@@ -5,6 +5,7 @@ date: 2026-10-14
 kind: feature
 significance: notable
 products: [platform, framework]
+release: "0.49.0"
 surfaces: [api, code]
 links:
   docs: [/event-reference/]

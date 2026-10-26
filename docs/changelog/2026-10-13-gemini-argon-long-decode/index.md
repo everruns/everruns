@@ -5,6 +5,7 @@ date: 2026-10-13
 kind: feature
 significance: notable
 products: [framework, platform, cloud]
+release: "0.49.0"
 surfaces: [api, ui]
 links:
   docs: [/providers/gemini/]

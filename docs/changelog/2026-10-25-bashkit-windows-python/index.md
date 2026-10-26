@@ -5,6 +5,7 @@ date: 2026-10-25
 kind: fix
 significance: minor
 products: [bashkit, framework]
+release: "0.49.0"
 surfaces: [code]
 links:
   prs: [everruns/bashkit#2777]
