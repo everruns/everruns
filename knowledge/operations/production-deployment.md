@@ -70,6 +70,21 @@ See:
 - [`knowledge/operations/observability.md`](observability.md)
 - [`knowledge/security/threat-model.md`](../security/threat-model.md)
 
+### NATS replay-buffer recovery
+
+The JetStream event stream is a bounded, disposable replay buffer, not the durable
+session history. A NATS restart can remove that memory stream even when its data
+volume survives. API instances restore a missing stream on publish or subscription;
+clients reconnect their SSE stream and replay durable history from PostgreSQL.
+Already missed deltas cannot be reconstructed, but completed events retain full output.
+
+A publish timeout does not establish that a message was rejected. Recovery retries
+only a definitive missing-stream rejection, once, and never deletes a stream or
+rewrites an existing subject policy. Continuing errors require inspection of the
+broker and subject configuration; they must not be hidden by an API restart or by
+writing token deltas to PostgreSQL. Real-broker regressions live in
+[`event_delivery.rs`](../../crates/server/src/live_updates/event_delivery.rs).
+
 ### PostgreSQL Listener Connectivity
 
 Production deployments may use a pooled `DATABASE_URL` for ordinary query traffic, but any server path that relies on PostgreSQL `LISTEN/NOTIFY` must use a direct session-scoped connection.
