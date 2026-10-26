@@ -8,7 +8,7 @@ products: [platform]
 surfaces: [operations]
 links:
   docs: [/sre/environment-variables/, /features/sandbox-templates/#outbound-network]
-  prs: [everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4931]
 ---
 
 `everruns-egress-proxy` has a SOCKS5 listener for sandbox providers. Turn it on with
