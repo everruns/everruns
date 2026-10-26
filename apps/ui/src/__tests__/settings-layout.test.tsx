@@ -108,7 +108,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(13);
+    expect(screen.getAllByRole("link")).toHaveLength(14);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
@@ -118,6 +118,7 @@ describe("SettingsLayout", () => {
     ["/settings/personal-access-tokens", "Personal access tokens"],
     ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
+    ["/settings/chat", "Chat"],
     ["/settings/profile", "Account"],
     ["/settings/user-profile", "Profile"],
     ["/settings/connections", "Connections"],
@@ -131,7 +132,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getByRole("link", { name: new RegExp(linkName, "i") })).toHaveClass(
+    expect(screen.getByRole("link", { name: new RegExp(`^${linkName}$`, "i") })).toHaveClass(
       "border-primary",
     );
   });
