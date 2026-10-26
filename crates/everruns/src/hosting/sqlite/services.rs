@@ -614,7 +614,11 @@ mod outcome_tests {
     use crate::hosting::AgentBuild;
     use everruns_contracts::typed_id::MessageId;
 
-    fn engine_with(profile: &SqliteHosting, build: &AgentBuild, model: crate::Model) -> crate::Engine {
+    fn engine_with(
+        profile: &SqliteHosting,
+        build: &AgentBuild,
+        model: crate::Model,
+    ) -> crate::Engine {
         let agent = crate::Agent::builder()
             .instructions("Answer briefly.")
             .model(model)
@@ -659,7 +663,10 @@ mod outcome_tests {
         let (store, runner, child) = child_of(&engine, &profile, &ok).await;
         assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "idle");
         runner.send_message(child, "work on it").await.unwrap();
-        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "completed");
+        assert_eq!(
+            store.wait_for_idle(child, Some(5)).await.unwrap(),
+            "completed"
+        );
 
         let session = engine.resume(child).await.unwrap();
         let message = MessageId::new();
@@ -671,7 +678,10 @@ mod outcome_tests {
             admission.wait().await.unwrap().stop_reason,
             TurnStopReason::Cancelled
         );
-        assert_eq!(store.wait_for_idle(child, Some(5)).await.unwrap(), "cancelled");
+        assert_eq!(
+            store.wait_for_idle(child, Some(5)).await.unwrap(),
+            "cancelled"
+        );
 
         let profile = SqliteHosting::open(directory.path().join("failing.db")).unwrap();
         let failing = AgentBuild::new("assistant", "failing-v1");

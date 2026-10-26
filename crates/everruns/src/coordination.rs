@@ -60,8 +60,8 @@ use everruns_contracts::turn::TurnStopReason;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::conversation;
 use everruns_core::host::{
-    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
-    EventReadRequest, MAX_EVENT_HISTORY_PAGE_SIZE, RuntimeSessionStore, SessionBuilder,
+    EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit, EventReadRequest,
+    MAX_EVENT_HISTORY_PAGE_SIZE, RuntimeSessionStore, SessionBuilder,
 };
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
@@ -533,7 +533,8 @@ pub(crate) async fn latest_terminal_turn_status(
     event_log: Arc<dyn everruns_core::host::EventLog>,
     session_id: SessionId,
 ) -> Result<Option<String>> {
-    let limit = EventReadLimit::new(256).map_err(|error| AgentLoopError::store(error.to_string()))?;
+    let limit =
+        EventReadLimit::new(256).map_err(|error| AgentLoopError::store(error.to_string()))?;
     let mut request = EventReadRequest::new(session_id, limit);
     let mut status = None;
     loop {
@@ -542,7 +543,7 @@ pub(crate) async fn latest_terminal_turn_status(
             .await
             .map_err(|error| AgentLoopError::store(error.to_string()))?;
         for event in &page.events {
-            status = match event.event_type() {
+            status = match event.event_type.as_str() {
                 everruns_core::TURN_STARTED => None,
                 everruns_core::TURN_COMPLETED => Some("completed"),
                 everruns_core::TURN_FAILED => Some("failed"),
