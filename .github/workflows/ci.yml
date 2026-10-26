@@ -2721,7 +2721,9 @@ jobs:
     needs:
       - changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
-    timeout-minutes: 15
+    # A Cargo.lock change misses the openapi-v1 cache: the cold exporter build
+    # alone took 14m on batch 7e36160, and 15 cancelled the job during cache save.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
