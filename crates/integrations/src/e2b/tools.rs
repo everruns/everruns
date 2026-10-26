@@ -185,8 +185,14 @@ impl Tool for E2BCreateSandboxTool {
             .cloned()
             .unwrap_or_else(|| json!({}));
 
-        let egress = match super::network::tool_rules(context) {
-            Ok(rules) => super::network::E2BEgress::from_rules(&rules),
+        let egress = match super::network::tool_rules(context).and_then(|rules| {
+            let proxy = super::network::tool_proxy_credential(context, &rules)?;
+            Ok(super::network::E2BEgress::from_rules(
+                &rules,
+                proxy.as_ref(),
+            ))
+        }) {
+            Ok(egress) => egress,
             Err(error) => return error,
         };
         let client = E2BClient::new(api_key);
@@ -872,6 +878,26 @@ impl Tool for E2BManageSandboxTool {
                     Ok(resumed) => resumed,
                     Err(err) => return ToolExecutionResult::tool_error(err),
                 };
+                // A resumed sandbox follows the current policy, with a fresh
+                // proxy credential when the host routes sandboxes.
+                let applied = match super::network::tool_rules(context) {
+                    Ok(rules) => match super::network::tool_proxy_credential(context, &rules) {
+                        Ok(proxy) => {
+                            super::network::apply_to_running(
+                                &client,
+                                sandbox_id,
+                                &rules,
+                                proxy.as_ref(),
+                            )
+                            .await
+                        }
+                        Err(error) => Err(error),
+                    },
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = applied {
+                    return error;
+                }
                 let detail = detail_from_create(resumed);
                 let refreshed = build_state(&detail, timeout_seconds);
                 if let Err(err) = save_sandbox_state(context, &refreshed).await {

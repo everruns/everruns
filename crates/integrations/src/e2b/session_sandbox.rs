@@ -188,8 +188,9 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         if let Some(name) = &display_name {
             labels.insert("everruns.title".to_string(), json!(name));
         }
-        let egress =
-            super::network::E2BEgress::from_rules(&super::network::session_rules(context, config)?);
+        let rules = super::network::session_rules(context, config)?;
+        let proxy = super::network::proxy_credential(context, &rules, timeout)?;
+        let egress = super::network::E2BEgress::from_rules(&rules, proxy.as_ref());
         // GUI programs started from the shell open on the desktop's display.
         let env_vars = match desktop_display(config) {
             Some(_) => json!({ "DISPLAY": super::computer::DESKTOP_DISPLAY }),
@@ -233,12 +234,11 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
             ),
             Err(error) => return Err(ToolExecutionResult::tool_error(error)),
         };
-        super::network::apply_to_running(
-            &client,
-            &instance.external_id,
-            &super::network::session_rules(context, config)?,
-        )
-        .await?;
+        // Resume replaces the proxy credential too: a new one for this run.
+        let rules = super::network::session_rules(context, config)?;
+        let proxy = super::network::proxy_credential(context, &rules, timeout)?;
+        super::network::apply_to_running(&client, &instance.external_id, &rules, proxy.as_ref())
+            .await?;
         let resumed = instance_from_detail(
             context,
             detail,

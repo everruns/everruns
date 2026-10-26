@@ -120,6 +120,11 @@ Sandboxes the agent creates with the provider's own tools, desktops included, ge
 list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/` opens all of
 `pypi.org` inside the Sandbox.
 
+A deployment that runs the tenant egress proxy can also send E2B Sandbox traffic through it,
+so a Sandbox leaves from the proxy's address under the same per-organization limits and usage
+counts as agent tools. E2B still applies the template rule first. See
+[`EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`](/sre/environment-variables/#tenant-egress-proxy).
+
 ```json
 {
   "containment": {

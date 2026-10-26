@@ -560,6 +560,8 @@ These apply to tenant traffic: requests an agent, capability, MCP server or inte
 | `EVERRUNS_EGRESS_REPUTATION` | `off` | `cloudflare-security` checks hosts against Cloudflare's security resolver before connecting; lookups that fail let the request through. |
 | `EVERRUNS_EGRESS_PROXY_URL` | unset | Send tenant traffic through a tenant egress proxy, for example `http://egress-proxy:4750`. |
 | `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
+| `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` | unset | Public `host:port` of the proxy's SOCKS5 listener. When set, E2B sandboxes send their own outbound TCP through the proxy (E2B's bring-your-own-proxy), under the same checks, caps and per-org counts as tenant traffic. Needs `EVERRUNS_EGRESS_PROXY_SECRET`; if it is missing or short, E2B sandboxes fail to start rather than leave directly. |
+| `EVERRUNS_EGRESS_PROXY_SOCKS_TLS` | `true` | E2B connects to the SOCKS5 address over TLS, so put a TLS terminator with a publicly trusted certificate in front of the listener. Set `false` only when E2B reaches the proxy over a private network: the sandbox credential would otherwise cross the internet in the clear. |
 
 ## Tenant egress proxy
 
@@ -570,6 +572,7 @@ Read by the `everruns-egress-proxy` binary. Every cap is off unless set.
 | `EVERRUNS_EGRESS_PROXY_SECRET` | required | Same value as on the control plane and workers, at least 32 bytes. The proxy refuses to start without it. |
 | `EGRESS_PROXY_ADDR` | `0.0.0.0:4750` | Proxy listener. Keep it on the private network. |
 | `EGRESS_PROXY_HEALTH_ADDR` | `0.0.0.0:4751` | Health listener, `GET /healthz`. |
+| `EGRESS_PROXY_SOCKS_ADDR` | unset | SOCKS5 listener for sandbox providers, for example `0.0.0.0:1080`. Off unless set. It accepts only sandbox credentials and CONNECT. Expose it to E2B through a TLS terminator, and pass the public address to the control plane and workers as `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS`. |
 | `EGRESS_PROXY_ORG_RPM` | no cap | Requests per minute per org. |
 | `EGRESS_PROXY_ORG_HOST_RPM` | no cap | Requests per minute per org to one host. |
 | `EGRESS_PROXY_ORG_CONCURRENCY` | no cap | Open connections per org. |

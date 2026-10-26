@@ -23,6 +23,20 @@ impl SessionSandboxContext for ToolContext {
         self.network_access.clone()
     }
 
+    fn sandbox_proxy_credential(
+        &self,
+        valid_for: std::time::Duration,
+    ) -> Result<Option<crate::runtime::SandboxProxyCredential>, ToolExecutionResult> {
+        // The turn's egress service is scoped to this org and session, so
+        // the credential names them whatever a tool asks for.
+        let Some(egress) = &self.egress_service else {
+            return Ok(None);
+        };
+        egress
+            .sandbox_proxy_credential(None, valid_for)
+            .map_err(|error| ToolExecutionResult::tool_error(error.to_string()))
+    }
+
     async fn connection_token(
         &self,
         provider: &str,

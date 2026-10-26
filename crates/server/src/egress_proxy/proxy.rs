@@ -30,10 +30,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpListener, TcpSocket, TcpStream};
 
 use super::address::{self, AddressPolicy, ResolveError};
-use super::limiter::Limiter;
+use super::limiter::{Admission, Limiter};
 use super::limits::LimitsCache;
 use super::usage::UsageAggregator;
-use everruns_core::host::{ProxyTokenError, verify_proxy_authorization};
+use everruns_core::host::{ProxyClaims, ProxyTokenError, verify_proxy_authorization};
 
 /// Largest request head the proxy reads.
 const MAX_HEAD: usize = 16 * 1024;
@@ -131,94 +131,23 @@ impl Proxy {
                 return;
             }
         };
-        let org_key = claims.org.clone().unwrap_or_else(|| "-".to_string());
-        let session = claims.session.as_deref();
-        let log = LogContext {
-            org: &org_key,
-            session: session.unwrap_or("-"),
-            host: &request.host,
-            port: request.port,
-            method: request.method_for_log(),
-        };
-
-        if !address::port_allowed(request.port) {
-            log.refused("port_blocked", 403);
-            let _ = reply(&mut client, 403, "egress to this port is not allowed").await;
-            return;
-        }
-
-        let lookup = match &claims.org {
-            Some(org) => self.limits.get(org).await,
-            None => super::limits::Lookup {
-                limits: self.limits.fallback().clone(),
-                refreshed: false,
-            },
-        };
-        if lookup.refreshed {
-            self.limiter.limits_refreshed(&org_key);
-        }
-        if lookup.limits.suspended {
-            log.refused("suspended", 403);
-            let _ = reply(
-                &mut client,
-                403,
-                "egress is suspended for this organization; contact support",
-            )
-            .await;
-            return;
-        }
-
-        let admission = match self
-            .limiter
-            .admit(&org_key, &request.host, &lookup.limits, now)
-        {
-            Ok(admission) => admission,
-            Err(refusal) => {
-                log.refused(refusal.as_str(), 429);
-                let _ = reply(&mut client, 429, refusal.reason()).await;
-                return;
-            }
-        };
-        // Every admitted request counts, even one that later fails to
-        // connect: it consumed a slot and shows the attempt on the meter.
-        if let Some(org) = &claims.org {
-            self.usage.record(org, session, now, 0, 0, 1);
-        }
-
-        let addrs = match address::resolve(&request.host, request.port, self.options.address_policy)
+        let method = request.method_for_log().to_string();
+        let opened = match self
+            .open(&claims, &request.host, request.port, &method, now)
             .await
         {
-            Ok(addrs) => addrs,
-            Err(err) => {
-                let (decision, status, message) = match err {
-                    ResolveError::PortBlocked => {
-                        ("port_blocked", 403, "egress to this port is not allowed")
-                    }
-                    ResolveError::NotPublic => (
-                        "non_public_address",
-                        403,
-                        "destination resolves to a non-public address",
-                    ),
-                    ResolveError::NoAddress => {
-                        ("dns_failure", 502, "destination host does not resolve")
-                    }
-                };
-                log.refused(decision, status);
-                let _ = reply(&mut client, status, message).await;
+            Ok(opened) => opened,
+            Err(refused) => {
+                let _ = reply(&mut client, refused.status, refused.message).await;
                 return;
             }
         };
+        let Opened {
+            mut upstream,
+            admission,
+            org_key,
+        } = opened;
 
-        let mut upstream = match self.connect(&addrs).await {
-            Some(upstream) => upstream,
-            None => {
-                log.refused("connect_failed", 502);
-                let _ = reply(&mut client, 502, "could not connect to destination").await;
-                return;
-            }
-        };
-
-        let mut egress: u64 = 0;
         let setup = if request.is_connect {
             async {
                 client
@@ -239,14 +168,141 @@ impl Proxy {
             }
             .await
         };
-        match setup {
-            Ok(sent) => egress += sent,
+        let log = LogContext {
+            org: &org_key,
+            session: claims.session.as_deref().unwrap_or("-"),
+            host: &request.host,
+            port: request.port,
+            method: &method,
+        };
+        let sent = match setup {
+            Ok(sent) => sent,
             Err(_) => {
                 log.refused("upstream_write_failed", 502);
                 return;
             }
+        };
+        let status = if request.is_connect { 200 } else { 0 };
+        self.relay(
+            client, upstream, admission, &claims, &log, sent, status, started,
+        )
+        .await;
+    }
+
+    /// Everything between authentication and the first byte: port policy,
+    /// org limits and suspension, rate and concurrency caps, resolution with
+    /// the non-public refusal, and the connect. The HTTP and SOCKS5 listeners
+    /// share it, so the two cannot drift apart. Refusals are logged here.
+    pub(super) async fn open(
+        &self,
+        claims: &ProxyClaims,
+        host: &str,
+        port: u16,
+        method: &str,
+        now: i64,
+    ) -> Result<Opened, Refused> {
+        let org_key = claims.org.clone().unwrap_or_else(|| "-".to_string());
+        let session = claims.session.as_deref();
+        let log = LogContext {
+            org: &org_key,
+            session: session.unwrap_or("-"),
+            host,
+            port,
+            method,
+        };
+        let refuse = |decision: &'static str, status: u16, message: &'static str| {
+            log.refused(decision, status);
+            Refused {
+                decision,
+                status,
+                message,
+            }
+        };
+
+        if !address::port_allowed(port) {
+            return Err(refuse(
+                "port_blocked",
+                403,
+                "egress to this port is not allowed",
+            ));
         }
 
+        let lookup = match &claims.org {
+            Some(org) => self.limits.get(org).await,
+            None => super::limits::Lookup {
+                limits: self.limits.fallback().clone(),
+                refreshed: false,
+            },
+        };
+        if lookup.refreshed {
+            self.limiter.limits_refreshed(&org_key);
+        }
+        if lookup.limits.suspended {
+            return Err(refuse(
+                "suspended",
+                403,
+                "egress is suspended for this organization; contact support",
+            ));
+        }
+
+        let admission = match self.limiter.admit(&org_key, host, &lookup.limits, now) {
+            Ok(admission) => admission,
+            Err(refusal) => return Err(refuse(refusal.as_str(), 429, refusal.reason())),
+        };
+        // Every admitted request counts, even one that later fails to
+        // connect: it consumed a slot and shows the attempt on the meter.
+        if let Some(org) = &claims.org {
+            self.usage.record(org, session, now, 0, 0, 1);
+        }
+
+        let addrs = match address::resolve(host, port, self.options.address_policy).await {
+            Ok(addrs) => addrs,
+            Err(err) => {
+                return Err(match err {
+                    ResolveError::PortBlocked => {
+                        refuse("port_blocked", 403, "egress to this port is not allowed")
+                    }
+                    ResolveError::NotPublic => refuse(
+                        "non_public_address",
+                        403,
+                        "destination resolves to a non-public address",
+                    ),
+                    ResolveError::NoAddress => {
+                        refuse("dns_failure", 502, "destination host does not resolve")
+                    }
+                });
+            }
+        };
+
+        match self.connect(&addrs).await {
+            Some(upstream) => Ok(Opened {
+                upstream,
+                admission,
+                org_key,
+            }),
+            None => Err(refuse(
+                "connect_failed",
+                502,
+                "could not connect to destination",
+            )),
+        }
+    }
+
+    /// Splice `client` and `upstream` until either side closes or the
+    /// longest allowed duration passes, then count and log the bytes.
+    /// `sent` is what already went upstream during setup.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn relay<C: AsyncRead + AsyncWrite + Unpin>(
+        &self,
+        client: C,
+        mut upstream: TcpStream,
+        admission: Admission,
+        claims: &ProxyClaims,
+        log: &LogContext<'_>,
+        sent: u64,
+        status: u16,
+        started: Instant,
+    ) {
         let counters = Arc::new(Counters::default());
         let mut counted = CountingStream {
             inner: client,
@@ -258,14 +314,15 @@ impl Proxy {
         )
         .await;
         let timed_out = outcome.is_err();
-        egress += counters.read.load(Ordering::Relaxed);
+        let egress = sent + counters.read.load(Ordering::Relaxed);
         let ingress = counters.written.load(Ordering::Relaxed);
         drop(admission);
 
         let end = unix_now();
-        self.limiter.record_bytes(&org_key, egress + ingress, end);
+        self.limiter.record_bytes(log.org, egress + ingress, end);
         if let Some(org) = &claims.org {
-            self.usage.record(org, session, end, egress, ingress, 0);
+            self.usage
+                .record(org, claims.session.as_deref(), end, egress, ingress, 0);
         }
         tracing::info!(
             org = log.org,
@@ -278,7 +335,7 @@ impl Proxy {
             } else {
                 "allowed"
             },
-            status = if request.is_connect { 200 } else { 0 },
+            status,
             egress_bytes = egress,
             ingress_bytes = ingress,
             duration_ms = started.elapsed().as_millis() as u64,
@@ -313,16 +370,33 @@ impl Proxy {
     }
 }
 
-struct LogContext<'a> {
-    org: &'a str,
-    session: &'a str,
-    host: &'a str,
-    port: u16,
-    method: &'a str,
+/// A destination that passed every check, connected and holding its slot.
+pub(super) struct Opened {
+    pub(super) upstream: TcpStream,
+    pub(super) admission: Admission,
+    /// The org the limits are keyed by, `-` for unscoped traffic.
+    pub(super) org_key: String,
+}
+
+/// Why a destination was refused, in the HTTP listener's terms; the SOCKS5
+/// listener maps it to a reply code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Refused {
+    pub(super) decision: &'static str,
+    pub(super) status: u16,
+    pub(super) message: &'static str,
+}
+
+pub(super) struct LogContext<'a> {
+    pub(super) org: &'a str,
+    pub(super) session: &'a str,
+    pub(super) host: &'a str,
+    pub(super) port: u16,
+    pub(super) method: &'a str,
 }
 
 impl LogContext<'_> {
-    fn refused(&self, decision: &str, status: u16) {
+    pub(super) fn refused(&self, decision: &str, status: u16) {
         tracing::info!(
             org = self.org,
             session = self.session,
