@@ -16,11 +16,14 @@ jest.mock("@/components/chat-mode/agent-chat-boundary", () => ({
 }));
 
 let mockSourceManaged = false;
+let mockSourceMode = "pull";
 let mockSourceLoading = false;
 let mockSourceError: Error | null = null;
 jest.mock("@/hooks/use-agent-source", () => ({
   useAgentSource: () => ({
-    data: mockSourceManaged ? { repository: "acme/agents", branch: "main" } : null,
+    data: mockSourceManaged
+      ? { repository: "acme/agents", branch: "main", mode: mockSourceMode }
+      : null,
     isLoading: mockSourceLoading,
     error: mockSourceError,
     isError: !!mockSourceError,
@@ -278,6 +281,7 @@ async function save() {
 
 beforeEach(() => {
   mockSourceManaged = false;
+  mockSourceMode = "pull";
   mockSourceLoading = false;
   mockSourceError = null;
   mockChatMode = null;
@@ -812,7 +816,7 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
     const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(items).toEqual([
-      "Sync from GitHub",
+      "Sync with GitHub",
       "Copy",
       "Export package (ZIP)",
       "Export Markdown",
@@ -956,6 +960,35 @@ describe("AgentPage entity actions", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
+  it("allows two-way source edits through the Chat draft adapter", async () => {
+    mockSourceManaged = true;
+    mockSourceMode = "two_way";
+    let adapter: PageDraftAdapter | undefined;
+    mockChatMode = {
+      open: true,
+      setOpen: jest.fn(),
+      registerPage: (_page, value) => {
+        adapter = value;
+        return () => {};
+      },
+      pageContainer: { current: null },
+      page: { route: "/agents/agent-1", label: "Test Agent" },
+      actions: [],
+      recordAction: jest.fn(),
+      threadId: "session_chat",
+    };
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+    await renderPage();
+    const snapshot = adapter!.read(adapter!.describe().binding);
+    expect(snapshot.writable).toBe(true);
+    act(() => {
+      adapter!.patch(snapshot.binding, snapshot.revision, { system_prompt: "Chat edit" });
+    });
+    expect(adapter!.read(snapshot.binding).values.system_prompt).toBe("Chat edit");
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it("stages a Chat edit in the visible unsaved form, then saves through the ordinary page action", async () => {
     let adapter: PageDraftAdapter | undefined;
     mockChatMode = {
@@ -1064,9 +1097,9 @@ describe("AgentPage entity actions", () => {
 describe("Agent source menu", () => {
   it("opens source setup from the overflow menu", async () => {
     await renderPage();
-    expect(screen.queryByRole("button", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync with GitHub" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Sync from GitHub" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sync with GitHub" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Source setup");
   });
   it.each(["loading", "error"])("disables connection while source lookup is %s", async (state) => {
@@ -1074,7 +1107,7 @@ describe("Agent source menu", () => {
     mockSourceError = state === "error" ? new Error("Unavailable") : null;
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
-    expect(await screen.findByRole("menuitem", { name: "Sync from GitHub" })).toHaveAttribute(
+    expect(await screen.findByRole("menuitem", { name: "Sync with GitHub" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );
@@ -1097,7 +1130,7 @@ describe("Agent source menu", () => {
       await renderPage();
       fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
       await screen.findByRole("menuitem", { name: "Copy" });
-      expect(screen.queryByRole("menuitem", { name: "Sync from GitHub" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: "Sync with GitHub" })).not.toBeInTheDocument();
     },
   );
 });

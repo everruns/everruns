@@ -1042,7 +1042,7 @@ export interface paths {
     get: operations["get_agent_source"];
     /**
      * Connect continuous GitHub source sync
-     * @description Apply a reviewed GitHub package and enable continuous inbound sync. Source-owned Agent fields become read-only.
+     * @description Apply a reviewed GitHub package and enable continuous sync. Pull mode is read-only; two_way also publishes local edits using conditional commits.
      */
     put: operations["connect_agent_source"];
     post?: never;
@@ -9108,12 +9108,22 @@ export interface components {
        */
       last_synced_at?: string | null;
       /**
+       * @description Local edits are waiting for GitHub synchronization.
+       * @example false
+       */
+      local_dirty: boolean;
+      /**
        * @description Package channel names whose configuration is managed by the source.
        * @example [
        *       "chat"
        *     ]
        */
       managed_channels: string[];
+      /**
+       * @description Direction of synchronization: pull or two_way.
+       * @example two_way
+       */
+      mode: string;
       /**
        * @description Repository-relative package folder or manifest; empty means the root.
        * @example agents/support
@@ -9125,7 +9135,7 @@ export interface components {
        */
       repository: string;
       /**
-       * @description Current reconciliation state: pending, syncing, synced or error.
+       * @description Current reconciliation state, including conflict when both sides changed.
        * @example synced
        */
       status: string;
@@ -10751,6 +10761,8 @@ export interface components {
        * @example 018f30c8-c970-7cb5-a8c9-9348aa71ba8c
        */
       expected_generation?: string | null;
+      /** @description Synchronization direction; two_way requires repository Contents write access. */
+      mode?: components["schemas"]["SourceMode"];
     };
     /** @description An external MCP client the person approved. */
     ConnectedClient: {
@@ -25856,6 +25868,11 @@ export interface components {
        */
       repository: string;
     };
+    /**
+     * @description Source direction. Existing bindings remain inbound-only until explicitly changed.
+     * @enum {string}
+     */
+    SourceMode: "pull" | "two_way";
     /** @description Repository location to browse before selecting an Agent source package. */
     SourceOptionsRequest: {
       /**

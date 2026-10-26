@@ -56,6 +56,11 @@ impl SourceLocation {
 
 pub(super) struct Snapshot {
     pub package: AgentPackage,
+    pub entries: BTreeMap<String, Vec<u8>>,
+    pub manifest: String,
+    pub package_root: String,
+    pub root_tree: String,
+    pub modes: BTreeMap<String, String>,
     pub commit: String,
     pub repository_id: i64,
     pub repository: String,
@@ -65,7 +70,12 @@ pub(super) fn segment(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
-async fn read(ctx: &Ctx, repo: &str, suffix: &str, token: &str) -> Result<Value, CommandError> {
+pub(super) async fn read(
+    ctx: &Ctx,
+    repo: &str,
+    suffix: &str,
+    token: &str,
+) -> Result<Value, CommandError> {
     ctx.github_apps
         .api
         .read_source_json(&format!("/repos/{repo}/{suffix}"), token)
@@ -114,7 +124,7 @@ fn invalid() -> CommandError {
 fn field(value: &Value, key: &str) -> Result<String, CommandError> {
     value[key].as_str().map(str::to_string).ok_or_else(invalid)
 }
-fn sha(value: &Value) -> Result<String, CommandError> {
+pub(super) fn sha(value: &Value) -> Result<String, CommandError> {
     let sha = field(value, "sha")?;
     if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(invalid());
@@ -122,7 +132,7 @@ fn sha(value: &Value) -> Result<String, CommandError> {
     Ok(sha)
 }
 
-async fn root(
+pub(super) async fn root(
     ctx: &Ctx,
     location: &SourceLocation,
     token: &str,
@@ -289,6 +299,7 @@ pub(super) async fn snapshot(
     let (commit, root) = root(ctx, location, token).await?;
     // Git entry type, rather than the path suffix, distinguishes a package
     // folder such as `agents/support.md` from a standalone manifest.
+    let root_tree = root.clone();
     let mut selected = None;
     let current = if location.path.is_empty() {
         root
@@ -344,7 +355,7 @@ pub(super) async fn snapshot(
         Format::from_extension(Path::new(&name)),
     )
     .map_err(packages::package_error)?;
-    let selected = package
+    let asset_paths = package
         .referenced_paths(entries.iter().filter_map(|v| v["path"].as_str()))
         .map_err(packages::package_error)?;
     let mut total = content.len();
@@ -352,7 +363,7 @@ pub(super) async fn snapshot(
     files.insert(name.clone(), content);
     for entry in &entries {
         let path = entry["path"].as_str().ok_or_else(invalid)?;
-        if path == name || !selected.contains(path) || entry["type"] == "tree" {
+        if path == name || !asset_paths.contains(path) || entry["type"] == "tree" {
             continue;
         }
         if files.len() >= MAX_FILES + 2 {
@@ -367,9 +378,32 @@ pub(super) async fn snapshot(
         }
         files.insert(path.into(), bytes);
     }
-    let package =
-        AgentPackage::from_manifest_entries(files, &name).map_err(packages::package_error)?;
+    let package = AgentPackage::from_manifest_entries(files.clone(), &name)
+        .map_err(packages::package_error)?;
+    let package_root = if selected.is_some() {
+        Path::new(&location.path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        location.path.clone()
+    };
+    let modes = entries
+        .iter()
+        .filter_map(|e| {
+            Some((
+                e["path"].as_str()?.to_string(),
+                e["mode"].as_str()?.to_string(),
+            ))
+        })
+        .collect();
     Ok(Snapshot {
+        entries: files,
+        manifest: name,
+        package_root,
+        root_tree,
+        modes,
         package,
         commit,
         repository_id,

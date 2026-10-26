@@ -62,8 +62,11 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
         expect(body.commit).toBe(commit);
         expect(body.path).toBe("agents/support");
         expect(body.agent_digest).toBe("reviewed-base");
+        expect(body.mode).toBe("pull");
         enabled = true;
         source = {
+          mode: "pull",
+          local_dirty: false,
           generation: "g1",
           repository: "acme/agents",
           branch: "main",
@@ -153,7 +156,7 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
       .screenshot({ path: `${process.env.UI_EVIDENCE_DIR}/agent-actions.png` });
   await menu.focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("menuitem", { name: "Sync from GitHub", exact: true }).focus();
+  await page.getByRole("menuitem", { name: "Sync with GitHub", exact: true }).focus();
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(menu).toBeFocused();
@@ -163,7 +166,7 @@ test("reviews a GitHub package, locks editing, and disconnects without losing th
       path: `${process.env.UI_EVIDENCE_DIR}/agent-menu.png`,
       clip: { x: 260, y: 100, width: 1000, height: 285 },
     });
-  await page.getByRole("menuitem", { name: "Sync from GitHub", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Sync with GitHub", exact: true }).click();
   await expect(page.getByRole("button", { name: "Enable continuous sync" })).toBeDisabled();
   await page.getByLabel("Repository", { exact: true }).selectOption("acme/agents");
   await expect(page.getByLabel("Branch", { exact: true })).toHaveValue("main");
