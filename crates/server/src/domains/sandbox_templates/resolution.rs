@@ -5,15 +5,22 @@ use crate::domains::sandbox_templates::record::{
     SandboxEscalation, SandboxIdleAction, SandboxNetworkPolicy, SandboxPolicy, SandboxPolicyMode,
     SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
 };
+use everruns_capabilities::capabilities::SANDBOX_DESKTOP_CAPABILITY_ID;
 use everruns_contracts::capability::CapabilityRef;
 use everruns_contracts::session_sandbox::SessionSandboxCredentialSource;
 use everruns_core::DeploymentGrade;
 use serde_json::{Map, Value, json};
 
+use super::target_options::validate_target_options;
+
 const MAX_SANDBOX_TEMPLATES: usize = 16;
 const MAX_PROVIDER_OPTIONS_BYTES: usize = 32 * 1024;
 const MAX_BOOTSTRAP_COMMANDS: usize = 32;
 const MAX_BOOTSTRAP_COMMAND_BYTES: usize = 8 * 1024;
+
+/// Capabilities that provide the `computer` tool. A Sandbox Template with a
+/// desktop replaces them with `sandbox_desktop`.
+const COMPUTER_USE_CAPABILITY_IDS: &[&str] = &["computer_use", SANDBOX_DESKTOP_CAPABILITY_ID];
 
 const COMPUTE_CAPABILITY_IDS: &[&str] = &[
     "session_sandbox",
@@ -312,134 +319,6 @@ fn validate_credential_binding(
     }
 }
 
-fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> {
-    let options = profile
-        .target
-        .options
-        .as_object()
-        .expect("validate_options established an object");
-    match profile.target.kind {
-        SandboxTargetKind::Vfs | SandboxTargetKind::Host => {
-            if !options.is_empty() {
-                return Err(format!(
-                    "{} target does not accept target.options",
-                    profile.target.kind.as_str()
-                ));
-            }
-        }
-        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("modal") => {
-            validate_modal_options(profile, options)?;
-        }
-        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("e2b") => {
-            validate_e2b_options(profile, options)?;
-        }
-        SandboxTargetKind::Managed => {
-            const ALLOWED: &[&str] = &[
-                "snapshot",
-                "size",
-                "title",
-                "workspace_path",
-                "auto_stop_minutes",
-            ];
-            if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
-                return Err(format!(
-                    "daytona target.options.{key} is not caller-configurable"
-                ));
-            }
-            for key in ["snapshot", "title"] {
-                if let Some(value) = options.get(key)
-                    && value
-                        .as_str()
-                        .filter(|value| !value.trim().is_empty() && value.len() <= 256)
-                        .is_none()
-                {
-                    return Err(format!(
-                        "daytona target.options.{key} must be a non-empty string no longer than 256 bytes"
-                    ));
-                }
-            }
-            if let Some(size) = options.get("size")
-                && !matches!(size.as_str(), Some("small" | "medium" | "large"))
-            {
-                return Err(
-                    "daytona target.options.size must be small, medium, or large".to_string(),
-                );
-            }
-            if let Some(minutes) = options.get("auto_stop_minutes")
-                && !matches!(minutes.as_u64(), Some(1..=60))
-            {
-                return Err(
-                    "daytona target.options.auto_stop_minutes must be between 1 and 60".to_string(),
-                );
-            }
-            if let Some(path) = options.get("workspace_path") {
-                let Some(path) = path.as_str() else {
-                    return Err(
-                        "daytona target.options.workspace_path must be a string".to_string()
-                    );
-                };
-                if !is_normalized_absolute_path(path) {
-                    return Err(
-                        "daytona target.options.workspace_path must be a normalized absolute non-root path"
-                            .to_string(),
-                    );
-                }
-                if profile.durability == Some(SandboxDurability::Checkpointed)
-                    && !path.starts_with("/home/daytona/")
-                {
-                    return Err(
-                        "checkpointed Daytona workspace_path must be below /home/daytona"
-                            .to_string(),
-                    );
-                }
-            }
-        }
-        SandboxTargetKind::Machine | SandboxTargetKind::Container => {}
-    }
-    Ok(())
-}
-
-fn validate_e2b_options(
-    profile: &SandboxTemplateSpec,
-    options: &Map<String, Value>,
-) -> Result<(), String> {
-    const ALLOWED: &[&str] = &["template", "title", "workspace_path", "timeout_seconds"];
-    if profile.durability == Some(SandboxDurability::Checkpointed) {
-        return Err("e2b durability must be provider_snapshot".to_string());
-    }
-    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
-        return Err(format!(
-            "e2b target.options.{key} is not caller-configurable"
-        ));
-    }
-    for key in ["template", "title"] {
-        if let Some(value) = options.get(key)
-            && value
-                .as_str()
-                .filter(|value| !value.trim().is_empty() && value.len() <= 256)
-                .is_none()
-        {
-            return Err(format!(
-                "e2b target.options.{key} must be a non-empty string no longer than 256 bytes"
-            ));
-        }
-    }
-    if let Some(path) = options.get("workspace_path")
-        && !path.as_str().is_some_and(is_normalized_absolute_path)
-    {
-        return Err(
-            "e2b target.options.workspace_path must be a normalized absolute non-root path"
-                .to_string(),
-        );
-    }
-    if let Some(timeout) = options.get("timeout_seconds")
-        && !matches!(timeout.as_u64(), Some(1..=86_400))
-    {
-        return Err("e2b target.options.timeout_seconds must be between 1 and 86400".to_string());
-    }
-    Ok(())
-}
-
 fn is_modal(profile: &SandboxTemplateSpec) -> bool {
     profile.target.kind == SandboxTargetKind::Managed
         && profile.target.provider.as_deref() == Some("modal")
@@ -463,78 +342,6 @@ fn modal_egress(
     everruns_integrations::modal::egress::EgressSpec::from_json(&Value::Object(egress))
         .map(|_| ())
         .map_err(|error| format!("modal egress: {error}"))
-}
-
-/// Modal options mirror what the provider reads; it validates them again.
-fn validate_modal_options(
-    profile: &SandboxTemplateSpec,
-    options: &Map<String, Value>,
-) -> Result<(), String> {
-    const ALLOWED: &[&str] = &[
-        "image",
-        "runtime",
-        "cpu",
-        "memory_mb",
-        "workspace_path",
-        "title",
-        "inject_connections",
-    ];
-    // Modal has no stop/start: pause is a provider filesystem snapshot, and
-    // there is no Everruns recovery volume to checkpoint into.
-    if profile.durability == Some(SandboxDurability::Checkpointed) {
-        return Err("modal durability must be provider_snapshot".to_string());
-    }
-    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
-        return Err(format!(
-            "modal target.options.{key} is not caller-configurable"
-        ));
-    }
-    for key in ["image", "title"] {
-        if let Some(value) = options.get(key)
-            && value
-                .as_str()
-                .filter(|value| !value.trim().is_empty() && value.len() <= 256)
-                .is_none()
-        {
-            return Err(format!(
-                "modal target.options.{key} must be a non-empty string no longer than 256 bytes"
-            ));
-        }
-    }
-    if let Some(runtime) = options.get("runtime")
-        && !matches!(runtime.as_str(), Some("vm" | "gvisor"))
-    {
-        return Err("modal target.options.runtime must be vm or gvisor".to_string());
-    }
-    if let Some(cpu) = options.get("cpu")
-        && !cpu
-            .as_f64()
-            .is_some_and(|cpu| (0.125..=64.0).contains(&cpu))
-    {
-        return Err("modal target.options.cpu must be between 0.125 and 64".to_string());
-    }
-    if let Some(memory) = options.get("memory_mb")
-        && !matches!(memory.as_u64(), Some(128..=262_144))
-    {
-        return Err("modal target.options.memory_mb must be between 128 and 262144".to_string());
-    }
-    if let Some(path) = options.get("workspace_path")
-        && !path.as_str().is_some_and(is_normalized_absolute_path)
-    {
-        return Err(
-            "modal target.options.workspace_path must be a normalized absolute non-root path"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-fn is_normalized_absolute_path(path: &str) -> bool {
-    path.starts_with('/')
-        && path != "/"
-        && !path.ends_with('/')
-        && !path.split('/').any(|part| matches!(part, "." | ".."))
-        && !path.contains("//")
 }
 
 fn validate_containment(containment: &SandboxContainmentSpec) -> Result<(), String> {
@@ -600,7 +407,23 @@ pub fn apply_sandbox_to_capabilities(
         })
         .cloned()
         .collect::<Vec<_>>();
-    let mut selected = capability_for_sandbox(environment);
+    let selected = capability_for_sandbox(environment);
+    let desktop = (selected.id() == "session_sandbox"
+        && selected.config_value()["provider_config"]
+            .get("desktop")
+            .is_some_and(|desktop| desktop.as_bool() != Some(false)))
+    .then(|| {
+        CapabilityRef::with_config(
+            SANDBOX_DESKTOP_CAPABILITY_ID,
+            selected.config_value().clone(),
+        )
+    });
+    if desktop.is_some() {
+        // The Sandbox desktop is the agent's one display (`computer` is an
+        // exclusive group), so it replaces any other computer-use backend.
+        result.retain(|capability| !COMPUTER_USE_CAPABILITY_IDS.contains(&capability.id()));
+    }
+    let mut selected = selected;
     if environment.target.kind == SandboxTargetKind::Vfs
         && bashkit_http_opt_in(capabilities).or_else(|| bashkit_http_opt_in(inherited))
             == Some(true)
@@ -608,6 +431,7 @@ pub fn apply_sandbox_to_capabilities(
         selected = CapabilityRef::with_config("bashkit_shell", json!({"enable_http": true}));
     }
     result.push(selected);
+    result.extend(desktop);
     result
 }
 
@@ -1463,5 +1287,68 @@ mod tests {
                 .unwrap_err()
                 .contains("does not name")
         );
+    }
+
+    #[test]
+    fn desktop_option_adds_the_sandbox_desktop_and_replaces_other_displays() {
+        for provider in ["daytona", "e2b"] {
+            let mut value = profile(SandboxTargetSpec::managed(provider));
+            value.target.options =
+                json!({"desktop": {"display_width": 1024, "display_height": 768}});
+            let resolved = resolve_spec(&value).unwrap();
+            let mapped = apply_sandbox_to_capabilities(
+                &[
+                    CapabilityRef::new("computer_use"),
+                    CapabilityRef::new("web_fetch"),
+                ],
+                &[],
+                Some(&resolved),
+            );
+            let ids = mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>();
+            assert_eq!(ids, ["web_fetch", "session_sandbox", "sandbox_desktop"]);
+            // The desktop drives the same Sandbox: one config for both.
+            assert_eq!(mapped[1].config_value(), mapped[2].config_value());
+            assert_eq!(
+                mapped[2].config_value()["provider_config"]["desktop"]["display_width"],
+                1024
+            );
+        }
+    }
+
+    #[test]
+    fn templates_without_a_desktop_keep_their_computer_use_capability() {
+        for desktop in [None, Some(json!(false))] {
+            let mut value = profile(SandboxTargetSpec::managed("e2b"));
+            if let Some(desktop) = desktop {
+                value.target.options = json!({ "desktop": desktop });
+            }
+            let resolved = resolve_spec(&value).unwrap();
+            let mapped = apply_sandbox_to_capabilities(
+                &[CapabilityRef::new("computer_use")],
+                &[],
+                Some(&resolved),
+            );
+            let ids = mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>();
+            assert_eq!(ids, ["computer_use", "session_sandbox"]);
+        }
+    }
+
+    #[test]
+    fn desktop_option_rejects_bad_settings_and_unsupported_providers() {
+        let rejected = |provider: &str, options: Value| {
+            let mut value = profile(SandboxTargetSpec::managed(provider));
+            value.target.options = options;
+            resolve_spec(&value).unwrap_err()
+        };
+        assert!(rejected("e2b", json!({"desktop": "yes"})).contains("desktop must be"));
+        assert!(
+            rejected("e2b", json!({"desktop": {"display_width": 99_999}}))
+                .contains("desktop is not valid")
+        );
+        assert!(
+            rejected("daytona", json!({"desktop": true, "snapshot": "custom"}))
+                .contains("cannot be combined with desktop")
+        );
+        assert!(rejected("modal", json!({"desktop": true})).contains("desktop"));
     }
 }

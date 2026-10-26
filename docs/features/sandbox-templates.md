@@ -130,6 +130,35 @@ list. Providers filter by host, so a URL rule such as `https://pypi.org/simple/`
 }
 ```
 
+## Desktop
+
+Daytona and E2B templates can start the primary Sandbox with a Linux desktop. Turn on **Desktop**
+in the template, or set `target.options.desktop` to `true`. The Agent then gets the `computer`
+tool: it takes screenshots of the desktop and clicks, types and scrolls on it. The desktop runs in
+the same Sandbox as the shell and file tools, so files the agent writes are on the desktop too,
+and the template's outbound network rule covers the desktop's browser.
+
+To pick the display size or cap the number of actions, pass the computer-use settings instead of
+`true`:
+
+```json
+{
+  "target": {
+    "kind": "managed",
+    "provider": "e2b",
+    "options": {
+      "desktop": { "display_width": 1280, "display_height": 800, "max_actions_per_session": 300 }
+    }
+  }
+}
+```
+
+The desktop is the Agent's only display: a template with a desktop replaces any other
+computer-use capability the Agent has. On E2B the Sandbox starts from E2B's `desktop` template
+unless the template names another one built on it. On Daytona it uses Daytona's default image,
+which ships the desktop, so a desktop template cannot also choose a size or snapshot. Every action
+returns a screenshot, which costs image tokens.
+
 ## Recovery after compute loss
 
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.

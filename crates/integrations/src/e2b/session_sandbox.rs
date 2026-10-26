@@ -159,7 +159,14 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let client = client(context, config).await?;
         let timeout = timeout_seconds(config)?;
-        let template = provider_config_string(config, "template").unwrap_or(E2B_DEFAULT_TEMPLATE);
+        // A desktop Sandbox starts from E2B's desktop template unless the
+        // template names another one (a custom image built on it).
+        let default_template = if config.desktop().is_some() {
+            super::computer::E2B_DESKTOP_TEMPLATE
+        } else {
+            E2B_DEFAULT_TEMPLATE
+        };
+        let template = provider_config_string(config, "template").unwrap_or(default_template);
         let workspace_path = provider_config_string(config, "workspace_path")
             .unwrap_or(E2B_DEFAULT_WORKSPACE_PATH)
             .to_string();
@@ -226,6 +233,29 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         .await?;
         refresh_lease(context, config, &resumed).await?;
         Ok(resumed)
+    }
+
+    async fn open_desktop(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        display: everruns_contracts::runtime::computer_use::DisplaySize,
+    ) -> Result<
+        Box<dyn everruns_contracts::runtime::computer_use::ComputerSession>,
+        ToolExecutionResult,
+    > {
+        if config.desktop().is_none() {
+            return Err(ToolExecutionResult::tool_error(
+                "this E2B sandbox was created without a desktop",
+            ));
+        }
+        let client = client(context, config).await?;
+        let state = provider_state(context, instance).await?;
+        let session = super::computer::E2BDesktopSession::start(client, state, display)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        Ok(Box::new(session))
     }
 
     async fn pause(

@@ -1,5 +1,4 @@
 use super::*;
-use everruns_contracts::runtime::capabilities::Capability;
 
 fn action(value: Value) -> ComputerAction {
     ComputerAction::from_arguments(&value).unwrap()
@@ -242,36 +241,6 @@ fn primary_display_prefers_the_active_one() {
     assert_eq!(
         primary_display(&json!({"displays": [{"width": 0, "height": 0}]})),
         None
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Capability
-// ---------------------------------------------------------------------------
-
-#[test]
-fn capability_provides_the_desktop_computer_tool() {
-    let cap = DaytonaDesktopComputerUseCapability;
-    assert_eq!(cap.id(), DAYTONA_COMPUTER_USE_CAPABILITY_ID);
-    assert_eq!(cap.exclusive_group(), Some(COMPUTER_TOOL_NAME));
-    assert_eq!(cap.risk_level(), RiskLevel::High);
-    assert!(cap.features().contains(&LEASED_RESOURCES_FEATURE));
-    let tools = cap.tools();
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0].name(), COMPUTER_TOOL_NAME);
-    // A desktop has no navigate action.
-    let schema = tools[0].parameters_schema();
-    let actions = schema["properties"]["action"]["enum"].as_array().unwrap();
-    assert!(!actions.iter().any(|a| a == "navigate"));
-    assert!(
-        cap.system_prompt_addition()
-            .unwrap()
-            .contains("Linux desktop")
-    );
-    assert!(cap.validate_config(&json!({"display_width": 1024})).is_ok());
-    assert!(
-        cap.validate_config(&json!({"display_width": 99999}))
-            .is_err()
     );
 }
 

@@ -1177,52 +1177,50 @@ mod base64_check {
     }
 }
 
-/// The capability's `computer` tool opens a session-owned desktop sandbox on
-/// the first call and reuses it on the next.
+/// A Session Sandbox created with the desktop option opens its own desktop:
+/// the `sandbox_desktop` capability drives the same sandbox the agent's
+/// shell runs in.
 #[tokio::test]
-async fn test_live_computer_use_capability_reuses_the_desktop() {
-    use everruns_contracts::runtime::capabilities::Capability;
-    use everruns_contracts::runtime::computer_use::COMPUTER_USE_DISPLAY_KV_PREFIX;
-    use everruns_contracts::runtime::tools::ToolExecutionResult;
-    use everruns_integrations::daytona::computer::DaytonaDesktopComputerUseCapability;
+async fn test_live_session_sandbox_desktop() {
+    use everruns_contracts::runtime::computer_use::{DisplaySize, png_dimensions};
 
     let api_key = require_api_key!();
     let context = live_provider_context(api_key);
-    let storage = context.storage_store.clone().unwrap();
-    let key = format!("{COMPUTER_USE_DISPLAY_KV_PREFIX}daytona");
-    let tools = DaytonaDesktopComputerUseCapability
-        .tools_with_config(&json!({"display_width": 1024, "display_height": 768}));
-    let tool = &tools[0];
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        credential: live_provider_credential(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        idle_pause_enabled: true,
+        provider_config: json!({
+            "desktop": {"display_width": 1024, "display_height": 768},
+            "title": "live-session-sandbox-desktop"
+        }),
+        init: Default::default(),
+    };
 
-    let first = tool
-        .execute_with_context(json!({"action": "screenshot"}), &context)
-        .await;
-    let sandbox_id = storage
-        .get_value(context.session_id, &key)
+    let instance = provider
+        .create(&context, &config)
         .await
-        .unwrap()
-        .expect("the desktop sandbox is recorded");
-    let _guard = SandboxGuard::new(sandbox_id.clone());
-    match &first {
-        ToolExecutionResult::SuccessWithImages { images, .. } => assert_eq!(images.len(), 1),
-        other => panic!("screenshot failed: {other:?}"),
-    }
+        .expect("desktop session sandbox create failed");
+    let _guard = SandboxGuard::new(instance.external_id.clone());
 
-    let second = tool
-        .execute_with_context(
-            json!({"action": "left_click", "coordinate": [200, 150]}),
-            &context,
-        )
-        .await;
-    assert!(
-        matches!(second, ToolExecutionResult::SuccessWithImages { .. }),
-        "click failed: {second:?}"
-    );
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = provider
+        .open_desktop(&context, &config, &instance, display)
+        .await
+        .unwrap_or_else(|e| panic!("open_desktop failed: {e:?}"));
+    let frame = session.screenshot().await.expect("screenshot failed");
     assert_eq!(
-        storage.get_value(context.session_id, &key).await.unwrap(),
-        Some(sandbox_id),
-        "the second call reuses the desktop"
+        png_dimensions(&base64_check::decode(&frame.base64)).unwrap(),
+        (1024, 768)
     );
+    session.release().await;
 }
 
 /// Snapshot listing is paginated (`PaginatedSnapshots`), not a bare array.
