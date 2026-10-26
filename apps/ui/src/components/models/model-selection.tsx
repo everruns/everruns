@@ -9,6 +9,9 @@
 // a catalog of hundreds never has to be enabled row by row.
 
 import { useMemo, useState } from "react";
+import { z } from "zod";
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -256,6 +259,35 @@ function ModelSelectionBody({
   error?: string | null;
 }) {
   const [selected, setSelected] = useState(() => initialSelection(models, { recommend }));
+  const choices = JSON.stringify(models.map((model) => model.id).sort());
+  const schema = useMemo(() => {
+    const ids = new Set<string>(JSON.parse(choices));
+    return z.strictObject({
+      selected_model_ids: z
+        .array(z.string().refine((id) => ids.has(id), "Choose a listed model."))
+        .max(ids.size),
+    });
+  }, [choices]);
+  usePageFormPrefill({
+    identity: title,
+    open: true,
+    values: [...selected].sort(),
+    saved: [...initialSelection(models, { recommend })].sort(),
+    apply: (ids) => setSelected(new Set(ids)),
+  });
+  const chat = usePageFormDraft({
+    schema,
+    entityType: "model_selection",
+    label: title,
+    priority: 30,
+    values: { selected_model_ids: [...selected].sort() },
+    baseline: JSON.stringify([...initialSelection(models, { recommend })].sort()),
+    dirty:
+      JSON.stringify([...selected].sort()) !==
+      JSON.stringify([...initialSelection(models, { recommend })].sort()),
+    writable: !applying,
+    apply: (values) => setSelected(new Set(values.selected_model_ids)),
+  });
   return (
     <>
       <DrawerHeader className="p-0">
@@ -268,16 +300,29 @@ function ModelSelectionBody({
         onSelectedChange={setSelected}
         showProvider={showProvider}
       />
+      {chat.notice}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <DrawerFooter className="flex-row justify-end gap-2 p-0">
+      <DrawerFooter className="flex-row flex-wrap justify-end gap-2 p-0">
+        {chat.adopted && (
+          <Button
+            variant="ghost"
+            disabled={applying}
+            onClick={() => setSelected(initialSelection(models, { recommend }))}
+          >
+            Discard
+          </Button>
+        )}
         <Button variant="outline" onClick={onCancel} disabled={applying}>
           Cancel
         </Button>
-        <Button onClick={() => onApply(selected)} disabled={applying}>
+        <Button
+          onClick={() => !chat.blocked && onApply(selected)}
+          disabled={applying || chat.blocked}
+        >
           {applying ? "Saving…" : selectionActionLabel(models, selected, mode)}
         </Button>
       </DrawerFooter>

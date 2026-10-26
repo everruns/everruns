@@ -1,5 +1,7 @@
 "use client";
 
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -209,10 +211,21 @@ export default function CircuitBreakersPage() {
   usePageTitle("Circuit Breakers", "Durable");
   const { data, isLoading, error } = useCircuitBreakers();
 
+  useDurablePageRows(
+    "Circuit breakers",
+    (data?.data ?? []).map((b) => ({
+      key: b.key,
+      state: b.state,
+      failure_count: b.failure_count,
+      success_count: b.success_count,
+      updated_at: b.updated_at,
+    })),
+    { loading: isLoading, error: !!error },
+  );
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Circuit Breakers</h1>
         </div>
         <div className="space-y-4">
@@ -228,8 +241,8 @@ export default function CircuitBreakersPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Circuit Breakers</h1>
         </div>
         <Card>
@@ -251,8 +264,8 @@ export default function CircuitBreakersPage() {
   const halfOpenBreakers = circuitBreakers.filter((cb) => cb.state === "half_open");
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Circuit Breakers</h1>
       </div>
       <div className="space-y-6">

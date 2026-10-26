@@ -3,7 +3,13 @@
 // Create, edit, key, header and archive dialogs for the org MCP catalog
 // (Settings > Organization > MCP catalog).
 
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useEffect, useState } from "react";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  isPublicDraftLocation,
+  mcpMetadataDraftSchema,
+} from "@/components/chat-mode/page-form-schemas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,6 +81,39 @@ export function AddMcpServerDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const createServer = useCreateMcpServer();
+  const chat = usePageFormDraft({
+    schema: mcpMetadataDraftSchema,
+    entityType: "mcp_server",
+    entityId: undefined,
+    label: "MCP server",
+    priority: 30,
+    enabled: open && isPublicDraftLocation(url),
+    values: {
+      name,
+      description,
+      url,
+      protocol_mode: protocolMode,
+      elicitation_policy: elicitationPolicy,
+      tool_timeout: toolTimeout,
+    },
+    baseline: "new",
+    dirty:
+      !!name ||
+      !!description ||
+      !!url ||
+      protocolMode !== "auto" ||
+      elicitationPolicy !== "url" ||
+      !!toolTimeout,
+    writable: !createServer.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+      setUrl(values.url);
+      setProtocolMode(values.protocol_mode);
+      setElicitationPolicy(values.elicitation_policy);
+      setToolTimeout(values.tool_timeout);
+    },
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -84,6 +123,7 @@ export function AddMcpServerDialog({
     setApiKey("");
     setAuthMode("none");
     setProtocolMode("auto");
+    setToolTimeout("");
     setElicitationPolicy("url");
     setServiceConnection("none");
     setHeaders([]);
@@ -94,6 +134,7 @@ export function AddMcpServerDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
     setFormError(null);
     const parsed = mcpServerFormSchema.safeParse({
       name,
@@ -172,6 +213,7 @@ export function AddMcpServerDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input
@@ -368,7 +410,11 @@ export function AddMcpServerDialog({
             <Button
               type="submit"
               disabled={
-                createServer.isPending || !name || !url || (authMode === "api_key" && !apiKey)
+                chat.blocked ||
+                createServer.isPending ||
+                !name ||
+                !url ||
+                (authMode === "api_key" && !apiKey)
               }
             >
               {createServer.isPending ? "Creating..." : "Create Server"}
@@ -408,6 +454,85 @@ export function EditMcpServerDialog({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const updateServer = useUpdateMcpServer(server?.id ?? "");
+  const applyMetadata = (values: {
+    name: string;
+    description: string;
+    url: string;
+    protocol_mode: McpProtocolMode;
+    elicitation_policy: McpElicitationPolicy;
+    tool_timeout: string;
+  }) => {
+    setName(values.name);
+    setDescription(values.description);
+    setUrl(values.url);
+    setProtocolMode(values.protocol_mode);
+    setElicitationPolicy(values.elicitation_policy);
+    setToolTimeout(values.tool_timeout);
+  };
+  const savedMetadata = {
+    name: server?.name ?? "",
+    description: server?.description ?? "",
+    url: server?.url ?? "",
+    protocol_mode: server?.protocol_mode ?? "auto",
+    elicitation_policy: server?.elicitation_policy ?? "url",
+    tool_timeout: server?.tool_timeout_ms ? String(server.tool_timeout_ms / 1000) : "",
+  };
+  usePageFormPrefill({
+    identity: server?.id ?? "",
+    open,
+    saved: savedMetadata,
+    values: {
+      name,
+      description,
+      url,
+      protocol_mode: protocolMode,
+      elicitation_policy: elicitationPolicy,
+      tool_timeout: toolTimeout,
+    },
+    apply: applyMetadata,
+  });
+  const chat = usePageFormDraft({
+    schema: mcpMetadataDraftSchema,
+    entityType: "mcp_server",
+    entityId: server?.id,
+    label: "MCP server",
+    priority: 30,
+    enabled: open && isPublicDraftLocation(url),
+    values: {
+      name,
+      description,
+      url,
+      protocol_mode: protocolMode,
+      elicitation_policy: elicitationPolicy,
+      tool_timeout: toolTimeout,
+    },
+    baseline: JSON.stringify([
+      server?.id,
+      server?.updated_at,
+      server?.name,
+      server?.description,
+      server?.url,
+      server?.protocol_mode,
+      server?.elicitation_policy,
+      server?.tool_timeout_ms,
+    ]),
+    dirty:
+      name !== (server?.name ?? "") ||
+      description !== (server?.description ?? "") ||
+      url !== (server?.url ?? "") ||
+      protocolMode !== (server?.protocol_mode ?? "auto") ||
+      elicitationPolicy !== (server?.elicitation_policy ?? "url") ||
+      toolTimeout !== (server?.tool_timeout_ms ? String(server.tool_timeout_ms / 1000) : ""),
+    writable: !updateServer.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+      setUrl(values.url);
+      setProtocolMode(values.protocol_mode);
+      setElicitationPolicy(values.elicitation_policy);
+      setToolTimeout(values.tool_timeout);
+    },
+  });
 
   // Stored credentials are bound to the server's origin (EVE-1192): the API
   // rejects moving a server to another origin while it would keep its API key
@@ -430,10 +555,21 @@ export function EditMcpServerDialog({
     setFieldErrors({});
     updateServer.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, server]);
+  }, [open, server?.id]);
+
+  useEffect(() => {
+    if (!open || !server || chat.adopted) return;
+    applyMetadata(savedMetadata);
+    setServiceConnection(server.service_connection_provider === "github" ? "github" : "none");
+    setApiKey("");
+    setFieldErrors({});
+    updateServer.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, server, chat.adopted]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
     if (!server) return;
 
     const parsed = mcpServerEditFormSchema.safeParse({
@@ -499,6 +635,19 @@ export function EditMcpServerDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
+          {chat.adopted && chat.blocked && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                applyMetadata(savedMetadata);
+                chat.clear();
+              }}
+            >
+              Discard metadata changes
+            </Button>
+          )}
           <div className="space-y-2">
             <Label htmlFor="edit-name">Name</Label>
             <Input
@@ -621,7 +770,10 @@ export function EditMcpServerDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={updateServer.isPending || !name || !url}>
+            <Button
+              type="submit"
+              disabled={chat.blocked || updateServer.isPending || !name || !url}
+            >
               {updateServer.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
@@ -668,7 +820,7 @@ export function SetApiKeyDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent chatProtected="MCP credentials">
         <DialogHeader>
           <DialogTitle>{server?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
           <DialogDescription>
@@ -774,7 +926,7 @@ export function ManageHeadersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent chatProtected="MCP headers">
         <DialogHeader>
           <DialogTitle>Custom Headers</DialogTitle>
           <DialogDescription>

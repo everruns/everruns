@@ -1,6 +1,7 @@
 "use client";
 
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { z } from "zod";
+import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
 
 // Organization defaults, one row per service, grouped by what they drive:
 // Chat (the model agents and sessions run on), Decisions (the Jev decision
@@ -36,6 +37,17 @@ const PROVIDER_SERVICES: { key: string; label: string; description: string }[] =
   { key: "images", label: "Images", description: "Image generation." },
   { key: "rerank", label: "Rerank", description: "Search-result reranking." },
 ];
+
+const defaultsSchema = z.strictObject({
+  default_model_id: z.string(),
+  small_model_id: z.string(),
+  system_decisions: z.enum(["deployment", "organization"]),
+  realtime_provider_id: z.string(),
+  embeddings_provider_id: z.string(),
+  images_provider_id: z.string(),
+  rerank_provider_id: z.string(),
+});
+const decisionSchema = z.strictObject({ decision_model_id: z.string() });
 
 export const PLATFORM_DEFAULT_LABEL = "Platform default · GPT-6 Luna";
 
@@ -88,17 +100,75 @@ export function DefaultsTab({
   // The PATCH replaces the whole per-service map, and the mutation only
   // invalidates the org query. A local draft keeps the latest selections so
   // rapid edits patch from the freshest state, then re-syncs from the server.
-  const [serviceDraft, setServiceDraft] = useState<Record<string, string>>(
+  const [legacyServiceDraft, setServiceDraft] = useState<Record<string, string>>(
     () => org?.default_provider_per_service ?? {},
   );
   useEffect(() => {
     if (org?.default_provider_per_service) setServiceDraft(org.default_provider_per_service);
   }, [org?.default_provider_per_service]);
 
+  const settings = usePageSettingsDraft({
+    schema: defaultsSchema,
+    entityType: "model_defaults",
+    entityId: org?.id,
+    label: "Model defaults",
+    formId: "organization_defaults",
+    enabled: !!org,
+    writable: canManage && !!org && !updateOrg.isPending,
+    values: {
+      default_model_id: org?.default_model_id ?? "",
+      small_model_id: org?.small_model_id ?? "",
+      system_decisions: org?.system_decisions ?? "deployment",
+      realtime_provider_id: org?.default_provider_per_service?.realtime ?? "",
+      embeddings_provider_id: org?.default_provider_per_service?.embeddings ?? "",
+      images_provider_id: org?.default_provider_per_service?.images ?? "",
+      rerank_provider_id: org?.default_provider_per_service?.rerank ?? "",
+    },
+    saveLabel: "Save model defaults",
+    save: async (values) => {
+      const services = { ...org?.default_provider_per_service };
+      for (const service of PROVIDER_SERVICES) {
+        const value = values[`${service.key}_provider_id` as keyof typeof values];
+        if (value) services[service.key] = value;
+        else delete services[service.key];
+      }
+      await updateOrg.mutateAsync({
+        default_model_id: values.default_model_id || null,
+        small_model_id: values.small_model_id || null,
+        system_decisions: values.system_decisions,
+        default_provider_per_service: services,
+      });
+    },
+  });
+  const decisions = usePageSettingsDraft({
+    schema: decisionSchema,
+    values: { decision_model_id: decisionDefault.data?.id ?? "" },
+    entityType: "model_defaults",
+    entityId: org?.id,
+    label: "Decision model",
+    formId: "decision_model",
+    enabled: !!org,
+    writable: canManage && !decisionDefault.setDefault.isPending,
+    saveLabel: "Save decision model",
+    save: (values) => decisionDefault.setDefault.mutateAsync(values.decision_model_id || null),
+  });
+  const serviceDraft = settings.adopted
+    ? Object.fromEntries(
+        PROVIDER_SERVICES.map((service) => [
+          service.key,
+          settings.values[`${service.key}_provider_id` as keyof typeof settings.values],
+        ]),
+      )
+    : legacyServiceDraft;
+
   // The current choice stays listed even when it can no longer be used, so the
   // picker shows what is set next to the warning instead of the placeholder.
-  const currentModelId = org?.default_model_id;
-  const currentDecisionId = decisionDefault.data?.id;
+  const currentModelId = settings.adopted
+    ? settings.values.default_model_id
+    : org?.default_model_id;
+  const currentDecisionId = decisions.adopted
+    ? decisions.values.decision_model_id
+    : decisionDefault.data?.id;
   const chatOptions = useMemo(
     () =>
       models
@@ -110,7 +180,9 @@ export function DefaultsTab({
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
     [models, currentModelId],
   );
-  const currentSmallModelId = org?.small_model_id;
+  const currentSmallModelId = settings.adopted
+    ? settings.values.small_model_id
+    : org?.small_model_id;
   const smallModelOptions = useMemo(
     () =>
       models
@@ -159,32 +231,16 @@ export function DefaultsTab({
     }
   };
 
-  const decisionId = decisionDefault.data?.id ?? "";
-  const systemDecisions = org?.system_decisions ?? "deployment";
-  usePageReadContext({
-    fields: [
-      "default_model_id",
-      "small_model_id",
-      "decision_model_id",
-      "system_decisions",
-      "default_provider_per_service",
-    ],
-    values: {
-      default_model_id: currentModelId ?? "",
-      small_model_id: currentSmallModelId ?? "",
-      decision_model_id: decisionId,
-      system_decisions: systemDecisions,
-      default_provider_per_service: JSON.stringify(serviceDraft),
-    },
-    entityType: "model_defaults",
-    entityId: org?.id,
-    label: "Model defaults",
-    enabled: !!org,
-  });
-  const busy = !canManage || !org || updateOrg.isPending;
+  const decisionId = currentDecisionId ?? "";
+  const systemDecisions = settings.adopted
+    ? settings.values.system_decisions
+    : (org?.system_decisions ?? "deployment");
+  const busy = !canManage || !org || updateOrg.isPending || settings.pending;
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
+      {settings.controls}
+      {decisions.controls}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -200,13 +256,15 @@ export function DefaultsTab({
         <DefaultRow
           label="Default model"
           description="Used when no model is set on the agent or session."
-          problem={modelDefaultProblem(org?.default_model_id, models)}
+          problem={modelDefaultProblem(currentModelId, models)}
         >
           <Combobox
             options={chatOptions}
-            value={org?.default_model_id ?? ""}
+            value={currentModelId ?? ""}
             onValueChange={(value) =>
-              void run(() => updateOrg.mutateAsync({ default_model_id: value || null }))
+              settings.adopted
+                ? settings.setValues({ ...settings.values, default_model_id: value })
+                : void run(() => updateOrg.mutateAsync({ default_model_id: value || null }))
             }
             placeholder={PLATFORM_DEFAULT_LABEL}
             searchPlaceholder="Search chat models…"
@@ -216,13 +274,15 @@ export function DefaultsTab({
         <DefaultRow
           label="Small model"
           description="Shared model for lightweight work, including automatic session titles."
-          problem={modelDefaultProblem(org?.small_model_id, models)}
+          problem={modelDefaultProblem(currentSmallModelId, models)}
         >
           <Combobox
             options={smallModelOptions}
-            value={org?.small_model_id ?? ""}
+            value={currentSmallModelId ?? ""}
             onValueChange={(value) =>
-              void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
+              settings.adopted
+                ? settings.setValues({ ...settings.values, small_model_id: value })
+                : void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
             }
             placeholder="Not set · titles use session model"
             searchPlaceholder="Search chat models…"
@@ -245,11 +305,13 @@ export function DefaultsTab({
             options={decisionOptions}
             value={decisionId}
             onValueChange={(value) =>
-              void run(() => decisionDefault.setDefault.mutateAsync(value || null))
+              decisions.adopted
+                ? decisions.setValues({ decision_model_id: value })
+                : void run(() => decisionDefault.setDefault.mutateAsync(value || null))
             }
             placeholder="No default"
             searchPlaceholder="Search decision models…"
-            disabled={!canManage || decisionDefault.setDefault.isPending}
+            disabled={!canManage || decisionDefault.setDefault.isPending || decisions.pending}
           />
         </DefaultRow>
         <DefaultRow
@@ -269,9 +331,14 @@ export function DefaultsTab({
           <Select
             value={systemDecisions}
             onValueChange={(value) =>
-              void run(() =>
-                updateOrg.mutateAsync({ system_decisions: value as SystemDecisionsSource }),
-              )
+              settings.adopted
+                ? settings.setValues({
+                    ...settings.values,
+                    system_decisions: value as SystemDecisionsSource,
+                  })
+                : void run(() =>
+                    updateOrg.mutateAsync({ system_decisions: value as SystemDecisionsSource }),
+                  )
             }
             disabled={busy}
           >
@@ -304,6 +371,13 @@ export function DefaultsTab({
               options={providerOptions}
               value={serviceDraft[service.key] ?? ""}
               onValueChange={(providerId) => {
+                if (settings.adopted) {
+                  settings.setValues({
+                    ...settings.values,
+                    [`${service.key}_provider_id`]: providerId,
+                  });
+                  return;
+                }
                 const next = { ...serviceDraft };
                 if (providerId) next[service.key] = providerId;
                 else delete next[service.key];

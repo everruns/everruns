@@ -1,6 +1,8 @@
 "use client";
 
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { z } from "zod";
+import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
+import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 import { ScopedCredentialsPanel } from "@/components/credentials/scoped-credentials-panel";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
@@ -69,6 +71,12 @@ interface OrganizationDraft {
 
 const CONTROL_CLASS_NAME = "w-full";
 const AUTOSAVE_DELAY_MS = 700;
+const settingsSchema = z.strictObject({
+  name: z.string(),
+  default_model_id: z.string(),
+  default_harness_id: z.string(),
+  base_harness_id: z.string(),
+});
 const INITIAL_SAVE_STATES: Record<SettingsGroupKey, GroupSaveState> = {
   identity: { state: "idle", error: null },
   models: { state: "idle", error: null },
@@ -96,26 +104,55 @@ export default function OrganizationPage() {
   const organizationDefaultHarnessId = organization?.default_harness_id || genericHarnessId;
   const organizationBaseHarnessId = organization?.base_harness_id || baseHarnessFallbackId;
 
-  const [name, setName] = useState("");
-  const [defaultModelId, setDefaultModelId] = useState("");
-  const [defaultHarnessId, setDefaultHarnessId] = useState("");
-  const [baseHarnessId, setBaseHarnessId] = useState("");
+  const [legacyName, setName] = useState("");
+  const [legacyDefaultModelId, setDefaultModelId] = useState("");
+  const [legacyDefaultHarnessId, setDefaultHarnessId] = useState("");
+  const [legacyBaseHarnessId, setBaseHarnessId] = useState("");
   const [saveStates, setSaveStates] = useState(INITIAL_SAVE_STATES);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
 
-  usePageReadContext({
-    fields: ["name", "default_model_id", "default_harness_id", "base_harness_id"],
+  const settings = usePageSettingsDraft({
+    schema: settingsSchema,
     values: {
-      name,
-      default_model_id: defaultModelId,
-      default_harness_id: defaultHarnessId,
-      base_harness_id: baseHarnessId,
+      name: organizationName ?? "",
+      default_model_id: organizationDefaultModelId,
+      default_harness_id: organizationDefaultHarnessId,
+      base_harness_id: organizationBaseHarnessId,
     },
     entityType: "organization",
     entityId: organizationId,
     label: "Organization settings",
     enabled: !!organizationId,
+    writable: canManage && !!organizationId && !updateOrganization.isPending,
+    save: async (values) => {
+      if (!values.name.trim() || !values.default_harness_id || !values.base_harness_id)
+        throw new Error("Name and harness defaults are required.");
+      await updateOrganization.mutateAsync({
+        ...values,
+        name: values.name.trim(),
+        default_model_id: values.default_model_id || null,
+      });
+    },
+  });
+  const name = settings.adopted ? settings.values.name : legacyName;
+  const defaultModelId = settings.adopted ? settings.values.default_model_id : legacyDefaultModelId;
+  const defaultHarnessId = settings.adopted
+    ? settings.values.default_harness_id
+    : legacyDefaultHarnessId;
+  const baseHarnessId = settings.adopted ? settings.values.base_harness_id : legacyBaseHarnessId;
+  const createDraft = useTextPageFormDraft({
+    fields: ["name"],
+    values: { name: newOrgName },
+    entityType: "organization",
+    label: "Create organization",
+    formId: "create",
+    priority: 30,
+    enabled: createDialogOpen,
+    baseline: "new",
+    dirty: !!newOrgName,
+    writable: !createOrganization.isPending,
+    apply: (values) => setNewOrgName(values.name),
   });
 
   const draftRef = useRef<OrganizationDraft>({
@@ -132,6 +169,14 @@ export default function OrganizationPage() {
     models: 0,
     harnesses: 0,
   });
+  useEffect(() => {
+    if (!settings.adopted) return;
+    for (const group of Object.keys(saveTimersRef.current) as SettingsGroupKey[]) {
+      clearTimeout(saveTimersRef.current[group]);
+      delete saveTimersRef.current[group];
+      saveVersionsRef.current[group] += 1;
+    }
+  }, [settings.adopted]);
   const loadedOrganizationIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -263,12 +308,17 @@ export default function OrganizationPage() {
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const nextName = e.target.value;
+    if (settings.adopted) {
+      settings.setValues({ ...settings.values, name: nextName });
+      return;
+    }
     const nextDraft = { ...draftRef.current, name: nextName };
     setName(nextName);
     scheduleAutoSave("identity", nextDraft);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (settings.adopted) return;
     if (e.key === "Enter" && saveTimersRef.current.identity) {
       clearTimeout(saveTimersRef.current.identity);
       delete saveTimersRef.current.identity;
@@ -278,7 +328,7 @@ export default function OrganizationPage() {
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newOrgName.trim()) return;
+    if (createDraft.blocked || !newOrgName.trim()) return;
 
     const org = await createOrganization.mutateAsync({
       name: newOrgName.trim(),
@@ -298,6 +348,8 @@ export default function OrganizationPage() {
             Manage organization-level defaults and identity.
           </p>
         </div>
+
+        {settings.controls}
 
         {error ? (
           <Card className="p-8 text-center">
@@ -350,7 +402,7 @@ export default function OrganizationPage() {
                   onChange={handleNameChange}
                   onKeyDown={handleKeyDown}
                   placeholder="Organization name"
-                  readOnly={!canManage}
+                  readOnly={!canManage || settings.pending}
                   className={cn(CONTROL_CLASS_NAME, !canManage && "bg-muted")}
                 />
               </SettingsRow>
@@ -391,12 +443,16 @@ export default function OrganizationPage() {
                   id="default-model"
                   value={defaultModelId}
                   onChange={(value) => {
+                    if (settings.adopted) {
+                      settings.setValues({ ...settings.values, default_model_id: value });
+                      return;
+                    }
                     const nextDraft = { ...draftRef.current, defaultModelId: value };
                     setDefaultModelId(value);
                     scheduleAutoSave("models", nextDraft);
                   }}
                   placeholder="Platform default · GPT-6 Luna"
-                  disabled={!canManage}
+                  disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
@@ -417,12 +473,16 @@ export default function OrganizationPage() {
                   id="default-harness"
                   value={defaultHarnessId}
                   onValueChange={(value) => {
+                    if (settings.adopted) {
+                      settings.setValues({ ...settings.values, default_harness_id: value });
+                      return;
+                    }
                     const nextDraft = { ...draftRef.current, defaultHarnessId: value };
                     setDefaultHarnessId(value);
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select default harness"
-                  disabled={!canManage}
+                  disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
@@ -436,12 +496,16 @@ export default function OrganizationPage() {
                   id="base-harness"
                   value={baseHarnessId}
                   onValueChange={(value) => {
+                    if (settings.adopted) {
+                      settings.setValues({ ...settings.values, base_harness_id: value });
+                      return;
+                    }
                     const nextDraft = { ...draftRef.current, baseHarnessId: value };
                     setBaseHarnessId(value);
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select base harness"
-                  disabled={!canManage}
+                  disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
@@ -544,6 +608,7 @@ export default function OrganizationPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrg} className="space-y-4">
+            {createDraft.notice}
             <div className="space-y-2">
               <Label htmlFor="new-org-name">Name</Label>
               <Input

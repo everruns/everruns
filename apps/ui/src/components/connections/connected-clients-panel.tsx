@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 // External AI clients (Claude, ChatGPT, Cursor, ...) the viewer approved to act
 // as them on /mcp, with Revoke. The other direction, servers Everruns agents
 // call as the viewer, is My MCP servers above it
@@ -46,6 +48,12 @@ function ClientInitial({ name }: { name: string }) {
 
 export function ConnectedClientsPanel() {
   const clients = useConnectedClients();
+  useChatPageRows(
+    "Connected AI clients",
+    (clients.data ?? []).map((c) => ({ id: c.id, name: c.client_name, created_at: c.created_at })),
+    { loading: clients.isLoading, error: !!clients.error },
+  );
+
   const revoke = useRevokeConnectedClient();
   const [pending, setPending] = useState<ConnectedClient | null>(null);
 
@@ -153,7 +161,7 @@ export function ConnectedClientsPanel() {
           if (!open) setPending(null);
         }}
       >
-        <DialogContent>
+        <DialogContent chatProtected="Revoke client access">
           <DialogHeader>
             <DialogTitle>Disconnect {pending?.client_name}?</DialogTitle>
             <DialogDescription>

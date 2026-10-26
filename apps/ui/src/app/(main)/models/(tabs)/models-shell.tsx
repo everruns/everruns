@@ -322,7 +322,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
       </PageMain>
 
       <ConnectProviderSheet
-        open={connectOpen}
+        open={connectOpen && canManage}
         onOpenChange={setConnectOpen}
         providers={providers}
         onConnected={(text) => {
@@ -331,7 +331,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         }}
       />
       <ModelSelectionDrawer
-        open={selection !== null}
+        open={selection !== null && canManage}
         onOpenChange={(open) => !open && setSelection(null)}
         title={
           selection?.kind === "choose"
@@ -354,7 +354,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
       <AddModelDialog
         writable={canManage}
         providers={providers}
-        open={addModelOpen}
+        open={addModelOpen && canManage}
         onOpenChange={setAddModelOpen}
       />
       {children}

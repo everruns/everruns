@@ -31,7 +31,8 @@ tags: [ui, test-case, platform-chat, feature-flags]
    usable. Full form values must fail explicitly if oversized, rather than truncating.
 5. Visit Organization, Model defaults and Web search defaults. Ask for their current
    settings. Confirm the explicit public values match the controls. Asking to change
-   an immediate-save setting must not trigger its onChange or a server-write fallback.
+   a supported setting must stage it locally under Adoption, with no server write
+   before Save; follow TC010 for Save/Discard and feature-off autosave.
 6. Visit read-only operational/history pages, approvals, credentials, imports and
    financial settings. Ask for an edit. The tool must refuse mutation and explain
    use of the existing page controls. No approval, purchase, grant or credential is changed.

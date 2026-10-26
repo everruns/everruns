@@ -382,7 +382,11 @@ export default function MembersPage() {
 
       <PendingInvitesSection canManage={canManage} />
 
-      <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} canInviteOwner={isOwner} />
+      <InviteMemberDialog
+        open={inviteOpen && canManage}
+        onOpenChange={setInviteOpen}
+        canInviteOwner={isOwner}
+      />
     </div>
   );
 }

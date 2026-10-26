@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useState, useEffect } from "react";
@@ -19,6 +21,18 @@ export default function HealthPage() {
   const policies = usePolicies("agents");
   const canView = policies.can("agent.view");
   const issues = useHealthIssues(undefined, offset, canView);
+  useChatPageRows(
+    "Health issues",
+    (issues.data?.data ?? []).map((i) => ({
+      id: i.id,
+      title: i.title,
+      status: i.status,
+      stale: i.stale,
+      agent_name: i.agent_name,
+    })),
+    { enabled: canView, loading: issues.isLoading, error: !!issues.error },
+  );
+
   const id = useSearchParams().get("issue");
   const selected = useHealthIssue(canView ? id : null);
   const notifications = useOptionalNotificationsContext();

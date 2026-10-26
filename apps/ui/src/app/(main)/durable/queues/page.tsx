@@ -1,5 +1,7 @@
 "use client";
 
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useState } from "react";
@@ -98,6 +100,41 @@ export default function QueuesPage() {
       )
     : tasks;
 
+  useDurablePageRows(
+    "Queue tasks",
+    filteredTasks.map((t) => ({
+      id: t.id,
+      activity_type: t.activity_type,
+      status: t.status,
+      priority: t.priority,
+      attempt: t.attempt,
+      max_attempts: t.max_attempts,
+    })),
+    { enabled: activeTab === "tasks", loading: tasksLoading, error: !!tasksError },
+  );
+  useDurablePageRows(
+    "Queue overview",
+    Object.entries(stats?.by_activity_type ?? {}).map(([type, s]) => ({
+      activity_type: type,
+      pending: s.pending,
+      claimed: s.claimed,
+      completed_last_hour: s.completed_last_hour,
+      failed_last_hour: s.failed_last_hour,
+    })),
+    { enabled: activeTab === "overview", loading: statsLoading },
+  );
+  useDurablePageRows(
+    "Dead letter queue",
+    dlqEntries.map((t) => ({
+      id: t.id,
+      activity_type: t.activity_type,
+      attempts: t.attempts,
+      dead_at: t.dead_at,
+      requeue_count: t.requeue_count,
+    })),
+    { enabled: activeTab === "dlq", loading: dlqLoading },
+  );
+
   // Aggregate stats
   const totalPending = stats
     ? Object.values(stats.by_activity_type).reduce((sum, s) => sum + s.pending, 0)
@@ -132,8 +169,8 @@ export default function QueuesPage() {
 
   if (tasksLoading && statsLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Queues</h1>
         </div>
         <div className="space-y-6">
@@ -151,8 +188,8 @@ export default function QueuesPage() {
 
   if (tasksError) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Queues</h1>
         </div>
         <Card>
@@ -173,8 +210,8 @@ export default function QueuesPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Queues</h1>
         <Button onClick={() => setEnqueueOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/hooks";
@@ -52,6 +54,16 @@ export default function SlackWorkspacesPage() {
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, []);
+
+  useChatPageRows(
+    "Slack workspaces",
+    (workspaces.data ?? []).map((w) => ({
+      id: w.id,
+      status: w.status,
+      connected_at: w.connected_at,
+    })),
+    { enabled: supported, loading: workspaces.isLoading, error: !!workspaces.error },
+  );
 
   if (capability.isLoading || (supported && workspaces.isLoading)) {
     return <Skeleton className="h-40 w-full" />;

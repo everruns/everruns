@@ -42,8 +42,53 @@
 }
 /* Page editors respond to their pane, not to the browser viewport. */
 @container (max-width: 850px) {
+  /* Viewport breakpoints cannot describe a split page. Stack those grids at the
+     available pane width; explicitly fixed grids (chips, calendars) keep theirs. */
+  .chat-mode-page
+    .grid:where(
+      [class*="md:grid-cols-"],
+      [class*="lg:grid-cols-"],
+      [class*="xl:grid-cols-"],
+      [class*="2xl:grid-cols-"]
+    ) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-mode-page .operational-toolbar > div {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
   .chat-mode-page .page-columns {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-mode-page .settings-columns {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .chat-mode-page .settings-navigation {
+    width: auto;
+    max-height: 15rem;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .chat-mode-page .settings-navigation-items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem;
+  }
+  .chat-mode-page .settings-navigation-items > * {
+    margin-block: 0;
+  }
+  .chat-mode-page .operational-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-mode-page .operational-stats,
+  .chat-mode-page .page-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .chat-mode-page .operational-page {
+    padding: 1rem;
   }
   .agent-workspace {
     grid-template-columns: minmax(0, 1fr);

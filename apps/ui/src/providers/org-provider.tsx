@@ -178,6 +178,12 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
         console.warn("Failed to sync org cookie after automatic org update:", error);
       });
     } else {
+      const refreshed = organizations.find((org) => org.public_id === currentOrg.public_id);
+      // A rename or role change is metadata for this same organization. Keep
+      // its mounted pages/Chat and caches, while refreshing labels and controls.
+      if (refreshed && (refreshed.name !== currentOrg.name || refreshed.role !== currentOrg.role)) {
+        setCurrentOrgState(refreshed);
+      }
       // Org found in list — clear the explicit flag since we're in sync.
       if (explicitOrgRef.current === currentOrg?.public_id) {
         explicitOrgRef.current = null;

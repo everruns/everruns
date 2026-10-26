@@ -56,8 +56,12 @@ non-credential fields. Providers with several Save forms identify each form by n
 Chat edits one form at a time.
 
 Use the page's existing **Save** or **Create** action to apply a staged change.
-Immediate-save settings, operational views, approvals, credential controls and
-financial actions remain under their normal page controls. Chat reports when a
+Organization, Model defaults and Web search defaults use explicit **Save** and
+**Discard** controls while Chat mode is enabled. Chat can also stage supported
+settings, schedule and eval-case fields, MCP metadata, invitations, report-builder
+choices and Playground setup. Connection credentials, approvals, financial actions
+and operational buttons retain their normal manual controls. Operational context
+includes bounded status rows and the current Monitoring view. Chat reports when a
 page or field is read-only; it does not work around that through a server write.
 Saved-change markers and inverse **Undo all** remain specific to Agent definitions.
 Chat mode is independent of the **Chat threads** opt-in.

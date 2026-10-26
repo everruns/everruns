@@ -18,6 +18,7 @@
 //   onboarding surfaces render without the sidebar that ensures it everywhere
 //   else.
 
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -295,6 +296,16 @@ export default function OrgSetupPage() {
     }
   };
 
+  usePageReadContext({
+    fields: ["provider", "setup_state"],
+    values: {
+      provider: selectedProvider,
+      setup_state: done ? "complete" : verifying ? "verifying" : "configure",
+    },
+    entityType: "organization_setup",
+    entityId: orgId,
+    label: "Organization setup",
+  });
   const busy = verifying || createProvider.isPending;
 
   // --- Loading skeleton ---

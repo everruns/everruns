@@ -17,6 +17,11 @@
 // from the "new models" prompt when the browser comes back.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import {
+  isPublicDraftLocation,
+  providerConnectDraftSchema,
+} from "@/components/chat-mode/page-form-schemas";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -283,6 +288,23 @@ function ConnectForm({
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
+  const chat = usePageFormDraft({
+    schema: providerConnectDraftSchema,
+    entityType: "provider",
+    entityId: `new:${driver}`,
+    label: "Connect provider",
+    priority: 30,
+    values: { name, custom_endpoint: customEndpoint, base_url: baseUrl },
+    enabled: isPublicDraftLocation(baseUrl),
+    baseline: driver,
+    dirty: !!name || !!baseUrl,
+    writable: !createProvider.isPending && !redirecting,
+    apply: (values) => {
+      setName(values.name);
+      setCustomEndpoint(values.custom_endpoint);
+      setBaseUrl(values.base_url);
+    },
+  });
 
   useEffect(() => {
     setCredentials(defaultCredentialValues(schema));
@@ -313,7 +335,7 @@ function ConnectForm({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!formReady || !hasCredential) return;
+    if (chat.blocked || !formReady || !hasCredential) return;
     setError(null);
     try {
       onCreated(await create());
@@ -324,7 +346,7 @@ function ConnectForm({
 
   // OAuth drivers need the provider row first: consent binds its state to the provider id.
   const handleSignIn = async () => {
-    if (!formReady) return;
+    if (chat.blocked || !formReady) return;
     setError(null);
     setRedirecting(true);
     try {
@@ -338,6 +360,7 @@ function ConnectForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
+      {chat.notice}
       <div className="-mx-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6">
         {existing.length > 0 && (
           <div className="flex flex-col gap-1.5 border bg-muted/40 p-3 text-xs">
@@ -450,12 +473,15 @@ function ConnectForm({
             type="button"
             variant="outline"
             onClick={() => void handleSignIn()}
-            disabled={!formReady || createProvider.isPending}
+            disabled={chat.blocked || !formReady || createProvider.isPending}
           >
             {redirecting ? "Redirecting…" : `Sign in with ${label}`}
           </Button>
         )}
-        <Button type="submit" disabled={!formReady || !hasCredential || createProvider.isPending}>
+        <Button
+          type="submit"
+          disabled={chat.blocked || !formReady || !hasCredential || createProvider.isPending}
+        >
           {createProvider.isPending && !redirecting ? "Connecting…" : "Connect"}
         </Button>
       </DrawerFooter>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -177,6 +179,12 @@ function AvailableProviderRow({
 export function ConnectionsPanel({ identityId = "me" }: { identityId?: string }) {
   const { data: connections = [], isLoading, error } = useIdentityConnections(identityId);
   const { data: providers = [] } = useConnectionProviders();
+  useChatPageRows(
+    "Personal connections",
+    connections.map((c) => ({ provider: c.provider, connected_at: c.connected_at })),
+    { loading: isLoading, error: !!error },
+  );
+
   const deleteConnection = useDeleteIdentityConnection(identityId);
   const searchParams = useSearchParams();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);

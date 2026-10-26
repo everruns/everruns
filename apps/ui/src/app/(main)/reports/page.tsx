@@ -1,5 +1,7 @@
 "use client";
 
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
@@ -201,12 +203,19 @@ export default function ReportsPage() {
     : activeRows.length;
 
   usePageReadContext({
-    fields: ["query", "row_count", "measure", "measure_total"],
+    fields: ["query", "row_count", "measure", "measure_total", "available_datasets"],
     values: {
       query: JSON.stringify(query ?? null),
       row_count: String(activeRows.length),
       measure: measureColumn ?? "",
       measure_total: String(measureTotal),
+      available_datasets: JSON.stringify(
+        datasets.slice(0, 100).map((d) => ({
+          name: d.name.slice(0, 128),
+          dimensions: d.dimensions.slice(0, 50),
+          measures: d.measures.slice(0, 50),
+        })),
+      ),
     },
     entityType: "report",
     label: "Report results",
@@ -223,8 +232,57 @@ export default function ReportsPage() {
     setSelectedMeasure(next?.measures[0] ?? "");
   };
 
+  const reportSchema = useMemo(
+    () =>
+      z
+        .strictObject({
+          dataset: z
+            .string()
+            .refine((value) => datasets.some((d) => d.name === value), "Choose a listed dataset."),
+          dimension: z.string(),
+          measure: z.string(),
+          range: z.enum(["1", "7", "30", "90"]),
+          name: z.string(),
+        })
+        .refine((value) => {
+          const d = datasets.find((candidate) => candidate.name === value.dataset);
+          return (
+            !!d &&
+            (value.dimension === "none" || d.dimensions.includes(value.dimension)) &&
+            d.measures.includes(value.measure)
+          );
+        }, "Choose dimensions and measures offered by the dataset."),
+    [datasets],
+  );
+  const chatDraft = usePageFormDraft({
+    schema: reportSchema,
+    entityType: "report",
+    formId: "builder",
+    label: "Report builder",
+    enabled: !!dataset,
+    baseline: "builder",
+    dirty: true,
+    writable: !createSavedReport.isPending,
+    values: {
+      dataset: dataset?.name ?? "",
+      dimension: selectedDimension,
+      measure: selectedMeasure || dataset?.measures[0] || "",
+      range: selectedRange as "1" | "7" | "30" | "90",
+      name: saveName,
+    },
+    apply: (next) => {
+      setManualResult(undefined);
+      setSavedQuery(undefined);
+      setSelectedDataset(next.dataset);
+      setSelectedDimension(next.dimension);
+      setSelectedMeasure(next.measure);
+      setSelectedRange(next.range);
+      setSaveName(next.name);
+    },
+  });
+
   const handleSave = async () => {
-    if (!query || !saveName.trim()) return;
+    if (chatDraft.blocked || !query || !saveName.trim()) return;
     await createSavedReport.mutateAsync({
       name: saveName.trim(),
       query,
@@ -362,6 +420,7 @@ export default function ReportsPage() {
               <CardContent className="grid gap-4 md:grid-cols-5">
                 <div className="space-y-2">
                   <Label>Dataset</Label>
+                  {chatDraft.notice}
                   <Select value={dataset?.name ?? ""} onValueChange={handleDatasetChange}>
                     <SelectTrigger>
                       <SelectValue />

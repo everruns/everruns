@@ -133,10 +133,31 @@ validation and the aggregate size check run before mutation. Opening/closing or
 replacing a form rotates the collection binding. A dialog may take priority over
 the underlying page form, then unmount cleanly back to that page.
 
-Immediate-save settings (Organization, Model defaults, Web search defaults) expose
-explicit readable values without exposing their onChange save handlers. Other
-operational pages, credential setup, approvals, financial actions, imports and
-uploads provide read-only context and retain their normal page controls. A missing
+After Adoption, Organization, Model defaults and Web search defaults stage both
+mouse and Chat edits locally behind explicit Save/Discard controls. With Adoption
+off they retain autosave. My agent experience, invitation and account names,
+provider connection metadata, model selection, MCP metadata, schedule editors,
+eval cases, report-builder settings, Playground setup and queue metadata use the
+same draft contract. Channel variants expose typed public configuration while
+preserving nested authentication settings. Grants and approval policy remain manual.
+
+Clean secondary forms follow refreshed saved values; dirty forms retain their
+work and block Save on a changed baseline. Closing/reopening starts a new binding.
+Credential and approval-only popups register a read-only context above underlying
+forms, so typing beside a protected popup cannot edit the page underneath it.
+Credential values, auth methods, queued/scheduled task payloads and generated tokens stay outside
+these projections. Setup, financial actions, imports and uploads retain their
+normal manual controls.
+
+Operational views project the status rows actually displayed, with explicit load,
+error and truncation state. Global durable summaries require the platform policy;
+a tenant administrator role alone is insufficient. Monitoring reflects its visible
+live, paused or replay state. These bounded scalar projections supplement the
+existing scoped query summaries and never include arbitrary payloads or errors.
+Settings navigation and viewport-based grids stack to the available page pane.
+
+Other operational pages, credential setup, approvals and financial actions
+provide read-only context and retain their normal page controls. A missing
 writable form is not permission to save the adjacent page through server commands.
 Separately requested saved-resource operations retain the normal Platform Chat
 command flow; a failed form patch must never be reinterpreted as permission for

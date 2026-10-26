@@ -10,3 +10,6 @@
 
 * [TC008: Chat context across app pages](TC008_all_page_context.md) - Verify identity, live view state, scoped summaries and read-only action boundaries across every app area.
 * [TC009: Chat edits shared page forms](TC009_shared_page_forms.md) - Verify staged edits, guarded Undo, independent forms, credentials and stable dialogs beyond Agents.
+* [TC010: Chat stages settings before Save](TC010_staged_settings.md) - Verify staged settings, explicit Save/Discard, conflicts, permissions and legacy autosave.
+* [TC011: Secondary forms and protected dialogs](TC011_secondary_forms.md) - Verify secondary drafts, refresh preservation, credential boundaries and dialog lifecycle.
+* [TC012: Operational page context](TC012_operational_context.md) - Verify visible status projections, platform authorization and manual action boundaries.
