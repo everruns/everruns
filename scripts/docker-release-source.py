@@ -55,10 +55,10 @@ def resolve(env, run=command):
         "tag": tag,
         "is_release": str(bool(tag)).lower(),
         "is_latest": str(latest).lower(),
-        "platforms": "linux/amd64" if event == "pull_request" else "linux/amd64,linux/arm64",
+        "platforms": "linux/amd64,linux/arm64",  # TEMP: validate arm64 on this PR
         # Architectures whose release binaries are compiled natively (one runner
         # per architecture) before the images package them.
-        "arches": json.dumps(["amd64"] if event == "pull_request" else ["amd64", "arm64"]),
+        "arches": json.dumps(["amd64", "arm64"]),  # TEMP
     }
 
 
