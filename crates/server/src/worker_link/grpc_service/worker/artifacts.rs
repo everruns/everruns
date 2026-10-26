@@ -314,6 +314,6 @@ mod tests {
     #[test]
     fn maximum_file_fits_grpc_after_base64_expansion() {
         let encoded_len = crate::api::files::MAX_FILE_SIZE_BYTES.div_ceil(3) * 4;
-        assert!(encoded_len < WorkerServiceImpl::MAX_GRPC_MESSAGE_SIZE);
+        assert!(encoded_len < everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE);
     }
 }
