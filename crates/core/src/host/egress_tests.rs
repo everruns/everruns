@@ -874,3 +874,55 @@ async fn runtime_services_use_the_installed_resolver() {
         PolicyDecision::Denied(EgressPolicyDenial::NotAllowlisted)
     );
 }
+
+#[tokio::test]
+async fn deny_feeds_refuse_open_traffic_but_not_curated_hosts() {
+    let feeds = Arc::new(crate::host::DenyFeeds::from_domains([
+        "phish.example",
+        "example.com",
+    ]));
+    let service = curated_writes_service(10)
+        .with_org_allowlist(open_org_resolver())
+        .with_deny_feeds(Some(feeds));
+    // An open grant does not lift a feed, for writes or reads.
+    for (method, org) in [("POST", ORG_A), ("GET", ORG_B)] {
+        let request = scoped_request(method, "https://login.phish.example/form", org);
+        assert_eq!(
+            service.decide_policy(&request).await,
+            PolicyDecision::DenyFeed,
+            "{method}"
+        );
+        let error = service.admit(&request).await.unwrap_err();
+        assert!(error.to_string().contains("deny feed"), "{error}");
+    }
+    assert_eq!(
+        EgressAudit::start(
+            &scoped_request("GET", "https://phish.example/", ORG_A),
+            PolicyDecision::DenyFeed
+        )
+        .policy,
+        "denied:deny_feed"
+    );
+    // A host the operator curated wins over a third-party feed.
+    assert_eq!(
+        service
+            .decide_policy(&scoped_request(
+                "POST",
+                "https://allowed.example.com/x",
+                ORG_B
+            ))
+            .await,
+        PolicyDecision::Allowlisted
+    );
+    // Unlisted hosts keep their usual decision.
+    assert_eq!(
+        service
+            .decide_policy(&scoped_request(
+                "POST",
+                "https://hooks.customer.example/in",
+                ORG_A
+            ))
+            .await,
+        PolicyDecision::OpenOrg
+    );
+}

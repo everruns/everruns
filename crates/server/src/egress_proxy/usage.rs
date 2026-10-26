@@ -25,6 +25,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use super::signals::{AbuseSignals, SignalCounter};
+
 /// Path of the usage endpoint on the control endpoint.
 pub const USAGE_PATH: &str = "/internal/egress-proxy/usage";
 
@@ -50,6 +52,9 @@ pub struct UsageItem {
 pub struct UsageBatch {
     pub instance: String,
     pub items: Vec<UsageItem>,
+    /// Abuse signals for the same completed minutes (see `signals`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signals: Vec<AbuseSignals>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -64,6 +69,7 @@ type Key = (i64, String, Option<String>);
 pub struct UsageAggregator {
     instance: String,
     pending: Mutex<BTreeMap<Key, Counts>>,
+    signals: SignalCounter,
 }
 
 impl UsageAggregator {
@@ -71,7 +77,13 @@ impl UsageAggregator {
         Self {
             instance: instance.into(),
             pending: Mutex::new(BTreeMap::new()),
+            signals: SignalCounter::default(),
         }
+    }
+
+    /// Abuse signals, flushed with usage.
+    pub fn signals(&self) -> &SignalCounter {
+        &self.signals
     }
 
     pub fn instance(&self) -> &str {
@@ -161,24 +173,29 @@ impl UsageAggregator {
     /// Send what is due to `sink`, in batches. Anything not accepted goes back.
     pub async fn flush(&self, sink: &dyn UsageSink, before_minute: Option<i64>) -> FlushReport {
         let items = self.drain(before_minute);
+        let signals = self.signals.drain(before_minute);
         let mut report = FlushReport::default();
         let mut start = 0;
-        while start < items.len() {
-            let end = (start + MAX_ITEMS_PER_BATCH).min(items.len());
+        while start < items.len() || start < signals.len() {
+            let window = |len: usize| start.min(len)..(start + MAX_ITEMS_PER_BATCH).min(len);
             let batch = UsageBatch {
                 instance: self.instance.clone(),
-                items: items[start..end].to_vec(),
+                items: items[window(items.len())].to_vec(),
+                signals: signals[window(signals.len())].to_vec(),
             };
             if let Err(err) = sink.send(&batch).await {
                 tracing::warn!(error = %err, "egress usage flush failed; will retry");
-                let rest = items[start..].to_vec();
+                let rest = items[start.min(items.len())..].to_vec();
                 report.requeued = rest.len();
                 self.requeue(rest);
+                self.signals
+                    .requeue(signals[start.min(signals.len())..].to_vec());
                 break;
             }
             report.batches += 1;
-            report.items += end - start;
-            start = end;
+            report.items += batch.items.len();
+            report.signals += batch.signals.len();
+            start += MAX_ITEMS_PER_BATCH;
         }
         report
     }
@@ -188,6 +205,7 @@ impl UsageAggregator {
 pub struct FlushReport {
     pub batches: usize,
     pub items: usize,
+    pub signals: usize,
     pub requeued: usize,
 }
 
@@ -247,6 +265,19 @@ impl UsageSink for LogSink {
                 ingress_bytes = item.ingress_bytes,
                 requests = item.requests,
                 "egress usage"
+            );
+        }
+        for signal in &batch.signals {
+            tracing::info!(
+                target: "everruns::egress::signals",
+                instance = %batch.instance,
+                org = %signal.org,
+                minute = signal.minute,
+                distinct_hosts = signal.distinct_hosts,
+                refused_port = signal.refused_port,
+                refused_private = signal.refused_private,
+                refused_rate = signal.refused_rate,
+                "egress abuse signals"
             );
         }
         Ok(())
@@ -342,5 +373,37 @@ mod tests {
                 .flat_map(|b| &b.items)
                 .all(|i| i.egress_bytes == 10)
         );
+    }
+
+    #[tokio::test]
+    async fn signals_ride_with_usage_and_survive_a_failed_flush() {
+        use super::super::signals::Refusal;
+
+        let sink = Arc::new(Recording::default());
+        let agg = UsageAggregator::new("i1");
+        agg.signals().host(ORG, "a.example", M0);
+        agg.signals().refused(ORG, Refusal::Port, M0);
+        // A minute with signals and no usage still flushes.
+        agg.signals().refused(ORG, Refusal::Private, M0 + 60);
+
+        sink.fail.store(true, Ordering::SeqCst);
+        assert_eq!(agg.flush(&sink, None).await.batches, 0);
+        assert_eq!(agg.signals().pending_len(), 2);
+
+        sink.fail.store(false, Ordering::SeqCst);
+        let report = agg.flush(&sink, None).await;
+        assert_eq!((report.batches, report.items, report.signals), (1, 0, 2));
+        let batches = sink.batches.lock().expect("lock");
+        let first = &batches[0].signals[0];
+        assert_eq!(
+            (first.minute, first.distinct_hosts, first.refused_port),
+            (M0, 1, 1)
+        );
+        // An old control plane that does not know signals still reads the
+        // batch: the field is skipped when empty and defaulted when absent.
+        let plain: UsageBatch =
+            serde_json::from_str(r#"{"instance":"i1","items":[]}"#).expect("parse");
+        assert!(plain.signals.is_empty());
+        assert!(!serde_json::to_string(&plain).unwrap().contains("signals"));
     }
 }
