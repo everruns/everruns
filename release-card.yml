@@ -1,22 +1,22 @@
 version: 0.49.0
 date: 2026-10-26
 headline:
-  - Docker, Helm,
-  - Work reports.
+  - Large MCP,
+  - GitHub sync.
 summary:
-  - everruns docker up runs the Platform locally.
-  - Agent source syncs with GitHub both ways.
-  - MCP Tasks and large MCP catalogs.
+  - Helm chart and everruns docker up.
+  - Sandbox network policy on Daytona and E2B.
+  - Knowledge and automatic session titles.
 highlights:
-  - title: Local setup and Helm
-    description: everruns docker up runs the Platform locally; a Helm chart installs it on Kubernetes.
-    source: "#4904"
-  - title: Work reports
-    description: Agents report progress and results in chat, the thread board and the API.
-    source: "#4885"
-  - title: Scoped credentials
-    description: Credentials shared across users, agents and sessions, with secure HTTP capture.
-    source: "#4828"
-  - title: GitHub Agent sync
+  - title: Large MCP and MCP Tasks
+    description: MCP servers with 2,000+ tools, and long tool calls run as MCP Tasks.
+    source: "#4870"
+  - title: GitHub sync
     description: Agent source syncs from GitHub, and edits in Everruns commit back.
     source: "#4919"
+  - title: Scoped credentials
+    description: Write-only credentials bound to a user, agent, session or organization.
+    source: "#4828"
+  - title: Knowledge
+    description: Notes, source trees and files in one Knowledge feature, with optional search.
+    source: "#4886"
