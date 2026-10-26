@@ -370,8 +370,8 @@ impl Database {
     /// Return (session_id, task_id, schedule_id) triples for running monitor
     /// tasks whose linked schedule is inactive.
     ///
-    /// "Inactive" = the schedule row does not exist, OR it is disabled and
-    /// either recurring or a never-triggered one-shot. Fired one-shots are
+    /// "Inactive" = the schedule row does not exist, it was deleted, OR it is
+    /// disabled and either recurring or a never-triggered one-shot. Fired one-shots are
     /// excluded because `mark_triggered` disables them before the firing path
     /// can complete the linked monitor.
     ///
@@ -399,6 +399,7 @@ impl Database {
               AND st.spec->>'schedule_id' ~ '^sched_[0-9a-f]{32}$'
               AND (
                   ss.id IS NULL
+                  OR ss.deleted_at IS NOT NULL
                   OR (
                       ss.enabled = false
                       AND (

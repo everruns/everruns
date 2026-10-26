@@ -507,6 +507,7 @@ impl everruns_core::session_services::SessionScheduleStore for TestScheduleStore
             trigger_count: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            deleted_at: None,
         };
         self.schedules.lock().unwrap().push(schedule.clone());
         Ok(schedule)

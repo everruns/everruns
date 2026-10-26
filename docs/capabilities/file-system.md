@@ -8,7 +8,7 @@ appliesTo: [framework, platform, cloud]
 |---|---|
 | **ID** | `session_file_system` |
 | **Category** | File Operations |
-| **Features** | `file_system` (enables Workspace tab) |
+| **Features** | `file_system` (enables the Files tab) |
 | **Dependencies** | None |
 
 Provides tools to access and manipulate files in the session workspace. Each session has an isolated filesystem rooted at `/workspace`. Files persist for the session duration. `read_file` and `write_file` return a `content_hash` (`sha256:...`) so agents can make freshness-checked `edit_file` calls.

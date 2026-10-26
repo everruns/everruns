@@ -181,9 +181,37 @@ describe("session Work tab", () => {
 
     expect(screen.getByText("Daily digest")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText(/registered/i)).toBeInTheDocument();
     for (const control of [/disable schedule/i, /trigger now/i, /delete schedule/i]) {
       expect(screen.queryByRole("button", { name: control })).not.toBeInTheDocument();
     }
+  });
+
+  it("keeps a deleted schedule visible", () => {
+    mockUseSessionSchedules.mockReturnValue({
+      data: [
+        {
+          id: "sched_gone",
+          session_id: "session_1",
+          schedule_type: "oneshot",
+          scheduled_at: "2026-05-26T10:00:00Z",
+          timezone: "UTC",
+          enabled: false,
+          trigger_count: 0,
+          description: "One-shot check",
+          created_at: "2026-05-25T10:00:00Z",
+          updated_at: "2026-05-25T12:00:00Z",
+          deleted_at: "2026-05-25T12:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<SessionWorkPage />);
+
+    expect(screen.getByText("One-shot check")).toBeInTheDocument();
+    expect(screen.getByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByText(/registered/)).toBeInTheDocument();
   });
 
   it("shows an empty state when the session started no work", () => {

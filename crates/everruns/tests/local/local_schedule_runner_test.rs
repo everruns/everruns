@@ -695,6 +695,7 @@ async fn existing_recurring_schedule_is_migrated_and_executed() {
         trigger_count: 0,
         created_at: now,
         updated_at: now,
+        deleted_at: None,
     };
     {
         let conn = rusqlite::Connection::open(&path).unwrap();

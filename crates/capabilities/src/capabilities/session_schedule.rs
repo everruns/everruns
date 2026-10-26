@@ -467,6 +467,7 @@ mod tests {
                 trigger_count: 0,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
+                deleted_at: None,
             };
             self.schedules.lock().unwrap().push(schedule.clone());
             Ok(schedule)

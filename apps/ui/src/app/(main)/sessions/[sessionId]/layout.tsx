@@ -73,6 +73,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     taskCount: session?.task_count,
     eventCount: session?.event_count,
     fileCount: session?.file_count,
+    activeScheduleCount: session?.active_schedule_count,
   });
 
   // Resolve the session-level provider trace link here, where org/provider

@@ -9,7 +9,7 @@ Capabilities are modular units that extend what an agent can do. Each capability
 
 - **Tools**: callable functions the agent can invoke during conversations
 - **System prompt additions**: context and instructions prepended to the agent's prompt
-- **Features**: UI elements unlocked when the capability is active (e.g., Workspace tab)
+- **Features**: UI elements unlocked when the capability is active (e.g., the Files tab)
 
 Agents compose capabilities; enable only what you need.
 
@@ -317,10 +317,10 @@ Capabilities declare UI features they contribute. The session aggregates feature
 
 | Feature | UI Element | Contributed By |
 |---|---|---|
-| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
-| `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
-| `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
+| `file_system` | Files tab, filesystem | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/), [Host Shell](/capabilities/host-shell/) |
+| `secrets` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `key_value` | Files tab, key values | [Storage](/capabilities/session-storage/) |
+| `schedules` | Files tab and Work tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
 | `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
 | `citations` | Inline citation chips + Sources strip | [Retrieval Citations](/capabilities/citation-retrieval/), [Citation Verification](/capabilities/citation-verification/) |

@@ -14,18 +14,16 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  CalendarClock,
   CheckCircle2,
   Clock3,
-  Repeat,
   ServerCrash,
   Waypoints,
   Wrench,
   XCircle,
 } from "lucide-react";
 import { useSessionResources } from "@/hooks/use-session-resources";
-import { useSessionSchedules } from "@/hooks/use-session-schedules";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
+import { SessionSchedulesSection } from "@/components/session/session-schedule-list";
 import { TaskChip } from "@/components/session/session-task-chips";
 import { TaskCard } from "@/components/session/task-detail";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,11 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatRelativeTime } from "@/lib/formatting";
-import {
-  formatScheduleCadence,
-  formatScheduledDateTime,
-  getScheduleDisplayTitle,
-} from "@/lib/schedule-display";
 import type { SessionResourceEntry } from "@/lib/api/types";
 import { useSessionContext } from "../session-context";
 
@@ -233,72 +226,6 @@ function ResourcesSection({ sessionId }: { sessionId: string }) {
   );
 }
 
-// ============================================
-// Schedules (read-only)
-// ============================================
-
-function SchedulesSection({ sessionId }: { sessionId: string }) {
-  const { data: schedules, isLoading, error } = useSessionSchedules(sessionId);
-
-  if (isLoading) return <Skeleton className="h-24 w-full" />;
-
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 text-destructive">
-        <AlertCircle className="h-5 w-5" />
-        <span>{error instanceof Error ? error.message : "Failed to load schedules"}</span>
-      </div>
-    );
-  }
-
-  if (!schedules || schedules.length === 0) {
-    return <div className="text-sm text-muted-foreground">This session scheduled no work.</div>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {schedules.map((schedule) => {
-        const isRecurring = schedule.schedule_type === "recurring";
-        const cadence = formatScheduleCadence({
-          cronExpression: schedule.cron_expression,
-          scheduledAt: schedule.scheduled_at,
-          timezone: schedule.timezone,
-        });
-
-        return (
-          <div
-            key={schedule.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3"
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              {isRecurring ? (
-                <Repeat className="h-4 w-4 shrink-0 text-muted-foreground" />
-              ) : (
-                <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
-              )}
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">
-                  {getScheduleDisplayTitle(schedule.description)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {cadence}
-                  {schedule.next_trigger_at
-                    ? ` · next ${formatScheduledDateTime(schedule.next_trigger_at, schedule.timezone)}`
-                    : ""}
-                  {schedule.trigger_count > 0 ? ` · fired ${schedule.trigger_count}×` : ""}
-                </div>
-              </div>
-            </div>
-            <Badge variant={schedule.enabled ? "default" : "secondary"}>
-              {schedule.enabled ? "Active" : "Disabled"}
-            </Badge>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function SessionWorkPage() {
   const { sessionId, session } = useSessionContext();
   const features = new Set(session?.features ?? []);
@@ -315,12 +242,7 @@ export default function SessionWorkPage() {
         <ResourcesSection sessionId={sessionId} />
       </section>
 
-      {features.has("schedules") && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Schedules</h2>
-          <SchedulesSection sessionId={sessionId} />
-        </section>
-      )}
+      <SessionSchedulesSection sessionId={sessionId} announceEmpty={features.has("schedules")} />
 
       <p className="text-xs text-muted-foreground">
         Work across every session used to live at <span className="font-mono">/work</span>; it is
