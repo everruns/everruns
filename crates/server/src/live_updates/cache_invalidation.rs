@@ -208,6 +208,47 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn a_provider_edit_is_read_back() {
+        let db = StorageBackend::test_database();
+        listening(&db).await;
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let provider = db
+            .create_provider(
+                org_id,
+                crate::storage::CreateProviderRow {
+                    name: format!("cached-{}", uuid::Uuid::now_v7()),
+                    provider_type: "llmsim".into(),
+                    base_url: Some("http://before".into()),
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let id = provider.id.uuid();
+        let read = db.get_provider_config(org_id, id).await.unwrap().unwrap();
+        assert_eq!(read.base_url.as_deref(), Some("http://before"));
+        assert!(
+            db.get_provider_config(org_id + 1, id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        sqlx::query("UPDATE providers SET base_url = 'http://after' WHERE id = $1")
+            .bind(id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let seen = eventually(|| async {
+            let row = db.get_provider_config(org_id, id).await.unwrap().unwrap();
+            row.base_url.as_deref() == Some("http://after")
+        })
+        .await;
+        assert!(seen, "the edited provider is read back");
+    }
+
     // Usage counters move on every model call; they must not churn the cache,
     // while a configuration edit of the same row does notify.
     #[tokio::test]
