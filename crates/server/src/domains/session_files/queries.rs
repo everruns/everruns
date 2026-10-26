@@ -247,6 +247,9 @@ fn user_memory_forbidden() -> CommandError {
 }
 
 pub fn classify_storage(error: anyhow::Error) -> CommandError {
+    if let Some(too_large) = error.downcast_ref::<crate::storage::FileTooLargeToLoad>() {
+        return CommandError::unprocessable(too_large.to_string());
+    }
     tracing::error!("Session file domain error: {error}");
     CommandError::internal(error)
 }

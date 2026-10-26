@@ -31060,11 +31060,20 @@
               "application/octet-stream": {}
             }
           },
+          "206": {
+            "description": "The byte range named by the `Range` header",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
           "400": {
             "description": "Path points to a directory"
           },
           "404": {
             "description": "File not found"
+          },
+          "416": {
+            "description": "The `Range` header lies outside the file"
           },
           "500": {
             "description": "Internal server error"
@@ -31292,6 +31301,79 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
+      "put": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "Upload raw file bytes",
+        "description": "Creates or replaces the file with the request body, streamed to storage,\nso files larger than the JSON API carries (recordings, media) can be\nuploaded. Parent directories are created as needed.",
+        "operationId": "upload_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Raw file bytes",
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path, or the path is a directory or a mounted folder"
+          },
+          "403": {
+            "description": "File or workspace is read-only"
+          },
+          "413": {
+            "description": "File or session storage limit exceeded"
           }
         },
         "x-docs": {

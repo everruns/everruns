@@ -358,6 +358,8 @@ clients or workers.
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | No | `86400` (24h) | Safety grace period; orphaned objects younger than this are never deleted (avoids racing in-flight creates). |
 | `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | No | `10000` | Per-sweep deletion cap to bound work; remaining orphans are reclaimed next sweep. |
 | `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` | No | `100000` | Per-sweep cap on objects listed per prefix, bounding GC memory; larger buckets are reconciled across sweeps in key-order windows. |
+| `SESSION_FILE_SINGLE_MAX_BYTES` | No | 100 MiB (`db`), 2 GiB (`s3`) | Largest single file a session or workspace may hold. |
+| `SESSION_FILE_MAX_BYTES` | No | 500 MiB (`db`), 10 GiB (`s3`) | Total file bytes per session or workspace. |
 
 **Example (local SeaweedFS via `just seaweedfs`):**
 

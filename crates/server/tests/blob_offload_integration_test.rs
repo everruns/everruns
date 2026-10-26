@@ -270,7 +270,7 @@ async fn offloaded_file_empties_content_column_and_records_sidecar() {
 }
 
 #[tokio::test]
-async fn offloaded_file_delete_removes_object_and_sidecar() {
+async fn offloaded_file_delete_drops_pointer_and_leaves_object_for_gc() {
     let (backend, pool) = create_offload_backend().await;
     let session_id = create_test_session(&backend).await;
     let workspace_id: Uuid = session_id.into();
@@ -286,7 +286,7 @@ async fn offloaded_file_delete_removes_object_and_sidecar() {
         .await
         .expect("create file");
 
-    // Grab the blob store + key so we can prove the object is gone after delete.
+    // Grab the blob store + key so we can check the object after delete.
     let blob = blob_store_under_test();
     let (key, _) = file_sidecar(&pool, workspace_id, "/gone.txt")
         .await
@@ -302,10 +302,11 @@ async fn offloaded_file_delete_removes_object_and_sidecar() {
         .expect("delete file");
     assert!(deleted);
 
-    // Object gone, and the row (hence cascade sidecar) gone.
+    // The row (hence cascade sidecar) is gone. The object stays until the
+    // blob GC finds it unreferenced: copies and forks may share it.
     assert!(
-        blob.get(&key).await.expect("blob get").is_none(),
-        "delete must remove the backing object"
+        blob.get(&key).await.expect("blob get").is_some(),
+        "delete leaves the object for the GC"
     );
     assert!(
         file_sidecar(&pool, workspace_id, "/gone.txt")
@@ -371,10 +372,9 @@ async fn offloaded_file_update_writes_immutable_blob_revision_and_hash() {
     );
 
     let blob = blob_store_under_test();
-    assert_eq!(
-        blob.get(&old_key).await.expect("old blob get").as_deref(),
-        None,
-        "unique superseded revisions are reclaimed immediately"
+    assert!(
+        blob.get(&old_key).await.expect("old blob get").is_some(),
+        "superseded revisions are left for the GC, not deleted inline"
     );
     assert_eq!(
         blob.get(&new_key).await.expect("new blob get").as_deref(),
@@ -462,20 +462,19 @@ async fn offloaded_file_cas_matches_and_rejects() {
     assert_eq!(sha, content_sha256(&new_body));
     assert_ne!(new_cas_key, old_cas_key);
     let blob = blob_store_under_test();
-    assert_eq!(
+    assert!(
         blob.get(&old_cas_key)
             .await
             .expect("old CAS blob get")
-            .as_deref(),
-        None,
-        "unique CAS superseded revisions are reclaimed immediately"
+            .is_some(),
+        "superseded CAS revisions are left for the GC, not deleted inline"
     );
 
     backend.delete_session(TEST_ORG_ID, session_id).await.ok();
 }
 
 #[tokio::test]
-async fn offloaded_file_move_keeps_blob_copy_duplicates_it() {
+async fn offloaded_file_move_and_copy_share_the_blob() {
     let (backend, pool) = create_offload_backend().await;
     let session_id = create_test_session(&backend).await;
     let workspace_id: Uuid = session_id.into();
@@ -496,7 +495,7 @@ async fn offloaded_file_move_keeps_blob_copy_duplicates_it() {
         .await
         .expect("sidecar exists");
 
-    // Copy duplicates the blob under a new object key (independent file id).
+    // Copy points at the same object: no bytes are duplicated.
     let copied = backend
         .copy_session_file(workspace_id, "/src.txt", "/copy.txt")
         .await
@@ -506,7 +505,7 @@ async fn offloaded_file_move_keeps_blob_copy_duplicates_it() {
     let (copy_key, copy_sha) = file_sidecar(&pool, workspace_id, "/copy.txt")
         .await
         .expect("copy sidecar exists");
-    assert_ne!(copy_key, src_key, "copy gets its own object key");
+    assert_eq!(copy_key, src_key, "copy shares the source object");
     assert_eq!(copy_sha, content_sha256(&body));
 
     // Move only rewrites path metadata: the object/key is untouched, and the
@@ -526,6 +525,147 @@ async fn offloaded_file_move_keeps_blob_copy_duplicates_it() {
             .await
             .is_none(),
         "old path no longer resolves"
+    );
+
+    // Deleting the original leaves the copy readable.
+    assert!(
+        backend
+            .delete_session_file(workspace_id, "/moved.txt")
+            .await
+            .expect("delete moved")
+    );
+    let copy = backend
+        .get_session_file(workspace_id, "/copy.txt")
+        .await
+        .expect("get copy")
+        .expect("copy present");
+    assert_eq!(copy.content.as_deref(), Some(body.as_slice()));
+
+    backend.delete_session(TEST_ORG_ID, session_id).await.ok();
+}
+
+#[tokio::test]
+async fn offloaded_files_fork_shares_blobs() {
+    let (backend, pool) = create_offload_backend().await;
+    let source = create_test_session(&backend).await;
+    let child = create_test_session(&backend).await;
+    let (source_ws, child_ws): (Uuid, Uuid) = (source.into(), child.into());
+    let body = b"recording bytes".to_vec();
+
+    backend
+        .create_session_file(CreateSessionFileRow {
+            session_id: source,
+            path: "/recordings/turn-1.mp4".to_string(),
+            is_directory: false,
+            content: Some(body.clone()),
+            is_readonly: false,
+        })
+        .await
+        .expect("create file");
+    // A path the child already has is kept, not overwritten.
+    backend
+        .create_session_file(CreateSessionFileRow {
+            session_id: child,
+            path: "/notes.md".to_string(),
+            is_directory: false,
+            content: Some(b"child".to_vec()),
+            is_readonly: false,
+        })
+        .await
+        .expect("create child file");
+    backend
+        .create_session_file(CreateSessionFileRow {
+            session_id: source,
+            path: "/notes.md".to_string(),
+            is_directory: false,
+            content: Some(b"source".to_vec()),
+            is_readonly: false,
+        })
+        .await
+        .expect("create source notes");
+
+    backend
+        .copy_all_session_files(source_ws, child_ws)
+        .await
+        .expect("fork copy");
+
+    let (source_key, _) = file_sidecar(&pool, source_ws, "/recordings/turn-1.mp4")
+        .await
+        .expect("source sidecar");
+    let (child_key, _) = file_sidecar(&pool, child_ws, "/recordings/turn-1.mp4")
+        .await
+        .expect("child sidecar");
+    assert_eq!(child_key, source_key, "fork shares the object");
+    let forked = backend
+        .get_session_file(child_ws, "/recordings/turn-1.mp4")
+        .await
+        .expect("get forked")
+        .expect("forked present");
+    assert_eq!(forked.content.as_deref(), Some(body.as_slice()));
+    let notes = backend
+        .get_session_file(child_ws, "/notes.md")
+        .await
+        .expect("get notes")
+        .expect("notes present");
+    assert_eq!(notes.content.as_deref(), Some(b"child".as_slice()));
+
+    backend.delete_session(TEST_ORG_ID, source).await.ok();
+    backend.delete_session(TEST_ORG_ID, child).await.ok();
+}
+
+#[tokio::test]
+async fn offloaded_file_streams_whole_and_ranges() {
+    use futures::StreamExt;
+
+    let (backend, _pool) = create_offload_backend().await;
+    let session_id = create_test_session(&backend).await;
+    let workspace_id: Uuid = session_id.into();
+    let body: Vec<u8> = (0..=255u8).cycle().take(10_000).collect();
+
+    backend
+        .create_session_file(CreateSessionFileRow {
+            session_id,
+            path: "/video.mp4".to_string(),
+            is_directory: false,
+            content: Some(body.clone()),
+            is_readonly: false,
+        })
+        .await
+        .expect("create file");
+
+    async fn collect(content: everruns_server::storage::SessionFileContent) -> Vec<u8> {
+        let mut body = content.body;
+        let mut out = Vec::new();
+        while let Some(chunk) = body.next().await {
+            out.extend_from_slice(&chunk.expect("chunk"));
+        }
+        out
+    }
+
+    let whole = backend
+        .open_session_file_content(workspace_id, "/video.mp4", None)
+        .await
+        .expect("open")
+        .expect("present");
+    assert_eq!(
+        whole.content_sha256.as_deref(),
+        Some(content_sha256(&body).as_str())
+    );
+    assert_eq!(collect(whole).await, body);
+
+    let range = backend
+        .open_session_file_content(workspace_id, "/video.mp4", Some(100..250))
+        .await
+        .expect("open range")
+        .expect("present");
+    assert_eq!(collect(range).await, body[100..250].to_vec());
+
+    assert!(
+        backend
+            .open_session_file_content(workspace_id, "/missing.mp4", None)
+            .await
+            .expect("open missing")
+            .is_none()
     );
 
     backend.delete_session(TEST_ORG_ID, session_id).await.ok();

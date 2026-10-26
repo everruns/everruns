@@ -6,6 +6,14 @@
 // content hash live in `workspace_file_blobs`. Metadata (path, size, flags,
 // tree) always stays in PostgreSQL. When no blob backend is configured the
 // methods fall back to the original inline `BYTEA` storage with zero overhead.
+//
+// Decision: objects are never deleted inline. Delete, overwrite and CAS only
+// drop or repoint the sidecar row; the blob GC (background/blob_gc.rs) removes
+// an object once no pointer references it. That lets copy and fork share one
+// object between files instead of duplicating bytes. Every pointer change
+// holds the owning `workspace_files` row lock, and copies take a share lock on
+// the source row, so a copy can never point at an object the GC already
+// decided was unreferenced.
 
 pub(super) mod rows;
 use rows::*;
@@ -60,6 +68,14 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some((key, expected_sha)) = pointer {
+            if row.size_bytes > MAX_LOADED_FILE_BYTES {
+                return Err(FileTooLargeToLoad {
+                    path: row.path.clone(),
+                    size_bytes: row.size_bytes,
+                    limit: MAX_LOADED_FILE_BYTES,
+                }
+                .into());
+            }
             // A sidecar pointer exists, so a missing object means data loss —
             // surface it as an error rather than silently returning empty content.
             let bytes = blob
@@ -74,6 +90,16 @@ impl Database {
             row.content = Some(bytes);
         }
         Ok(())
+    }
+
+    /// Like [`Self::materialize_file_content`], but leaves `content` empty for
+    /// files too large to load instead of failing. For results of move and
+    /// copy, where the caller asked for the operation rather than the bytes.
+    async fn materialize_loadable_file_content(&self, row: &mut SessionFileRow) -> Result<()> {
+        if row.size_bytes > MAX_LOADED_FILE_BYTES && row.content.is_none() {
+            return Ok(());
+        }
+        self.materialize_file_content(row).await
     }
 
     /// Create a new file or directory in the session virtual filesystem
@@ -168,6 +194,153 @@ impl Database {
         Ok(row)
     }
 
+    /// Create or replace a file from a byte stream, without holding it in
+    /// memory when object storage is configured. Fails with
+    /// [`BlobTooLarge`](crate::storage::blob_store::BlobTooLarge) past
+    /// `max_bytes`. `is_readonly` applies to a new file, and to an existing
+    /// one only when set.
+    ///
+    /// Without a blob store the stream is collected (bounded by `max_bytes`)
+    /// and stored inline, so the inline backend keeps its own limits.
+    pub async fn write_session_file_stream(
+        &self,
+        workspace_id: Uuid,
+        path: &str,
+        mut body: crate::storage::blob_store::BlobByteStream,
+        max_bytes: u64,
+        is_readonly: Option<bool>,
+    ) -> Result<SessionFileInfoRow> {
+        use crate::storage::blob_store::{BlobTooLarge, workspace_file_stream_key};
+        use futures::StreamExt;
+
+        let existing = self.get_session_file_info(workspace_id, path).await?;
+        if existing.as_ref().is_some_and(|row| row.is_directory) {
+            anyhow::bail!("Cannot write a directory: {path}");
+        }
+
+        let Some(blob) = self.blob_store() else {
+            let mut content = Vec::new();
+            while let Some(chunk) = body.next().await {
+                let chunk = chunk?;
+                if (content.len() + chunk.len()) as u64 > max_bytes {
+                    return Err(BlobTooLarge { limit: max_bytes }.into());
+                }
+                content.extend_from_slice(&chunk);
+            }
+            let row = match existing {
+                Some(_) => self
+                    .update_session_file(
+                        workspace_id,
+                        path,
+                        UpdateSessionFile {
+                            content: Some(content),
+                            is_readonly,
+                        },
+                    )
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("File not found: {path}"))?,
+                None => {
+                    self.create_session_file(CreateSessionFileRow {
+                        session_id:
+                            crate::kernel_imports::contracts::typed_id::SessionId::from_uuid(
+                                workspace_id,
+                            ),
+                        path: path.to_string(),
+                        content: Some(content),
+                        is_directory: false,
+                        is_readonly: is_readonly.unwrap_or(false),
+                    })
+                    .await?
+                }
+            };
+            return Ok(SessionFileInfoRow {
+                id: row.id,
+                session_id: row.session_id,
+                path: row.path,
+                is_directory: row.is_directory,
+                is_readonly: row.is_readonly,
+                size_bytes: row.size_bytes,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        };
+
+        let file_id = existing.as_ref().map_or_else(Uuid::now_v7, |row| row.id);
+        let key = workspace_file_stream_key(workspace_id, file_id, Uuid::now_v7());
+        // The hash is not known until the upload ends, so the recovery record
+        // carries identity only; size comes from the object itself.
+        let metadata = BlobMetadata::new(
+            "workspace_file",
+            serde_json::json!({
+                "v": 1,
+                "workspace_id": workspace_id,
+                "file_id": file_id,
+                "path": path,
+            }),
+        );
+        let stored = blob.put_stream(&key, body, max_bytes, &metadata).await?;
+        let size_bytes = stored.size_bytes as i64;
+
+        // An object left behind by a failure below has no pointer, so the
+        // blob GC reclaims it.
+        let mut tx = self.pool.begin().await?;
+        let row = match existing {
+            Some(_) => sqlx::query_as::<_, SessionFileInfoRow>(
+                    r#"
+                    UPDATE workspace_files
+                    SET content = NULL,
+                        size_bytes = $4,
+                        is_readonly = COALESCE($5, is_readonly)
+                    WHERE id = $1 AND workspace_id = $2 AND path = $3 AND is_directory = FALSE
+                    RETURNING id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    "#,
+                )
+                .bind(file_id)
+                .bind(workspace_id)
+                .bind(path)
+                .bind(size_bytes)
+                .bind(is_readonly)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("File changed while uploading: {path}"))?,
+            None => {
+                sqlx::query_as::<_, SessionFileInfoRow>(
+                    r#"
+                    INSERT INTO workspace_files (id, workspace_id, path, content, is_directory, is_readonly, size_bytes)
+                    VALUES ($1, $2, $3, NULL, FALSE, $4, $5)
+                    RETURNING id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    "#,
+                )
+                .bind(file_id)
+                .bind(workspace_id)
+                .bind(path)
+                .bind(is_readonly.unwrap_or(false))
+                .bind(size_bytes)
+                .fetch_one(&mut *tx)
+                .await?
+            }
+        };
+        sqlx::query(
+            r#"
+            INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (file_id) DO UPDATE
+                SET blob_key = EXCLUDED.blob_key,
+                    content_sha256 = EXCLUDED.content_sha256,
+                    size_bytes = EXCLUDED.size_bytes,
+                    updated_at = NOW()
+            "#,
+        )
+        .bind(file_id)
+        .bind(&key)
+        .bind(&stored.content_sha256)
+        .bind(size_bytes)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
     /// Get a file by session and path
     pub async fn get_session_file(
         &self,
@@ -211,6 +384,83 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Open a file's bytes as a stream, optionally only `range` (half-open,
+    /// already clamped to the file size). `Ok(None)` when the path does not
+    /// exist; a directory yields an empty body.
+    ///
+    /// Offloaded content streams straight from the object store, so even a
+    /// multi-gigabyte recording never sits in memory. Inline content reads
+    /// only the requested slice of the column.
+    pub async fn open_session_file_content(
+        &self,
+        session_id: Uuid,
+        path: &str,
+        range: Option<std::ops::Range<u64>>,
+    ) -> Result<Option<SessionFileContent>> {
+        use futures::StreamExt;
+
+        let Some(info) = self.get_session_file_info(session_id, path).await? else {
+            return Ok(None);
+        };
+        let empty = || futures::stream::empty().boxed();
+        if info.is_directory {
+            return Ok(Some(SessionFileContent {
+                info,
+                content_sha256: None,
+                body: empty(),
+            }));
+        }
+        let pointer: Option<(String, String)> = sqlx::query_as(
+            "SELECT blob_key, content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+        )
+        .bind(info.id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some((key, sha)) = pointer {
+            let blob = self.blob_store().ok_or_else(|| {
+                anyhow::anyhow!("file {path} is offloaded but no blob store is configured")
+            })?;
+            // A zero-length range never reaches the store (S3 rejects it).
+            let body = match range {
+                Some(ref r) if r.is_empty() => empty(),
+                _ => blob
+                    .get_stream(&key, range)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("offloaded file blob missing for {key}"))?,
+            };
+            return Ok(Some(SessionFileContent {
+                info,
+                content_sha256: Some(sha),
+                body,
+            }));
+        }
+
+        let (offset, length) = match range {
+            Some(r) => (r.start as i64, (r.end - r.start) as i64),
+            None => (0, info.size_bytes),
+        };
+        // SQL substring is 1-based.
+        let (bytes,): (Option<Vec<u8>>,) = sqlx::query_as(
+            "SELECT substring(content FROM $2::int FOR $3::int) FROM workspace_files WHERE id = $1",
+        )
+        .bind(info.id)
+        .bind(offset + 1)
+        .bind(length)
+        .fetch_one(&self.pool)
+        .await?;
+        let body = match bytes {
+            Some(bytes) if !bytes.is_empty() => {
+                futures::stream::once(async move { Ok(bytes::Bytes::from(bytes)) }).boxed()
+            }
+            _ => empty(),
+        };
+        Ok(Some(SessionFileContent {
+            info,
+            content_sha256: None,
+            body,
+        }))
     }
 
     // Intentionally no `get_session_file_by_id(id)`: a bare `WHERE id = $1`
@@ -323,14 +573,6 @@ impl Database {
                 return Ok(None);
             }
 
-            let old_key = sqlx::query_as::<_, (String,)>(
-                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
-            )
-            .bind(file_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .map(|(key,)| key);
-
             sqlx::query(
                 r#"
                 INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
@@ -365,10 +607,6 @@ impl Database {
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
-
-            if let Some(old_key) = old_key {
-                blob.delete(&old_key).await?;
-            }
 
             if let Some(row) = row.as_mut() {
                 row.content = Some(content.clone());
@@ -444,15 +682,15 @@ impl Database {
             // offloaded file the sidecar holds the current SHA-256; for a
             // still-inline file (pre-offload row) compare the column directly.
             let expected_sha = content_sha256(&expected_content);
-            let current_pointer: Option<(String, String)> = sqlx::query_as(
-                "SELECT blob_key, content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+            let current_sha: Option<(String,)> = sqlx::query_as(
+                "SELECT content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
             )
             .bind(existing.id)
             .fetch_optional(&mut *tx)
             .await?;
 
-            let matches = match (&current_pointer, &existing.content) {
-                (Some((_, sha)), _) => *sha == expected_sha,
+            let matches = match (&current_sha, &existing.content) {
+                (Some((sha,)), _) => *sha == expected_sha,
                 (None, Some(content)) => *content == expected_content,
                 (None, None) => expected_content.is_empty(),
             };
@@ -506,10 +744,6 @@ impl Database {
             .await?;
             tx.commit().await?;
 
-            if let Some((old_key, _)) = current_pointer {
-                blob.delete(&old_key).await?;
-            }
-
             if let Some(row) = row.as_mut() {
                 row.content = Some(new_content);
             }
@@ -548,23 +782,8 @@ impl Database {
 
     /// Delete a file or directory (directories must be empty)
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
-        // Remove the backing object first (cascade clears the sidecar row).
-        if let Some(blob) = self.blob_store()
-            && let Some((key,)) = sqlx::query_as::<_, (String,)>(
-                r#"
-                SELECT b.blob_key FROM workspace_file_blobs b
-                JOIN workspace_files f ON f.id = b.file_id
-                WHERE f.workspace_id = $1 AND f.path = $2
-                "#,
-            )
-            .bind(session_id)
-            .bind(path)
-            .fetch_optional(&self.pool)
-            .await?
-        {
-            blob.delete(&key).await?;
-        }
-
+        // The cascade drops the sidecar pointer; the blob GC reclaims the
+        // object once no other file (copy, fork) points at it.
         let result =
             sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path = $2")
                 .bind(session_id)
@@ -584,24 +803,6 @@ impl Database {
         } else {
             format!("^{}(/|$)", regex::escape(path))
         };
-
-        // Remove backing objects for the whole subtree before the rows go away.
-        if let Some(blob) = self.blob_store() {
-            let keys = sqlx::query_as::<_, (String,)>(
-                r#"
-                SELECT b.blob_key FROM workspace_file_blobs b
-                JOIN workspace_files f ON f.id = b.file_id
-                WHERE f.workspace_id = $1 AND f.path ~ $2
-                "#,
-            )
-            .bind(session_id)
-            .bind(&pattern)
-            .fetch_all(&self.pool)
-            .await?;
-            for (key,) in keys {
-                blob.delete(&key).await?;
-            }
-        }
 
         let result =
             sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path ~ $2")
@@ -679,113 +880,120 @@ impl Database {
         tx.commit().await?;
 
         if let Some(row) = row.as_mut() {
-            self.materialize_file_content(row).await?;
+            self.materialize_loadable_file_content(row).await?;
         }
         Ok(row)
     }
 
     /// Copy a file (directories not supported yet)
+    ///
+    /// The copy shares the source's stored object (see the header): only the
+    /// row and, when offloaded, the sidecar pointer are duplicated, so copying
+    /// a large recording costs no bytes. Inline content is copied as before.
     pub async fn copy_session_file(
         &self,
         session_id: Uuid,
         src_path: &str,
         dst_path: &str,
     ) -> Result<Option<SessionFileRow>> {
-        // Offload path: read the source content and write a fresh object for the
-        // destination so each file id owns its own blob (clean independent delete).
-        if let Some(blob) = self.blob_store() {
-            let Some(source) = self.get_session_file(session_id, src_path).await? else {
-                return Ok(None);
-            };
-            if source.is_directory {
-                return Ok(None);
-            }
-
-            let dest_id = Uuid::now_v7();
-            let size_bytes = source.size_bytes;
-
-            // Write the destination blob first (when the source has content), so
-            // the row + sidecar can be inserted in one transaction with the blob
-            // already durable; clean the blob up on any DB failure.
-            let written_key = if let Some(content) = source.content.clone() {
-                let sha = content_sha256(&content);
-                let key = workspace_file_key(session_id, dest_id, &sha, Uuid::now_v7());
-                blob.put(
-                    &key,
-                    content,
-                    &file_blob_metadata(session_id, dest_id, dst_path, size_bytes, &sha),
-                )
-                .await?;
-                Some((key, sha))
-            } else {
-                None
-            };
-
-            let insert = async {
-                let mut tx = self.pool.begin().await?;
-                let row = sqlx::query_as::<_, SessionFileRow>(
-                    r#"
-                    INSERT INTO workspace_files (id, workspace_id, path, content, is_directory, is_readonly, size_bytes)
-                    VALUES ($1, $2, $3, NULL, FALSE, $4, $5)
-                    RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-                    "#,
-                )
-                .bind(dest_id)
-                .bind(session_id)
-                .bind(dst_path)
-                .bind(source.is_readonly)
-                .bind(size_bytes)
-                .fetch_one(&mut *tx)
-                .await?;
-                if let Some((key, sha)) = &written_key {
-                    sqlx::query(
-                        r#"
-                        INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
-                        VALUES ($1, $2, $3, $4)
-                        "#,
-                    )
-                    .bind(dest_id)
-                    .bind(key)
-                    .bind(sha)
-                    .bind(size_bytes)
-                    .execute(&mut *tx)
-                    .await?;
-                }
-                tx.commit().await?;
-                anyhow::Ok(row)
-            }
-            .await;
-
-            let mut row = match insert {
-                Ok(row) => row,
-                Err(e) => {
-                    if let Some((key, _)) = &written_key {
-                        let _ = blob.delete(key).await;
-                    }
-                    return Err(e);
-                }
-            };
-            row.content = source.content;
-            return Ok(Some(row));
-        }
-
-        // Inline path: copy the content column directly.
-        let row = sqlx::query_as::<_, SessionFileRow>(
-            r#"
-            INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
-            SELECT workspace_id, $3, content, is_directory, is_readonly, size_bytes
-            FROM workspace_files
-            WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE
-            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            "#,
+        let mut tx = self.pool.begin().await?;
+        // Share lock: an overwrite or delete of the source waits until the new
+        // pointer is committed, so the GC always sees one of the two pointers.
+        let source: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE FOR SHARE",
         )
         .bind(session_id)
         .bind(src_path)
-        .bind(dst_path)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+        let Some((source_id,)) = source else {
+            return Ok(None);
+        };
+        let mut row = sqlx::query_as::<_, SessionFileRow>(
+            r#"
+            INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
+            SELECT workspace_id, $2, content, FALSE, is_readonly, size_bytes
+            FROM workspace_files
+            WHERE id = $1
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            "#,
+        )
+        .bind(source_id)
+        .bind(dst_path)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+            SELECT $2, blob_key, content_sha256, size_bytes
+            FROM workspace_file_blobs
+            WHERE file_id = $1
+            "#,
+        )
+        .bind(source_id)
+        .bind(row.id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
 
-        Ok(row)
+        self.materialize_loadable_file_content(&mut row).await?;
+        Ok(Some(row))
+    }
+
+    /// Copy every file and directory of one workspace into another (session
+    /// fork), skipping paths the destination already has. Offloaded files share
+    /// the source objects, so a fork never duplicates stored bytes.
+    pub async fn copy_all_session_files(
+        &self,
+        source_workspace_id: Uuid,
+        destination_workspace_id: Uuid,
+    ) -> Result<u64> {
+        let mut tx = self.pool.begin().await?;
+        // Same share lock as `copy_session_file`, for the whole source tree.
+        sqlx::query("SELECT id FROM workspace_files WHERE workspace_id = $1 FOR SHARE")
+            .bind(source_workspace_id)
+            .execute(&mut *tx)
+            .await?;
+        let copied: Vec<(Uuid, Uuid)> = sqlx::query_as(
+            r#"
+            WITH source AS (
+                SELECT id AS source_id, uuidv7() AS new_id, path, content, is_directory, is_readonly, size_bytes
+                FROM workspace_files
+                WHERE workspace_id = $1
+            ),
+            inserted AS (
+                INSERT INTO workspace_files (id, workspace_id, path, content, is_directory, is_readonly, size_bytes)
+                SELECT new_id, $2, path, content, is_directory, is_readonly, size_bytes
+                FROM source
+                ON CONFLICT (workspace_id, path) DO NOTHING
+                RETURNING id
+            )
+            SELECT source.source_id, source.new_id
+            FROM source
+            JOIN inserted ON inserted.id = source.new_id
+            "#,
+        )
+        .bind(source_workspace_id)
+        .bind(destination_workspace_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        if !copied.is_empty() {
+            let (source_ids, new_ids): (Vec<Uuid>, Vec<Uuid>) = copied.iter().copied().unzip();
+            sqlx::query(
+                r#"
+                INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+                SELECT pair.new_id, b.blob_key, b.content_sha256, b.size_bytes
+                FROM UNNEST($1::uuid[], $2::uuid[]) AS pair(source_id, new_id)
+                JOIN workspace_file_blobs b ON b.file_id = pair.source_id
+                "#,
+            )
+            .bind(&source_ids)
+            .bind(&new_ids)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(copied.len() as u64)
     }
 
     /// Search file contents using regex pattern (grep-like)
