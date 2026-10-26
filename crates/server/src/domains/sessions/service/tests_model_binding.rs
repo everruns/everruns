@@ -210,3 +210,135 @@ fn update_request_reads_null_as_clear_and_absent_as_unchanged() {
     let absent: UpdateSessionRequest = serde_json::from_value(serde_json::json!({})).unwrap();
     assert!(matches!(absent.model_id, UpdateField::Unchanged));
 }
+
+#[tokio::test]
+async fn operator_chat_uses_its_own_org_default_without_rebinding_sessions() {
+    let db = Arc::new(StorageBackend::test_database());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let service = SessionService::new(db.clone());
+    let general = create_model(&db, caller.org_id, "agents-default").await;
+    let chat_model = create_model(&db, caller.org_id, "chat-default").await;
+    let next_chat = create_model(&db, caller.org_id, "next-chat").await;
+    db.patch_organization_settings(
+        caller.org_id,
+        crate::storage::UpdateOrganizationSettings {
+            default_model_id: UpdateField::Set(general),
+            chat_model_id: UpdateField::Set(chat_model),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    crate::platform_chat_agent::initialize(&db, caller.org_id)
+        .await
+        .unwrap();
+    let agent = db
+        .get_agent_by_name(caller.org_id, crate::platform_chat_agent::NAME)
+        .await
+        .unwrap()
+        .unwrap();
+    let public_id = agent.public_id.parse::<AgentId>().unwrap();
+    let mut session = service
+        .create(
+            &caller,
+            agent.harness_id.uuid(),
+            Some(agent.id.uuid()),
+            Some(public_id),
+            SessionSource::Api,
+            build_create_request(agent.harness_id, Some(public_id), None),
+        )
+        .await
+        .unwrap();
+    assert_eq!(session.model_id, None);
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &session)
+            .await
+            .unwrap(),
+        Some(chat_model)
+    );
+    db.patch_organization_settings(
+        caller.org_id,
+        crate::storage::UpdateOrganizationSettings {
+            chat_model_id: UpdateField::Set(next_chat),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &session)
+            .await
+            .unwrap(),
+        Some(next_chat)
+    );
+    assert_eq!(
+        db.get_organization_settings(caller.org_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .default_model_id,
+        Some(general)
+    );
+    session.model_id = Some(general);
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &session)
+            .await
+            .unwrap(),
+        Some(general)
+    );
+    assert_eq!(
+        crate::platform_chat_agent::org_chat_model_id(
+            &db,
+            caller.org_id,
+            crate::platform_chat_agent::NAME,
+            false
+        )
+        .await
+        .unwrap(),
+        None
+    );
+
+    let ordinary = agent_with_model(&ctx, None).await;
+    let harness = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+    // A Work Chat / Chat-sourced conversation for a user Agent is still an Agent session.
+    let ordinary_session = service
+        .create(
+            &caller,
+            harness.uuid(),
+            Some(ordinary.internal_id),
+            Some(ordinary.public_id),
+            SessionSource::Chat,
+            build_create_request(harness, Some(ordinary.public_id), None),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &ordinary_session)
+            .await
+            .unwrap(),
+        Some(general)
+    );
+    db.update_agent(
+        caller.org_id,
+        public_id,
+        UpdateAgent {
+            default_model_id: Some(chat_model),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    session.model_id = None;
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &session)
+            .await
+            .unwrap(),
+        Some(chat_model)
+    );
+}

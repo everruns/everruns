@@ -619,3 +619,32 @@ fn openrouter_gpt_61_wire_id_keeps_canonical_prices_and_gateway_capabilities() {
     assert!(get_model_profile("openrouter", "untrusted/gpt-6.1-sol").is_none());
     assert!(get_model_profile("openrouter", "openai/gpt-6.1-sol-pro").is_none());
 }
+
+#[test]
+fn terra_profiles_follow_verified_api_and_openrouter_contracts() {
+    let direct = get_model_profile("openai", "gpt-6.1-terra").unwrap();
+    let routed = get_model_profile("openrouter", "openai/gpt-6.1-terra").unwrap();
+    assert_eq!(direct.family, "gpt-6.1-terra");
+    assert_eq!(direct.cost, routed.cost);
+    assert!(direct.tool_call && routed.tool_call && direct.attachment);
+    assert_eq!(direct.limits.as_ref().unwrap().context, 1_050_000);
+    assert_eq!(direct.limits.as_ref().unwrap().output, 128_000);
+    let cost = direct.cost.as_ref().unwrap();
+    assert_eq!(
+        (cost.input, cost.output, cost.cache_read, cost.cache_write),
+        (1.0, 5.0, Some(0.05), Some(1.25))
+    );
+    assert_eq!(cost.cost_tiers[0].above_tokens, 272_000);
+    assert_eq!(cost.cost_tiers[0].input, 2.0);
+    assert_eq!(cost.cost_tiers[0].output, 7.5);
+    assert!(!direct.supports_phases && direct.supported_parameters.is_empty());
+    assert!(get_model_profile("openai_completions", "gpt-6.1-terra").is_none());
+    assert!(get_model_profile("azure_openai", "gpt-6.1-terra").is_none());
+    assert!(get_model_profile("openrouter", "untrusted/gpt-6.1-terra").is_none());
+    assert!(get_model_profile("openrouter", "openai/gpt-6.1-terra-pro").is_none());
+    assert!(
+        super::all_profile_entries()
+            .iter()
+            .any(|entry| entry.key == "openai/gpt-6.1-terra")
+    );
+}

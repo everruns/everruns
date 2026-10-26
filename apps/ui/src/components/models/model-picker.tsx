@@ -19,6 +19,10 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export interface ModelPickerProps {
   service?: ModelService;
+  /** Organization settings cannot reference personal provider credentials. */
+  organizationDefault?: boolean;
+  /** Operator Chat requires function tools; unknown custom profiles remain selectable. */
+  requireTools?: boolean;
   additionalOptions?: { value: string; label: string }[];
   requiredPrimitives?: string[];
   /** Optional ID for the select trigger */
@@ -46,6 +50,8 @@ export interface ModelPickerProps {
 export function ModelPicker({
   id,
   service = "chat",
+  organizationDefault = false,
+  requireTools = false,
   requiredPrimitives = [],
   additionalOptions = [],
   value,
@@ -62,6 +68,8 @@ export function ModelPicker({
     .filter(
       (m) =>
         m.enabled &&
+        (!organizationDefault || m.provider_type !== "chatgpt") &&
+        (!requireTools || m.profile?.tool_call !== false) &&
         m.healthy !== false &&
         matchesModelService(m, service) &&
         (service !== "decisions" || m.profile?.decisions?.calibrated === true) &&
