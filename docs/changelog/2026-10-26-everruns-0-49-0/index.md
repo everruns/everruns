@@ -90,6 +90,8 @@ release: "0.49.0"
 - [Run Everruns on your machine with one command](/changelog/2026-10-25-everruns-docker-up/)
 - [Install the self-hosted Platform on Kubernetes with Helm](/changelog/2026-10-25-helm-chart/)
 - [Live event delivery recovers after a NATS restart](/changelog/2026-10-25-nats-stream-recovery/)
+- [Bashkit Python builds on Windows again](/changelog/2026-10-25-bashkit-windows-python/)
+- [Chat folds a thread report into one line](/changelog/2026-10-25-folded-thread-reports/)
 - [Give a Daytona or E2B sandbox a desktop](/changelog/2026-10-25-sandbox-desktop/)
 - [Agents see the screenshots and images their tools return](/changelog/2026-10-26-tool-images-reach-model/)
 - [Sandboxes are disposable, their records are kept](/changelog/2026-10-25-sandbox-retention/)

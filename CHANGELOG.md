@@ -29,6 +29,8 @@ Changelog: https://everruns.com/docs/changelog/2026-10-26-everruns-0-49-0/
 
 ### What's Changed
 
+- fix(bashkit): restore Windows CPython catalog builds ([e405378518](https://github.com/everruns/everruns/commit/e405378518b9e68ac03bfcef951c8c4237db9c0a)) by [@chaliy](https://github.com/chaliy)
+- Fold automatic updates in chat ([#4927](https://github.com/everruns/everruns/pull/4927)) by [@chaliy](https://github.com/chaliy)
 - fix(sandboxes): desktop e2e example, display up front, tool images reach the model ([#4923](https://github.com/everruns/everruns/pull/4923)) by [@chaliy](https://github.com/chaliy)
 - feat(sandboxes): desktop as a Sandbox Template option ([#4921](https://github.com/everruns/everruns/pull/4921)) by [@chaliy](https://github.com/chaliy)
 - fix(streaming): restore missing JetStream event streams ([#4918](https://github.com/everruns/everruns/pull/4918)) by [@chaliy](https://github.com/chaliy)

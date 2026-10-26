@@ -5,6 +5,7 @@ date: 2026-10-25
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.49.0"
 surfaces: [ui]
 links:
   docs: [/features/ui/#chat-and-threads, /framework/coordination/]
