@@ -87,6 +87,10 @@ jobs:
     # scripts/test-docker-release-source.sh fails when the two drift apart.
     container:
       image: rust:1.99.1-slim-bookworm
+    # Container jobs default to `sh`; the build step relies on bash arrays.
+    defaults:
+      run:
+        shell: bash
     strategy:
       matrix:
         arch: ${{ fromJSON(needs.resolve-source.outputs.arches) }}
