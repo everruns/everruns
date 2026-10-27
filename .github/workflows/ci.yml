@@ -985,7 +985,9 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.mode == 'pr' && needs.changes.outputs.has_tests == 'true'
-    timeout-minutes: 30
+    # Broad Cargo.lock refreshes rebuild many crates on a cold PR cache;
+    # allow headroom so the suite is judged on results, not the clock.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}
