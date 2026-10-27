@@ -23818,6 +23818,13 @@
                 "null"
               ]
             },
+            "chat_model_id": {
+              "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "default_harness_id": {
               "description": "Default harness to preselect in the UI for new sessions.\nMutually exclusive with `default_harness_name`.",
               "example": "harness_01933b5a000070008000000000000602",
