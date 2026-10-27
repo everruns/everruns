@@ -20,7 +20,7 @@ import { messages as catalog17 } from "./messages/uk/settings-01";
 import { messages as catalog18 } from "./messages/uk/settings-02";
 
 export const uiMessages: Readonly<Record<string, string>> = Object.assign(
-  {},
+  Object.create(null) as Record<string, string>,
   catalog0,
   catalog1,
   catalog2,
