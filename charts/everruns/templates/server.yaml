@@ -73,10 +73,8 @@ spec:
             periodSeconds: 5
             # Migrations run before the server answers.
             failureThreshold: 120
-          # Ready = the database answers and the schema matches this build;
-          # liveness stays on /health so a database outage restarts nothing.
           readinessProbe:
-            httpGet: { path: /health/ready, port: http }
+            httpGet: { path: /health, port: http }
             periodSeconds: 10
           livenessProbe:
             httpGet: { path: /health, port: http }

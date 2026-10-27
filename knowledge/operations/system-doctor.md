@@ -46,7 +46,7 @@ setting is a `problem` on `prod` and a `warning` on `dev`.
 |---|---|
 | Local dev, `DEV_MODE` | In-process worker: worker authentication is a note. |
 | Docker Compose | Profiles decide which of NATS, Valkey and metrics are checked. |
-| Helm | `/health/ready` is the readiness probe; liveness stays on `/health`. |
+| Helm | Liveness stays on `/health`. Readiness moves to `/health/ready` once a released image serves it: the chart's CI installs the `latest` image, which a probe on a new path would fail. |
 | SaaS | Adds its own checks through the server builder (later step). |
 | serve, celld | Not covered: no control plane or workers. |
 

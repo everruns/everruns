@@ -49,5 +49,4 @@ everruns system doctor --refresh true --output json | jq -e '.status != "problem
 `GET /health/ready` answers `200` once the database is reachable and its
 schema matches the server's version, and `503` otherwise. It needs no sign-in.
 Use it as the readiness probe, and keep `/health` as the liveness probe so a
-database outage does not get healthy servers restarted. The Helm chart does
-this.
+database outage does not get healthy servers restarted.
