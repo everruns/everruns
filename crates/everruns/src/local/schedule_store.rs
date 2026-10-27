@@ -240,6 +240,7 @@ impl LocalScheduleStore {
             trigger_count: 0,
             created_at: now,
             updated_at: now,
+            deleted_at: None,
         };
         if schedule.cron_expression.is_some() {
             schedule.next_trigger_at = Some(next_cron_trigger(&schedule, now)?);

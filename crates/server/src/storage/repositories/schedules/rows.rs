@@ -44,6 +44,9 @@ pub struct SessionScheduleRow {
     pub claimed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Set when the schedule was deleted. The row is kept for the session
+    /// recording; live queries exclude it.
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]

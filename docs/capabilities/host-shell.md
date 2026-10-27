@@ -9,7 +9,7 @@ appliesTo: [framework]
 | **ID** | `host_shell` |
 | **Category** | Execution |
 | **Risk** | High |
-| **Features** | `file_system` (enables the Workspace tab) |
+| **Features** | `file_system` (enables the Files tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/), backed by a real directory |
 
 **Availability:** Framework (embedder) only. Not available in self-hosted Platform or Everruns Cloud.

@@ -1,4 +1,4 @@
-import { buildSessionNavigation } from "@/components/session/session-header";
+import { buildSessionNavigation, sessionRecordPanes } from "@/components/session/session-header";
 
 describe("buildSessionNavigation", () => {
   // A session is a recording: Trace, Approvals, Events and Cost are
@@ -16,6 +16,31 @@ describe("buildSessionNavigation", () => {
       href: "/sessions/session_123/trace",
     });
     expect(items.find((item) => item.key === "events")?.href).toBe("/sessions/session_123/events");
+  });
+
+  it("shows Files for a sandbox, stored values, or schedules, not only a filesystem capability", () => {
+    for (const feature of ["managed_sandbox", "key_value", "secrets", "schedules"]) {
+      const items = buildSessionNavigation({
+        basePath: "/sessions/session_123",
+        features: new Set([feature]),
+      });
+      expect(items.map((item) => item.key)).toContain("files");
+    }
+  });
+
+  it("shows Work when the session still has tasks or an active schedule", () => {
+    const withTasks = buildSessionNavigation({
+      basePath: "/sessions/session_123",
+      features: new Set(),
+      taskCount: 1,
+    });
+    const withSchedule = buildSessionNavigation({
+      basePath: "/sessions/session_123",
+      features: new Set(),
+      activeScheduleCount: 1,
+    });
+    expect(withTasks.map((item) => item.key)).toContain("work");
+    expect(withSchedule.map((item) => item.key)).toContain("work");
   });
 
   it("adds workspace and work when the session has those capabilities", () => {
@@ -97,6 +122,33 @@ describe("buildSessionNavigation", () => {
     });
 
     expect(items.find((item) => item.key === "events")?.badge).toBe("12.4K");
+  });
+
+  it("splits filesystem, key values and schedules into separate panes", () => {
+    expect(
+      sessionRecordPanes({
+        features: new Set(["file_system", "key_value", "schedules"]),
+        hasSchedules: false,
+      }),
+    ).toEqual(["files", "values", "schedules"]);
+  });
+
+  it("shows a sandbox filesystem without a separate file_system capability", () => {
+    expect(
+      sessionRecordPanes({
+        features: new Set(["managed_sandbox", "key_value"]),
+        hasSchedules: false,
+      }),
+    ).toEqual(["files", "values"]);
+  });
+
+  it("shows schedules that were deleted even after the capability is gone", () => {
+    expect(
+      sessionRecordPanes({
+        features: new Set(["file_system"]),
+        hasSchedules: true,
+      }),
+    ).toEqual(["files", "schedules"]);
   });
 
   it("never offers a tab the recording cannot show read-only", () => {

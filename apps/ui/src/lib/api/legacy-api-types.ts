@@ -3356,9 +3356,7 @@ export interface UpdateSessionRequest {
   model_id?: string | null;
 }
 
-// ============================================
 // Session Schedule types
-// ============================================
 export type ScheduleType = "oneshot" | "recurring";
 
 export interface SessionSchedule {
@@ -3379,6 +3377,8 @@ export interface SessionSchedule {
   trigger_count: number;
   created_at: string;
   updated_at: string;
+  /** Set when the schedule was deleted. The row stays on the session recording. */
+  deleted_at?: string | null;
 }
 
 export interface UpdateSessionScheduleRequest {

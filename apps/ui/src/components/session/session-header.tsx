@@ -148,12 +148,48 @@ function tabBadge(count: number | undefined): string | undefined {
   return formatCompactNumber(count);
 }
 
+/** Filesystem, sandbox files, stored values, or schedules — anything the Files tab can show. */
+export function sessionShowsFiles(features: Set<string>, fileCount?: number): boolean {
+  return (
+    features.has("file_system") ||
+    features.has("managed_sandbox") ||
+    features.has("key_value") ||
+    features.has("secrets") ||
+    features.has("schedules") ||
+    (fileCount ?? 0) > 0
+  );
+}
+
+export type SessionRecordPane = "files" | "values" | "schedules";
+
+/**
+ * Panes on the Files tab. The filesystem is always there so a recording can be
+ * inspected even when the agent did not declare `file_system`. Key values and
+ * schedules are separate panes, including values and schedules left behind
+ * after a capability was removed.
+ */
+export function sessionRecordPanes({
+  features,
+  hasSchedules,
+  hasValues,
+}: {
+  features: Set<string>;
+  hasSchedules: boolean;
+  hasValues?: boolean;
+}): SessionRecordPane[] {
+  const panes: SessionRecordPane[] = ["files"];
+  if (hasValues || features.has("key_value") || features.has("secrets")) panes.push("values");
+  if (hasSchedules || features.has("schedules")) panes.push("schedules");
+  return panes;
+}
+
 export function buildSessionNavigation({
   basePath,
   features,
   taskCount,
   eventCount,
   fileCount,
+  activeScheduleCount,
 }: {
   basePath: string;
   features: Set<string>;
@@ -163,11 +199,18 @@ export function buildSessionNavigation({
   eventCount?: number;
   /** Non-directory files in the session's workspace. */
   fileCount?: number;
+  /** Enabled schedules. A session that still has one keeps the Work tab. */
+  activeScheduleCount?: number;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
-  // created, so either capability is enough to make the tab worth showing.
-  const hasWork = hasFeature("leased_resources") || hasFeature("schedules");
+  // created. A count covers a recording whose capability was removed later.
+  const hasWork =
+    hasFeature("leased_resources") ||
+    hasFeature("schedules") ||
+    (taskCount ?? 0) > 0 ||
+    (activeScheduleCount ?? 0) > 0;
+  const hasFiles = sessionShowsFiles(features, fileCount);
 
   return [
     {
@@ -205,7 +248,7 @@ export function buildSessionNavigation({
       icon: Activity,
       badge: tabBadge(eventCount),
     },
-    ...(hasFeature("file_system")
+    ...(hasFiles
       ? [
           {
             key: "files" as const,
