@@ -140,6 +140,7 @@ impl JournalTimer {
             trigger_count: self.fired_since(None),
             created_at: self.set_at,
             updated_at: last_triggered_at.unwrap_or(self.set_at),
+            deleted_at: None,
         })
     }
 

@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 |---|---|
 | **ID** | `session_schedule` |
 | **Category** | Core |
-| **Features** | `schedules` (enables Schedules tab) |
+| **Features** | `schedules` (Files and Work tabs list registered, canceled, and deleted schedules) |
 | **Dependencies** | None |
 
 Schedule future tasks within the current session. Supports one-shot (run once at a specific time) and recurring (cron expression) schedules.
@@ -61,6 +61,10 @@ work, there is no separate recurring-task primitive to configure.
 - An invalid cron expression or timezone, or a schedule over a limit, fails the
   tool call with the reason, so the agent can correct it
 - Scheduled messages are sent to the session as if the user sent them
+- Deleting a schedule keeps it on the session. The Files and Work tabs show it
+  as deleted, with when it was registered and when it was removed. It does not
+  fire again, and `list_schedules` omits it. `cancel_schedule` disables a
+  schedule without deleting it
 - Use [Current Time](/capabilities/current-time/) to determine "now" before scheduling
 
 ## See Also
