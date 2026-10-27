@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +12,8 @@ import { useOrg } from "@/providers/org-provider";
 import { usePageTitle } from "@/hooks/use-page-title";
 import { listKnowledge, createKnowledge } from "@/lib/api/knowledge";
 export default function KnowledgePage() {
-  usePageTitle("Knowledge");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Knowledge"));
   const { currentOrg } = useOrg();
   const cache = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -25,16 +27,16 @@ export default function KnowledgePage() {
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Knowledge" }]} />
+      <PageBreadcrumb items={[{ label: ui("Knowledge") }]} />
       <PageMasthead
         icon={<BookOpen />}
-        title="Knowledge"
-        description="Files, context and connected sources. Index only what you need."
+        title={ui("Knowledge")}
+        description={ui("Files, context and connected sources. Index only what you need.")}
         actions={
           canManage ? (
             <Button variant="accent" onClick={() => setCreating(!creating)}>
               <Plus className="size-4" />
-              New collection
+              {ui("New collection")}
             </Button>
           ) : undefined
         }
@@ -42,7 +44,7 @@ export default function KnowledgePage() {
       <PageMain>
         {creating && (
           <section className="mb-6 max-w-2xl rounded-lg border bg-card p-5">
-            <h2 className="mb-4 text-lg font-medium">New collection</h2>
+            <h2 className="mb-4 text-lg font-medium">{ui("New collection")}</h2>
             <CollectionForm
               onCancel={() => setCreating(false)}
               onSave={async (input) => {
@@ -53,10 +55,12 @@ export default function KnowledgePage() {
             />
           </section>
         )}
-        {collections.isLoading && <p className="text-muted-foreground">Loading collections…</p>}
+        {collections.isLoading && (
+          <p className="text-muted-foreground">{ui("Loading collections…")}</p>
+        )}
         {collections.error && (
           <p role="alert" className="text-destructive">
-            Unable to load Knowledge. Check your organization permissions.
+            {ui("Unable to load Knowledge. Check your organization permissions.")}
           </p>
         )}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -73,18 +77,19 @@ export default function KnowledgePage() {
                   <h2 className="min-w-0 flex-1 truncate font-medium">{c.name}</h2>
                   <Badge variant="secondary">
                     {c.indexing === "off"
-                      ? "Files"
+                      ? ui("Files")
                       : c.indexing === "lexical"
-                        ? "Keyword"
-                        : "Hybrid"}
+                        ? ui("Keyword")
+                        : ui("Hybrid")}
                   </Badge>
                 </div>
                 <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
-                  {c.description || "Add files or connect a source to give agents useful context."}
+                  {c.description ||
+                    ui("Add files or connect a source to give agents useful context.")}
                 </p>
                 {c.name === "everruns-docs" && (
                   <p className="mt-4 text-xs text-muted-foreground">
-                    Built-in · read without provider credentials
+                    {ui("Built-in · read without provider credentials")}
                   </p>
                 )}
               </Link>
@@ -97,7 +102,7 @@ export default function KnowledgePage() {
             disabled={collections.isFetchingNextPage}
             onClick={() => collections.fetchNextPage()}
           >
-            Load more collections
+            {ui("Load more collections")}
           </Button>
         )}
       </PageMain>

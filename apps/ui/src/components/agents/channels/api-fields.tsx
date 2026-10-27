@@ -11,6 +11,7 @@
 // `auth_methods` (the customer's identity providers) has no form yet: it is
 // carried through unchanged so saving this form never drops it.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,6 +161,7 @@ export function ApiFields({
   value: ApiFormState;
   onChange: (value: ApiFormState) => void;
 }) {
+  const ui = useUiTranslations();
   const id = useId();
   const set = <K extends keyof ApiFormState>(key: K, next: ApiFormState[K]) =>
     onChange({ ...value, [key]: next });
@@ -171,14 +173,15 @@ export function ApiFields({
     <div className="space-y-4">
       {!hosted && (
         <p className="text-xs text-muted-foreground">
-          Your code calls this agent with an agent key. A key reaches only this agent&apos;s session
-          routes and sees only the sessions it started.
+          {ui(
+            "Your code calls this agent with an agent key. A key reaches only this agent's session routes and sees only the sessions it started.",
+          )}
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2">
         {!hosted && (
           <div className="space-y-2">
-            <Label htmlFor={`${id}_visibility`}>What callers see</Label>
+            <Label htmlFor={`${id}_visibility`}>{ui("What callers see")}</Label>
             <Select
               value={value.visibility}
               onValueChange={(next) => set("visibility", next as ApiVisibility)}
@@ -187,19 +190,20 @@ export function ApiFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="messages">Messages only</SelectItem>
-                <SelectItem value="activity">Messages and tool activity</SelectItem>
-                <SelectItem value="full">Everything (raw events)</SelectItem>
+                <SelectItem value="messages">{ui("Messages only")}</SelectItem>
+                <SelectItem value="activity">{ui("Messages and tool activity")}</SelectItem>
+                <SelectItem value="full">{ui("Everything (raw events)")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Tool activity shows that a tool ran, never its name or arguments. Everything is for
-              callers who own both ends.
+              {ui(
+                "Tool activity shows that a tool ran, never its name or arguments. Everything is for callers who own both ends.",
+              )}
             </p>
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor={`${id}_tool_approvals`}>Who allows held-back tool calls</Label>
+          <Label htmlFor={`${id}_tool_approvals`}>{ui("Who allows held-back tool calls")}</Label>
           <Select
             value={value.toolApprovals}
             onValueChange={(next) => set("toolApprovals", next as ApiToolApprovals)}
@@ -208,17 +212,17 @@ export function ApiFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="operator">People with access to this agent</SelectItem>
-              <SelectItem value="caller">The caller</SelectItem>
+              <SelectItem value="operator">{ui("People with access to this agent")}</SelectItem>
+              <SelectItem value="caller">{ui("The caller")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            The caller then sees the tool and its arguments, which it needs to decide.
+            {ui("The caller then sees the tool and its arguments, which it needs to decide.")}
           </p>
         </div>
         {!hosted && (
           <div className="space-y-2">
-            <Label htmlFor={`${id}_session_binding`}>Sessions</Label>
+            <Label htmlFor={`${id}_session_binding`}>{ui("Sessions")}</Label>
             <Select
               value={value.sessionBinding}
               onValueChange={(next) => set("sessionBinding", next as ApiSessionBinding)}
@@ -227,15 +231,17 @@ export function ApiFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="per_user">One per caller conversation</SelectItem>
-                <SelectItem value="session_per_invocation">One per created session</SelectItem>
+                <SelectItem value="per_user">{ui("One per caller conversation")}</SelectItem>
+                <SelectItem value="session_per_invocation">
+                  {ui("One per created session")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
         )}
         {!hosted && (
           <div className="space-y-2">
-            <Label htmlFor={`${id}_errors`}>Error detail</Label>
+            <Label htmlFor={`${id}_errors`}>{ui("Error detail")}</Label>
             <Select
               value={value.errors}
               onValueChange={(next) => set("errors", next as ApiErrorDetail)}
@@ -244,59 +250,64 @@ export function ApiFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="public">Public error codes only</SelectItem>
-                <SelectItem value="detailed">Detailed problem details</SelectItem>
+                <SelectItem value="public">{ui("Public error codes only")}</SelectItem>
+                <SelectItem value="detailed">{ui("Detailed problem details")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor={`${id}_rate_limit`}>Rate limit / minute</Label>
+          <Label htmlFor={`${id}_rate_limit`}>{ui("Rate limit / minute")}</Label>
           <Input
             id={`${id}_rate_limit`}
             value={value.rateLimitPerMinute}
             onChange={(event) => set("rateLimitPerMinute", event.target.value)}
             inputMode="numeric"
-            placeholder="No per-channel cap"
+            placeholder={ui("No per-channel cap")}
             aria-invalid={!rateLimitValid}
           />
           {!rateLimitValid && (
-            <p className="text-xs text-destructive">Use a whole number up to 1,000,000.</p>
+            <p className="text-xs text-destructive">{ui("Use a whole number up to 1,000,000.")}</p>
           )}
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${id}_daily_spend_limit`}>Daily spending limit per caller (USD)</Label>
+          <Label htmlFor={`${id}_daily_spend_limit`}>
+            {ui("Daily spending limit per caller (USD)")}
+          </Label>
           <Input
             id={`${id}_daily_spend_limit`}
             value={value.dailySpendLimitUsd}
             onChange={(event) => set("dailySpendLimitUsd", event.target.value)}
             inputMode="decimal"
-            placeholder="No limit"
+            placeholder={ui("No limit")}
             aria-invalid={!spendLimitValid}
           />
           {!spendLimitValid && (
-            <p className="text-xs text-destructive">Use an amount above 0, up to 1,000,000.</p>
+            <p className="text-xs text-destructive">
+              {ui("Use an amount above 0, up to 1,000,000.")}
+            </p>
           )}
         </div>
         {value.visibility === "activity" && (
           <div className="space-y-2">
-            <Label htmlFor={`${id}_tool_activity_text`}>Tool activity text</Label>
+            <Label htmlFor={`${id}_tool_activity_text`}>{ui("Tool activity text")}</Label>
             <Input
               id={`${id}_tool_activity_text`}
               value={value.toolActivityText}
               onChange={(event) => set("toolActivityText", event.target.value)}
               maxLength={MAX_TOOL_ACTIVITY_TEXT}
-              placeholder="Working on it"
+              placeholder={ui("Working on it")}
             />
           </div>
         )}
       </div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <Label htmlFor={`${id}_org_members`}>Organization members</Label>
+          <Label htmlFor={`${id}_org_members`}>{ui("Organization members")}</Label>
           <p className="text-xs text-muted-foreground">
-            Members may call this agent with their own personal access token, using their own
-            connections.
+            {ui(
+              "Members may call this agent with their own personal access token, using their own connections.",
+            )}
           </p>
         </div>
         <Switch
@@ -307,7 +318,7 @@ export function ApiFields({
       </div>
       {!hosted && (
         <div className="space-y-2">
-          <Label htmlFor={`${id}_cors_origins`}>Browser origins</Label>
+          <Label htmlFor={`${id}_cors_origins`}>{ui("Browser origins")}</Label>
           <Textarea
             id={`${id}_cors_origins`}
             value={value.corsOrigins}
@@ -317,13 +328,16 @@ export function ApiFields({
             aria-invalid={!originsValid}
           />
           <p className="text-xs text-muted-foreground">
-            One per line. Web pages on these origins may call this agent directly with a runtime
-            token. Never put an agent key in a browser.
+            {ui(
+              "One per line. Web pages on these origins may call this agent directly with a runtime token. Never put an agent key in a browser.",
+            )}
           </p>
           {!originsValid && (
             <p className="text-xs text-destructive">
-              Use up to {MAX_CORS_ORIGINS} origins like https://app.example.com, with no path or
-              trailing slash (http only for localhost).
+              {ui("Use up to")} {MAX_CORS_ORIGINS}{" "}
+              {ui(
+                "origins like https://app.example.com, with no path or trailing slash (http only for localhost).",
+              )}
             </p>
           )}
         </div>

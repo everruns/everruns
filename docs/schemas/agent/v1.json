@@ -68,6 +68,42 @@
         "always"
       ]
     },
+    "EntityLocalization": {
+      "type": "object",
+      "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized description (1–2000 characters when set).",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Localized display name (1–255 characters when set).",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "additionalProperties": false
+    },
+    "EntityLocalizations": {
+      "type": "object",
+      "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+      "additionalProperties": {
+        "$ref": "#/definitions/EntityLocalization"
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "maxProperties": 64
+    },
     "File": {
       "oneOf": [
         {
@@ -220,6 +256,10 @@
             "null"
           ],
           "description": "Optional Markdown introduction shown before the conversation starts."
+        },
+        "localizations": {
+          "$ref": "#/definitions/EntityLocalizations",
+          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
         },
         "max_iterations": {
           "type": [

@@ -9,8 +9,8 @@ use anyhow::Result;
 use everruns_internal_protocol::proto::{
     self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, DeregisterDurableWorkerRequest,
     DrainDurableWorkerRequest, FailDurableTaskRequest, HeartbeatDurableTaskRequest,
-    HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest,
-    TaskNotification, TaskNotificationType,
+    HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, ReportDurableWorkerChecksRequest,
+    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType, WorkerSelfCheck,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::service::interceptor::InterceptedService;
@@ -261,22 +261,42 @@ impl GrpcDurableStore {
         })
     }
 
-    /// Register this worker with the control-plane
-    pub async fn register_worker(
-        &mut self,
-        worker_id: &str,
-        worker_group: Option<String>,
-        activity_types: Vec<String>,
-        max_concurrency: u32,
-    ) -> Result<()> {
+    /// Register this worker with the control-plane, saying what it runs.
+    pub async fn register_worker(&mut self, worker: &crate::durable::WorkerInfo) -> Result<()> {
         let request = RegisterDurableWorkerRequest {
-            worker_id: worker_id.to_string(),
-            worker_group,
-            activity_types,
-            max_concurrency: max_concurrency as i32,
+            worker_id: worker.id.clone(),
+            worker_group: worker.worker_group.clone(),
+            activity_types: worker.activity_types.clone(),
+            max_concurrency: worker.max_concurrency as i32,
+            version: worker.version.clone(),
+            hostname: worker.hostname.clone(),
+            protocol_version: worker.protocol_version().unwrap_or_default(),
         };
 
         self.client.register_durable_worker(request).await?;
+        Ok(())
+    }
+
+    /// Send this worker's checks on its own setup.
+    pub async fn report_worker_checks(
+        &mut self,
+        worker_id: &str,
+        checks: &[crate::self_checks::SelfCheck],
+    ) -> Result<()> {
+        let request = ReportDurableWorkerChecksRequest {
+            worker_id: worker_id.to_string(),
+            checks: checks
+                .iter()
+                .map(|check| WorkerSelfCheck {
+                    id: check.id.to_string(),
+                    title: check.title.to_string(),
+                    status: check.status.to_string(),
+                    summary: check.summary.clone(),
+                    fix: check.fix.clone(),
+                })
+                .collect(),
+        };
+        self.client.report_durable_worker_checks(request).await?;
         Ok(())
     }
 

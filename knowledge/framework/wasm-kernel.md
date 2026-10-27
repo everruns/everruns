@@ -68,7 +68,9 @@ failure domains; it does not select a different recovery protocol. See
 
 The maintained isolate example uses `default-features = false`, size-oriented
 release optimization and full LTO. Its ordinary Engine includes shared planning,
-recovery and command policy. The authority bootstrap installs reducer exports
+recovery and command policy. Its deployment and recovery qualification minify the
+JavaScript glue to reserve headroom for application behavior. The authority
+bootstrap installs reducer exports
 from that same Wasm module; uploading the standalone authority reducer too would
 duplicate Rust code and exceed the project budget. Native executor placement still
 uses the standalone reducer inside the authority transaction.

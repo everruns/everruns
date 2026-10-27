@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -18,6 +19,7 @@ export function DlqRow({
   onRequeue: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell>
@@ -42,7 +44,8 @@ export function DlqRow({
               {entry.error_history.length > 1 && (
                 <div className="mt-2 pt-2 border-t">
                   <p className="text-xs font-medium mb-1">
-                    Error history ({entry.error_history.length}):
+                    {ui("Error history (")}
+                    {entry.error_history.length}):
                   </p>
                   {entry.error_history.map((err, i) => (
                     <p key={i} className="text-xs text-muted-foreground">
@@ -72,7 +75,7 @@ export function DlqRow({
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => onRequeue(entry.id)}>
             <RotateCcw className="h-3 w-3 mr-1" />
-            Requeue
+            {ui("Requeue")}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => onDelete(entry.id)}>
             <Trash2 className="h-3 w-3 text-muted-foreground" />
@@ -81,14 +84,14 @@ export function DlqRow({
             <LinkButton
               variant="ghost"
               size="sm"
-              aria-label={`View workflow ${entry.workflow_id}`}
+              aria-label={ui("View workflow {value0}", { value0: entry.workflow_id })}
               href={`/durable/workflows/${entry.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
             </LinkButton>
           ) : (
             <Badge variant="outline" className="text-xs">
-              standalone
+              {ui("standalone")}
             </Badge>
           )}
         </div>

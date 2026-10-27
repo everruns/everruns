@@ -346,10 +346,53 @@ mod tests {
         }
     }
 
+    /// Recordings the test provider was asked to delete from its sandbox.
+    static REMOVED_RECORDINGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    fn test_recording(
+        name: &str,
+        size_bytes: u64,
+        body: Option<Vec<Result<Vec<u8>, String>>>,
+    ) -> everruns_contracts::session_sandbox::DesktopRecording {
+        use futures::{FutureExt, StreamExt};
+        let removed = name.to_string();
+        everruns_contracts::session_sandbox::DesktopRecording {
+            file_name: format!("{name}.mp4"),
+            duration_seconds: None,
+            size_bytes,
+            body: body.map(|chunks| futures::stream::iter(chunks).boxed()),
+            remove: async move {
+                REMOVED_RECORDINGS.lock().unwrap().push(removed);
+                Ok(())
+            }
+            .boxed(),
+        }
+    }
+
     #[async_trait]
     impl SessionSandboxProvider for TestSessionSandboxProvider {
         fn id(&self) -> &str {
-            "test-session-sandbox"
+            "service-test-session-sandbox"
+        }
+
+        async fn collect_desktop_recordings(
+            &self,
+            _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<
+            Vec<everruns_contracts::session_sandbox::DesktopRecording>,
+            everruns_core::ToolExecutionResult,
+        > {
+            Ok(vec![
+                test_recording(
+                    "kept",
+                    4,
+                    Some(vec![Ok(b"ab".to_vec()), Ok(b"cd".to_vec())]),
+                ),
+                test_recording("huge", u64::MAX, None),
+                test_recording("broken", 4, Some(vec![Err("connection reset".into())])),
+            ])
         }
 
         async fn create(
@@ -730,10 +773,51 @@ mod tests {
         ))
     }
 
+    async fn create_test_session(
+        db: &StorageBackend,
+        harness_id: everruns_contracts::typed_id::HarnessId,
+    ) -> crate::storage::SessionRow {
+        db.create_session(CreateSessionRow {
+            playground_user_id: None,
+            source: crate::domains::sessions::record::SessionSource::Api,
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            channel_id: None,
+            trigger_id: None,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_revision: None,
+            virtual_user_id: None,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap()
+    }
+
     async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "sandbox-harness".to_string(),
                 display_name: Some("Sandbox Harness".to_string()),
                 icon: None,
@@ -767,7 +851,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -819,8 +903,63 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(state.provider, "test-session-sandbox");
+        assert_eq!(state.provider, "service-test-session-sandbox");
         assert_eq!(state.status, SessionSandboxStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn recordings_stream_into_session_files_and_leave_the_sandbox_once_stored() {
+        let db = Arc::new(StorageBackend::test_database());
+        let harness_id = create_test_harness(db.as_ref()).await;
+        db.set_harness_capabilities(
+            harness_id.uuid(),
+            vec![(
+                "session_sandbox".to_string(),
+                0,
+                json!({
+                    "provider": "service-test-session-sandbox",
+                    "auto_start": true,
+                    "provider_config": {"desktop": {"display_width": 1280, "display_height": 800}}
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+        let session = create_test_session(db.as_ref(), harness_id).await;
+        let service = SessionSandboxService::new(db.clone(), test_storage_store(&db), None);
+        service.ensure_started_for_session(session.id).await;
+
+        service.collect_recordings(session.id).await;
+
+        let key = crate::domains::session_files::queries::workspace_key_unscoped(&db, session.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let files = crate::domains::session_files::service::WorkspaceFileService::new(db.clone());
+        let kept = files
+            .read_file(key, "/recordings/kept.mp4")
+            .await
+            .unwrap()
+            .expect("the streamed recording is stored");
+        assert_eq!(
+            everruns_contracts::runtime::session_file::SessionFile::decode_content(
+                kept.content.as_deref().unwrap_or_default(),
+                &kept.encoding
+            )
+            .unwrap(),
+            b"abcd"
+        );
+        assert!(kept.is_readonly);
+        assert!(
+            files
+                .read_file(key, "/recordings/broken.mp4")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // Stored and too-large recordings leave the sandbox; the one whose
+        // store failed stays for the next collection.
+        assert_eq!(*REMOVED_RECORDINGS.lock().unwrap(), ["kept", "huge"]);
     }
 
     #[tokio::test]
@@ -833,7 +972,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -899,7 +1038,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_after_seconds": 1
                 }),
@@ -953,7 +1092,7 @@ mod tests {
                 "session_sandbox".to_string(),
                 0,
                 json!({
-                    "provider": "test-session-sandbox",
+                    "provider": "service-test-session-sandbox",
                     "auto_start": true,
                     "idle_pause_enabled": false
                 }),
@@ -979,7 +1118,7 @@ mod tests {
             vec![(
                 "session_sandbox".to_string(),
                 0,
-                json!({ "provider": "test-session-sandbox", "auto_start": true }),
+                json!({ "provider": "service-test-session-sandbox", "auto_start": true }),
             )],
         )
         .await

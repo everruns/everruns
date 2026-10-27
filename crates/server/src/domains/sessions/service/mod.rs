@@ -262,6 +262,8 @@ fn insert_mount_file(
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
 #[cfg(test)]
+mod tests_foreign_harness;
+#[cfg(test)]
 mod tests_fork_from_message;
 #[cfg(test)]
 mod tests_model_binding;

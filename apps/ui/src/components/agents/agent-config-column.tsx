@@ -9,6 +9,7 @@
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
 
+import { useUiTranslations, useLocale } from "@/providers/locale-provider";
 import { Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,8 @@ export function AgentConfigColumn({
   onOpenRow,
   className,
 }: AgentConfigColumnProps) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
   const chatChanges = useChatChanges();
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
@@ -73,22 +76,24 @@ export function AgentConfigColumn({
 
   return (
     <aside
-      aria-label="Agent configuration"
+      aria-label={ui("Agent configuration")}
       className={cn("flex min-w-0 flex-col bg-muted/30", className)}
     >
       <div className="flex flex-col gap-4 border-b p-4">
         <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="harness">Harness</FieldLabel>
+          <FieldLabel htmlFor="harness">{ui("Harness")}</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
-              {agent.effective_harness?.display_name || agent.effective_harness?.name || "Default"}
+              {agent.effective_harness?.display_name ||
+                agent.effective_harness?.name ||
+                ui("Default")}
             </span>
           ) : (
             <HarnessSelect
               id="harness"
               value={draft.fields.harness_id}
               onValueChange={edit((value: string) => draft.setField("harness_id", value))}
-              placeholder="Select a harness"
+              placeholder={ui("Select a harness")}
               className="w-full bg-background"
             />
           )}
@@ -104,7 +109,7 @@ export function AgentConfigColumn({
                 capabilities={allCapabilities}
                 selected={draft.capabilities}
                 onChange={draft.setCapabilities}
-                label="Capabilities"
+                label={ui("Capabilities")}
                 compact
               />
             </CapabilityEditorContext.Provider>
@@ -112,7 +117,7 @@ export function AgentConfigColumn({
             <>
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-xs font-medium text-muted-foreground">
-                  Capabilities
+                  {ui("Capabilities")}
                 </span>
                 {!readOnly && (
                   <Button
@@ -120,10 +125,10 @@ export function AgentConfigColumn({
                     size="sm"
                     className="h-6 px-1.5 text-xs"
                     onClick={onStartEdit}
-                    aria-label="Edit capabilities"
+                    aria-label={ui("Edit capabilities")}
                   >
                     <Pencil className="size-3" />
-                    Edit
+                    {ui("Edit")}
                   </Button>
                 )}
               </div>
@@ -136,27 +141,27 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="default-model">Default model</FieldLabel>
+          <FieldLabel htmlFor="default-model">{ui("Default model")}</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
-              {defaultModel?.display_name ?? "Organization default"}
+              {defaultModel?.display_name ?? ui("Organization default")}
             </span>
           ) : (
             <ModelPicker
               id="default-model"
               value={draft.fields.default_model_id}
               onChange={edit((value: string) => draft.setField("default_model_id", value))}
-              placeholder="Use default model"
+              placeholder={ui("Use default model")}
               className="w-full bg-background"
             />
           )}
         </ChatChangeMark>
 
         <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="communication">Communication</FieldLabel>
+          <FieldLabel htmlFor="communication">{ui("Communication")}</FieldLabel>
           {readOnly ? (
             <span className="text-[13px] text-muted-foreground">
-              {getCommunicationOption(agent.communication).label}
+              {ui(getCommunicationOption(agent.communication).label)}
             </span>
           ) : (
             <CommunicationSelect
@@ -169,11 +174,11 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <ChatChangeMark field="tags" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="tags">Tags</FieldLabel>
+          <FieldLabel htmlFor="tags">{ui("Tags")}</FieldLabel>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
               {normalizeTags(agent.tags).length === 0 ? (
-                <span className="text-[13px] text-muted-foreground">No tags</span>
+                <span className="text-[13px] text-muted-foreground">{ui("No tags")}</span>
               ) : (
                 normalizeTags(agent.tags).map((tag) => (
                   <Badge key={tag} variant="outline">
@@ -185,7 +190,7 @@ export function AgentConfigColumn({
           ) : (
             <TagInput
               id="tags"
-              placeholder="Add a tag…"
+              placeholder={ui("Add a tag…")}
               value={draft.fields.tags}
               onChange={edit((value: string) => draft.setField("tags", value))}
               className="bg-background"
@@ -194,11 +199,11 @@ export function AgentConfigColumn({
         </ChatChangeMark>
 
         <div className="flex flex-col gap-0.5">
-          <span className="text-[13px] font-medium">Updated</span>
+          <span className="text-[13px] font-medium">{ui("Updated")}</span>
           <span className="text-[13px] text-muted-foreground">
             {chatChanges?.fields.length
-              ? "Just now · by Chat"
-              : new Date(agent.updated_at).toLocaleString()}
+              ? ui("Just now · by Chat")
+              : new Date(agent.updated_at).toLocaleString(displayLocale)}
           </span>
         </div>
       </div>

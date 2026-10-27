@@ -8,6 +8,15 @@ Add page destinations and search aliases to `src/lib/navigation.ts`, or Settings
 to `src/lib/settings-navigation.ts`. Sidebar and Command-K share these models and visibility
 rules; do not add a separate command-palette page list.
 
+### Localization
+
+Mark product-owned copy with `useUiTranslations` and add its Ukrainian message in
+`src/lib/messages/uk/`, preserving interpolation tokens. Use the entity localization
+helpers with `displayLocale` for agent and harness presentation. Keep authored
+content, stable identifiers and execution instructions outside translation calls.
+Interface and execution locales are separate; follow the
+[localization contract](../../knowledge/operations/localization.md).
+
 ### Design system (Slate)
 
 `src/app/design-system.css` is the runtime source of truth; [`DESIGN.md`](./DESIGN.md) is its

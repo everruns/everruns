@@ -18,6 +18,7 @@ const child = spawn(
   [
     join(here, "../node_modules/wrangler/bin/wrangler.js"),
     "dev",
+    "--minify",
     "--config",
     join(here, "qualification.json"),
     "--ip",

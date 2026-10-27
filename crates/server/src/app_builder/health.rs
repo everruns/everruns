@@ -1,7 +1,7 @@
 use crate::auth::config::AuthConfig;
 use crate::background::supervised_task::TaskSupervisor;
 use crate::domains::health_issues::service::SlackHealthService;
-use crate::domains::system::doctor::{self, DoctorEnv, SystemDoctor};
+use crate::domains::system::doctor::{self, DoctorEnv, SystemDoctor, instances};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::http::StatusCode;
 use axum::{Json, extract::State};
@@ -99,6 +99,8 @@ pub(super) async fn start(
             tracing::error!(%error, "Failed to reap interrupted agent health-check runs")
         }
     }
+    // Every replica beats, so a doctor run on any of them sees all servers.
+    supervisor.track("server_heartbeat", instances::spawn_heartbeat(db.clone()));
     supervisor.track(
         "slack_health_reconciliation",
         SlackHealthService::new(db.clone(), encryption).spawn(),

@@ -10,6 +10,7 @@ pub const NAME: &str = "platform-chat";
 
 pub fn definition(harness_id: HarnessId, id: AgentId) -> CreateAgentRow {
     CreateAgentRow {
+        localizations: crate::harnesses::localizations::for_builtin(NAME),
         public_id: id.to_string(), name: NAME.into(), display_name: Some("Platform Chat".into()),
         description: Some("Manage your Everruns organization".into()),
         intro_markdown: Some("I can help you manage your agents, harnesses, models, and runs. Ask me anything, or start with one of these:".into()),

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useModels, useSessions } from "@/hooks";
@@ -27,11 +28,12 @@ export function AgentSessionsPanel({
   agentId: string;
   defaultModelId?: string | null;
 }) {
+  const ui = useUiTranslations();
   const params = useSearchParams();
   const router = useRouter();
   const failures = params.get("failures") === "true";
   return (
-    <section aria-label="Agent sessions" className="space-y-4">
+    <section aria-label={ui("Agent sessions")} className="space-y-4">
       <div className="flex items-center gap-2">
         {[false, true].map((value) => (
           <Button
@@ -49,7 +51,7 @@ export function AgentSessionsPanel({
               router.replace(`/agents/${agentId}?${next}`, { scroll: false });
             }}
           >
-            {value ? "With failed turns" : "All sessions"}
+            {value ? ui("With failed turns") : ui("All sessions")}
           </Button>
         ))}
       </div>
@@ -101,6 +103,7 @@ function FailedSessionsWindow({
   before: string;
   onWindow: (days: number) => void;
 }) {
+  const ui = useUiTranslations();
   const [page, onPage] = useState(0);
   const { data, isLoading, error, refetch } = useAgentFailures(
     agentId,
@@ -116,8 +119,9 @@ function FailedSessionsWindow({
         <div className="text-sm text-muted-foreground">
           {data && (
             <p>
-              {data.failed_turns} failed {data.failed_turns === 1 ? "turn" : "turns"} in{" "}
-              {data.total_sessions} {data.total_sessions === 1 ? "session" : "sessions"}
+              {data.failed_turns} {ui("failed")}{" "}
+              {data.failed_turns === 1 ? ui("turn") : ui("turns")} {ui("in")} {data.total_sessions}{" "}
+              {data.total_sessions === 1 ? ui("session") : ui("sessions")}
             </p>
           )}
           <p className="mt-1 text-xs">
@@ -130,14 +134,14 @@ function FailedSessionsWindow({
             if (value && value !== "custom") onWindow(Number(value));
           }}
         >
-          <SelectTrigger className="w-52" aria-label="Failure time window">
+          <SelectTrigger className="w-52" aria-label={ui("Failure time window")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="1">Last 24 hours</SelectItem>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            {!days && <SelectItem value="custom">Selected window</SelectItem>}
+            <SelectItem value="1">{ui("Last 24 hours")}</SelectItem>
+            <SelectItem value="7">{ui("Last 7 days")}</SelectItem>
+            <SelectItem value="30">{ui("Last 30 days")}</SelectItem>
+            {!days && <SelectItem value="custom">{ui("Selected window")}</SelectItem>}
           </SelectContent>
         </Select>
       </div>
@@ -145,16 +149,16 @@ function FailedSessionsWindow({
         <Skeleton className="h-24 w-full" />
       ) : error ? (
         <div className="border p-4 text-sm">
-          <p>Could not load failed turns.</p>
+          <p>{ui("Could not load failed turns.")}</p>
           <Button variant="outline" onClick={() => void refetch()}>
-            Try again
+            {ui("Try again")}
           </Button>
         </div>
       ) : (
         <>
           {data?.data.length === 0 && (
             <p className="border p-8 text-center text-sm text-muted-foreground">
-              No failed turns in this window.
+              {ui("No failed turns in this window.")}
             </p>
           )}
           {data?.data.map((item) => (
@@ -172,17 +176,17 @@ function FailedSessionsWindow({
           {data && data.total_sessions > PAGE_SIZE && (
             <div className="flex items-center justify-between">
               <Button variant="outline" disabled={page === 0} onClick={() => onPage(page - 1)}>
-                Previous
+                {ui("Previous")}
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {page + 1} of {Math.ceil(data.total_sessions / PAGE_SIZE)}
+                {ui("Page")} {page + 1} {ui("of")} {Math.ceil(data.total_sessions / PAGE_SIZE)}
               </span>
               <Button
                 variant="outline"
                 disabled={(page + 1) * PAGE_SIZE >= data.total_sessions}
                 onClick={() => onPage(page + 1)}
               >
-                Next
+                {ui("Next")}
               </Button>
             </div>
           )}
@@ -200,6 +204,7 @@ function AllSessions({
   /** Model a session without its own model runs on: the agent's default. */
   defaultModelId?: string | null;
 }) {
+  const ui = useUiTranslations();
   const [page, setPage] = useState(0);
   const offset = page * PAGE_SIZE;
   const { data: sessionsResponse, isLoading } = useSessions(agentId, {
@@ -231,7 +236,7 @@ function AllSessions({
   if (sessions.length === 0) {
     return (
       <p className="border bg-background py-10 text-center text-sm text-muted-foreground">
-        No sessions yet. Start a test chat from the agent page to begin.
+        {ui("No sessions yet. Start a test chat from the agent page to begin.")}
       </p>
     );
   }
@@ -239,7 +244,8 @@ function AllSessions({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        {totalSessions} {totalSessions === 1 ? "session" : "sessions"} · Includes archived sessions
+        {totalSessions} {totalSessions === 1 ? ui("session") : ui("sessions")}{" "}
+        {ui("· Includes archived sessions")}
       </p>
       <div className="space-y-2">
         {sessions.map((session) => (
@@ -254,8 +260,8 @@ function AllSessions({
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <p className="text-sm text-muted-foreground">
-            Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} of {totalSessions}{" "}
-            sessions
+            {ui("Showing")} {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} {ui("of")}{" "}
+            {totalSessions} {ui("sessions")}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -265,10 +271,10 @@ function AllSessions({
               disabled={page === 0}
             >
               <ChevronLeft className="size-4" />
-              Previous
+              {ui("Previous")}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Page {page + 1} of {totalPages}
+              {ui("Page")} {page + 1} {ui("of")} {totalPages}
             </span>
             <Button
               variant="outline"
@@ -276,7 +282,7 @@ function AllSessions({
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
             >
-              Next
+              {ui("Next")}
               <ChevronRight className="size-4" />
             </Button>
           </div>

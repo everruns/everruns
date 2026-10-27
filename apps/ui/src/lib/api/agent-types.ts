@@ -1,3 +1,4 @@
+import type { EntityLocalizations } from "../entity-localization";
 import type {
   AgentCapabilityConfig,
   InitialFile,
@@ -10,6 +11,7 @@ import type { Communication, OpenApiAgentChannelSummary } from "./schema-types";
 export type AgentStatus = "active" | "archived" | "deleted";
 
 export interface AgentHarnessSummary {
+  localizations?: EntityLocalizations;
   id: string | null;
   name: string | null;
   display_name: string | null;
@@ -46,6 +48,7 @@ export interface AgentAvatar {
 }
 
 export interface Agent {
+  localizations?: EntityLocalizations;
   service_virtual_user_id?: string | null;
   id: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */

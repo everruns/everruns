@@ -12,6 +12,7 @@
 // also had a filesystem. A sandbox or storage session never opened this tab,
 // so the values (and the sandbox's files) were unreachable.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Clock, File, Key, Lock } from "lucide-react";
 import type { FileInfo, KeyValueInfo, ListResponse, SecretInfo } from "@/lib/api/types";
@@ -41,11 +42,12 @@ function useSessionStorage(sessionId: string) {
 }
 
 function StoragePanel({ sessionId }: { sessionId: string }) {
+  const ui = useUiTranslations();
   const { data, isLoading } = useSessionStorage(sessionId);
 
   return (
     <div className="p-4">
-      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Session storage</h2>
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">{ui("Session storage")}</h2>
 
       {isLoading ? (
         <Skeleton className="h-24 w-full" />
@@ -54,10 +56,10 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Key className="h-3 w-3" />
-              Key-value
+              {ui("Key-value")}
             </div>
             {!data || data.keyValues.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nothing stored.</p>
+              <p className="text-sm text-muted-foreground">{ui("Nothing stored.")}</p>
             ) : (
               <div className="space-y-2">
                 {data.keyValues.map((entry) => (
@@ -83,10 +85,10 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Lock className="h-3 w-3" />
-              Secrets
+              {ui("Secrets")}
             </div>
             {!data || data.secrets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No secrets stored.</p>
+              <p className="text-sm text-muted-foreground">{ui("No secrets stored.")}</p>
             ) : (
               <div className="space-y-2">
                 {data.secrets.map((secret) => (
@@ -125,6 +127,7 @@ function FilesystemPane({
   workspaceId: string | undefined;
   sessionId: string;
 }) {
+  const ui = useUiTranslations();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
 
   return (
@@ -150,8 +153,10 @@ function FilesystemPane({
           ) : (
             <div className="flex h-full flex-col items-center justify-center py-16 text-muted-foreground">
               <File className="mb-4 size-12 opacity-30" />
-              <p className="text-sm font-medium">No file selected</p>
-              <p className="mt-1 text-xs">Select a file from the sidebar to view its contents</p>
+              <p className="text-sm font-medium">{ui("No file selected")}</p>
+              <p className="mt-1 text-xs">
+                {ui("Select a file from the sidebar to view its contents")}
+              </p>
             </div>
           )}
         </div>
@@ -163,6 +168,7 @@ function FilesystemPane({
 }
 
 export function SessionWorkspace() {
+  const ui = useUiTranslations();
   // Address files by the session's attached workspace (the canonical fs
   // surface), not the session id — they differ when the session is attached to
   // a shared workspace. `workspace_id` is undefined only while the session is
@@ -186,7 +192,7 @@ export function SessionWorkspace() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {panes.length > 1 && (
-        <div className="flex border-b" role="tablist" aria-label="Session state">
+        <div className="flex border-b" role="tablist" aria-label={ui("Session state")}>
           {panes.map((item) => (
             <button
               key={item}

@@ -858,6 +858,13 @@
         "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
       },
       {
+        "field": "localizations",
+        "long": "localizations",
+        "kind": "json",
+        "required": false,
+        "help": "Locale-keyed display overlays."
+      },
+      {
         "field": "max_iterations",
         "long": "max-iterations",
         "kind": "integer",
@@ -2862,6 +2869,12 @@
         "help": "Markdown intro for fresh Platform Chat threads."
       },
       {
+        "field": "localizations",
+        "long": "localizations",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "max_iterations",
         "long": "max-iterations",
         "kind": "integer",
@@ -3051,6 +3064,13 @@
         "kind": "string",
         "required": false,
         "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
+      },
+      {
+        "field": "localizations",
+        "long": "localizations",
+        "kind": "json",
+        "required": false,
+        "help": "Locale-keyed display overlays."
       },
       {
         "field": "max_iterations",
@@ -5781,6 +5801,13 @@
         "help": "Deprecated: configure conversation presentation on the Agent instead."
       },
       {
+        "field": "localizations",
+        "long": "localizations",
+        "kind": "json",
+        "required": false,
+        "help": "Locale-keyed display overlays."
+      },
+      {
         "field": "mcpServers",
         "long": "mcpServers",
         "kind": "json",
@@ -6062,6 +6089,12 @@
         "kind": "string",
         "required": false,
         "help": "Deprecated: configure conversation presentation on the Agent instead."
+      },
+      {
+        "field": "localizations",
+        "long": "localizations",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "mcpServers",

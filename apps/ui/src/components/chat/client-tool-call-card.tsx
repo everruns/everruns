@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, MonitorSmartphone } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
@@ -18,6 +19,7 @@ interface ClientToolCallCardProps {
  * to indicate the tool runs on the client, not the server.
  */
 export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardProps) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -30,7 +32,7 @@ export function ClientToolCallCard({ toolCall, toolResult }: ClientToolCallCardP
 
   const statusIcon = isComplete ? (
     hasError ? (
-      <span className={`${failureClass} text-xs`}>&#x2717;</span>
+      <span className={`${failureClass} text-xs`}>{ui("✗")}</span>
     ) : (
       <Check className="h-3 w-3 text-success/80" />
     )

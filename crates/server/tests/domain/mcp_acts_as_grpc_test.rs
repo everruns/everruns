@@ -158,6 +158,7 @@ impl ActsAsArrangement {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id: public_id.to_string(),
                     name: "acts-as-agent".to_string(),
                     display_name: None,

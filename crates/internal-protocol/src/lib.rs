@@ -11,6 +11,7 @@
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
+pub mod blob_wire;
 mod capability_wire;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;
@@ -45,6 +46,11 @@ pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
 /// sessions large: production sessions reached 18-21 MiB and every turn failed
 /// at the old 16 MiB cap. Both ends must use the same value.
 pub const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
+/// The worker/control-plane contract version, sent at registration. Bump it
+/// when a change needs workers and servers upgraded together; the system
+/// doctor flags workers that speak an older one.
+pub const WORKER_PROTOCOL_VERSION: u32 = 1;
 
 pub const CHECKPOINT_ENCRYPTION_NOT_CONFIGURED: &str = "checkpoint encryption is not configured";
 // ============================================================================

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { ModelIcon } from "@/components/models/model-icon";
@@ -61,6 +62,7 @@ export function ModelPicker({
   showFavoriteToggle = false,
   className,
 }: ModelPickerProps) {
+  const ui = useUiTranslations();
   const { data: models = [], isLoading } = useModels();
 
   // Only show enabled models, sorted: favorites first, then by provider and name
@@ -134,9 +136,9 @@ export function ModelPicker({
       </Select>
       {!isLoading && sortedModels.length === 0 && (
         <p className="text-xs text-muted-foreground">
-          No configured {service} models.{" "}
+          {ui("No configured")} {service} {ui("models.")}{" "}
           <Link href="/models" className="text-primary underline">
-            Configure a model
+            {ui("Configure a model")}
           </Link>
           .
         </p>
@@ -147,8 +149,8 @@ export function ModelPicker({
         !selectedOption &&
         !sortedModels.some((model) => model.id === value) && (
           <p role="alert" className="text-xs text-destructive">
-            The configured model is unavailable or does not support {service}. Choose a model to
-            repair this setting.
+            {ui("The configured model is unavailable or does not support")} {service}
+            {ui(". Choose a model to repair this setting.")}
           </p>
         )}
     </div>
@@ -220,6 +222,7 @@ interface FavoriteToggleProps {
  * Standalone favorite toggle button for use in lists/tables
  */
 export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps) {
+  const ui = useUiTranslations();
   const queryClient = useQueryClient();
   const updateModel = useUpdateModel(model.id);
 
@@ -244,7 +247,7 @@ export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps)
       className={cn(buttonSize, "p-0")}
       onClick={handleToggle}
       disabled={updateModel.isPending}
-      title={model.is_favorite ? "Remove from favorites" : "Add to favorites"}
+      title={model.is_favorite ? ui("Remove from favorites") : ui("Add to favorites")}
     >
       <Star
         className={cn(
@@ -259,11 +262,12 @@ export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps)
 }
 
 export function DecisionModelPicker(props: Omit<ModelPickerProps, "service">) {
+  const ui = useUiTranslations();
   return (
     <ModelPicker
       {...props}
       service="decisions"
-      placeholder={props.placeholder ?? "Select a decision model"}
+      placeholder={props.placeholder ?? ui("Select a decision model")}
     />
   );
 }

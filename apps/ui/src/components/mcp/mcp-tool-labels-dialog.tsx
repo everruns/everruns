@@ -12,6 +12,7 @@
 // - The choice is a three-way radio group rather than a select, so every option
 //   and the current one are visible at a glance in a list of many tools.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,6 +75,7 @@ function ToolRow({
   saving: boolean;
   onChoose: (label: McpToolLabel | null) => void;
 }) {
+  const ui = useUiTranslations();
   const current: Choice = tool.label ?? "default";
   const notes = describeAnnotations(tool.annotations);
   const suggestion = tool.label ? null : tool.suggested_label;
@@ -88,14 +90,14 @@ function ToolRow({
         )}
         <p className="text-xs text-muted-foreground">
           {notes.length > 0
-            ? `The server says it ${notes.join(", ")}.`
-            : "The server says nothing about what this tool does."}
+            ? ui("The server says it {value0}.", { value0: notes.join(", ") })
+            : ui("The server says nothing about what this tool does.")}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div
           role="radiogroup"
-          aria-label={`Approval for ${tool.name}`}
+          aria-label={ui("Approval for {value0}", { value0: tool.name })}
           className="inline-flex border"
         >
           {CHOICES.map((choice) => {
@@ -122,7 +124,9 @@ function ToolRow({
         </div>
         {suggestion && (
           <>
-            <Badge variant="outline">Suggested: {SUGGESTION_TEXT[suggestion]}</Badge>
+            <Badge variant="outline">
+              {ui("Suggested:")} {SUGGESTION_TEXT[suggestion]}
+            </Badge>
             {canEdit && (
               <Button
                 variant="ghost"
@@ -130,7 +134,7 @@ function ToolRow({
                 disabled={saving}
                 onClick={() => onChoose(suggestion)}
               >
-                Use suggestion
+                {ui("Use suggestion")}
               </Button>
             )}
           </>
@@ -155,6 +159,7 @@ export function McpToolLabelsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const personal = owner !== undefined;
   const orgTools = useMcpServerTools(open && !personal ? server.id : undefined);
   const ownTools = useUserMcpServerTools(open && personal ? server.id : undefined, owner);
@@ -171,17 +176,20 @@ export function McpToolLabelsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent chatProtected="Tool approval settings" className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Tools of {server.name}</DialogTitle>
+          <DialogTitle>
+            {ui("Tools of")} {server.name}
+          </DialogTitle>
           <DialogDescription>
-            Choose which tools ask before they run. A read-only tool runs without asking. A tool
-            that changes things asks first. By default every MCP tool asks.
+            {ui(
+              "Choose which tools ask before they run. A read-only tool runs without asking. A tool that changes things asks first. By default every MCP tool asks.",
+            )}
           </DialogDescription>
         </DialogHeader>
 
         {canEdit && !personal && list.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
-              Suggestions only fill in a hint. Nothing changes until you pick a choice.
+              {ui("Suggestions only fill in a hint. Nothing changes until you pick a choice.")}
             </p>
             <Button
               variant="outline"
@@ -190,7 +198,7 @@ export function McpToolLabelsDialog({
               onClick={() => suggest.mutate()}
             >
               <Sparkles className="size-4" />
-              {suggest.isPending ? "Suggesting…" : "Suggest labels"}
+              {suggest.isPending ? ui("Suggesting…") : ui("Suggest labels")}
             </Button>
           </div>
         )}
@@ -218,8 +226,10 @@ export function McpToolLabelsDialog({
           ) : list.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {personal
-                ? "This server offers no tools."
-                : "No tools are known for this server yet. They appear once an agent or a person has connected to it."}
+                ? ui("This server offers no tools.")
+                : ui(
+                    "No tools are known for this server yet. They appear once an agent or a person has connected to it.",
+                  )}
             </p>
           ) : (
             <ul>

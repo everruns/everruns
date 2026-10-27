@@ -11,6 +11,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const ui = useUiTranslations();
   console.error("Root layout error:", error);
   return (
     <html lang="en">
@@ -28,9 +29,9 @@ export default function GlobalError({
       >
         <div style={{ textAlign: "center", padding: 24, maxWidth: 420 }}>
           <p style={{ fontSize: 48, fontWeight: 600, color: "#a0a0a0", margin: 0 }}>500</p>
-          <h1 style={{ fontSize: 22, margin: "16px 0 8px" }}>Something went wrong</h1>
+          <h1 style={{ fontSize: 22, margin: "16px 0 8px" }}>{ui("Something went wrong")}</h1>
           <p style={{ color: "#525252", margin: "0 0 24px" }}>
-            An unexpected error occurred. Please try again.
+            {ui("An unexpected error occurred. Please try again.")}
           </p>
           <button
             type="button"
@@ -44,10 +45,11 @@ export default function GlobalError({
               cursor: "pointer",
             }}
           >
-            Try again
+            {ui("Try again")}
           </button>
         </div>
       </body>
     </html>
   );
 }
+import { useUiTranslations } from "@/providers/locale-provider";

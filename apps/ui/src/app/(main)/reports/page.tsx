@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
@@ -133,7 +134,8 @@ function defaultQuery(dataset: DatasetCatalogEntry | undefined, days = 7): Repor
 }
 
 export default function ReportsPage() {
-  usePageTitle("Reports");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Reports"));
   const { hasRole } = useOrg();
   const canManageReports = hasRole("admin");
   const canAdministerReports = hasRole("owner");
@@ -218,7 +220,7 @@ export default function ReportsPage() {
       ),
     },
     entityType: "report",
-    label: "Report results",
+    label: ui("Report results"),
   });
 
   const handleDatasetChange = (value: string) => {
@@ -258,7 +260,7 @@ export default function ReportsPage() {
     schema: reportSchema,
     entityType: "report",
     formId: "builder",
-    label: "Report builder",
+    label: ui("Report builder"),
     enabled: !!dataset,
     baseline: "builder",
     dirty: true,
@@ -307,7 +309,7 @@ export default function ReportsPage() {
   if (catalog.isLoading) {
     return (
       <PageShell fullWidth>
-        <PageHeader title="Reports" />
+        <PageHeader title={ui("Reports")} />
         <PageBody>
           <div className="grid gap-4 md:grid-cols-4">
             {[...Array(4)].map((_, index) => (
@@ -323,8 +325,8 @@ export default function ReportsPage() {
   return (
     <PageShell fullWidth>
       <PageHeader
-        title="Reports"
-        description="Org-scoped analytics from reporting projections."
+        title={ui("Reports")}
+        description={ui("Org-scoped analytics from reporting projections.")}
         actions={
           <>
             {canAdministerReports && (
@@ -335,7 +337,7 @@ export default function ReportsPage() {
                   disabled={backfill.isPending}
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Backfill
+                  {ui("Backfill")}
                 </Button>
                 <Button
                   variant="outline"
@@ -343,13 +345,13 @@ export default function ReportsPage() {
                   disabled={runProjector.isPending}
                 >
                   <RotateCw className="h-4 w-4 mr-2" />
-                  Project
+                  {ui("Project")}
                 </Button>
               </>
             )}
             <Button onClick={handleExportCurrent} disabled={!query || exportQuery.isPending}>
               <Download className="h-4 w-4 mr-2" />
-              CSV
+              {ui("CSV")}
             </Button>
           </>
         }
@@ -359,16 +361,20 @@ export default function ReportsPage() {
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Rows</CardTitle>
+              <CardTitle className="text-sm font-medium">{ui("Rows")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-semibold">{activeRows.length.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">Limit {query?.limit ?? 100}</p>
+              <p className="text-xs text-muted-foreground">
+                {ui("Limit")} {query?.limit ?? 100}
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">{measureColumn ?? "Measure"}</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                {measureColumn ?? ui("Measure")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-semibold">{formatValue(measureTotal)}</div>
@@ -379,7 +385,7 @@ export default function ReportsPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Freshness</CardTitle>
+              <CardTitle className="text-sm font-medium">{ui("Freshness")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-semibold">
@@ -393,15 +399,15 @@ export default function ReportsPage() {
           {canAdministerReports && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Outbox</CardTitle>
+                <CardTitle className="text-sm font-medium">{ui("Outbox")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold">
                   {(diagnostics.data?.outbox.pending ?? 0).toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {diagnostics.data?.outbox.failed ?? 0} failed,{" "}
-                  {diagnostics.data?.outbox.processing ?? 0} processing
+                  {diagnostics.data?.outbox.failed ?? 0} {ui("failed,")}{" "}
+                  {diagnostics.data?.outbox.processing ?? 0} {ui("processing")}
                 </p>
               </CardContent>
             </Card>
@@ -414,12 +420,12 @@ export default function ReportsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-5 w-5" />
-                  Query
+                  {ui("Query")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-5">
                 <div className="space-y-2">
-                  <Label>Dataset</Label>
+                  <Label>{ui("Dataset")}</Label>
                   {chatDraft.notice}
                   <Select value={dataset?.name ?? ""} onValueChange={handleDatasetChange}>
                     <SelectTrigger>
@@ -435,7 +441,7 @@ export default function ReportsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Dimension</Label>
+                  <Label>{ui("Dimension")}</Label>
                   <Select
                     value={selectedDimension}
                     onValueChange={(value) => {
@@ -448,7 +454,7 @@ export default function ReportsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="none">{ui("None")}</SelectItem>
                       {dataset?.dimensions.map((name) => (
                         <SelectItem key={name} value={name}>
                           {name}
@@ -458,7 +464,7 @@ export default function ReportsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Measure</Label>
+                  <Label>{ui("Measure")}</Label>
                   <Select
                     value={selectedMeasure}
                     onValueChange={(value) => {
@@ -480,7 +486,7 @@ export default function ReportsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Range</Label>
+                  <Label>{ui("Range")}</Label>
                   <Select
                     value={selectedRange}
                     onValueChange={(value) => {
@@ -503,19 +509,19 @@ export default function ReportsPage() {
                 </div>
                 {canManageReports && (
                   <div className="space-y-2">
-                    <Label>Save</Label>
+                    <Label>{ui("Save")}</Label>
                     <div className="flex gap-2">
                       <Input
                         value={saveName}
                         onChange={(event) => setSaveName(event.target.value)}
-                        placeholder="Report name"
+                        placeholder={ui("Report name")}
                       />
                       <Button
                         variant="outline"
                         size="icon"
                         onClick={handleSave}
                         disabled={!saveName.trim() || createSavedReport.isPending}
-                        aria-label="Save report"
+                        aria-label={ui("Save report")}
                       >
                         <Save className="h-4 w-4" />
                       </Button>
@@ -529,8 +535,8 @@ export default function ReportsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Database className="h-5 w-5" />
-                  Result
-                  {result.isFetching && <Badge variant="outline">Loading</Badge>}
+                  {ui("Result")}
+                  {result.isFetching && <Badge variant="outline">{ui("Loading")}</Badge>}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -540,7 +546,7 @@ export default function ReportsPage() {
                   </div>
                 ) : activeRows.length === 0 ? (
                   <div className="border p-8 text-center text-sm text-muted-foreground">
-                    No rows for this query.
+                    {ui("No rows for this query.")}
                   </div>
                 ) : (
                   <Table>
@@ -569,11 +575,11 @@ export default function ReportsPage() {
           <aside className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Saved Reports</CardTitle>
+                <CardTitle className="text-base">{ui("Saved Reports")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {(savedReports.data ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No saved reports.</p>
+                  <p className="text-sm text-muted-foreground">{ui("No saved reports.")}</p>
                 ) : (
                   savedReports.data?.map((report) => (
                     <div key={report.id} className="flex items-center justify-between border p-2">
@@ -592,7 +598,7 @@ export default function ReportsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleRunSaved(report)}
-                          aria-label="Run saved report"
+                          aria-label={ui("Run saved report")}
                         >
                           <Play className="h-4 w-4" />
                         </Button>
@@ -604,7 +610,7 @@ export default function ReportsPage() {
                               await exportSaved.mutateAsync({ reportId: report.id, format: "csv" }),
                             )
                           }
-                          aria-label="Export saved report"
+                          aria-label={ui("Export saved report")}
                         >
                           <Download className="h-4 w-4" />
                         </Button>
@@ -613,7 +619,7 @@ export default function ReportsPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => deleteSavedReport.mutate(report.id)}
-                            aria-label="Delete saved report"
+                            aria-label={ui("Delete saved report")}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -629,7 +635,7 @@ export default function ReportsPage() {
               <>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Projection Lag</CardTitle>
+                    <CardTitle className="text-base">{ui("Projection Lag")}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
@@ -651,7 +657,7 @@ export default function ReportsPage() {
                 {diagnostics.data?.outbox.failed_rows.length ? (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Failed Rows</CardTitle>
+                      <CardTitle className="text-base">{ui("Failed Rows")}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {diagnostics.data.outbox.failed_rows.slice(0, 5).map((row) => (

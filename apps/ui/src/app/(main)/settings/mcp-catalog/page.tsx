@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Settings > Organization > MCP catalog: the admin registry of MCP presets.
@@ -94,6 +96,8 @@ function McpServerRow({
   onCheckConnection: (server: McpServer) => void;
   checkingConnection: boolean;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
   const canEdit = canManage && !isArchived && !isDeleted;
@@ -145,7 +149,7 @@ function McpServerRow({
               <div className="truncate font-mono text-xs text-muted-foreground">{server.name}</div>
             )}
             <div className="max-w-[32ch] truncate text-xs text-foreground/75">
-              {server.description || "Catalog preset"}
+              {server.description || ui("Catalog preset")}
             </div>
           </div>
         </div>
@@ -177,9 +181,12 @@ function McpServerRow({
       <TableCell>
         <span
           className="whitespace-nowrap"
-          title="Counts active agents with an explicit attachment to this catalog preset. Archived agents are excluded."
+          title={ui(
+            "Counts active agents with an explicit attachment to this catalog preset. Archived agents are excluded.",
+          )}
         >
-          {server.used_by_agents} {pluralize(server.used_by_agents, "agent")}
+          {server.used_by_agents}{" "}
+          {pluralize(server.used_by_agents, "agent", undefined, displayLocale)}
         </span>
       </TableCell>
       <TableCell>
@@ -197,7 +204,7 @@ function McpServerRow({
               }}
             >
               <Key className="h-4 w-4 mr-1" />
-              {server.api_key_set ? "Update Key" : "Set Key"}
+              {server.api_key_set ? ui("Update Key") : ui("Set Key")}
             </Button>
           )}
           {!isDeleted && (
@@ -210,7 +217,7 @@ function McpServerRow({
               }}
             >
               <Wrench className="h-4 w-4 mr-1" />
-              Tools
+              {ui("Tools")}
             </Button>
           )}
           {canEdit && (
@@ -223,7 +230,7 @@ function McpServerRow({
               }}
             >
               <Pencil className="h-4 w-4 mr-1" />
-              Edit
+              {ui("Edit")}
             </Button>
           )}
           {canEdit && (
@@ -235,7 +242,7 @@ function McpServerRow({
                 onManageHeaders(server);
               }}
             >
-              Headers
+              {ui("Headers")}
             </Button>
           )}
           {canEdit && (
@@ -247,7 +254,7 @@ function McpServerRow({
                 onArchive(server);
               }}
             >
-              Archive
+              {ui("Archive")}
             </Button>
           )}
           {isArchived && canDestroy && (
@@ -260,7 +267,7 @@ function McpServerRow({
               }}
             >
               <Trash2 className="h-4 w-4 mr-1" />
-              Delete
+              {ui("Delete")}
             </Button>
           )}
         </div>
@@ -300,7 +307,8 @@ function McpServerRowSkeleton() {
 type StatusTab = "all" | "active" | "archived";
 
 export default function McpCatalogPage() {
-  usePageTitle("MCP catalog", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("MCP catalog"), ui("Settings"));
   const policies = usePolicies("mcp-servers");
   const policyLoading = policies.isLoading === true;
   const canViewCatalog = policies.can("mcp_server.view");
@@ -348,9 +356,9 @@ export default function McpCatalogPage() {
   }, [catalog.data, search, statusTab]);
 
   const statusItems = [
-    { value: "all" as const, label: "All" },
-    { value: "active" as const, label: "Active" },
-    { value: "archived" as const, label: "Archived" },
+    { value: "all" as const, label: ui("All") },
+    { value: "active" as const, label: ui("Active") },
+    { value: "archived" as const, label: ui("Archived") },
   ];
 
   const loadingTable = (
@@ -367,19 +375,20 @@ export default function McpCatalogPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold">MCP catalog</h2>
+          <h2 className="text-xl font-semibold">{ui("MCP catalog")}</h2>
           <p className="text-sm text-muted-foreground">
-            MCP server presets your organization registers once, with their transport and
-            authentication, so agents and people can add them by name.
+            {ui(
+              "MCP server presets your organization registers once, with their transport and authentication, so agents and people can add them by name.",
+            )}
           </p>
           <p className="text-sm text-muted-foreground">
-            A preset does nothing until an agent or a person adds it.
+            {ui("A preset does nothing until an agent or a person adds it.")}
           </p>
         </div>
         {canViewCatalog && canManage && (
           <Button variant="accent" onClick={() => setAddServerOpen(true)}>
             <Plus className="size-4" />
-            Add Server
+            {ui("Add Server")}
           </Button>
         )}
       </div>
@@ -389,11 +398,13 @@ export default function McpCatalogPage() {
       ) : !canViewCatalog ? (
         <EmptyState
           icon={<McpIcon />}
-          title="You cannot view the MCP catalog"
-          description="Ask an organization admin for access. MCP servers you add for yourself live in Settings, MCP servers."
+          title={ui("You cannot view the MCP catalog")}
+          description={ui(
+            "Ask an organization admin for access. MCP servers you add for yourself live in Settings, MCP servers.",
+          )}
           action={
             <LinkButton href="/settings/mcp-servers" variant="outline">
-              Open MCP servers
+              {ui("Open MCP servers")}
             </LinkButton>
           }
         />
@@ -401,7 +412,7 @@ export default function McpCatalogPage() {
         <>
           <div className="flex flex-wrap items-center gap-3">
             <SearchInput
-              placeholder="Search catalog…"
+              placeholder={ui("Search catalog…")}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               containerClassName="w-64"
@@ -425,17 +436,19 @@ export default function McpCatalogPage() {
             emptyState={
               <EmptyState
                 icon={<McpIcon />}
-                title={search ? "No catalog presets match your search" : "No MCP presets"}
+                title={search ? ui("No catalog presets match your search") : ui("No MCP presets")}
                 description={
                   search
                     ? undefined
-                    : "Add an MCP preset so agents can attach a shared transport and authentication policy."
+                    : ui(
+                        "Add an MCP preset so agents can attach a shared transport and authentication policy.",
+                      )
                 }
                 action={
                   !search && canManage ? (
                     <Button variant="accent" onClick={() => setAddServerOpen(true)}>
                       <Plus className="size-4" />
-                      Add Server
+                      {ui("Add Server")}
                     </Button>
                   ) : undefined
                 }
@@ -448,17 +461,17 @@ export default function McpCatalogPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Transport / era</TableHead>
-                        <TableHead>Auth</TableHead>
+                        <TableHead>{ui("Name")}</TableHead>
+                        <TableHead>{ui("Host")}</TableHead>
+                        <TableHead>{ui("Transport / era")}</TableHead>
+                        <TableHead>{ui("Auth")}</TableHead>
                         <TableHead>
-                          <span title="Active agents only. Archived agents are excluded.">
-                            Used by
+                          <span title={ui("Active agents only. Archived agents are excluded.")}>
+                            {ui("Used by")}
                           </span>
                         </TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>{ui("Status")}</TableHead>
+                        <TableHead className="text-right">{ui("Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -490,7 +503,7 @@ export default function McpCatalogPage() {
                       disabled={catalog.isFetchingNextPage}
                       onClick={() => catalog.fetchNextPage()}
                     >
-                      {catalog.isFetchingNextPage ? "Loading…" : "Load more presets"}
+                      {catalog.isFetchingNextPage ? ui("Loading…") : ui("Load more presets")}
                     </Button>
                   </div>
                 )}
@@ -535,23 +548,23 @@ export default function McpCatalogPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete MCP Server</DialogTitle>
+            <DialogTitle>{ui("Delete MCP Server")}</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived MCP server{" "}
-              <span className="font-medium">{pendingDeleteServer?.name}</span>? Existing references
-              will render as deleted tombstones.
+              {ui("Permanently delete the archived MCP server")}{" "}
+              <span className="font-medium">{pendingDeleteServer?.name}</span>
+              {ui("? Existing references will render as deleted tombstones.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingDeleteServer(null)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteServer}
               disabled={destroyServer.isPending}
             >
-              {destroyServer.isPending ? "Deleting..." : "Delete MCP Server"}
+              {destroyServer.isPending ? ui("Deleting...") : ui("Delete MCP Server")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -106,6 +106,7 @@ async fn create_test_session(
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("{label}-{}", Uuid::now_v7()),
                 display_name: Some("Background sweep wiring".to_string()),
                 icon: None,

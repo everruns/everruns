@@ -6,6 +6,7 @@
 // the tool result's people-only `details`; a large one (raw pages) is not
 // inlined in the step read, so it is fetched as that one event.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ export function WebSearchTraceSection({
   sessionId: string;
   detail: TraceStepDetail;
 }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
   const data = useCompletedEventData(sessionId, detail) as
     | { details?: unknown; duration_ms?: number | null }
@@ -57,13 +59,13 @@ export function WebSearchTraceSection({
   if (!details) return null;
   const summary = summarizeWebSearch(details, data?.duration_ms);
   return (
-    <section className="border-b px-5 py-4" aria-label="Web search">
+    <section className="border-b px-5 py-4" aria-label={ui("Web search")}>
       <div className="mb-2.5 flex items-center gap-2">
         <h3 className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-          Web search
+          {ui("Web search")}
         </h3>
         <span className="font-mono text-[11px] text-muted-foreground">
-          {summary.providerLabel ?? "no answer"} · {summary.resultCount} results
+          {summary.providerLabel ?? ui("no answer")} · {summary.resultCount} {ui("results")}
         </span>
         <Button
           variant="link"
@@ -71,7 +73,7 @@ export function WebSearchTraceSection({
           className="ml-auto h-auto p-0 text-xs"
           onClick={() => setOpen(true)}
         >
-          Details and raw
+          {ui("Details and raw")}
         </Button>
       </div>
       <ul className="ml-1 border-l pl-3 text-xs">

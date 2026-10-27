@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
@@ -49,7 +50,8 @@ import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
-  usePageTitle("Monitoring");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Monitoring"));
   const { currentOrg } = useOrg();
   const flags = useFeatureFlagsState();
   const policy = usePolicies(scope === "fleet" ? "durable" : "monitoring");
@@ -68,15 +70,17 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   if (!allowed)
     return (
       <PageContainer>
-        <PageBreadcrumb items={[{ label: "Monitoring" }]} />
-        <PageMasthead title="Monitoring" icon={<Activity />} />
+        <PageBreadcrumb items={[{ label: ui("Monitoring") }]} />
+        <PageMasthead title={ui("Monitoring")} icon={<Activity />} />
         <EmptyState
           icon={<Activity />}
-          title={scope === "fleet" ? "Platform access required" : "Monitoring is not enabled"}
+          title={
+            scope === "fleet" ? ui("Platform access required") : ui("Monitoring is not enabled")
+          }
           description={
             scope === "fleet"
-              ? "Cross-organization monitoring is available to platform operators."
-              : "An organization administrator can enable Monitoring in Settings → Features."
+              ? ui("Cross-organization monitoring is available to platform operators.")
+              : ui("An organization administrator can enable Monitoring in Settings → Features.")
           }
         />
       </PageContainer>
@@ -92,6 +96,7 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
 }
 
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
+  const ui = useUiTranslations();
   const [tab, setTab] = useState("execution");
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
@@ -208,11 +213,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   if (terminalError)
     return (
       <PageContainer>
-        <PageMasthead title="Monitoring" icon={<Activity />} />
+        <PageMasthead title={ui("Monitoring")} icon={<Activity />} />
         <EmptyState
           icon={<AlertTriangle />}
-          title="Monitoring is unavailable"
-          description={snapshot.error?.message ?? "Access to Monitoring is unavailable."}
+          title={ui("Monitoring is unavailable")}
+          description={snapshot.error?.message ?? ui("Access to Monitoring is unavailable.")}
         />
       </PageContainer>
     );
@@ -242,34 +247,44 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   }
   return (
     <PageContainer fullWidth>
-      <PageBreadcrumb items={[{ label: "Monitoring" }]} />
+      <PageBreadcrumb items={[{ label: ui("Monitoring") }]} />
       <PageMasthead
-        title="Monitoring"
+        title={ui("Monitoring")}
         icon={<Activity />}
-        badges={<Badge variant="outline">{scope === "fleet" ? "Platform" : "Organization"}</Badge>}
+        badges={
+          <Badge variant="outline">{scope === "fleet" ? ui("Platform") : ui("Organization")}</Badge>
+        }
         description={
           scope === "fleet"
-            ? "Live execution and worker ownership across all organizations."
-            : "Live execution and actor leases within the selected organization."
+            ? ui("Live execution and worker ownership across all organizations.")
+            : ui("Live execution and actor leases within the selected organization.")
         }
         meta={
           data && (
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-              <span>{number(data.actors)} active sessions</span>
+              <span>
+                {number(data.actors)} {ui("active sessions")}
+              </span>
               {scope === "fleet" && (
                 <>
-                  <span>{number(data.organizations)} organizations</span>
-                  <span>{number(replay?.workers ?? data.workers.length)} workers</span>
+                  <span>
+                    {number(data.organizations)} {ui("organizations")}
+                  </span>
+                  <span>
+                    {number(replay?.workers ?? data.workers.length)} {ui("workers")}
+                  </span>
                 </>
               )}
-              <span>{number(data.actor_leases)} actor leases</span>
+              <span>
+                {number(data.actor_leases)} {ui("actor leases")}
+              </span>
             </div>
           )
         }
         actions={
           <div className="flex items-center gap-2">
             <Badge variant="outline" className={stale && !paused ? "text-warning" : ""}>
-              {replay ? "Replay" : frozen ? "Paused" : stale ? "Stale" : "Live"}
+              {replay ? ui("Replay") : frozen ? ui("Paused") : stale ? ui("Stale") : ui("Live")}
             </Badge>
             <Button
               variant="outline"
@@ -278,7 +293,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               onClick={() => (paused ? resume() : setFrozen(snapshot.data!))}
             >
               {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
-              {paused ? "Live" : "Pause"}
+              {paused ? ui("Live") : ui("Pause")}
             </Button>
             <Button
               variant="outline"
@@ -291,7 +306,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               }}
             >
               <RotateCcw className="size-3.5" />
-              Replay
+              {ui("Replay")}
             </Button>
           </div>
         }
@@ -300,12 +315,12 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         <SectionTabs
           value={tab}
           onValueChange={setTab}
-          aria-label="Monitoring sections"
+          aria-label={ui("Monitoring sections")}
           items={[
-            { value: "execution", label: "Execution" },
-            { value: "workers", label: "Workers", disabled: !!replay },
-            { value: "actors", label: "Actors", disabled: !!replay },
-            { value: "metrics", label: "Metrics" },
+            { value: "execution", label: ui("Execution") },
+            { value: "workers", label: ui("Workers"), disabled: !!replay },
+            { value: "actors", label: ui("Actors"), disabled: !!replay },
+            { value: "metrics", label: ui("Metrics") },
           ]}
         />
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
@@ -320,15 +335,15 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   onClick={() => setView(v)}
                   className={view === v ? "border-primary font-semibold" : "text-muted-foreground"}
                 >
-                  {v === "flow" ? "Flow" : "Density"}
+                  {v === "flow" ? ui("Flow") : ui("Density")}
                 </Button>
               ))}
             </div>
           ) : tab === "workers" ? (
             <label className="text-xs text-muted-foreground">
-              Group size{" "}
+              {ui("Group size")}{" "}
               <select
-                aria-label="Worker group size"
+                aria-label={ui("Worker group size")}
                 value={groupSize}
                 onChange={(e) => {
                   setGroupSize(Number(e.target.value));
@@ -336,18 +351,18 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 }}
                 className="ml-2 border bg-background px-3 py-1.5 text-foreground"
               >
-                <option value={1}>Individual workers</option>
-                <option value={8}>8 workers</option>
-                <option value={32}>32 workers</option>
+                <option value={1}>{ui("Individual workers")}</option>
+                <option value={8}>{ui("8 workers")}</option>
+                <option value={32}>{ui("32 workers")}</option>
               </select>
             </label>
           ) : tab === "actors" ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">
-                {worker ? `Holder ${worker}` : "All holders"}
+                {worker ? ui("Holder {value0}", { value0: worker }) : ui("All holders")}
               </span>
               <select
-                aria-label="Actor phase filter"
+                aria-label={ui("Actor phase filter")}
                 value={phase ?? ""}
                 disabled={paused}
                 onChange={(e) => {
@@ -356,7 +371,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 }}
                 className="border bg-background px-3 py-1.5"
               >
-                <option value="">All phases</option>
+                <option value="">{ui("All phases")}</option>
                 {phases.map((p) => (
                   <option key={p.key} value={p.key}>
                     {p.label}
@@ -372,38 +387,44 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                     setOffset(0);
                   }}
                 >
-                  Clear holder
+                  {ui("Clear holder")}
                 </Button>
               )}
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground">Last 60 seconds</span>
+            <span className="text-xs text-muted-foreground">{ui("Last 60 seconds")}</span>
           )}
           <span className="text-xs text-muted-foreground">
             {data
-              ? `${new Date(data.generated_at).toLocaleTimeString()} snapshot`
-              : "Waiting for a snapshot"}
+              ? ui("{value0} snapshot", {
+                  value0: new Date(data.generated_at).toLocaleTimeString(),
+                })
+              : ui("Waiting for a snapshot")}
           </span>
         </div>
       </PageControlStrip>
       {snapshot.error && !terminalError && (
         <div role="status" className="border border-warning/40 bg-warning/5 p-3 text-sm">
-          Updates unavailable. Showing the last successful snapshot; lease validity is unknown until
-          refresh succeeds.
+          {ui(
+            "Updates unavailable. Showing the last successful snapshot; lease validity is unknown until refresh succeeds.",
+          )}
         </div>
       )}
       {(data?.cohorts_truncated || data?.workers_truncated) && (
         <div role="status" className="border border-warning/40 p-3 text-sm">
-          Population and phase counts are complete; ownership detail exceeds the overview limit and
-          is partial.
+          {ui(
+            "Population and phase counts are complete; ownership detail exceeds the overview limit and is partial.",
+          )}
         </div>
       )}
       {(replay || frozen) && history.length > 1 && (
         <div className="flex flex-wrap items-center gap-4 border bg-card p-3 text-xs">
-          <span>{replay ? "Replay" : "Paused"} · observed history</span>
+          <span>
+            {replay ? ui("Replay") : ui("Paused")} {ui("· observed history")}
+          </span>
           <input
             type="range"
-            aria-label="Replay time"
+            aria-label={ui("Replay time")}
             className="min-w-32 flex-1 accent-accent"
             min={0}
             max={history.length - 1}
@@ -419,7 +440,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             {new Date(history.at(-1)!.at).toLocaleTimeString()}
           </span>
           <Button variant="ghost" size="sm" onClick={resume}>
-            Return to live
+            {ui("Return to live")}
           </Button>
         </div>
       )}
@@ -427,9 +448,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         snapshot.error ? (
           <EmptyState
             icon={<AlertTriangle />}
-            title="Monitoring could not load"
-            description="Refresh when the service is available."
-            action={<Button onClick={() => snapshot.refetch()}>Retry</Button>}
+            title={ui("Monitoring could not load")}
+            description={ui("Refresh when the service is available.")}
+            action={<Button onClick={() => snapshot.refetch()}>{ui("Retry")}</Button>}
           />
         ) : (
           <Skeleton className="h-[500px]" />
@@ -481,27 +502,31 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             </div>
             {tab === "execution" && (
               <section className="border bg-card p-4">
-                <h2 className="text-sm font-semibold">Lease lifecycle</h2>
+                <h2 className="text-sm font-semibold">{ui("Lease lifecycle")}</h2>
                 <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
-                  <span>{number(data.actor_leases)} held</span>
+                  <span>
+                    {number(data.actor_leases)} {ui("held")}
+                  </span>
                   <span className="text-muted-foreground">→</span>
                   <span className={data.expired_leases ? "text-warning" : ""}>
-                    {number(data.expired_leases)} expired, unclaimed
+                    {number(data.expired_leases)} {ui("expired, unclaimed")}
                   </span>
                   <span className="text-muted-foreground">→</span>
                   <span>
-                    {number(data.lease_events.reacquired ?? 0)} reacquired / {data.window_seconds}s
+                    {number(data.lease_events.reacquired ?? 0)} {ui("reacquired /")}{" "}
+                    {data.window_seconds}s
                   </span>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Reacquisition changes ownership of an existing actor; it does not create another
-                  turn. Worker heartbeats and actor leases are separate signals.
+                  {ui(
+                    "Reacquisition changes ownership of an existing actor; it does not create another turn. Worker heartbeats and actor leases are separate signals.",
+                  )}
                 </p>
               </section>
             )}
             {actors.error && tab === "actors" && (
               <p role="alert" className="text-sm text-warning">
-                Actor ownership could not be refreshed.
+                {ui("Actor ownership could not be refreshed.")}
               </p>
             )}
           </PageMain>
@@ -509,22 +534,24 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             {actor && !detail.error && detail.data && !replay ? (
               <ActorDetail detail={detail.data} serverNow={serverNow} stale={stale} />
             ) : selectedGroup && tab === "workers" ? (
-              <RailSection label="Selected worker group">
+              <RailSection label={ui("Selected worker group")}>
                 <h2 className="break-all text-sm font-semibold">{selectedGroup.name}</h2>
                 <dl className="mt-3 space-y-2 text-xs">
-                  <Row label="Workers" value={String(selectedGroup.workers.length)} />
-                  <Row label="Actor leases" value={number(selectedGroup.leases)} />
+                  <Row label={ui("Workers")} value={String(selectedGroup.workers.length)} />
+                  <Row label={ui("Actor leases")} value={number(selectedGroup.leases)} />
                   <Row
-                    label="Reported load"
+                    label={ui("Reported load")}
                     value={
                       selectedGroup.load == null
                         ? "Unavailable in this scope"
                         : `${selectedGroup.load}/${selectedGroup.capacity}`
                     }
                   />
-                  <Row label="Stale heartbeats" value={String(selectedGroup.stale)} />
+                  <Row label={ui("Stale heartbeats")} value={String(selectedGroup.stale)} />
                 </dl>
-                <h3 className="mt-5 border-t pt-3 text-xs font-semibold">Worker ownership</h3>
+                <h3 className="mt-5 border-t pt-3 text-xs font-semibold">
+                  {ui("Worker ownership")}
+                </h3>
                 <div className="mt-3 max-h-64 space-y-3 overflow-y-auto">
                   {selectedGroup.workers.map((w) => (
                     <div key={w.id} className="text-xs">
@@ -536,7 +563,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                         {w.id}
                       </button>
                       <p className="mt-1 text-muted-foreground">
-                        {number(w.actor_leases)} leases{w.status && ` · ${w.status}`}
+                        {number(w.actor_leases)} {ui("leases")}
+                        {w.status && ` · ${w.status}`}
                       </p>
                       <div className="mt-1 space-y-1">
                         {data.ownership
@@ -554,13 +582,17 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   ))}
                 </div>
                 <p className="mt-4 text-[11px] text-muted-foreground">
-                  Select a worker to inspect its currently leased actors.
+                  {ui("Select a worker to inspect its currently leased actors.")}
                 </p>
               </RailSection>
             ) : (
               <RailSection
                 label={
-                  replay ? "Selected observation" : phase ? "Selected phase" : "Execution pressure"
+                  replay
+                    ? ui("Selected observation")
+                    : phase
+                      ? ui("Selected phase")
+                      : ui("Execution pressure")
                 }
               >
                 {phase && (
@@ -581,8 +613,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                       value={number(data.phases.find((r) => r.phase === p.key)?.count ?? 0)}
                     />
                   ))}
-                  <Row label="Oldest runnable" value={duration(data.oldest_runnable_ms)} />
-                  <Row label="Expired leases" value={number(data.expired_leases)} />
+                  <Row label={ui("Oldest runnable")} value={duration(data.oldest_runnable_ms)} />
+                  <Row label={ui("Expired leases")} value={number(data.expired_leases)} />
                 </dl>
                 <div className="mt-4 flex flex-col items-start gap-2">
                   {!replay && (
@@ -593,25 +625,31 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                         disabled={paused}
                         onClick={() => inspectActors()}
                       >
-                        Inspect actors →
+                        {ui("Inspect actors →")}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setTab("workers")}>
-                        Show worker mapping →
+                        {ui("Show worker mapping →")}
                       </Button>
                     </>
                   )}
                 </div>
                 <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
                   {replay
-                    ? "Replay contains population summaries. Ownership detail uses live observations and recorded actor history."
-                    : "Model phases may retain actor leases while releasing worker slots. Waiting includes input and external tool resolutions."}
+                    ? ui(
+                        "Replay contains population summaries. Ownership detail uses live observations and recorded actor history.",
+                      )
+                    : ui(
+                        "Model phases may retain actor leases while releasing worker slots. Waiting includes input and external tool resolutions.",
+                      )}
                 </p>
               </RailSection>
             )}
             {actor && detail.error && (
-              <RailSection label="Actor unavailable">
+              <RailSection label={ui("Actor unavailable")}>
                 <p role="alert" className="text-xs">
-                  This actor is no longer active or its diagnostic snapshot could not be refreshed.
+                  {ui(
+                    "This actor is no longer active or its diagnostic snapshot could not be refreshed.",
+                  )}
                 </p>
               </RailSection>
             )}
@@ -621,9 +659,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
       <PageFooter>
         <span className="text-xs text-muted-foreground">
           {scope === "fleet"
-            ? "All organizations · platform-only monitoring"
-            : "Selected organization only · adoption feature"}{" "}
-          · 1-second refresh · {history.length} observed samples
+            ? ui("All organizations · platform-only monitoring")
+            : ui("Selected organization only · adoption feature")}{" "}
+          {ui("· 1-second refresh ·")} {history.length} {ui("observed samples")}
         </span>
       </PageFooter>
     </PageContainer>

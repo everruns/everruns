@@ -12,51 +12,6 @@ use crate::storage::{CreateHarnessRow, CreateMemoryFileRow, StorageBackend};
 use super::tests_support::*;
 
 #[tokio::test]
-async fn create_rejects_harness_from_another_org() {
-    let db = Arc::new(StorageBackend::test_database());
-    let session_service = SessionService::new(db.clone());
-    let caller = Caller::internal(DEFAULT_ORG_ID);
-    let other_org_id = create_second_org(&db).await;
-    let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
-
-    let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
-        name: "other-harness".to_string(),
-        display_name: Some("Other Harness".to_string()),
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: Some("Other".to_string()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        mcp_servers: Default::default(),
-        network_access: None,
-        embedder_metadata: Default::default(),
-    })
-    .execute(&other_ctx)
-    .await
-    .unwrap();
-
-    let err = session_service
-        .create(
-            &caller,
-            other_harness.id.uuid(),
-            None,
-            None,
-            SessionSource::Api,
-            build_create_request(other_harness.id, None, None),
-        )
-        .await
-        .unwrap_err();
-
-    let not_found = err.downcast_ref::<ResourceNotFoundError>().unwrap();
-    assert_eq!(not_found.resource(), "Harness");
-}
-
-#[tokio::test]
 async fn create_rejects_model_from_another_org() {
     let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
@@ -66,6 +21,7 @@ async fn create_rejects_model_from_another_org() {
     let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -111,6 +67,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
     let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
     let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "other-harness".to_string(),
         display_name: Some("Other Harness".to_string()),
         description: None,
@@ -132,6 +89,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
     .unwrap();
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        localizations: Default::default(),
         service_virtual_user_id: None,
         id: None,
         name: "other-agent".to_string(),
@@ -239,6 +197,7 @@ async fn create_rejects_harness_with_unavailable_builtin_capability() {
         .create_harness(
             owner.org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "coding-container".to_string(),
                 display_name: Some("Coding (Container)".to_string()),
                 icon: None,
@@ -299,6 +258,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
         .create_harness(
             owner.org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "restricted-harness".to_string(),
                 display_name: Some("Restricted Harness".to_string()),
                 icon: None,
@@ -387,6 +347,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
         .create_harness(
             owner.org_id,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "declarative-harness".to_string(),
                 display_name: Some("Declarative Harness".to_string()),
                 icon: None,
@@ -457,6 +418,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
     let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
     let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "other-harness".to_string(),
         display_name: Some("Other Harness".to_string()),
         description: None,
@@ -478,6 +440,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
     .unwrap();
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        localizations: Default::default(),
         service_virtual_user_id: None,
         id: None,
         name: "other-agent".to_string(),
@@ -604,6 +567,7 @@ async fn workspace_memory_mount_materializes_source_memory_readonly() {
     .unwrap();
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "memory-harness".to_string(),
         display_name: Some("Memory Harness".to_string()),
         description: None,
@@ -680,6 +644,7 @@ async fn workspace_memory_mount_rejects_readwrite_source_volume() {
     .await
     .unwrap();
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "readwrite-memory-harness".to_string(),
         display_name: Some("Readwrite Memory Harness".to_string()),
         description: None,
@@ -736,6 +701,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -818,6 +784,7 @@ async fn create_rejects_reserved_routing_tags_for_external_callers() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -878,6 +845,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "harness".to_string(),
         display_name: Some("Harness".to_string()),
         description: None,
@@ -945,6 +913,7 @@ async fn app_session_creation_enforces_total_session_cap() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "app-session-cap-harness".to_string(),
         display_name: Some("App Session Cap Harness".to_string()),
         description: None,
@@ -1032,6 +1001,7 @@ async fn concurrent_session_cap_enforced() {
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
     let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: "cap-test-harness".to_string(),
         display_name: Some("Cap Test Harness".to_string()),
         description: None,
@@ -1202,6 +1172,7 @@ async fn create_named_harness(ctx: &Ctx, name: &str) -> HarnessId {
         return existing.id;
     }
     crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+        localizations: Default::default(),
         name: name.to_string(),
         display_name: Some(name.to_string()),
         description: None,
@@ -1413,6 +1384,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
     let harness_id = create_named_harness(&ctx, "agent-memory-harness").await;
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+        localizations: Default::default(),
         service_virtual_user_id: None,
         id: None,
         name: "memory-agent".to_string(),

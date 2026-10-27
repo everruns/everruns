@@ -8,6 +8,8 @@
 // the one that earns its place — on a failed run it replaces the work summary,
 // because on a failing run nothing else on the row matters.
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { cn, shortenId } from "@/lib/utils";
 import { formatDurationCompact, formatRelativeTime, formatTokens } from "@/lib/formatting";
@@ -51,6 +53,8 @@ export interface SessionRowProps {
 }
 
 export function SessionRow({ session, agentName }: SessionRowProps) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const activity = session.activity ?? "idle";
   const failed = activity === "failed";
   const subject = session.title?.trim() || session.preview?.trim() || shortenId(session.id);
@@ -78,7 +82,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
           <span className="truncate text-foreground/80">{subject}</span>
         </div>
         <span className="truncate text-[13px] text-muted-foreground">
-          {agentName ?? "No agent"}
+          {agentName ?? ui("No agent")}
         </span>
       </div>
 
@@ -103,7 +107,9 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
             className="block text-muted-foreground"
             fallback={
               <span className="truncate text-muted-foreground">
-                {tokens !== undefined ? `${formatTokens(tokens)} tokens` : "No work recorded"}
+                {tokens !== undefined
+                  ? ui("{value0} tokens", { value0: formatTokens(tokens) })
+                  : ui("No work recorded")}
               </span>
             }
           />
@@ -114,7 +120,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
         {duration ?? "—"}
       </span>
       <span className="w-24 flex-none text-right text-[13px] text-muted-foreground">
-        {formatRelativeTime(session.created_at)}
+        {formatRelativeTime(session.created_at, displayLocale)}
       </span>
     </Link>
   );

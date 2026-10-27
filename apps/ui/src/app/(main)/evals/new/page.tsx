@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { evalCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
@@ -22,7 +23,8 @@ import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
 type TargetType = "session" | "app";
 
 export default function NewEvalPage() {
-  usePageTitle("New Eval", "Evals");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New Eval"), ui("Evals"));
   const router = useRouter();
   const createEval = useCreateEval();
   const [formData, setFormData] = useState({
@@ -52,7 +54,7 @@ export default function NewEvalPage() {
       tags,
     },
     entityType: "eval",
-    label: "New Eval",
+    label: ui("New Eval"),
     baseline: "new",
     dirty: !!(
       Object.values(formData).some(Boolean) ||
@@ -152,21 +154,21 @@ export default function NewEvalPage() {
         className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Evals
+        {ui("Back to Evals")}
       </Link>
 
       <Card>
         <CardHeader>
-          <CardTitle>Create New Eval</CardTitle>
+          <CardTitle>{ui("Create New Eval")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
             {chatDraft.notice}
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{ui("Name")}</Label>
               <Input
                 id="name"
-                placeholder="My Eval"
+                placeholder={ui("My Eval")}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
@@ -174,10 +176,10 @@ export default function NewEvalPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{ui("Description")}</Label>
               <Textarea
                 id="description"
-                placeholder="Describe what this eval tests..."
+                placeholder={ui("Describe what this eval tests...")}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
@@ -186,7 +188,7 @@ export default function NewEvalPage() {
 
             {/* Target type selector */}
             <div className="space-y-4">
-              <Label>Target Type</Label>
+              <Label>{ui("Target Type")}</Label>
               <div className="flex gap-2">
                 {(["session", "app"] as TargetType[]).map((t) => (
                   <Button
@@ -196,7 +198,7 @@ export default function NewEvalPage() {
                     size="sm"
                     onClick={() => setTargetType(t)}
                   >
-                    {t === "session" ? "Session" : "App"}
+                    {t === "session" ? ui("Session") : ui("App")}
                   </Button>
                 ))}
               </div>
@@ -205,34 +207,38 @@ export default function NewEvalPage() {
               {targetType === "session" && (
                 <div className="space-y-4 border p-4">
                   <div className="space-y-2">
-                    <Label>Harness (optional)</Label>
+                    <Label>{ui("Harness (optional)")}</Label>
                     <HarnessSelect
                       value={harnessId}
                       onValueChange={setHarnessId}
-                      placeholder="Use org default"
+                      placeholder={ui("Use org default")}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Agent (optional)</Label>
+                    <Label>{ui("Agent (optional)")}</Label>
                     <AgentSelect
                       value={agentId}
                       onValueChange={setAgentId}
-                      placeholder="Select an agent"
+                      placeholder={ui("Select an agent")}
                       className="w-full"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Model (optional)</Label>
-                    <ModelPicker value={modelId} onChange={setModelId} placeholder="Use default" />
+                    <Label>{ui("Model (optional)")}</Label>
+                    <ModelPicker
+                      value={modelId}
+                      onChange={setModelId}
+                      placeholder={ui("Use default")}
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>System Prompt (optional)</Label>
+                    <Label>{ui("System Prompt (optional)")}</Label>
                     <Textarea
-                      placeholder="Override system prompt..."
+                      placeholder={ui("Override system prompt...")}
                       value={systemPrompt}
                       onChange={(e) => setSystemPrompt(e.target.value)}
                       rows={3}
@@ -245,9 +251,9 @@ export default function NewEvalPage() {
               {targetType === "app" && (
                 <div className="space-y-4 border p-4">
                   <div className="space-y-2">
-                    <Label>App ID</Label>
+                    <Label>{ui("App ID")}</Label>
                     <Input
-                      placeholder="app_01933b5a..."
+                      placeholder={ui("app_01933b5a...")}
                       value={appId}
                       onChange={(e) => setAppId(e.target.value)}
                       required
@@ -258,28 +264,28 @@ export default function NewEvalPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model">Model Override (optional)</Label>
+              <Label htmlFor="model">{ui("Model Override (optional)")}</Label>
               <ModelPicker
                 value={formData.model_override}
                 onChange={(value) => setFormData({ ...formData, model_override: value })}
-                placeholder="Use agent default"
+                placeholder={ui("Use agent default")}
               />
               <p className="text-xs text-muted-foreground">
-                Override the agent model for eval runs
+                {ui("Override the agent model for eval runs")}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label>Tags (optional)</Label>
+              <Label>{ui("Tags (optional)")}</Label>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Add a tag..."
+                  placeholder={ui("Add a tag...")}
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={handleTagKeyDown}
                 />
                 <Button type="button" variant="outline" onClick={handleAddTag}>
-                  Add
+                  {ui("Add")}
                 </Button>
               </div>
               {tags.length > 0 && (
@@ -298,15 +304,17 @@ export default function NewEvalPage() {
 
             <div className="flex gap-4">
               <Button type="submit" disabled={createEval.isPending || !canSubmit}>
-                {createEval.isPending ? "Creating..." : "Create Eval"}
+                {createEval.isPending ? ui("Creating...") : ui("Create Eval")}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>
-                Cancel
+                {ui("Cancel")}
               </Button>
             </div>
 
             {createEval.error && (
-              <p className="text-sm text-destructive">Error: {createEval.error.message}</p>
+              <p className="text-sm text-destructive">
+                {ui("Error:")} {createEval.error.message}
+              </p>
             )}
           </form>
         </CardContent>

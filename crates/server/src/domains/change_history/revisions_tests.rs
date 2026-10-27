@@ -1286,3 +1286,68 @@ async fn organization_chat_default_undo_preserves_the_agent_default_and_rejects_
     .unwrap_err();
     assert_eq!(stale.code.as_deref(), Some("entity_revision_changed"));
 }
+
+#[test]
+fn pre_localization_snapshots_match_empty_overlays_but_detect_edits() {
+    for kind in [EntityKind::Agent, EntityKind::Harness] {
+        let old = json!({"name":"original"});
+        let empty = json!({"name":"original", "localizations":{}});
+        let translated =
+            json!({"name":"original", "localizations":{"uk":{"display_name":"Назва"}}});
+        assert!(super::snapshot::matches_current(kind, &old, &empty));
+        assert!(super::snapshot::matches_current(kind, &empty, &old));
+        assert!(!super::snapshot::matches_current(kind, &old, &translated));
+        assert!(!super::snapshot::matches_current(kind, &translated, &empty));
+    }
+}
+
+#[test]
+fn restoring_pre_localization_history_clears_current_overlays() {
+    for kind in [EntityKind::Agent, EntityKind::Harness] {
+        let (_, params) = super::snapshot::restore_call(
+            kind,
+            "resource",
+            &json!({"name":"original"}),
+            &json!({"name":"original", "localizations":{"uk":{"display_name":"Назва"}}}),
+        )
+        .unwrap();
+        assert_eq!(params["localizations"], json!({}));
+    }
+}
+
+#[tokio::test]
+async fn harness_localizations_follow_partial_updates_and_revision_restore() {
+    let ctx = owner();
+    let harness = run(
+        "create_harness",
+        json!({"name":"translated-harness","localizations":{"de":{"display_name":"Hilfe"}}}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let id = harness["id"].as_str().unwrap();
+    run(
+        "update_harness",
+        json!({"id":id,"description":"New description"}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let current = run("get_harness", json!({"id":id}), &ctx).await.unwrap();
+    assert_eq!(current["localizations"]["de"]["display_name"], "Hilfe");
+    run("update_harness", json!({"id":id,"localizations":{}}), &ctx)
+        .await
+        .unwrap();
+    let restored = run(
+        "restore_entity_revision",
+        json!({"entity_ref":id,"revision":1,"expected_revision":3,"fields":["localizations"]}),
+        &ctx,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        restored["entity"]["localizations"]["de"]["display_name"],
+        "Hilfe"
+    );
+    assert_eq!(restored["entity"]["description"], "New description");
+}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { use, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -46,6 +48,8 @@ interface SessionLayoutContentProps {
 }
 
 export function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const { agent, session, llmModel, sessionLoading, effectiveStatus, liveUsage, agentId } =
     useSessionContext();
@@ -62,8 +66,8 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   };
   const activeTab = getActiveTab();
 
-  const sessionLabel = session?.title || (agent ? getDisplayName(agent) : null);
-  usePageTitle(SESSION_TAB_LABELS[activeTab], sessionLabel, "Session");
+  const sessionLabel = session?.title || (agent ? getDisplayName(agent, displayLocale) : null);
+  usePageTitle(SESSION_TAB_LABELS[activeTab], sessionLabel, ui("Session"));
 
   const basePath = `/sessions/${sessionId}`;
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
@@ -102,8 +106,10 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   if (!session) {
     return (
       <ResourceNotFound
-        title="Session not found"
-        description="This session may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Session not found")}
+        description={ui(
+          "This session may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/sessions"
         backLabel="Back to sessions"
         resourceId={sessionId}

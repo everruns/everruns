@@ -127,6 +127,7 @@ async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() 
             org_id,
             agent_id,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: agent_id.to_string(),
                 name: "pinned-mcp-agent".to_string(),
                 display_name: None,
@@ -307,6 +308,7 @@ pub(super) async fn seed_harness_for_platform_store(
     db.create_harness(
         org_id,
         CreateHarnessRow {
+            localizations: Default::default(),
             name: name.to_string(),
             display_name: None,
             icon: None,
@@ -653,6 +655,7 @@ async fn seed_agent(db: &StorageBackend) -> Uuid {
     let id = AgentId::new();
     let public_id = id.to_string();
     let create = CreateAgentRow {
+        localizations: Default::default(),
         public_id,
         name: "test-agent".to_string(),
         display_name: Some("Test Agent".to_string()),

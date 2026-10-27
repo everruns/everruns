@@ -13,16 +13,22 @@
 // - The path is HMAC-signed with WORKER_GRPC_AUTH_TOKEN over kind, id, org and
 //   expiry, so a worker can only fetch what the server just handed out and the
 //   tenant check stays on the server.
+// - Uploads go the other way on the same server: a worker POSTs a generated
+//   image as raw bytes (`blob_wire`), authorized by the worker bearer token
+//   like the gRPC call it replaces, which also named its org.
 
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
 use axum::{
-    Router,
-    body::Body,
-    extract::{Path, Query, State},
+    Json, Router,
+    body::{Body, Bytes},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
     response::Response,
-    routing::get,
+    routing::{get, post},
+};
+use everruns_internal_protocol::blob_wire::{
+    IMAGE_UPLOAD_PATH, UploadedImage, decode_image_upload,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
@@ -118,7 +124,69 @@ pub struct SignedQuery {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/internal/blobs/{kind}/{id}", get(get_blob))
+        .route(
+            IMAGE_UPLOAD_PATH,
+            // The head line and slack on top of the image limit.
+            post(upload_image).layer(DefaultBodyLimit::max(
+                crate::api::images::MAX_IMAGE_SIZE + 1024 * 1024,
+            )),
+        )
         .with_state(state)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UploadQuery {
+    pub org_id: i64,
+}
+
+/// POST /internal/blobs/images?org_id=...: a head line, then the image bytes.
+async fn upload_image(
+    State(state): State<AppState>,
+    Query(query): Query<UploadQuery>,
+    body: Bytes,
+) -> Result<Json<UploadedImage>, (StatusCode, &'static str)> {
+    let (head, data) =
+        decode_image_upload(&body).ok_or((StatusCode::BAD_REQUEST, "Malformed image upload"))?;
+    if data.len() > crate::api::images::MAX_IMAGE_SIZE {
+        return Err((StatusCode::PAYLOAD_TOO_LARGE, "Image too large"));
+    }
+    let (thumbnail_data, thumbnail_content_type) =
+        crate::api::images::generate_thumbnail(data, &head.content_type)
+            .map(|(data, content_type)| (Some(data), Some(content_type)))
+            .unwrap_or((None, None));
+    let metadata = if head.metadata.is_null() {
+        serde_json::json!({})
+    } else {
+        head.metadata
+    };
+    let row = state
+        .db
+        .create_image(
+            query.org_id,
+            crate::storage::CreateImageRow {
+                org_id: query.org_id,
+                filename: head.filename,
+                content_type: head.content_type,
+                size_bytes: data.len() as i64,
+                data: data.to_vec(),
+                thumbnail_data,
+                thumbnail_content_type,
+                metadata,
+            },
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, "Failed to store a worker image upload");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+        })?;
+    Ok(Json(UploadedImage {
+        id: row.id.uuid(),
+        filename: row.filename,
+        content_type: row.content_type,
+        size_bytes: row.size_bytes,
+        metadata: row.metadata,
+        created_at: row.created_at,
+    }))
 }
 
 fn compute_signature(secret: &str, kind: BlobKind, id: Uuid, org_id: i64, expires: i64) -> String {

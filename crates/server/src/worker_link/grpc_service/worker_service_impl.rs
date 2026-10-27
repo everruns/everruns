@@ -85,6 +85,8 @@ delegate! {
         -> DrainDurableWorkerResponse;
     deregister_durable_worker => handle_deregister_durable_worker(DeregisterDurableWorkerRequest)
         -> DeregisterDurableWorkerResponse;
+    report_durable_worker_checks => handle_report_durable_worker_checks(ReportDurableWorkerChecksRequest)
+        -> ReportDurableWorkerChecksResponse;
 
     // Circuit breaker state.
     check_circuit_breaker => handle_check_circuit_breaker(CheckCircuitBreakerRequest)
@@ -102,8 +104,6 @@ delegate! {
     resolve_image => handle_resolve_image(ResolveImageRequest) -> ResolveImageResponse;
     resolve_images => handle_resolve_images(ResolveImagesRequest) -> ResolveImagesResponse;
     resolve_files => handle_resolve_files(ResolveFilesRequest) -> ResolveFilesResponse;
-    create_image_artifact => handle_create_image_artifact(CreateImageArtifactRequest)
-        -> CreateImageArtifactResponse;
     get_image_artifact => handle_get_image_artifact(GetImageArtifactRequest)
         -> GetImageArtifactResponse;
 

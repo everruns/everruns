@@ -4,7 +4,7 @@ use everruns_core::agent_package::{AgentPackage, Format};
 use serde_json::{Value, json};
 
 fn definition(name: &str) -> Value {
-    json!({"schema_version":1,"name":name,"instructions":"Read the runbook.","harness":"base","capabilities":["session_file_system"],"initial_files":[{"path":"/runbook.md","content":"The runbook"}],"channels":{"chat":{"type":"ag_ui"}}})
+    json!({"schema_version":1,"name":name,"localizations":{"uk":{"display_name":"Підтримка","description":"Допомога"},"de":{"display_name":"Hilfe"}},"instructions":"Read the runbook.","harness":"base","capabilities":["session_file_system"],"initial_files":[{"path":"/runbook.md","content":"The runbook"}],"channels":{"chat":{"type":"ag_ui"}}})
 }
 
 #[tokio::test]
@@ -43,6 +43,8 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     assert!(exported.get("id").is_none());
     assert!(exported.get("harness_id").is_none());
     assert_eq!(exported["instructions"], "Read the runbook.");
+    assert_eq!(exported["localizations"]["uk"]["display_name"], "Підтримка");
+    assert_eq!(exported["localizations"]["de"]["display_name"], "Hilfe");
     assert_eq!(exported["files"][0]["content"], "The runbook");
     assert_eq!(exported["channels"]["chat"]["enabled"], false);
     let mut proposed = exported.clone();
@@ -69,6 +71,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
         .assert_status(StatusCode::OK)
         .json_value();
     assert_eq!(imported["id"], agent["id"]);
+    assert_eq!(imported["localizations"], exported["localizations"]);
     let diff = server
         .post(
             "/v1/agents/diff",

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { DecisionModelPicker, ModelPicker } from "@/components/models/model-picker";
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
@@ -191,12 +192,13 @@ function DecisionModelWidget(props: WidgetProps) {
 }
 
 function SessionTitleModelWidget(props: WidgetProps) {
+  const ui = useUiTranslations();
   return (
     <ModelPicker
       id={props.id}
       value={props.value || ""}
-      placeholder="Organization small model (or session)"
-      additionalOptions={[{ value: "session", label: "Use session model" }]}
+      placeholder={ui("Organization small model (or session)")}
+      additionalOptions={[{ value: "session", label: ui("Use session model") }]}
       onChange={(value) => props.onChange(value || undefined)}
       disabled={props.disabled || props.readonly}
     />

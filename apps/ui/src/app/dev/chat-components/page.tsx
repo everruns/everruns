@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useRef, useState } from "react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { DevChatRuntimeScene } from "@/app/dev/_components/dev-chat-runtime-preview";
@@ -38,6 +39,7 @@ const verbosityConfig: VerbosityConfig = {
 };
 
 export default function DevChatComponentsPage() {
+  const ui = useUiTranslations();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState("/ship tighten the tool transcript UI");
   const [selectedModelId, setSelectedModelId] = useState(devModels[0]?.id ?? "");
@@ -84,17 +86,22 @@ export default function DevChatComponentsPage() {
   return (
     <DevPageShell
       eyebrow="Chat UI"
-      title="Chat UI"
-      description="Runtime chat surfaces driven by the real transcript and composer components."
+      title={ui("Chat UI")}
+      description={ui(
+        "Runtime chat surfaces driven by the real transcript and composer components.",
+      )}
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
         <section className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Tool-heavy runtime scene</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("Tool-heavy runtime scene")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Full session chrome plus the actual chat panel, using the Daytona-style transcript
-              flow.
+              {ui(
+                "Full session chrome plus the actual chat panel, using the Daytona-style transcript flow.",
+              )}
             </p>
           </div>
           <DevChatRuntimeScene scenario="tool-activity" />
@@ -103,10 +110,10 @@ export default function DevChatComponentsPage() {
         <section className="space-y-3">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-foreground">
-              Transcript-focused runtime scene
+              {ui("Transcript-focused runtime scene")}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Same runtime stack, but tuned to text, todos, and file mutation output.
+              {ui("Same runtime stack, but tuned to text, todos, and file mutation output.")}
             </p>
           </div>
           <DevChatRuntimeScene scenario="chat-components" />
@@ -114,11 +121,11 @@ export default function DevChatComponentsPage() {
 
         <section className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Turn navigation rail</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Turn navigation rail")}</h2>
             <p className="text-sm text-muted-foreground">
-              Multi-turn transcript with the turn navigation rail (md+ screens). Hover a marker on
-              the right gutter to preview the turn; click to jump. The active turn fills with the
-              gold accent as you scroll.
+              {ui(
+                "Multi-turn transcript with the turn navigation rail (md+ screens). Hover a marker on the right gutter to preview the turn; click to jump. The active turn fills with the gold accent as you scroll.",
+              )}
             </p>
           </div>
           <DevChatNavRailPreview />
@@ -126,31 +133,31 @@ export default function DevChatComponentsPage() {
 
         <section className="space-y-3">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">No intelligence available</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("No intelligence available")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Shown on every chat surface when the org has no enabled, healthy chat model. It is
-              always the only centred message on the surface: it replaces the transcript&rsquo;s
-              &ldquo;No messages yet&rdquo; card on a fresh thread, sits above the composer once
-              there is history, and replaces the counterpart picker on the new-chat form. The route
-              to Settings only appears for a caller who can manage providers.
+              {ui(
+                "Shown on every chat surface when the org has no enabled, healthy chat model. It is always the only centred message on the surface: it replaces the transcript’s “No messages yet” card on a fresh thread, sits above the composer once there is history, and replaces the counterpart picker on the new-chat form. The route to Settings only appears for a caller who can manage providers.",
+              )}
             </p>
           </div>
           <div className="grid gap-4 border border-border/70 bg-background p-6 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Can manage providers
+                {ui("Can manage providers")}
               </p>
               <NoIntelligenceMessage canManage />
             </div>
             <div className="space-y-2">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Member, view only
+                {ui("Member, view only")}
               </p>
               <NoIntelligenceMessage canManage={false} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Plain, inside a host that draws its own frame
+                {ui("Plain, inside a host that draws its own frame")}
               </p>
               <NoIntelligenceMessage canManage variant="plain" />
             </div>
@@ -159,10 +166,11 @@ export default function DevChatComponentsPage() {
 
         <section className="space-y-3" data-testid="automatic-updates">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Automatic updates</h2>
+            <h2 className="text-lg font-semibold text-foreground">{ui("Automatic updates")}</h2>
             <p className="text-sm text-muted-foreground">
-              A thread report is one folded line. Open it to read the report. A wake with nothing to
-              read is the line only.
+              {ui(
+                "A thread report is one folded line. Open it to read the report. A wake with nothing to read is the line only.",
+              )}
             </p>
           </div>
           <div className={chatSurfaceStyles.column}>
@@ -184,9 +192,13 @@ export default function DevChatComponentsPage() {
 
         <section className="space-y-3 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Empty state and composer</h2>
+            <h2 className="text-lg font-semibold text-foreground">
+              {ui("Empty state and composer")}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              Direct preview of the empty transcript state and the production composer controls.
+              {ui(
+                "Direct preview of the empty transcript state and the production composer controls.",
+              )}
             </p>
           </div>
 

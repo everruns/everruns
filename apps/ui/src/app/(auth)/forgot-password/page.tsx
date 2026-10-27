@@ -5,6 +5,7 @@
 // account exists. Renders the Turnstile challenge when the server advertises
 // one (abuse-prone email-sending endpoint).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -18,7 +19,8 @@ import { usePageTitle } from "@/hooks";
 import { ArrowLeft, Loader2, Mail } from "lucide-react";
 
 export default function ForgotPasswordPage() {
-  usePageTitle("Reset your password");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Reset your password"));
   const { data: config } = useAuthConfig();
   const forgotPasswordMutation = useForgotPassword();
   const searchParams = useSearchParams();
@@ -59,15 +61,15 @@ export default function ForgotPasswordPage() {
           <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Check your inbox
+          {ui("Check your inbox")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          If an account exists for <b className="font-medium text-foreground">{email}</b>,
-          we&apos;ve sent a password reset link. The link expires in one hour.
+          {ui("If an account exists for")} <b className="font-medium text-foreground">{email}</b>
+          {ui(", we've sent a password reset link. The link expires in one hour.")}
         </p>
         <p className="mt-7 text-sm text-muted-foreground">
           <Link href="/login" className="font-medium text-primary hover:underline">
-            Back to sign in
+            {ui("Back to sign in")}
           </Link>
         </p>
       </AuthShell>
@@ -81,13 +83,13 @@ export default function ForgotPasswordPage() {
         className="mb-5 inline-flex items-center gap-[7px] text-[13px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="icon-sharp h-[15px] w-[15px]" strokeWidth={2} />
-        Back to sign in
+        {ui("Back to sign in")}
       </Link>
       <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        Reset your password
+        {ui("Reset your password")}
       </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
-        Enter your email and we&apos;ll send you a reset link.
+        {ui("Enter your email and we'll send you a reset link.")}
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -97,11 +99,11 @@ export default function ForgotPasswordPage() {
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{ui("Email")}</Label>
           <Input
             id="email"
             type="email"
-            placeholder="you@company.com"
+            placeholder={ui("you@company.com")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -112,7 +114,7 @@ export default function ForgotPasswordPage() {
           {forgotPasswordMutation.isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              {ui("Sending...")}
             </>
           ) : (
             "Send reset link"

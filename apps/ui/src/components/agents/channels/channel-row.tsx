@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, MoreHorizontal, Play } from "lucide-react";
@@ -156,6 +157,7 @@ export function ChannelRow({
   usePanel?: React.ReactNode;
   configureHref?: string;
 }) {
+  const ui = useUiTranslations();
   const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
   const publishControl = channelPublishControl(channel);
@@ -177,7 +179,10 @@ export function ChannelRow({
           className="min-w-0 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring"
           aria-expanded={expanded}
           aria-controls={panelId}
-          aria-label={`${expanded ? "Collapse" : "Expand"} ${channelName(channel)} details`}
+          aria-label={ui("{value0} {value1} details", {
+            value0: expanded ? "Collapse" : "Expand",
+            value1: channelName(channel),
+          })}
         >
           <div className="flex min-w-0 items-start gap-3">
             <ChevronDown
@@ -197,7 +202,8 @@ export function ChannelRow({
                 {channelSubline(channel)}
               </p>
               <p className="mt-1 text-xs">
-                {expanded ? "Hide" : "Show"} {inlineConfiguration ? "configuration" : "details"}
+                {expanded ? ui("Hide") : ui("Show")}{" "}
+                {inlineConfiguration ? ui("configuration") : ui("details")}
               </p>
             </div>
           </div>
@@ -205,7 +211,7 @@ export function ChannelRow({
         <div className="flex flex-wrap items-center justify-between gap-4 @min-[44rem]/channel-row:justify-end">
           <div className="shrink-0">
             <p className="text-xs font-medium text-muted-foreground">
-              {channel.channel_type === "schedule" ? "Next run" : "Last invoke"}
+              {channel.channel_type === "schedule" ? ui("Next run") : ui("Last invoke")}
             </p>
             <p className="mt-1 text-sm">
               {channel.channel_type === "schedule"
@@ -214,7 +220,7 @@ export function ChannelRow({
             </p>
           </div>
           <div className="hidden @min-[52rem]/channel-row:block">
-            <p className="text-xs font-medium text-muted-foreground">Runs · 24h</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Runs · 24h")}</p>
             <p className="mt-1 text-sm">0</p>
           </div>
           <div className="flex items-center justify-end gap-1">
@@ -225,7 +231,11 @@ export function ChannelRow({
                   checked={isLive}
                   onCheckedChange={onPublishChange}
                   disabled={publishPending}
-                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}. ${publishControl.hint}`}
+                  aria-label={ui("{value0} {value1}. {value2}", {
+                    value0: isLive ? "Unpublish" : "Publish",
+                    value1: channelName(channel),
+                    value2: publishControl.hint,
+                  })}
                 />
               </label>
             )}
@@ -233,7 +243,7 @@ export function ChannelRow({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   className={buttonVariants({ variant: "ghost", size: "icon" })}
-                  aria-label="Channel actions"
+                  aria-label={ui("Channel actions")}
                 >
                   <MoreHorizontal className="size-4" />
                 </DropdownMenuTrigger>
@@ -241,13 +251,13 @@ export function ChannelRow({
                   <DropdownMenuContent>
                     {configureHref && (
                       <DropdownMenuItem render={<Link href={configureHref} />}>
-                        {inlineConfiguration ? "Channel options" : "Configure"}
+                        {inlineConfiguration ? ui("Channel options") : ui("Configure")}
                       </DropdownMenuItem>
                     )}
                     {onRunNow && (
                       <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
                         <Play className="size-4" />
-                        Run now
+                        {ui("Run now")}
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
@@ -262,21 +272,21 @@ export function ChannelRow({
           {!inlineConfiguration && (
             <div className="grid gap-3 text-sm md:grid-cols-3">
               <div>
-                <p className="text-xs font-medium text-muted-foreground">Configuration</p>
+                <p className="text-xs font-medium text-muted-foreground">{ui("Configuration")}</p>
                 <p className="mt-1">{detailText(channel)}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-muted-foreground">Created</p>
+                <p className="text-xs font-medium text-muted-foreground">{ui("Created")}</p>
                 <p className="mt-1">{new Date(channel.created_at).toLocaleString()}</p>
               </div>
               <div className="flex items-center justify-between gap-3 md:justify-end">
                 <Button type="button" variant="outline" size="sm" onClick={toggle}>
                   <ChevronDown className="size-4 rotate-180 transition-transform" />
-                  Collapse
+                  {ui("Collapse")}
                 </Button>
                 {configureHref && (
                   <Link href={configureHref} className={buttonVariants({ size: "sm" })}>
-                    Configure
+                    {ui("Configure")}
                   </Link>
                 )}
               </div>

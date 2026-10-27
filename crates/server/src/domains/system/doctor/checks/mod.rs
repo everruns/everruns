@@ -6,8 +6,10 @@ pub(super) mod database;
 pub(super) mod messaging;
 pub(super) mod models;
 pub(super) mod observability;
+pub(crate) mod replicas;
 pub(super) mod security;
 pub(super) mod storage;
+pub(super) mod worker_reports;
 pub(super) mod workers;
 
 pub(crate) use database::readiness;
@@ -37,17 +39,20 @@ impl Findings {
 
 /// Run every area concurrently; the slowest network probe bounds the run.
 pub(super) async fn run_all(doctor: &SystemDoctor) -> Findings {
+    // One quick read shared by the checks that compare server replicas.
+    let replicas = replicas::load(doctor).await;
     let (control_plane, database, workers, security, messaging, storage, observability, models) = tokio::join!(
         control_plane::run(doctor),
         database::run(doctor),
         workers::run(doctor),
         security::run(doctor),
-        messaging::run(doctor),
+        messaging::run(doctor, &replicas),
         storage::run(doctor),
         observability::run(doctor),
         models::run(doctor),
     );
     let mut all = Findings::default();
+    all.extend(replicas::run(doctor, &replicas));
     for area in [
         database,
         workers,

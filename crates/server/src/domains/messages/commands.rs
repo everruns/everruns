@@ -483,6 +483,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "routing-harness".to_string(),
                     display_name: None,
                     icon: None,
@@ -588,6 +589,7 @@ mod tests {
         db.create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: AgentId::new().to_string(),
                 name: name.to_string(),
                 display_name: None,
@@ -648,6 +650,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "platform-chat".to_string(),
                     display_name: Some("Platform Chat".to_string()),
                     icon: None,

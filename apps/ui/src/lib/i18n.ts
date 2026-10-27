@@ -9,6 +9,20 @@ export type SupportedLocale = "en" | "uk";
 
 const messages = {
   en: {
+    localization_title: "Localization",
+    localization_help:
+      "Translate the display name and description for each locale. Missing fields use the default text.",
+    localization_display_name: "Display name",
+    localization_description: "Description",
+    localization_remove: "Remove translation",
+    localization_locale: "Locale",
+    localization_add: "Add locale",
+    localization_invalid_locale: "Enter a valid, unique locale. Up to 64 locales are supported.",
+    interface_language: "Interface language",
+    interface_language_system: "System (browser language)",
+    interface_language_help:
+      "Changes the interface on this device. Agent response language is configured separately in session and virtual user settings.",
+
     thinking: "thinking",
     iteration: "Iteration {value}",
     new_messages: "New messages",
@@ -302,6 +316,20 @@ const messages = {
     atif_images_omitted_many: "{count} images were omitted from the ATIF export",
   },
   uk: {
+    localization_title: "Локалізація",
+    localization_help:
+      "Перекладіть назву та опис для кожної мови. Для відсутніх перекладів використовується основний текст.",
+    localization_display_name: "Назва для відображення",
+    localization_description: "Опис",
+    localization_remove: "Видалити переклад",
+    localization_locale: "Мова",
+    localization_add: "Додати мову",
+    localization_invalid_locale: "Введіть коректний унікальний код мови. Підтримується до 64 мов.",
+    interface_language: "Мова інтерфейсу",
+    interface_language_system: "Системна (мова браузера)",
+    interface_language_help:
+      "Змінює інтерфейс на цьому пристрої. Мова відповідей агента налаштовується окремо в параметрах сесії та віртуального користувача.",
+
     thinking: "думаю",
     iteration: "Ітерація {value}",
     new_messages: "Нові повідомлення",
@@ -616,7 +644,7 @@ export function detectBrowserLocale(
 }
 
 export function getSupportedLocale(locale: string): SupportedLocale {
-  return locale.toLowerCase().startsWith("uk") ? "uk" : "en";
+  return normalizeBackendLocale(locale).toLowerCase().split("-")[0] === "uk" ? "uk" : "en";
 }
 
 export function formatMessage(

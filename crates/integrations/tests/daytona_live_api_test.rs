@@ -1417,23 +1417,36 @@ async fn test_live_desktop_recording() {
         session.perform(&action).await.expect("action failed");
     }
 
-    let collected = recording::collect(&client, &guard.sandbox_id)
+    let client = std::sync::Arc::new(client);
+    let mut collected = recording::collect(client.clone(), &guard.sandbox_id)
         .await
         .expect("collect failed");
     assert_eq!(collected.len(), 1, "{collected:?}");
-    let video = collected[0].content.as_ref().expect("video kept");
+    let recording = collected.remove(0);
+    let video: Vec<u8> = futures::TryStreamExt::try_concat(recording.body.expect("video kept"))
+        .await
+        .expect("video streamed");
     assert!(video.len() > 1000, "video is {} bytes", video.len());
     assert!(
-        collected[0].file_name.starts_with("desktop-"),
+        recording.file_name.starts_with("desktop-"),
         "{}",
-        collected[0].file_name
+        recording.file_name
     );
     eprintln!(
         "[recording] {} {} bytes, {:?}s",
-        collected[0].file_name,
+        recording.file_name,
         video.len(),
-        collected[0].duration_seconds
+        recording.duration_seconds
     );
+    // Still in the Sandbox until the stored recording is removed.
+    assert_eq!(
+        recording::list(&client, &guard.sandbox_id)
+            .await
+            .expect("list failed")
+            .len(),
+        1
+    );
+    recording.remove.await.expect("remove failed");
     let left = recording::list(&client, &guard.sandbox_id)
         .await
         .expect("list failed");

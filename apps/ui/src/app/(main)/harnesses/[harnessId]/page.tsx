@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 // Harness page: one layout for reading and editing a harness.
@@ -84,10 +86,11 @@ import { pluralize } from "@/lib/formatting";
 import { useHarnessChatDraft } from "@/components/chat-mode/use-harness-chat-draft";
 import { HarnessIcon } from "@/lib/harness-icons";
 
-const count = (n: number, singular: string, plural?: string) =>
-  `${n} ${pluralize(n, singular, plural)}`;
-
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
+  const { displayLocale } = useDisplayLocale();
+  const count = (n: number, singular: string, plural?: string) =>
+    `${n} ${pluralize(n, singular, plural, displayLocale)}`;
+  const ui = useUiTranslations();
   const { harnessId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -100,7 +103,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
 
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
-  usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
+  usePageTitle(harness ? getDisplayName(harness, displayLocale) : null, ui("Harness"));
   const { data: harnesses = [] } = useHarnesses();
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
@@ -136,7 +139,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const startEdit = useCallback(() => setEditRequested(true), []);
   const chatDraft = useHarnessChatDraft({
     id: harnessId,
-    label: harness ? getDisplayName(harness) : "Harness",
+    label: harness ? getDisplayName(harness, displayLocale) : "Harness",
     updatedAt: harness?.updated_at,
     draft,
     available: !!harness,
@@ -217,8 +220,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   if (!harness) {
     return (
       <ResourceNotFound
-        title="Harness not found"
-        description="This harness may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Harness not found")}
+        description={ui(
+          "This harness may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/harnesses"
         backLabel="Back to harnesses"
         resourceId={harnessId}
@@ -227,40 +232,52 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   }
 
   const isActive = harness.status === "active";
-  const displayName = getDisplayName(harness);
+  const displayName = getDisplayName(harness, displayLocale);
   const network = normalizeNetworkAccess(draft.networkAccess);
   const brandingParts = [
-    draft.fields.description.trim() ? "Description" : "No description",
+    draft.fields.description.trim() ? ui("Description") : ui("No description"),
     ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
   ];
   const promptWords = promptStats(draft.fields.system_prompt).words;
   const moreRows: HarnessMoreRow[] = [
     {
-      id: "prompt",
-      label: "System prompt",
-      summary: draft.fields.system_prompt.trim() ? count(promptWords, "word") : "None",
+      id: "localization",
+      label: ui("Localization"),
+      summary: Object.keys(draft.localizations).join(", ") || ui("Default"),
     },
-    { id: "branding", label: "Branding", summary: brandingParts.join(" · ") },
+    {
+      id: "prompt",
+      label: ui("System prompt"),
+      summary: draft.fields.system_prompt.trim() ? count(promptWords, "word") : ui("None"),
+    },
+    { id: "branding", label: ui("Branding"), summary: brandingParts.join(" · ") },
     {
       id: "files",
-      label: "Starter files",
-      summary: draft.files.length ? count(draft.files.length, "file") : "None",
+      label: ui("Starter files"),
+      summary: draft.files.length ? count(draft.files.length, "file") : ui("None"),
     },
     {
       id: "network",
-      label: "Network access",
+      label: ui("Network access"),
       summary:
         network.allowed.length || network.blocked.length
           ? [
-              ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
-              ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
+              ...(network.allowed.length
+                ? [ui("{value0} allowed", { value0: network.allowed.length })]
+                : []),
+              ...(network.blocked.length
+                ? [ui("{value0} blocked", { value0: network.blocked.length })]
+                : []),
             ].join(" · ")
-          : "Unrestricted",
+          : ui("Unrestricted"),
     },
     {
       id: "usage",
-      label: "Usage",
-      summary: `${count(harness.session_count ?? 0, "session")} · ${count(harness.app_count ?? 0, "app")}`,
+      label: ui("Usage"),
+      summary: ui("{value0} · {value1}", {
+        value0: count(harness.session_count ?? 0, "session"),
+        value1: count(harness.app_count ?? 0, "app"),
+      }),
     },
   ];
 
@@ -294,10 +311,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     <>
       <Button onClick={handleSave} disabled={updateHarness.isPending || chatDraft.blocked}>
         <Check className="size-4" />
-        {updateHarness.isPending ? "Saving..." : "Save changes"}
+        {updateHarness.isPending ? ui("Saving...") : ui("Save changes")}
       </Button>
       <Button variant="outline" onClick={handleDiscard} disabled={updateHarness.isPending}>
-        Discard
+        {ui("Discard")}
       </Button>
     </>
   ) : (
@@ -305,7 +322,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       {isActive && !harness.is_built_in && (
         <Button variant="outline" onClick={startEdit}>
           <Pencil className="size-4" />
-          Edit
+          {ui("Edit")}
         </Button>
       )}
       {overflowMenu}
@@ -317,7 +334,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       <PageContainer>
         {chatDraft.notice}
         <PageBreadcrumb
-          items={[{ label: "Harnesses", href: "/harnesses" }, { label: displayName }]}
+          items={[{ label: ui("Harnesses"), href: "/harnesses" }, { label: displayName }]}
         />
 
         <PageMasthead
@@ -327,22 +344,24 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           badges={
             <>
               <span className="font-mono text-xs text-muted-foreground">{harness.name}</span>
-              {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
+              {harness.is_built_in && <Badge variant="outline">{ui("Built-in")}</Badge>}
               {editing ? (
                 <Badge variant="accent">
                   <Pencil />
-                  Editing
+                  {ui("Editing")}
                 </Badge>
               ) : (
                 <Badge variant={getEntityStatusBadgeVariant(harness.status)}>
-                  {harness.status}
+                  {ui(harness.status)}
                 </Badge>
               )}
             </>
           }
           description={
             editing
-              ? "Changes apply to new sessions only. Running sessions keep the current definition."
+              ? ui(
+                  "Changes apply to new sessions only. Running sessions keep the current definition.",
+                )
               : undefined
           }
           actions={actions}
@@ -350,7 +369,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
         {updateHarness.error && (
           <p role="alert" className="-mt-2 text-sm text-destructive">
-            Could not save: {updateHarness.error.message}
+            {ui("Could not save:")} {updateHarness.error.message}
           </p>
         )}
 
@@ -413,7 +432,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         </div>
 
         <PageFooter>
-          <BackLink href="/harnesses">Back to Harnesses</BackLink>
+          <BackLink href="/harnesses">{ui("Back to Harnesses")}</BackLink>
         </PageFooter>
       </PageContainer>
 
@@ -439,12 +458,18 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {confirmAction === "delete" ? "Delete harness" : "Archive harness"}
+              {confirmAction === "delete" ? ui("Delete harness") : ui("Archive harness")}
             </DialogTitle>
             <DialogDescription>
               {confirmAction === "delete"
-                ? `Permanently delete the archived harness “${displayName}”? Existing references will render as deleted tombstones.`
-                : `Archive “${displayName}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.`}
+                ? ui(
+                    "Permanently delete the archived harness “{value0}”? Existing references will render as deleted tombstones.",
+                    { value0: displayName },
+                  )
+                : ui(
+                    "Archive “{value0}”? It stays visible when archived items are shown, becomes read-only, and stops being assignable.",
+                    { value0: displayName },
+                  )}
             </DialogDescription>
             {confirmError && confirmAction && (
               <EntityDeleteErrorNotice
@@ -457,7 +482,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmAction(null)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               variant={confirmAction === "delete" ? "destructive" : "default"}
@@ -466,11 +491,11 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
             >
               {confirmAction === "delete"
                 ? destroyHarness.isPending
-                  ? "Deleting..."
-                  : "Delete harness"
+                  ? ui("Deleting...")
+                  : ui("Delete harness")
                 : deleteHarness.isPending
-                  ? "Archiving..."
-                  : "Archive harness"}
+                  ? ui("Archiving...")
+                  : ui("Archive harness")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -82,6 +82,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
 
 pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
     CreateAgentRow {
+        localizations: Default::default(),
         public_id: AgentId::new().to_string(),
         name,
         display_name: Some("Conformance Agent".to_string()),

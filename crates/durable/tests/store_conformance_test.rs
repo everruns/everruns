@@ -137,12 +137,18 @@ conformance!(
     concurrent_schedule_ensures_create_one_schedule,
     a_due_schedule_fires_once_across_schedulers,
     concurrent_reaps_settle_a_dead_task_once,
+    registration_keeps_what_the_worker_reports,
+    self_checks_replace_the_previous_report,
+    draining_records_when_it_started,
 );
 
 // Dead-letter cases live in their own file to keep this one under the size cap.
 #[path = "store_conformance/dead_letters.rs"]
 mod dead_letters;
 use dead_letters::*;
+#[path = "store_conformance/worker_reports.rs"]
+mod worker_reports;
+use worker_reports::*;
 
 // --- helpers ---------------------------------------------------------------
 

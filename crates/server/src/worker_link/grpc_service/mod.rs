@@ -65,8 +65,6 @@ use everruns_internal_protocol::proto::{
     CommitExecResponse,
     CompleteDurableTaskRequest,
     CompleteDurableTaskResponse,
-    CreateImageArtifactRequest,
-    CreateImageArtifactResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DrainDurableWorkerRequest,
@@ -136,6 +134,8 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerSuccessResponse,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
+    ReportDurableWorkerChecksRequest,
+    ReportDurableWorkerChecksResponse,
     ResolveFilesRequest,
     ResolveFilesResponse,
     ResolveImageRequest,
@@ -163,6 +163,7 @@ use everruns_internal_protocol::{
 };
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 
@@ -288,10 +289,37 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
             Some(t) if crate::security::constant_time_eq(t.as_bytes(), expected.as_bytes()) => {
                 Ok(request)
             }
-            Some(_) => Err(Status::unauthenticated("Invalid gRPC auth token")),
-            None => Err(Status::unauthenticated("Missing gRPC auth token")),
+            Some(_) => {
+                note_rejected_worker();
+                Err(Status::unauthenticated("Invalid gRPC auth token"))
+            }
+            None => {
+                note_rejected_worker();
+                Err(Status::unauthenticated("Missing gRPC auth token"))
+            }
         }
     }
+}
+
+/// Worker calls this process refused for a missing or wrong token, and when
+/// the last one was. Until now only the worker's own log showed a token
+/// mismatch; the system doctor reads these.
+static REJECTED_WORKER_CALLS: AtomicU64 = AtomicU64::new(0);
+static LAST_REJECTED_WORKER_CALL: AtomicI64 = AtomicI64::new(0);
+
+fn note_rejected_worker() {
+    REJECTED_WORKER_CALLS.fetch_add(1, Ordering::Relaxed);
+    LAST_REJECTED_WORKER_CALL.store(chrono::Utc::now().timestamp(), Ordering::Relaxed);
+}
+
+/// How many worker calls this process refused since it started, and when it
+/// last refused one.
+pub(crate) fn rejected_worker_calls() -> (u64, Option<chrono::DateTime<chrono::Utc>>) {
+    let last = match LAST_REJECTED_WORKER_CALL.load(Ordering::Relaxed) {
+        0 => None,
+        at => chrono::DateTime::from_timestamp(at, 0),
+    };
+    (REJECTED_WORKER_CALLS.load(Ordering::Relaxed), last)
 }
 
 /// gRPC service implementation for worker communication

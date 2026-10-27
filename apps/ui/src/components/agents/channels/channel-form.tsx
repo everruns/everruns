@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useCallback, useId, useState } from "react";
 import {
   CalendarClock,
@@ -618,6 +619,7 @@ export function ChannelTypePicker({
   value: ChannelType;
   onChange: (value: ChannelType) => void;
 }) {
+  const ui = useUiTranslations();
   const publicChatEnabled = useFeatureFlag("public_chat");
   const voiceEnabled = useFeatureFlag("voice");
   const kinds = CHANNEL_FORM_KINDS.filter(
@@ -651,7 +653,7 @@ export function ChannelTypePicker({
                   <p className="mt-1 text-sm text-muted-foreground">{channelDescription(kind)}</p>
                 </div>
               </div>
-              {selected && <span className="text-sm font-medium">Selected</span>}
+              {selected && <span className="text-sm font-medium">{ui("Selected")}</span>}
             </div>
           </button>
         );
@@ -690,6 +692,7 @@ export function ChannelForm({
   slackInstallCapability?: SlackInstallCapability;
   onSlackCapabilityChanged?: () => void | Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
   const slackInstallAvailable = slackInstallCapability?.connected === true;
@@ -708,7 +711,7 @@ export function ChannelForm({
   if (section === "runs") {
     return (
       <div className="border border-dashed p-4 text-sm text-muted-foreground">
-        Run history will appear here when channel run aggregation is available.
+        {ui("Run history will appear here when channel run aggregation is available.")}
       </div>
     );
   }
@@ -727,15 +730,15 @@ export function ChannelForm({
       {(state.kind === "schedule" || state.kind === "webhook") &&
         (section === "all" || section === "invocation") && (
           <div className="space-y-2">
-            <Label htmlFor="channel_message">Invocation message</Label>
+            <Label htmlFor="channel_message">{ui("Invocation message")}</Label>
             <Textarea
               id="channel_message"
               value={state.channelMessage}
               onChange={(event) => update("channelMessage", event.target.value)}
               placeholder={
                 state.kind === "schedule"
-                  ? "Run {{app.name}} now."
-                  : "Process webhook payload for {{payload.repo.name}}."
+                  ? ui("Run {{app.name}} now.")
+                  : ui("Process webhook payload for {{payload.repo.name}}.")
               }
             />
           </div>
@@ -744,7 +747,7 @@ export function ChannelForm({
       {(state.kind === "schedule" || state.kind === "webhook") &&
         (section === "all" || section === "session") && (
           <div className="space-y-2">
-            <Label htmlFor="session_mode">Session mode</Label>
+            <Label htmlFor="session_mode">{ui("Session mode")}</Label>
             <Select
               value={state.invocationSessionMode}
               onValueChange={(value) =>
@@ -768,16 +771,18 @@ export function ChannelForm({
 
       {state.kind === "webhook" && (section === "all" || section === "invocation") && (
         <div className="space-y-2">
-          <Label htmlFor="webhook_token">Webhook token</Label>
+          <Label htmlFor="webhook_token">{ui("Webhook token")}</Label>
           <Input
             id="webhook_token"
             type="password"
             value={state.webhookToken}
             onChange={(event) => update("webhookToken", event.target.value)}
-            placeholder={mode === "edit" ? "Leave blank to keep existing token" : "shared-secret"}
+            placeholder={
+              mode === "edit" ? ui("Leave blank to keep existing token") : ui("shared-secret")
+            }
           />
           <p className="text-xs text-muted-foreground">
-            Send as Authorization: Bearer &lt;token&gt; or X-Everruns-Webhook-Token.
+            {ui("Send as Authorization: Bearer <token> or X-Everruns-Webhook-Token.")}
           </p>
         </div>
       )}
@@ -785,7 +790,7 @@ export function ChannelForm({
       {state.kind === "ag_ui" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="ag_ui_token">Bearer token</Label>
+            <Label htmlFor="ag_ui_token">{ui("Bearer token")}</Label>
             <div className="flex gap-2">
               <Input
                 id="ag_ui_token"
@@ -793,7 +798,9 @@ export function ChannelForm({
                 onChange={(event) => update("agUiToken", event.target.value)}
                 className="font-mono"
                 placeholder={
-                  mode === "edit" ? "Leave blank to keep existing token" : "Generated bearer token"
+                  mode === "edit"
+                    ? ui("Leave blank to keep existing token")
+                    : ui("Generated bearer token")
                 }
               />
               <Button
@@ -801,7 +808,7 @@ export function ChannelForm({
                 variant="outline"
                 size="icon"
                 onClick={() => update("agUiToken", generateChannelToken())}
-                aria-label="Regenerate AG-UI token"
+                aria-label={ui("Regenerate AG-UI token")}
               >
                 <RefreshCw className="size-4" />
               </Button>
@@ -809,7 +816,9 @@ export function ChannelForm({
           </div>
           <AgentIdSignInFields
             idPrefix="ag_ui"
-            description="Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used."
+            description={ui(
+              "Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used.",
+            )}
             enabled={state.agUiAgentIdEnabled}
             clientId={state.agUiAgentIdClientId}
             onEnabledChange={(checked) => update("agUiAgentIdEnabled", checked)}
@@ -817,7 +826,7 @@ export function ChannelForm({
           />
           <FieldGrid>
             <div className="space-y-2">
-              <Label htmlFor="ag_ui_tool_visibility">Tool visibility</Label>
+              <Label htmlFor="ag_ui_tool_visibility">{ui("Tool visibility")}</Label>
               <Select
                 value={state.agUiToolVisibility}
                 onValueChange={(value) => update("agUiToolVisibility", value as AgUiToolVisibility)}
@@ -837,19 +846,19 @@ export function ChannelForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ag_ui_rate_limit">Rate limit / minute</Label>
+              <Label htmlFor="ag_ui_rate_limit">{ui("Rate limit / minute")}</Label>
               <Input
                 id="ag_ui_rate_limit"
                 value={state.agUiRateLimitPerMinute}
                 onChange={(event) => update("agUiRateLimitPerMinute", event.target.value)}
                 inputMode="numeric"
-                placeholder="No per-channel cap"
+                placeholder={ui("No per-channel cap")}
               />
             </div>
           </FieldGrid>
           {state.agUiToolVisibility === "generic" && (
             <div className="space-y-2">
-              <Label htmlFor="ag_ui_generic_tool_text">Generic activity text</Label>
+              <Label htmlFor="ag_ui_generic_tool_text">{ui("Generic activity text")}</Label>
               <Input
                 id="ag_ui_generic_tool_text"
                 value={state.agUiGenericToolText}
@@ -857,7 +866,7 @@ export function ChannelForm({
                 maxLength={120}
               />
               <p className="text-xs text-muted-foreground">
-                Tool names, arguments, and results are never sent to public clients.
+                {ui("Tool names, arguments, and results are never sent to public clients.")}
               </p>
             </div>
           )}
@@ -868,10 +877,11 @@ export function ChannelForm({
         <div className="space-y-4">
           <div className="flex items-center justify-between border p-3">
             <div>
-              <p className="text-sm font-medium">Anonymous access</p>
+              <p className="text-sm font-medium">{ui("Anonymous access")}</p>
               <p className="text-xs text-muted-foreground">
-                When off, every request must present the bearer token below. The FCP handshake (GET
-                on the channel URL) stays public so clients can discover how to authenticate.
+                {ui(
+                  "When off, every request must present the bearer token below. The FCP handshake (GET on the channel URL) stays public so clients can discover how to authenticate.",
+                )}
               </p>
             </div>
             <Switch
@@ -880,7 +890,7 @@ export function ChannelForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fcp_token">Bearer token</Label>
+            <Label htmlFor="fcp_token">{ui("Bearer token")}</Label>
             <div className="flex gap-2">
               <Input
                 id="fcp_token"
@@ -888,7 +898,9 @@ export function ChannelForm({
                 onChange={(event) => update("fcpToken", event.target.value)}
                 className="font-mono"
                 placeholder={
-                  mode === "edit" ? "Leave blank to keep existing token" : "Generated bearer token"
+                  mode === "edit"
+                    ? ui("Leave blank to keep existing token")
+                    : ui("Generated bearer token")
                 }
               />
               <Button
@@ -896,32 +908,33 @@ export function ChannelForm({
                 variant="outline"
                 size="icon"
                 onClick={() => update("fcpToken", generateChannelToken())}
-                aria-label="Regenerate FCP token"
+                aria-label={ui("Regenerate FCP token")}
               >
                 <RefreshCw className="size-4" />
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Verified with constant-time comparison; sent as Authorization: Bearer &lt;token&gt; or
-              X-Everruns-FCP-Token. Never echoed in responses.
+              {ui(
+                "Verified with constant-time comparison; sent as Authorization: Bearer <token> or X-Everruns-FCP-Token. Never echoed in responses.",
+              )}
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="fcp_handshake">Custom handshake (Markdown)</Label>
+            <Label htmlFor="fcp_handshake">{ui("Custom handshake (Markdown)")}</Label>
             <Textarea
               id="fcp_handshake"
               value={state.fcpHandshake}
               onChange={(event) => update("fcpHandshake", event.target.value)}
-              placeholder="Leave blank to auto-generate from the agent name and description."
+              placeholder={ui("Leave blank to auto-generate from the agent name and description.")}
               rows={4}
             />
             <p className="text-xs text-muted-foreground">
-              Returned verbatim for GET on the channel URL. Use plain Markdown.
+              {ui("Returned verbatim for GET on the channel URL. Use plain Markdown.")}
             </p>
           </div>
           <FieldGrid>
             <div className="space-y-2">
-              <Label htmlFor="fcp_expiration">Session expiration (hours)</Label>
+              <Label htmlFor="fcp_expiration">{ui("Session expiration (hours)")}</Label>
               <Input
                 id="fcp_expiration"
                 value={String(state.fcpExpirationHours)}
@@ -933,25 +946,25 @@ export function ChannelForm({
                 placeholder="6"
               />
               <p className="text-xs text-muted-foreground">
-                0 = never expire the fcp_session cookie.
+                {ui("0 = never expire the fcp_session cookie.")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fcp_rate_limit">Rate limit / minute</Label>
+              <Label htmlFor="fcp_rate_limit">{ui("Rate limit / minute")}</Label>
               <Input
                 id="fcp_rate_limit"
                 value={state.fcpRateLimitPerMinute}
                 onChange={(event) => update("fcpRateLimitPerMinute", event.target.value)}
                 inputMode="numeric"
-                placeholder="No per-channel cap"
+                placeholder={ui("No per-channel cap")}
               />
               <p className="text-xs text-muted-foreground">
-                FCP-only limiter namespace; cannot share buckets with other channels.
+                {ui("FCP-only limiter namespace; cannot share buckets with other channels.")}
               </p>
             </div>
           </FieldGrid>
           <div className="space-y-2">
-            <Label htmlFor="fcp_response_timeout">Response timeout (seconds)</Label>
+            <Label htmlFor="fcp_response_timeout">{ui("Response timeout (seconds)")}</Label>
             <Input
               id="fcp_response_timeout"
               value={state.fcpResponseTimeoutSeconds}
@@ -960,7 +973,7 @@ export function ChannelForm({
               placeholder="120"
             />
             <p className="text-xs text-muted-foreground">
-              How long the channel waits for the agent before returning 504. Must be 1-600s.
+              {ui("How long the channel waits for the agent before returning 504. Must be 1-600s.")}
             </p>
           </div>
         </div>
@@ -970,11 +983,11 @@ export function ChannelForm({
         <div className="space-y-4">
           <div className="flex items-center justify-between border p-3">
             <div>
-              <p className="text-sm font-medium">Anonymous access</p>
+              <p className="text-sm font-medium">{ui("Anonymous access")}</p>
               <p className="text-xs text-muted-foreground">
-                When on, anyone with the link can chat (optionally gated by the shared token below).
-                Turn off to require sign-in. You must enable Google sign-in below, otherwise the
-                chat rejects every request.
+                {ui(
+                  "When on, anyone with the link can chat (optionally gated by the shared token below). Turn off to require sign-in. You must enable Google sign-in below, otherwise the chat rejects every request.",
+                )}
               </p>
             </div>
             <Switch
@@ -984,20 +997,20 @@ export function ChannelForm({
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-medium">Branding</p>
+            <p className="text-sm font-medium">{ui("Branding")}</p>
             <FieldGrid>
               <div className="space-y-2">
-                <Label htmlFor="public_chat_display_name">Display name</Label>
+                <Label htmlFor="public_chat_display_name">{ui("Display name")}</Label>
                 <Input
                   id="public_chat_display_name"
                   value={state.publicChatDisplayName}
                   onChange={(event) => update("publicChatDisplayName", event.target.value)}
                   maxLength={120}
-                  placeholder="Falls back to the agent name"
+                  placeholder={ui("Falls back to the agent name")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="public_chat_primary_color">Primary color</Label>
+                <Label htmlFor="public_chat_primary_color">{ui("Primary color")}</Label>
                 <Input
                   id="public_chat_primary_color"
                   value={state.publicChatPrimaryColor}
@@ -1007,7 +1020,7 @@ export function ChannelForm({
               </div>
             </FieldGrid>
             <div className="space-y-2">
-              <Label htmlFor="public_chat_logo_url">Logo URL</Label>
+              <Label htmlFor="public_chat_logo_url">{ui("Logo URL")}</Label>
               <Input
                 id="public_chat_logo_url"
                 value={state.publicChatLogoUrl}
@@ -1016,19 +1029,19 @@ export function ChannelForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="public_chat_welcome">Welcome message</Label>
+              <Label htmlFor="public_chat_welcome">{ui("Welcome message")}</Label>
               <Textarea
                 id="public_chat_welcome"
                 value={state.publicChatWelcomeMessage}
                 onChange={(event) => update("publicChatWelcomeMessage", event.target.value)}
-                placeholder="Shown before the visitor's first message."
+                placeholder={ui("Shown before the visitor's first message.")}
                 rows={2}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="public_chat_token">Shared token (optional)</Label>
+            <Label htmlFor="public_chat_token">{ui("Shared token (optional)")}</Label>
             <div className="flex gap-2">
               <Input
                 id="public_chat_token"
@@ -1036,7 +1049,9 @@ export function ChannelForm({
                 onChange={(event) => update("publicChatToken", event.target.value)}
                 className="font-mono"
                 placeholder={
-                  mode === "edit" ? "Leave blank to keep existing token" : "Optional bearer token"
+                  mode === "edit"
+                    ? ui("Leave blank to keep existing token")
+                    : ui("Optional bearer token")
                 }
               />
               <Button
@@ -1044,7 +1059,7 @@ export function ChannelForm({
                 variant="outline"
                 size="icon"
                 onClick={() => update("publicChatToken", generateChannelToken())}
-                aria-label="Regenerate Public Chat token"
+                aria-label={ui("Regenerate Public Chat token")}
               >
                 <RefreshCw className="size-4" />
               </Button>
@@ -1054,9 +1069,11 @@ export function ChannelForm({
           <div className="space-y-3">
             <div className="flex items-center justify-between border p-3">
               <div>
-                <p className="text-sm font-medium">Bot mitigation (Cloudflare Turnstile)</p>
+                <p className="text-sm font-medium">{ui("Bot mitigation (Cloudflare Turnstile)")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Challenge anonymous visitors before they can chat. Signed-in visitors are exempt.
+                  {ui(
+                    "Challenge anonymous visitors before they can chat. Signed-in visitors are exempt.",
+                  )}
                 </p>
               </div>
               <Switch
@@ -1066,17 +1083,19 @@ export function ChannelForm({
             </div>
             <FieldGrid>
               <div className="space-y-2">
-                <Label htmlFor="public_chat_turnstile_site_key">Turnstile site key</Label>
+                <Label htmlFor="public_chat_turnstile_site_key">{ui("Turnstile site key")}</Label>
                 <Input
                   id="public_chat_turnstile_site_key"
                   value={state.publicChatTurnstileSiteKey}
                   onChange={(event) => update("publicChatTurnstileSiteKey", event.target.value)}
                   className="font-mono"
-                  placeholder="0x4AAAAAAA..."
+                  placeholder={ui("0x4AAAAAAA...")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="public_chat_turnstile_secret_key">Turnstile secret key</Label>
+                <Label htmlFor="public_chat_turnstile_secret_key">
+                  {ui("Turnstile secret key")}
+                </Label>
                 <Input
                   id="public_chat_turnstile_secret_key"
                   type="password"
@@ -1084,13 +1103,15 @@ export function ChannelForm({
                   onChange={(event) => update("publicChatTurnstileSecretKey", event.target.value)}
                   className="font-mono"
                   placeholder={
-                    mode === "edit" ? "Leave blank to keep existing secret" : "0x4AAAAAAA..."
+                    mode === "edit"
+                      ? ui("Leave blank to keep existing secret")
+                      : ui("0x4AAAAAAA...")
                   }
                 />
               </div>
             </FieldGrid>
             <p className="text-xs text-muted-foreground">
-              The secret key is write-only and never shown after saving.
+              {ui("The secret key is write-only and never shown after saving.")}
             </p>
           </div>
 
@@ -1105,7 +1126,7 @@ export function ChannelForm({
 
           <FieldGrid>
             <div className="space-y-2">
-              <Label htmlFor="public_chat_tool_visibility">Tool visibility</Label>
+              <Label htmlFor="public_chat_tool_visibility">{ui("Tool visibility")}</Label>
               <Select
                 value={state.publicChatToolVisibility}
                 onValueChange={(value) =>
@@ -1127,19 +1148,19 @@ export function ChannelForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="public_chat_rate_limit">Rate limit / minute</Label>
+              <Label htmlFor="public_chat_rate_limit">{ui("Rate limit / minute")}</Label>
               <Input
                 id="public_chat_rate_limit"
                 value={state.publicChatRateLimitPerMinute}
                 onChange={(event) => update("publicChatRateLimitPerMinute", event.target.value)}
                 inputMode="numeric"
-                placeholder="No per-channel cap"
+                placeholder={ui("No per-channel cap")}
               />
             </div>
           </FieldGrid>
           {state.publicChatToolVisibility === "generic" && (
             <div className="space-y-2">
-              <Label htmlFor="public_chat_generic_tool_text">Generic activity text</Label>
+              <Label htmlFor="public_chat_generic_tool_text">{ui("Generic activity text")}</Label>
               <Input
                 id="public_chat_generic_tool_text"
                 value={state.publicChatGenericToolText}
@@ -1149,7 +1170,7 @@ export function ChannelForm({
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="public_chat_expiration">Session expiration (hours)</Label>
+            <Label htmlFor="public_chat_expiration">{ui("Session expiration (hours)")}</Label>
             <Input
               id="public_chat_expiration"
               value={String(state.publicChatExpirationHours)}
@@ -1160,7 +1181,9 @@ export function ChannelForm({
               inputMode="numeric"
               placeholder="6"
             />
-            <p className="text-xs text-muted-foreground">0 = never expire a visitor session.</p>
+            <p className="text-xs text-muted-foreground">
+              {ui("0 = never expire a visitor session.")}
+            </p>
           </div>
         </div>
       )}
@@ -1187,11 +1210,13 @@ export function ChannelForm({
           {slackLive && (
             <div className="space-y-3 border p-4">
               <div className="space-y-1">
-                {!channel && <p className="text-sm font-medium">Installed in Slack</p>}
+                {!channel && <p className="text-sm font-medium">{ui("Installed in Slack")}</p>}
                 <p className="text-xs text-muted-foreground">
-                  This agent has its own Slack app in workspace {state.slackTeamId}. Mention it in a
-                  channel
-                  {state.slackAgentSurfaceEnabled ? ", or open it from Slack’s Agents menu." : "."}
+                  {ui("This agent has its own Slack app in workspace")} {state.slackTeamId}
+                  {ui(". Mention it in a channel")}
+                  {state.slackAgentSurfaceEnabled
+                    ? ui(", or open it from Slack’s Agents menu.")
+                    : "."}
                 </p>
               </div>
               <a
@@ -1201,7 +1226,7 @@ export function ChannelForm({
                 rel="noreferrer"
               >
                 <Slack className="size-4" />
-                Open in Slack
+                {ui("Open in Slack")}
               </a>
             </div>
           )}
@@ -1221,11 +1246,11 @@ export function ChannelForm({
             !slackInstall.unavailable && (
               <div className="space-y-3 border p-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Add to Slack</p>
+                  <p className="text-sm font-medium">{ui("Add to Slack")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Creates this agent&apos;s own Slack app in the workspace above and opens Slack
-                    to approve it. The signing secret, bot token and workspace ID are filled in for
-                    you.
+                    {ui(
+                      "Creates this agent's own Slack app in the workspace above and opens Slack to approve it. The signing secret, bot token and workspace ID are filled in for you.",
+                    )}
                   </p>
                 </div>
                 <Button
@@ -1236,11 +1261,11 @@ export function ChannelForm({
                   }
                 >
                   <Slack className="size-4" />
-                  {slackInstall.pending ? "Opening Slack…" : "Add to Slack"}
+                  {slackInstall.pending ? ui("Opening Slack…") : ui("Add to Slack")}
                 </Button>
                 {slackInstallDisabled && (
                   <p className="text-xs text-muted-foreground">
-                    Save changes before opening Slack.
+                    {ui("Save changes before opening Slack.")}
                   </p>
                 )}
                 {slackInstall.error && (
@@ -1250,8 +1275,9 @@ export function ChannelForm({
             )}
           {!slackLive && mode === "new" && slackInstallAvailable && (
             <p className="text-xs text-muted-foreground">
-              Save the channel to add it to Slack in one click. If you already have a Slack app,
-              open Configure manually below.
+              {ui(
+                "Save the channel to add it to Slack in one click. If you already have a Slack app, open Configure manually below.",
+              )}
             </p>
           )}
         </div>
@@ -1295,7 +1321,7 @@ export function ChannelForm({
                     !manualSlackOpen && "-rotate-90",
                   )}
                 />
-                <span>Configure manually</span>
+                <span>{ui("Configure manually")}</span>
               </button>
             </CollapsibleTrigger>
             <p
@@ -1303,21 +1329,26 @@ export function ChannelForm({
               className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground"
             >
               {slackLive || state.slackCredentialsConfigured
-                ? "View or update the credentials for this agent’s Slack app."
+                ? ui("View or update the credentials for this agent’s Slack app.")
                 : slackInstallAvailable
-                  ? "Use credentials from an existing Slack app. Add to Slack fills these in for you."
-                  : "Use credentials from your Slack app to connect this channel. You can save now and finish setup later."}
+                  ? ui(
+                      "Use credentials from an existing Slack app. Add to Slack fills these in for you.",
+                    )
+                  : ui(
+                      "Use credentials from your Slack app to connect this channel. You can save now and finish setup later.",
+                    )}
             </p>
             <CollapsibleContent className="space-y-4 pt-4">
               {manualSlackOpen && channel && <SlackManualSetup channel={channel} />}
               <p className="text-xs text-muted-foreground">
-                These fields are optional when saving. Slack requests are rejected until a signing
-                secret is set; a bot token is needed to send replies.
+                {ui(
+                  "These fields are optional when saving. Slack requests are rejected until a signing secret is set; a bot token is needed to send replies.",
+                )}
                 {mode === "edit" && " Leave secret fields blank to keep the saved credentials."}
               </p>
               <FieldGrid>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_signing_secret`}>Signing secret</Label>
+                  <Label htmlFor={`${slackFormId}_signing_secret`}>{ui("Signing secret")}</Label>
                   <Input
                     id={`${slackFormId}_signing_secret`}
                     type="password"
@@ -1325,49 +1356,50 @@ export function ChannelForm({
                     onChange={(event) => update("slackSigningSecret", event.target.value)}
                     placeholder={
                       mode === "edit"
-                        ? "Leave blank to keep existing secret"
-                        : "Slack signing secret"
+                        ? ui("Leave blank to keep existing secret")
+                        : ui("Slack signing secret")
                     }
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_bot_token`}>Bot token</Label>
+                  <Label htmlFor={`${slackFormId}_bot_token`}>{ui("Bot token")}</Label>
                   <Input
                     id={`${slackFormId}_bot_token`}
                     type="password"
                     value={state.slackBotToken}
                     onChange={(event) => update("slackBotToken", event.target.value)}
                     placeholder={
-                      mode === "edit" ? "Leave blank to keep existing token" : "xoxb-..."
+                      mode === "edit" ? ui("Leave blank to keep existing token") : ui("xoxb-...")
                     }
                   />
                 </div>
               </FieldGrid>
               <FieldGrid>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_team_id`}>Workspace ID</Label>
+                  <Label htmlFor={`${slackFormId}_team_id`}>{ui("Workspace ID")}</Label>
                   <Input
                     id={`${slackFormId}_team_id`}
                     value={state.slackTeamId}
                     onChange={(event) => update("slackTeamId", event.target.value)}
-                    placeholder="T0123456789"
+                    placeholder={ui("T0123456789")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor={`${slackFormId}_channel_id`}>Channel ID</Label>
+                  <Label htmlFor={`${slackFormId}_channel_id`}>{ui("Channel ID")}</Label>
                   <Input
                     id={`${slackFormId}_channel_id`}
                     aria-describedby={`${slackFormId}_channel_id_description`}
                     value={state.slackChannelId}
                     onChange={(event) => update("slackChannelId", event.target.value)}
-                    placeholder="C0123456789"
+                    placeholder={ui("C0123456789")}
                   />
                   <p
                     id={`${slackFormId}_channel_id_description`}
                     className="text-xs leading-relaxed text-muted-foreground"
                   >
-                    Limit this integration to one Slack channel. Leave blank to accept any Slack
-                    channel in the workspace.
+                    {ui(
+                      "Limit this integration to one Slack channel. Leave blank to accept any Slack channel in the workspace.",
+                    )}
                   </p>
                 </div>
               </FieldGrid>
@@ -1380,16 +1412,17 @@ export function ChannelForm({
 }
 
 export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
+  const ui = useUiTranslations();
   return (
     <Card className="h-fit">
       <CardContent className="space-y-4 py-4">
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Channel</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Channel")}</p>
           <p className="mt-1 font-medium">{getChannelTypeDisplayName(state.kind)}</p>
         </div>
         {state.kind === "schedule" && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Schedule preview</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Schedule preview")}</p>
             <p className="mt-1 text-sm">
               <CronLabel expr={state.scheduleCronExpression} tz={state.scheduleTimezone} />
             </p>
@@ -1397,34 +1430,37 @@ export function ChannelFormSummary({ state }: { state: ChannelFormState }) {
         )}
         {(state.kind === "webhook" || state.kind === "ag_ui" || state.kind === "fcp") && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Activation</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Activation")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Publish this channel before external clients can invoke it.
+              {ui("Publish this channel before external clients can invoke it.")}
             </p>
           </div>
         )}
         {state.kind === "api" && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Agent keys</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Agent keys")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              After you create the channel, publish it and create an agent key on its page.
+              {ui("After you create the channel, publish it and create an agent key on its page.")}
             </p>
           </div>
         )}
         {state.kind === "voice" && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Voice</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Voice")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Needs an OpenAI provider. Call it from the channel, the chat microphone, or the API.
+              {ui(
+                "Needs an OpenAI provider. Call it from the channel, the chat microphone, or the API.",
+              )}
             </p>
           </div>
         )}
         {state.kind === "slack" && (
           <div>
-            <p className="text-xs font-medium text-muted-foreground">Slack</p>
+            <p className="text-xs font-medium text-muted-foreground">{ui("Slack")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Gets its own Slack app, with its own name in Slack&apos;s Agents menu, in the
-              workspace you choose.
+              {ui(
+                "Gets its own Slack app, with its own name in Slack's Agents menu, in the workspace you choose.",
+              )}
             </p>
           </div>
         )}

@@ -1,5 +1,8 @@
 "use client";
 
+import { localizedEntityDescription } from "@/lib/entity-localization";
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, useMemo, useState } from "react";
 import {
   Select,
@@ -54,6 +57,8 @@ export function HarnessSelect({
   noneLabel = "None",
   excludeIds = [],
 }: HarnessSelectProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const [showDeprecated, setShowDeprecated] = useState(false);
   const noneValue = "__none__";
   const purposeId = `${useId()}-purpose`;
@@ -77,11 +82,12 @@ export function HarnessSelect({
   // When no value is set and includeNoneOption is true, show the noneLabel.
   const selected = value ? harnessMap.get(value) : undefined;
   const displayValue = value
-    ? getDisplayName(selected) || (filteredHarnesses.length === 0 ? "Loading…" : value)
+    ? getDisplayName(selected, displayLocale) ||
+      (filteredHarnesses.length === 0 ? ui("Loading…") : value)
     : includeNoneOption
-      ? noneLabel
+      ? ui(noneLabel)
       : undefined;
-  const purpose = selected?.description?.trim() || "";
+  const purpose = selected ? localizedEntityDescription(selected, displayLocale).trim() : "";
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-1.5">
@@ -95,10 +101,10 @@ export function HarnessSelect({
           className={className}
           aria-describedby={purpose ? purposeId : undefined}
         >
-          <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
+          <SelectValue placeholder={ui(placeholder)}>{displayValue}</SelectValue>
         </SelectTrigger>
         <SelectContent className="w-72">
-          {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
+          {includeNoneOption && <SelectItem value={noneValue}>{ui(noneLabel)}</SelectItem>}
           {harnesses.some(isHarnessDeprecated) && (
             <button
               type="button"
@@ -106,11 +112,11 @@ export function HarnessSelect({
               onClick={() => setShowDeprecated((shown) => !shown)}
               aria-pressed={showDeprecated}
             >
-              {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+              {showDeprecated ? ui("Hide deprecated") : ui("Show deprecated")}
             </button>
           )}
           {filteredHarnesses.map((harness) => {
-            const description = harness.description?.trim();
+            const description = localizedEntityDescription(harness, displayLocale).trim();
             return (
               <SelectItem
                 key={harness.id}
@@ -118,7 +124,7 @@ export function HarnessSelect({
                 className="items-start py-1.5 [&>div]:min-w-0 [&>div]:flex-1"
               >
                 <span className="flex w-full min-w-0 flex-col items-start gap-0.5 whitespace-normal">
-                  <span>{getDisplayName(harness)}</span>
+                  <span>{getDisplayName(harness, displayLocale)}</span>
                   {description ? (
                     <span className="line-clamp-2 text-left text-[11px] leading-snug font-normal text-muted-foreground">
                       {description}
@@ -141,7 +147,7 @@ export function HarnessSelect({
         rel="noreferrer"
         className="w-fit text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
       >
-        Which harness should I use?
+        {ui("Which harness should I use?")}
       </a>
     </div>
   );

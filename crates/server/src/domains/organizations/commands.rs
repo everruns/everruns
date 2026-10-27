@@ -143,6 +143,7 @@ mod tests {
         db.create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: agent_public_id.clone(),
                 name: "resolve-test".to_string(),
                 display_name: None,
@@ -197,6 +198,7 @@ mod tests {
         db.create_agent(
             42,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: agent_public_id.clone(),
                 name: "other-org-agent".to_string(),
                 display_name: None,

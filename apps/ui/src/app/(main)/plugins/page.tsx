@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useRef, useState } from "react";
@@ -104,6 +105,7 @@ function MarketplaceCard({
   onRemove: (m: Marketplace) => void;
   onBrowse: (m: Marketplace) => void;
 }) {
+  const ui = useUiTranslations();
   const syncMutation = useSyncMarketplace();
   const updateMutation = useUpdateMarketplace(marketplace.id);
   const isDisabled = marketplace.status === "disabled";
@@ -137,7 +139,7 @@ function MarketplaceCard({
         <div className="space-y-1 text-sm text-muted-foreground mb-4">
           {marketplace.last_synced_at ? (
             <p>
-              Last synced: {new Date(marketplace.last_synced_at).toLocaleString()}
+              {ui("Last synced:")} {new Date(marketplace.last_synced_at).toLocaleString()}
               {marketplace.last_synced_sha && (
                 <span className="ml-1 font-mono text-xs">
                   ({truncateSha(marketplace.last_synced_sha)})
@@ -145,13 +147,13 @@ function MarketplaceCard({
               )}
             </p>
           ) : (
-            <p>Never synced</p>
+            <p>{ui("Never synced")}</p>
           )}
         </div>
         <CardActions
           primary={
             <Button variant="outline" size="sm" onClick={() => onBrowse(marketplace)}>
-              Browse
+              {ui("Browse")}
             </Button>
           }
           expanded={
@@ -165,7 +167,7 @@ function MarketplaceCard({
                 <RefreshCw
                   className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`}
                 />
-                Sync now
+                {ui("Sync now")}
               </Button>
               <Button
                 variant="outline"
@@ -173,7 +175,7 @@ function MarketplaceCard({
                 onClick={handleToggle}
                 disabled={updateMutation.isPending}
               >
-                {isDisabled ? "Enable" : "Disable"}
+                {isDisabled ? ui("Enable") : ui("Disable")}
               </Button>
               <Button variant="destructive" size="sm" onClick={() => onRemove(marketplace)}>
                 <Trash2 className="h-4 w-4" />
@@ -184,7 +186,7 @@ function MarketplaceCard({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={<Button variant="outline" size="icon-sm" />}
-                aria-label="More marketplace actions"
+                aria-label={ui("More marketplace actions")}
               >
                 <Ellipsis />
               </DropdownMenuTrigger>
@@ -195,14 +197,14 @@ function MarketplaceCard({
                     disabled={syncMutation.isPending}
                   >
                     <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
-                    {syncMutation.isPending ? "Syncing…" : "Sync now"}
+                    {syncMutation.isPending ? ui("Syncing…") : ui("Sync now")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleToggle} disabled={updateMutation.isPending}>
-                    {isDisabled ? "Enable" : "Disable"}
+                    {isDisabled ? ui("Enable") : ui("Disable")}
                   </DropdownMenuItem>
                   <DropdownMenuItem variant="destructive" onClick={() => onRemove(marketplace)}>
                     <Trash2 />
-                    Remove
+                    {ui("Remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenuPositioner>
@@ -246,6 +248,7 @@ function AddMarketplaceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const [name, setName] = useState("");
   const [source, setSource] = useState("");
   const createMarketplace = useCreateMarketplace();
@@ -275,45 +278,47 @@ function AddMarketplaceDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Marketplace</DialogTitle>
+          <DialogTitle>{ui("Add Marketplace")}</DialogTitle>
           <DialogDescription>
-            Register a plugin marketplace by GitHub repo (<code>owner/repo</code>) or direct HTTPS
-            URL to a <code>marketplace.json</code>.
+            {ui("Register a plugin marketplace by GitHub repo (")}
+            <code>owner/repo</code>
+            {ui(") or direct HTTPS URL to a")} <code>marketplace.json</code>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="marketplace-name">Name</Label>
+            <Label htmlFor="marketplace-name">{ui("Name")}</Label>
             <Input
               id="marketplace-name"
               value={name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder="my-marketplace"
+              placeholder={ui("my-marketplace")}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="marketplace-source">Source</Label>
+            <Label htmlFor="marketplace-source">{ui("Source")}</Label>
             <Input
               id="marketplace-source"
               value={source}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSource(e.target.value)}
-              placeholder="owner/repo or https://example.com/marketplace.json"
+              placeholder={ui("owner/repo or https://example.com/marketplace.json")}
               required
             />
             <p className="text-xs text-muted-foreground">
-              GitHub repo (e.g. <code>acme/plugins</code>) or a direct HTTPS URL.
+              {ui("GitHub repo (e.g.")} <code>acme/plugins</code>
+              {ui(") or a direct HTTPS URL.")}
             </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               type="submit"
               disabled={createMarketplace.isPending || !name.trim() || !source.trim()}
             >
-              {createMarketplace.isPending ? "Adding..." : "Add Marketplace"}
+              {createMarketplace.isPending ? ui("Adding...") : ui("Add Marketplace")}
             </Button>
           </DialogFooter>
         </form>
@@ -335,6 +340,7 @@ function RemoveMarketplaceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const deleteMarketplace = useDeleteMarketplace();
 
   const handleConfirm = async () => {
@@ -347,22 +353,24 @@ function RemoveMarketplaceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Remove Marketplace</DialogTitle>
+          <DialogTitle>{ui("Remove Marketplace")}</DialogTitle>
           <DialogDescription>
-            Remove the marketplace <span className="font-medium">{marketplace?.name}</span>? The
-            catalog will no longer be available, but already-installed plugins are not uninstalled.
+            {ui("Remove the marketplace")} <span className="font-medium">{marketplace?.name}</span>
+            {ui(
+              "? The catalog will no longer be available, but already-installed plugins are not uninstalled.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button
             variant="destructive"
             onClick={handleConfirm}
             disabled={deleteMarketplace.isPending}
           >
-            {deleteMarketplace.isPending ? "Removing..." : "Remove"}
+            {deleteMarketplace.isPending ? ui("Removing...") : ui("Remove")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -385,6 +393,7 @@ export function CatalogEntryRow({
   marketplaceName: string;
   installedPlugins: InstalledPlugin[];
 }) {
+  const ui = useUiTranslations();
   const installMutation = useInstallPlugin(marketplaceId, marketplaceName);
   const installStarted = useRef(false);
   const installedPlugin =
@@ -447,7 +456,11 @@ export function CatalogEntryRow({
           {entry.description && (
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
           )}
-          {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
+          {entry.author && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {ui("by")} {entry.author}
+            </p>
+          )}
         </div>
         <Button
           size="sm"
@@ -461,17 +474,19 @@ export function CatalogEntryRow({
       </div>
       {isUpgrade && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Version {installedPlugin.version} is installed. Update it from Installed Plugins.
+          {ui("Version")} {installedPlugin.version}{" "}
+          {ui("is installed. Update it from Installed Plugins.")}
         </p>
       )}
       {isSourceConflict && (
         <p className="mt-2 text-xs text-muted-foreground">
-          This plugin name is already installed from {installedPlugin.marketplace}.
+          {ui("This plugin name is already installed from")} {installedPlugin.marketplace}.
         </p>
       )}
       {installMutation.isError && (
         <p role="alert" className="mt-2 text-sm text-destructive">
-          Failed to install {entry.display_name ?? entry.name}: {installMutation.error.message}
+          {ui("Failed to install")} {entry.display_name ?? entry.name}:{" "}
+          {installMutation.error.message}
         </p>
       )}
     </div>
@@ -489,15 +504,18 @@ function MarketplaceCatalogDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: entries, isLoading, error } = useMarketplaceCatalog(marketplace?.id ?? "");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{marketplace?.name} catalog</DialogTitle>
+          <DialogTitle>
+            {marketplace?.name} {ui("catalog")}
+          </DialogTitle>
           <DialogDescription>
-            Browse available plugins from this marketplace and install them.
+            {ui("Browse available plugins from this marketplace and install them.")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-y-auto">
@@ -524,8 +542,8 @@ function MarketplaceCatalogDialog({
                 <Store className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
                 <p className="text-muted-foreground">
                   {marketplace?.last_synced_at
-                    ? "No plugins in this catalog"
-                    : "Sync the marketplace to see available plugins"}
+                    ? ui("No plugins in this catalog")
+                    : ui("Sync the marketplace to see available plugins")}
                 </p>
               </div>
             }
@@ -547,7 +565,7 @@ function MarketplaceCatalogDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            {ui("Close")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -566,6 +584,7 @@ export function InstalledPluginCard({
   plugin: InstalledPlugin;
   onUninstall: (p: InstalledPlugin) => void;
 }) {
+  const ui = useUiTranslations();
   const patchMutation = usePatchInstalledPlugin(plugin.id);
   const updateMutation = useUpdateInstalledPlugin();
   const [warningsExpanded, setWarningsExpanded] = useState(false);
@@ -604,13 +623,14 @@ export function InstalledPluginCard({
           {plugin.warnings.length > 0 && (
             <Badge variant="outline" className="text-warning border-warning text-xs gap-1">
               <AlertTriangle className="h-3 w-3" />
-              {plugin.warnings.length} warning{plugin.warnings.length !== 1 ? "s" : ""}
+              {plugin.warnings.length} {ui("warning")}
+              {plugin.warnings.length !== 1 ? "s" : ""}
             </Badge>
           )}
           {needsIdentity && (
             <Badge variant="secondary" className="text-xs gap-1">
               <AlertTriangle className="h-3 w-3" />
-              Needs identity
+              {ui("Needs identity")}
             </Badge>
           )}
           <EntityStatus status={plugin.status} />
@@ -622,11 +642,19 @@ export function InstalledPluginCard({
             <EntityCardDescription>{plugin.description}</EntityCardDescription>
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2">
-            {plugin.version && <span>Version: {plugin.version}</span>}
-            {plugin.marketplace && <span>Marketplace: {plugin.marketplace}</span>}
+            {plugin.version && (
+              <span>
+                {ui("Version:")} {plugin.version}
+              </span>
+            )}
+            {plugin.marketplace && (
+              <span>
+                {ui("Marketplace:")} {plugin.marketplace}
+              </span>
+            )}
             {plugin.pinned_sha && (
               <span>
-                SHA: <span className="font-mono">{truncateSha(plugin.pinned_sha)}</span>
+                {ui("SHA:")} <span className="font-mono">{truncateSha(plugin.pinned_sha)}</span>
               </span>
             )}
           </div>
@@ -644,7 +672,7 @@ export function InstalledPluginCard({
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              Install warnings
+              {ui("Install warnings")}
             </button>
             {warningsExpanded && (
               <ul className="mt-1.5 space-y-1">
@@ -660,9 +688,11 @@ export function InstalledPluginCard({
         {needsIdentity && (
           <div className="mb-4 space-y-3 border border-warning/50 bg-warning/10 p-3">
             <div>
-              <p className="text-sm font-medium">Choose an acting identity</p>
+              <p className="text-sm font-medium">{ui("Choose an acting identity")}</p>
               <p className="text-xs text-muted-foreground">
-                This plugin cannot be enabled until each authenticated MCP server has an identity.
+                {ui(
+                  "This plugin cannot be enabled until each authenticated MCP server has an identity.",
+                )}
               </p>
             </div>
             {plugin.identity_required.map((serverName) => (
@@ -676,7 +706,7 @@ export function InstalledPluginCard({
                     onClick={() => handleIdentityChoice(serverName, "user")}
                     disabled={patchMutation.isPending}
                   >
-                    Use invoking user
+                    {ui("Use invoking user")}
                   </Button>
                   <Button
                     type="button"
@@ -685,7 +715,7 @@ export function InstalledPluginCard({
                     onClick={() => handleIdentityChoice(serverName, "service")}
                     disabled={patchMutation.isPending}
                   >
-                    Use agent service
+                    {ui("Use agent service")}
                   </Button>
                 </div>
               </div>
@@ -704,7 +734,7 @@ export function InstalledPluginCard({
               <RefreshCw
                 className={`h-4 w-4 mr-1 ${updateMutation.isPending ? "animate-spin" : ""}`}
               />
-              {updateMutation.isPending ? "Updating..." : "Update"}
+              {updateMutation.isPending ? ui("Updating...") : ui("Update")}
             </Button>
           )}
           <Button
@@ -712,13 +742,13 @@ export function InstalledPluginCard({
             size="sm"
             onClick={handleToggle}
             disabled={patchMutation.isPending || (!isEnabled && needsIdentity)}
-            title={!isEnabled && needsIdentity ? "Choose an acting identity first" : undefined}
+            title={!isEnabled && needsIdentity ? ui("Choose an acting identity first") : undefined}
           >
-            {isEnabled ? "Disable" : "Enable"}
+            {isEnabled ? ui("Disable") : ui("Enable")}
           </Button>
           <Button variant="destructive" size="sm" onClick={() => onUninstall(plugin)}>
             <Trash2 className="h-4 w-4 mr-1" />
-            Uninstall
+            {ui("Uninstall")}
           </Button>
         </div>
       </CardContent>
@@ -761,6 +791,7 @@ function UninstallPluginDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const deleteMutation = useDeleteInstalledPlugin();
 
   const handleConfirm = async () => {
@@ -773,19 +804,20 @@ function UninstallPluginDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Uninstall Plugin</DialogTitle>
+          <DialogTitle>{ui("Uninstall Plugin")}</DialogTitle>
           <DialogDescription>
-            Uninstall <span className="font-medium">{plugin?.display_name ?? plugin?.name}</span>?
-            The capability <code>{plugin?.capability_ref}</code> will be removed. Agents referencing
-            it will surface a dangling-ref error.
+            {ui("Uninstall")}{" "}
+            <span className="font-medium">{plugin?.display_name ?? plugin?.name}</span>
+            {ui("? The capability")} <code>{plugin?.capability_ref}</code>{" "}
+            {ui("will be removed. Agents referencing it will surface a dangling-ref error.")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button variant="destructive" onClick={handleConfirm} disabled={deleteMutation.isPending}>
-            {deleteMutation.isPending ? "Uninstalling..." : "Uninstall"}
+            {deleteMutation.isPending ? ui("Uninstalling...") : ui("Uninstall")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -798,7 +830,8 @@ function UninstallPluginDialog({
 // ============================================
 
 export default function PluginsPage() {
-  usePageTitle("Plugins");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Plugins"));
   const [activeTab, setActiveTab] = useState<"installed" | "marketplaces">("installed");
   useChatPageFilters({ tab: activeTab });
 
@@ -824,23 +857,25 @@ export default function PluginsPage() {
   const marketplaceCount = marketplaces?.length ?? 0;
 
   const sectionItems = [
-    { value: "installed" as const, label: "Installed Plugins", count: installedCount },
-    { value: "marketplaces" as const, label: "Marketplaces", count: marketplaceCount },
+    { value: "installed" as const, label: ui("Installed Plugins"), count: installedCount },
+    { value: "marketplaces" as const, label: ui("Marketplaces"), count: marketplaceCount },
   ];
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Plugins" }]} />
+      <PageBreadcrumb items={[{ label: ui("Plugins") }]} />
 
       <PageMasthead
         icon={<PluginsIcon />}
-        title="Plugins"
-        description="Install plugins from marketplaces to extend agents with skills, commands, and MCP servers packaged in the standard plugin format."
+        title={ui("Plugins")}
+        description={ui(
+          "Install plugins from marketplaces to extend agents with skills, commands, and MCP servers packaged in the standard plugin format.",
+        )}
         actions={
           activeTab === "marketplaces" && (
             <Button variant="accent" onClick={() => setAddMarketplaceOpen(true)}>
               <Plus className="size-4" />
-              Add Marketplace
+              {ui("Add Marketplace")}
             </Button>
           )
         }
@@ -872,13 +907,13 @@ export default function PluginsPage() {
             emptyState={
               <Card className="p-8 text-center">
                 <Package className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h2 className="mb-2 text-lg font-medium">No plugins installed</h2>
+                <h2 className="mb-2 text-lg font-medium">{ui("No plugins installed")}</h2>
                 <p className="mb-4 text-muted-foreground">
-                  Browse a marketplace to install plugins into your organization.
+                  {ui("Browse a marketplace to install plugins into your organization.")}
                 </p>
                 <Button variant="outline" onClick={() => setActiveTab("marketplaces")}>
                   <Store className="mr-2 h-4 w-4" />
-                  View Marketplaces
+                  {ui("View Marketplaces")}
                 </Button>
               </Card>
             }
@@ -914,13 +949,13 @@ export default function PluginsPage() {
             emptyState={
               <Card className="p-8 text-center">
                 <Store className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h2 className="mb-2 text-lg font-medium">No marketplaces registered</h2>
+                <h2 className="mb-2 text-lg font-medium">{ui("No marketplaces registered")}</h2>
                 <p className="mb-4 text-muted-foreground">
-                  Add a marketplace to browse and install plugins.
+                  {ui("Add a marketplace to browse and install plugins.")}
                 </p>
                 <Button onClick={() => setAddMarketplaceOpen(true)}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Add Marketplace
+                  {ui("Add Marketplace")}
                 </Button>
               </Card>
             }

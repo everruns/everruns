@@ -5,6 +5,7 @@
 // flag regressions (passed → failed) and improvements (failed → passed). With a
 // pass-rate row on top, this is the "did this run regress vs last" view.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { meanScore } from "@/components/evals/eval-format";
@@ -58,6 +59,7 @@ function runShortId(run: EvalRun): string {
 }
 
 export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[] }) {
+  const ui = useUiTranslations();
   // Oldest → newest so "previous run" is the column to the left.
   const ordered = [...runs].sort((a, b) => a.created_at.localeCompare(b.created_at));
 
@@ -85,7 +87,7 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
           <thead>
             <tr>
               <th className="sticky left-0 z-10 bg-background py-2 px-3 text-left text-sm font-medium text-muted-foreground">
-                Case
+                {ui("Case")}
               </th>
               {ordered.map((run) => (
                 <th key={run.id} className="py-2 px-3 text-center align-bottom">
@@ -100,7 +102,7 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
                   </div>
                   {run.source === "external" && (
                     <Badge variant="secondary" className="mt-1 text-[10px]">
-                      {run.attribution?.system ?? "external"}
+                      {run.attribution?.system ?? ui("external")}
                     </Badge>
                   )}
                 </th>
@@ -108,14 +110,16 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
             </tr>
             <tr>
               <th className="sticky left-0 z-10 bg-background py-1 px-3 text-left text-xs font-normal text-muted-foreground">
-                Pass rate
+                {ui("Pass rate")}
               </th>
               {ordered.map((run) => (
                 <th
                   key={run.id}
                   className="py-1 px-3 text-center text-xs font-medium text-muted-foreground"
                 >
-                  {run.summary ? `${(run.summary.pass_rate * 100).toFixed(0)}%` : "—"}
+                  {run.summary
+                    ? ui("{value0}%", { value0: (run.summary.pass_rate * 100).toFixed(0) })
+                    : "—"}
                 </th>
               ))}
             </tr>
@@ -151,9 +155,9 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
                       key={run.id}
                       title={
                         regressed
-                          ? "Regressed from previous run"
+                          ? ui("Regressed from previous run")
                           : improved
-                            ? "Improved"
+                            ? ui("Improved")
                             : undefined
                       }
                       className={`py-2 px-3 text-center text-sm font-medium rounded-md ${verdictClasses(agg?.verdict ?? "none")} ${ring}`}
@@ -169,12 +173,15 @@ export function RunComparison({ evalId, runs }: { evalId: string; runs: EvalRun[
       </div>
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded ring-2 ring-destructive" /> regressed
+          <span className="inline-block w-3 h-3 rounded ring-2 ring-destructive" />{" "}
+          {ui("regressed")}
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded ring-2 ring-success" /> improved
+          <span className="inline-block w-3 h-3 rounded ring-2 ring-success" /> {ui("improved")}
         </span>
-        <span>cells show mean score (✓/✗ when no numeric score); runs ordered oldest → newest</span>
+        <span>
+          {ui("cells show mean score (✓/✗ when no numeric score); runs ordered oldest → newest")}
+        </span>
       </div>
     </div>
   );

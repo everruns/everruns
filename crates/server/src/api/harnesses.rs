@@ -295,6 +295,7 @@ pub async fn import_harness(
     };
 
     let req = CreateHarnessRequest {
+        localizations: example.definition.localizations.clone(),
         name: unique_name,
         display_name: Some(example.definition.display_name.clone()),
         description: Some(example.definition.description.clone()),

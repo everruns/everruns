@@ -1,6 +1,7 @@
 {
   "name": "everruns-object-agent",
   "main": "worker/index.js",
+  "minify": true,
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": { "TENANT_ID": "example", "MODEL": "gpt-6-luna" },

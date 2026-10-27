@@ -68,6 +68,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "trigger-harness".to_string(),
                 display_name: Some("Trigger Harness".to_string()),
                 icon: None,
@@ -92,6 +93,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: "trigger-agent".to_string(),
             display_name: Some("Trigger Agent".to_string()),
@@ -268,6 +270,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::AgentRow {
+        localizations: Default::default(),
         avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
@@ -358,6 +361,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "preserved-app-harness".to_string(),
                 display_name: None,
                 icon: None,

@@ -7,6 +7,7 @@
 //   client for V1. Matching notifications never enter rendered state while the chat is visible.
 // - Toasts are a secondary delivery surface layered on top of the same canonical notifications.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   createContext,
   useCallback,
@@ -121,6 +122,7 @@ function updateViewedInState(state: NotificationState, notificationId: string): 
 }
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
+  const ui = useUiTranslations();
   const router = useRouter();
   const queryClient = useQueryClient();
   const pathname = usePathname();
@@ -426,7 +428,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
                   onClick={() =>
                     setToastQueue((prev) => prev.filter((item) => item.toast_id !== toast.toast_id))
                   }
-                  aria-label="Dismiss notification"
+                  aria-label={ui("Dismiss notification")}
                 >
                   <X className="h-4 w-4" />
                 </button>

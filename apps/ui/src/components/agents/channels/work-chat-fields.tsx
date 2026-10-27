@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
@@ -16,6 +17,7 @@ export function WorkChatFields({
   value: ApiFormState;
   onChange: (value: ApiFormState) => void;
 }) {
+  const ui = useUiTranslations();
   const params = useParams();
   const agentId = String(params.agentId ?? "");
   const features = useQuery({
@@ -30,26 +32,29 @@ export function WorkChatFields({
   });
   return (
     <div className="space-y-4">
-      <Label htmlFor="chat-interface">Interface</Label>
+      <Label htmlFor="chat-interface">{ui("Interface")}</Label>
       <select
         id="chat-interface"
         className="w-full border bg-background p-2"
         value={mode}
         onChange={(event) => onModeChange(event.target.value as typeof mode)}
       >
-        <option value="multi_chat">Multiple conversations</option>
+        <option value="multi_chat">{ui("Multiple conversations")}</option>
         <option value="single_with_threads" disabled={!features.data?.threads}>
-          Single chat with threads
+          {ui("Single chat with threads")}
         </option>
       </select>
       {!features.data?.threads && (
         <p className="text-sm text-muted-foreground">
-          Single chat with threads requires the Agent’s coordinator capability and thread tools.
+          {ui(
+            "Single chat with threads requires the Agent’s coordinator capability and thread tools.",
+          )}
         </p>
       )}
       <p className="text-sm text-muted-foreground">
-        Consumers sign in separately from the console. Your configured approvals and spending limits
-        apply.
+        {ui(
+          "Consumers sign in separately from the console. Your configured approvals and spending limits apply.",
+        )}
       </p>
       <ApiFields
         hosted

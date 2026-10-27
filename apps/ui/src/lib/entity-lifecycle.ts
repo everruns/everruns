@@ -1,3 +1,4 @@
+import { localizedEntityField, type EntityLocalizations } from "./entity-localization";
 import type { VariantProps } from "class-variance-authority";
 import { badgeVariants } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -54,10 +55,16 @@ export function getEntityNameClassName(status: EntityLifecycleStatus | string | 
 
 /** Resolve the best display name for an entity with optional display_name. */
 export function getDisplayName(
-  entity: { name: string; display_name?: string | null } | null | undefined,
+  entity:
+    | { name: string; display_name?: string | null; localizations?: EntityLocalizations | null }
+    | null
+    | undefined,
+  locale: string = "en",
 ): string {
   if (!entity) return "";
-  return entity.display_name || entity.name;
+  return (
+    localizedEntityField(entity, "display_name", locale) ?? (entity.display_name || entity.name)
+  );
 }
 
 export function getDeletedEntityLabel(kind: EntityKind): string {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +27,7 @@ export function ArchiveMemoryDialog({
   onOpenChange,
   onArchive,
 }: ArchiveMemoryDialogProps) {
+  const ui = useUiTranslations();
   async function handleArchive() {
     await onArchive();
     onOpenChange(false);
@@ -35,17 +37,17 @@ export function ArchiveMemoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Archive Memory</DialogTitle>
+          <DialogTitle>{ui("Archive Memory")}</DialogTitle>
           <DialogDescription>
-            {memory ? `Archive ${memory.name}?` : "Archive this memory?"}
+            {memory ? ui("Archive {value0}?", { value0: memory.name }) : ui("Archive this memory?")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button variant="destructive" onClick={handleArchive} disabled={isPending || !memory}>
-            Archive
+            {ui("Archive")}
           </Button>
         </DialogFooter>
       </DialogContent>

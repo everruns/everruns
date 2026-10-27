@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import type { SandboxFleetItem } from "@/lib/api/sandboxes";
@@ -30,27 +32,30 @@ export function SandboxFleetTable({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>State</TableHead>
-          <TableHead>Session</TableHead>
-          <TableHead>Agent</TableHead>
-          <TableHead>Provider</TableHead>
-          <TableHead>Template</TableHead>
+          <TableHead>{ui("State")}</TableHead>
+          <TableHead>{ui("Session")}</TableHead>
+          <TableHead>{ui("Agent")}</TableHead>
+          <TableHead>{ui("Provider")}</TableHead>
+          <TableHead>{ui("Template")}</TableHead>
           <TableHead className="text-right">
             <Tooltip>
-              <TooltipTrigger className="cursor-help">Gen</TooltipTrigger>
+              <TooltipTrigger className="cursor-help">{ui("Gen")}</TooltipTrigger>
               <TooltipContent>
-                How many provider resources this Sandbox has had. Above 1 means it was lost and
-                rebuilt.
+                {ui(
+                  "How many provider resources this Sandbox has had. Above 1 means it was lost and rebuilt.",
+                )}
               </TooltipContent>
             </Tooltip>
           </TableHead>
-          <TableHead className="text-right">Checkpoints</TableHead>
-          <TableHead>Last active</TableHead>
-          <TableHead className="text-right">Age</TableHead>
+          <TableHead className="text-right">{ui("Checkpoints")}</TableHead>
+          <TableHead>{ui("Last active")}</TableHead>
+          <TableHead className="text-right">{ui("Age")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -107,14 +112,17 @@ export function SandboxFleetTable({
                     {sandbox.agent_name ?? sandbox.agent_id}
                   </Link>
                 ) : (
-                  <span className="text-muted-foreground">None</span>
+                  <span className="text-muted-foreground">{ui("None")}</span>
                 )}
               </TableCell>
               <TableCell>{providerLabel(sandbox.provider)}</TableCell>
               <TableCell className="font-mono text-xs text-muted-foreground">
                 {sandbox.template
-                  ? `${sandbox.template.display_name ?? "Template"} r${sandbox.template.revision ?? "?"}`
-                  : "No template"}
+                  ? ui("{value0} r{value1}", {
+                      value0: sandbox.template.display_name ?? "Template",
+                      value1: sandbox.template.revision ?? "?",
+                    })
+                  : ui("No template")}
               </TableCell>
               <TableCell
                 className={cn(
@@ -126,7 +134,7 @@ export function SandboxFleetTable({
               </TableCell>
               <TableCell className="text-right tabular-nums">{sandbox.checkpoint_count}</TableCell>
               <TableCell className="text-muted-foreground">
-                {formatRelativeTime(sandbox.last_activity_at ?? sandbox.updated_at)}
+                {formatRelativeTime(sandbox.last_activity_at ?? sandbox.updated_at, displayLocale)}
               </TableCell>
               <TableCell className="text-right tabular-nums text-muted-foreground">
                 {formatAge(sandbox.created_at, sandbox.deleted_at ?? null)}

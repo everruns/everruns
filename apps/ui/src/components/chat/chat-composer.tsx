@@ -9,6 +9,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AtSign, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -152,6 +153,7 @@ export function ChatComposer({
   voicePending?: boolean;
   onToggleVoice?: () => void;
 }) {
+  const ui = useUiTranslations();
   const { backendLocale, t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCommands, setShowCommands] = useState(false);
@@ -249,7 +251,7 @@ export function ChatComposer({
           multiple
           className="hidden"
           onChange={handleFileChange}
-          aria-label="Attach images"
+          aria-label={ui("Attach images")}
         />
 
         {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}
@@ -291,7 +293,7 @@ export function ChatComposer({
                 <button
                   type="button"
                   className="ml-1 inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                  aria-label={`Remove mention of ${selectedMention.label}`}
+                  aria-label={ui("Remove mention of {value0}", { value0: selectedMention.label })}
                   onClick={() => {
                     onMentionChange(null);
                     textareaRef.current?.focus();
@@ -380,7 +382,7 @@ export function ChatComposer({
                   )}
                   disabled={voicePending || (composerDisabled && !voiceActive)}
                   onClick={onToggleVoice}
-                  title={voiceActive ? "End voice session" : "Start voice session"}
+                  title={voiceActive ? ui("End voice session") : ui("Start voice session")}
                 >
                   {voicePending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -21,6 +21,7 @@ async fn new_built_in_names_preserve_colliding_custom_harnesses() {
     .await
     .unwrap();
     let custom_input = |name: &str, parent_harness_id| CreateHarnessRow {
+        localizations: Default::default(),
         name: name.into(),
         display_name: None,
         icon: None,
@@ -161,6 +162,7 @@ async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id: id.to_string(),
                     name: name.into(),
                     display_name: None,
@@ -422,6 +424,7 @@ async fn legacy_worker_bindings_move_to_the_worker_matching_their_compute() {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: "support".into(),
                 display_name: None,
                 icon: None,
@@ -463,6 +466,7 @@ async fn legacy_worker_bindings_move_to_the_worker_matching_their_compute() {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id: id.to_string(),
                     name: name.into(),
                     display_name: None,

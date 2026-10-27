@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { virtualUserCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
@@ -29,7 +30,8 @@ import { virtualUserFormSchema, getFieldErrors, type FieldErrors } from "@/lib/f
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 
 export default function NewVirtualUserPage() {
-  usePageTitle("New virtual user", "Virtual Users");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New virtual user"), ui("Virtual Users"));
   const router = useRouter();
   const createIdentity = useCreateVirtualUser();
   const [usage, setUsage] = useState<"end_user" | "service">("service");
@@ -43,7 +45,7 @@ export default function NewVirtualUserPage() {
     schema: virtualUserCreateDraftSchema,
     values: { usage, name, description, locale, timezone },
     entityType: "virtual_user",
-    label: "New virtual user",
+    label: ui("New virtual user"),
     baseline: "new",
     dirty: !!(name || description || locale || timezone || usage !== "service"),
     writable: !createIdentity.isPending,
@@ -85,21 +87,24 @@ export default function NewVirtualUserPage() {
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Virtual Users", href: "/virtual-users" }, { label: "New virtual user" }]}
+        items={[
+          { label: ui("Virtual Users"), href: "/virtual-users" },
+          { label: ui("New virtual user") },
+        ]}
       />
 
       <PageMasthead
         icon={<VirtualUserIcon />}
-        title="New virtual user"
-        description="Create an end user profile or an agent service account."
+        title={ui("New virtual user")}
+        description={ui("Create an end user profile or an agent service account.")}
         actions={
           <>
             <Button type="submit" form="identity-edit-form" disabled={isSaving || !name}>
               <Check className="size-4" />
-              {isSaving ? "Creating..." : "Create virtual user"}
+              {isSaving ? ui("Creating...") : ui("Create virtual user")}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
-              Discard
+              {ui("Discard")}
             </Button>
           </>
         }
@@ -111,26 +116,26 @@ export default function NewVirtualUserPage() {
           <PageMain>
             <Card>
               <CardHeader>
-                <CardTitle>Profile</CardTitle>
+                <CardTitle>{ui("Profile")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="usage">Usage</Label>
+                  <Label htmlFor="usage">{ui("Usage")}</Label>
                   <select
                     id="usage"
                     className="h-10 w-full border bg-background px-3 text-sm"
                     value={usage}
                     onChange={(e) => setUsage(e.target.value as "end_user" | "service")}
                   >
-                    <option value="end_user">End user</option>
-                    <option value="service">Service</option>
+                    <option value="end_user">{ui("End user")}</option>
+                    <option value="service">{ui("Service")}</option>
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    Usage is fixed when the account is created.
+                    {ui("Usage is fixed when the account is created.")}
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{ui("Name")}</Label>
                   <Input
                     id="name"
                     value={name}
@@ -147,7 +152,7 @@ export default function NewVirtualUserPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">{ui("Description")}</Label>
                   <Textarea
                     id="description"
                     value={description}
@@ -156,18 +161,18 @@ export default function NewVirtualUserPage() {
                       setFieldErrors((prev) => ({ ...prev, description: undefined }));
                     }}
                     aria-invalid={!!fieldErrors.description}
-                    placeholder="Describe this virtual user..."
+                    placeholder={ui("Describe this virtual user...")}
                     rows={3}
                   />
                   {fieldErrors.description && (
                     <p className="text-xs text-destructive">{fieldErrors.description}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">Supports Markdown</p>
+                  <p className="text-xs text-muted-foreground">{ui("Supports Markdown")}</p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Locale</Label>
+                    <Label>{ui("Locale")}</Label>
                     <Combobox
                       options={LOCALE_OPTIONS}
                       value={locale}
@@ -175,7 +180,7 @@ export default function NewVirtualUserPage() {
                         setLocale(value);
                         setFieldErrors((prev) => ({ ...prev, locale: undefined }));
                       }}
-                      placeholder="Select locale..."
+                      placeholder={ui("Select locale...")}
                       searchPlaceholder="Search locales..."
                     />
                     {fieldErrors.locale && (
@@ -183,7 +188,7 @@ export default function NewVirtualUserPage() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label>Timezone</Label>
+                    <Label>{ui("Timezone")}</Label>
                     <Combobox
                       options={TIMEZONE_OPTIONS}
                       value={timezone}
@@ -191,7 +196,7 @@ export default function NewVirtualUserPage() {
                         setTimezone(value);
                         setFieldErrors((prev) => ({ ...prev, timezone: undefined }));
                       }}
-                      placeholder="Select timezone..."
+                      placeholder={ui("Select timezone...")}
                       searchPlaceholder="Search timezones..."
                     />
                     {fieldErrors.timezone && (
@@ -207,8 +212,9 @@ export default function NewVirtualUserPage() {
             <Card className="border-dashed">
               <CardContent className="pt-6">
                 <p className="text-sm text-muted-foreground">
-                  A virtual user has its own profile, runtime defaults, and connections. End users
-                  use agents; service accounts let agents act on external services.
+                  {ui(
+                    "A virtual user has its own profile, runtime defaults, and connections. End users use agents; service accounts let agents act on external services.",
+                  )}
                 </p>
               </CardContent>
             </Card>
@@ -217,7 +223,7 @@ export default function NewVirtualUserPage() {
       </form>
 
       <PageFooter>
-        <BackLink href="/virtual-users">Back to Virtual Users</BackLink>
+        <BackLink href="/virtual-users">{ui("Back to Virtual Users")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

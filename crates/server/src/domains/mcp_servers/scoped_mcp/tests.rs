@@ -377,6 +377,7 @@ async fn contributed_identity_discovery_uses_only_the_declared_grant_path() {
 
 pub(crate) fn test_harness() -> Harness {
     Harness {
+        localizations: Default::default(),
         id: HarnessId::new(),
         name: "test-harness".to_string(),
         display_name: None,
@@ -407,6 +408,7 @@ pub(crate) fn test_harness() -> Harness {
 pub(crate) fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
+        localizations: Default::default(),
         is_built_in: false,
         avatar: None,
         service_virtual_user_id: None,

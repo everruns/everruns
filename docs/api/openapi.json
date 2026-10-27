@@ -32513,6 +32513,10 @@
             "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
             "example": false
           },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -33360,6 +33364,7 @@
         "type": "object",
         "description": "A read-only agent example defined in code",
         "required": [
+          "localizations",
           "name",
           "display_name",
           "description",
@@ -33398,6 +33403,10 @@
             "type": "string",
             "description": "Explicit harness selected when importing this example.",
             "example": "conversation"
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",
@@ -33724,6 +33733,7 @@
         "type": "object",
         "description": "Harness that a newly created session for this agent will resolve to.",
         "required": [
+          "localizations",
           "source",
           "status"
         ],
@@ -33739,6 +33749,10 @@
               "string",
               "null"
             ]
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": [
@@ -38809,6 +38823,10 @@
             "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. Wins over the harness intro. Hidden once the user\ninputs.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
           },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -39592,6 +39610,10 @@
             "description": "Deprecated: configure conversation presentation on the Agent instead.",
             "deprecated": true,
             "example": "I triage incidents, dig through logs, and draft the update."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
@@ -42012,6 +42034,37 @@
             ],
             "description": "The session through which an agent made the change."
           }
+        }
+      },
+      "EntityLocalization": {
+        "type": "object",
+        "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized description (1–2000 characters when set)."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized display name (1–255 characters when set)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EntityLocalizations": {
+        "type": "object",
+        "description": "Locale-keyed display overlays. Deserialization normalizes tags and bounds input.",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/EntityLocalization"
+        },
+        "propertyNames": {
+          "type": "string"
         }
       },
       "EntityRevision": {
@@ -45301,6 +45354,10 @@
             "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
             "example": false
           },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+          },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -45372,6 +45429,7 @@
         "type": "object",
         "description": "A read-only harness example defined in code.",
         "required": [
+          "localizations",
           "name",
           "display_name",
           "description",
@@ -45405,6 +45463,10 @@
               "null"
             ],
             "description": "Display glyph name rendered by the UI (e.g. `bar-chart`)."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",
@@ -47178,6 +47240,10 @@
                   "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
                   "example": false
                 },
+                "localizations": {
+                  "$ref": "#/components/schemas/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                },
                 "max_iterations": {
                   "type": [
                     "integer",
@@ -48628,6 +48694,10 @@
                   "type": "boolean",
                   "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                   "example": false
+                },
+                "localizations": {
+                  "$ref": "#/components/schemas/EntityLocalizations",
+                  "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
                 },
                 "mcpServers": {
                   "$ref": "#/components/schemas/BTreeMap",
@@ -51077,6 +51147,10 @@
                           "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                           "example": false
                         },
+                        "localizations": {
+                          "$ref": "#/components/schemas/EntityLocalizations",
+                          "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+                        },
                         "mcpServers": {
                           "$ref": "#/components/schemas/BTreeMap",
                           "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -52396,6 +52470,10 @@
               "null"
             ],
             "description": "Optional Markdown introduction shown before the conversation starts."
+          },
+          "localizations": {
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
           },
           "max_iterations": {
             "type": [
@@ -68574,6 +68652,17 @@
             "description": "Markdown intro for fresh Platform Chat threads. Outer `None` leaves\nunchanged; inner `None` clears.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
           },
+          "localizations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -69335,6 +69424,17 @@
             "description": "Deprecated: configure conversation presentation on the Agent instead.",
             "deprecated": true,
             "example": "I triage incidents, dig through logs, and draft the update."
+          },
+          "localizations": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mcpServers": {
             "oneOf": [
@@ -71587,6 +71687,10 @@
                 "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
                 "example": false
               },
+              "localizations": {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
               "max_iterations": {
                 "type": [
                   "integer",
@@ -72552,6 +72656,10 @@
                 "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                 "example": false
               },
+              "localizations": {
+                "$ref": "#/components/schemas/EntityLocalizations",
+                "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
+              },
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this harness and inherited by descendant layers."
@@ -73346,6 +73454,10 @@
                     "type": "boolean",
                     "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
                     "example": false
+                  },
+                  "localizations": {
+                    "$ref": "#/components/schemas/EntityLocalizations",
+                    "description": "Locale-keyed display overlays; identifiers and execution instructions are unchanged."
                   },
                   "mcpServers": {
                     "$ref": "#/components/schemas/BTreeMap",

@@ -7,14 +7,23 @@ sidebar:
 
 The system doctor checks every part of an install and reports each finding in
 plain words: what it found, why it matters and how to fix it. It covers the
-database and its migrations, connected workers and their load, sign-in and
-encryption keys, NATS, Valkey, S3 file storage and monitoring.
+database and its migrations, connected workers (their load, versions, and what
+each worker finds about its own setup, such as whether it reaches the egress
+proxy), every running API server and whether they all run the same version,
+sign-in and encryption keys, NATS, Valkey, S3 file storage and monitoring.
 
 It works the same way however you host Everruns. It reads your configuration,
 so a part you do not use (for example NATS on a single server) shows as a note
 explaining what that means, not as a failure. On a production install
 (`DEPLOYMENT_GRADE=prod`, the default) unsafe settings such as sign-in turned
 off are problems; on a development install they are warnings.
+
+Each API server records itself every 30 seconds, so the report is the same
+whichever server answers it. Once a second server runs, NATS and Valkey stop
+being optional notes: without NATS each server polls the database for the
+others' updates, and without Valkey each server allows the full rate limit on
+its own. Servers on different versions are a warning while a deploy rolls out
+and a problem after ten minutes.
 
 ## Run it
 

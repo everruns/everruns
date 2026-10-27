@@ -9,6 +9,7 @@
  * ticks. The first section shows every turn status row phase from Enter on.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import type React from "react";
 import type { Event, ToolCompletedData, ToolProgressData } from "@/lib/api/types";
@@ -194,6 +195,7 @@ function largeTurnEvents(startMs: number, count: number): Event[] {
 
 /** Large-turn harness: `?calls=N` renders N tool calls; the button appends one more. */
 function LargeTurn({ startMs, count }: { startMs: number; count: number }) {
+  const ui = useUiTranslations();
   const [events, setEvents] = useState(() => largeTurnEvents(startMs, count));
   const appendCall = () =>
     setEvents((current) => [
@@ -210,7 +212,7 @@ function LargeTurn({ startMs, count }: { startMs: number; count: number }) {
 
   return (
     <Transcript
-      title={`Large turn (${count} tool calls)`}
+      title={ui("Large turn ({value0} tool calls)", { value0: count })}
       events={events}
       action={
         <button
@@ -219,7 +221,7 @@ function LargeTurn({ startMs, count }: { startMs: number; count: number }) {
           onClick={appendCall}
           className="border border-border bg-background px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
         >
-          Append tool call
+          {ui("Append tool call")}
         </button>
       }
     />
@@ -239,6 +241,7 @@ const STATUS_ROW_PHASES: Array<{ phase: TurnRowPhase; note: string }> = [
 
 /** Every turn status row phase, plus a send that was not delivered. */
 function StatusRows({ mountedAt }: { mountedAt: number }) {
+  const ui = useUiTranslations();
   const failed: PendingSend = {
     clientId: "dev-failed-send",
     text: "Summarize yesterday's incidents.",
@@ -249,7 +252,7 @@ function StatusRows({ mountedAt }: { mountedAt: number }) {
   };
   return (
     <section className="space-y-3 border border-border/70 bg-card/90 p-4">
-      <h2 className="text-lg font-semibold text-foreground">Turn status row</h2>
+      <h2 className="text-lg font-semibold text-foreground">{ui("Turn status row")}</h2>
       <div className="space-y-4 border border-border/70 bg-background px-4 py-4">
         {STATUS_ROW_PHASES.map(({ phase, note }) => (
           <div key={phase} data-testid={`status-row-${phase}`}>
@@ -261,12 +264,14 @@ function StatusRows({ mountedAt }: { mountedAt: number }) {
               hasSteps={phase === "working" || phase === "done"}
               status={phase === "working" ? "Creating the approved support agent" : undefined}
             >
-              {() => <p className="text-sm text-muted-foreground">Steps</p>}
+              {() => <p className="text-sm text-muted-foreground">{ui("Steps")}</p>}
             </TurnWorkLog>
           </div>
         ))}
         <div data-testid="status-row-not-delivered">
-          <p className="text-xs text-muted-foreground">No answer after 10 seconds, or an error</p>
+          <p className="text-xs text-muted-foreground">
+            {ui("No answer after 10 seconds, or an error")}
+          </p>
           <ChatMessageList
             events={[]}
             chatEvents={[]}
@@ -326,6 +331,7 @@ function Transcript({
 }
 
 export default function DevWorkLogPage() {
+  const ui = useUiTranslations();
   // Anchor to mount time on the client only, so SSR and hydration agree.
   const [mountedAt, setMountedAt] = useState<number | null>(null);
   const [largeCount, setLargeCount] = useState(0);
@@ -339,25 +345,30 @@ export default function DevWorkLogPage() {
   return (
     <DevPageShell
       eyebrow="Chat"
-      title="Turn work log"
-      description="Platform Chat and Chats fold work into a compact section. Playground and Sessions keep the full log visible during and after a turn."
+      title={ui("Turn work log")}
+      description={ui(
+        "Platform Chat and Chats fold work into a compact section. Playground and Sessions keep the full log visible during and after a turn.",
+      )}
       widthClassName="max-w-4xl"
     >
       {mountedAt != null && (
         <div className="space-y-6">
           <StatusRows mountedAt={mountedAt} />
-          <Transcript title="Live turn" events={turnEvents("turn-live", mountedAt - 21000, true)} />
           <Transcript
-            title="Completed turn"
+            title={ui("Live turn")}
+            events={turnEvents("turn-live", mountedAt - 21000, true)}
+          />
+          <Transcript
+            title={ui("Completed turn")}
             events={turnEvents("turn-done", mountedAt - 120000, false)}
           />
           <Transcript
-            title="Playground / Sessions: live full log"
+            title={ui("Playground / Sessions: live full log")}
             events={turnEvents("turn-full-live", mountedAt - 21000, true)}
             collapseWorkLog={false}
           />
           <Transcript
-            title="Playground / Sessions: completed full log"
+            title={ui("Playground / Sessions: completed full log")}
             events={turnEvents("turn-full-done", mountedAt - 120000, false)}
             collapseWorkLog={false}
           />

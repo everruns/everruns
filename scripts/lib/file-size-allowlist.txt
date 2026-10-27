@@ -17,7 +17,6 @@ crates/capabilities/src/session_sandbox.rs
 crates/core/src/builtins/compaction.rs
 crates/core/src/builtins/guardrails.rs
 crates/core/src/builtins/infinity_context.rs
-crates/core/src/builtins/progress_guard.rs
 crates/core/src/builtins/skills.rs
 crates/core/src/engine/execution/act.rs
 crates/core/src/engine/execution/reason.rs

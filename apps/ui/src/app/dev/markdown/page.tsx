@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -167,6 +168,7 @@ Let me know if you need any modifications!`,
 // ============================================
 
 function StreamingDemo() {
+  const ui = useUiTranslations();
   const [streamedText, setStreamedText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const fullText = sampleMarkdownContent.longStreaming;
@@ -204,10 +206,10 @@ function StreamingDemo() {
           disabled={isStreaming}
           className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground disabled:opacity-50"
         >
-          {isStreaming ? "Streaming..." : "Start Streaming Demo"}
+          {isStreaming ? ui("Streaming...") : ui("Start Streaming Demo")}
         </button>
         <button onClick={reset} className="px-4 py-2 text-sm font-medium border hover:bg-muted">
-          Reset
+          {ui("Reset")}
         </button>
       </div>
 
@@ -220,7 +222,7 @@ function StreamingDemo() {
           )
         ) : (
           <p className="text-muted-foreground italic">
-            Click &quot;Start Streaming Demo&quot; to see Streamdown handle incomplete markdown
+            {ui('Click "Start Streaming Demo" to see Streamdown handle incomplete markdown')}
           </p>
         )}
       </div>
@@ -266,6 +268,7 @@ function IncompleteMarkdownDemo() {
 // ============================================
 
 export default function DevMarkdownPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Markdown" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
@@ -273,7 +276,7 @@ export default function DevMarkdownPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -288,92 +291,92 @@ export default function DevMarkdownPage() {
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Developer Tools
+            {ui("Back to Developer Tools")}
           </Link>
-          <h1 className="text-3xl font-bold">Streamdown Message Component</h1>
+          <h1 className="text-3xl font-bold">{ui("Streamdown Message Component")}</h1>
           <p className="text-muted-foreground mt-2">
-            Streaming-optimized markdown renderer using Vercel&apos;s Streamdown
+            {ui("Streaming-optimized markdown renderer using Vercel's Streamdown")}
           </p>
           <Badge variant="outline" className="mt-2">
-            Development Mode
+            {ui("Development Mode")}
           </Badge>
         </div>
 
         <div className="space-y-8">
           {/* Streaming Demo - Featured */}
           <ShowcaseSection
-            title="Live Streaming Demo"
-            description="Watch how Streamdown handles incomplete markdown during streaming"
+            title={ui("Live Streaming Demo")}
+            description={ui("Watch how Streamdown handles incomplete markdown during streaming")}
           >
             <StreamingDemo />
           </ShowcaseSection>
 
           {/* Incomplete Markdown Handling */}
           <ShowcaseSection
-            title="Incomplete Markdown Handling"
-            description="How Streamdown gracefully handles unterminated markdown syntax"
+            title={ui("Incomplete Markdown Handling")}
+            description={ui("How Streamdown gracefully handles unterminated markdown syntax")}
           >
             <IncompleteMarkdownDemo />
           </ShowcaseSection>
 
           {/* Basic Markdown Formatting */}
           <ShowcaseSection
-            title="Basic Formatting"
-            description="Standard markdown formatting features"
+            title={ui("Basic Formatting")}
+            description={ui("Standard markdown formatting features")}
           >
-            <ShowcaseItem label="Text Formatting">
+            <ShowcaseItem label={ui("Text Formatting")}>
               <InlineStreamdownMessage>
                 {sampleMarkdownContent.basicFormatting}
               </InlineStreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Code Block (with Shiki highlighting)">
+            <ShowcaseItem label={ui("Code Block (with Shiki highlighting)")}>
               <StreamdownMessage variant="inline">
                 {sampleMarkdownContent.codeBlock}
               </StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Markdown in Markdown (code block)">
+            <ShowcaseItem label={ui("Markdown in Markdown (code block)")}>
               <StreamdownMessage variant="inline">
                 {sampleMarkdownContent.markdownInMarkdown}
               </StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Lists">
+            <ShowcaseItem label={ui("Lists")}>
               <InlineStreamdownMessage>{sampleMarkdownContent.lists}</InlineStreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Table">
+            <ShowcaseItem label={ui("Table")}>
               <InlineStreamdownMessage>{sampleMarkdownContent.table}</InlineStreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* GitHub Alerts */}
           <ShowcaseSection
-            title="GitHub-Style Alerts"
-            description="NOTE, TIP, IMPORTANT, WARNING, CAUTION callouts"
+            title={ui("GitHub-Style Alerts")}
+            description={ui("NOTE, TIP, IMPORTANT, WARNING, CAUTION callouts")}
           >
-            <ShowcaseItem label="All Alert Types">
+            <ShowcaseItem label={ui("All Alert Types")}>
               <StreamdownMessage variant="inline">{sampleMarkdownContent.alerts}</StreamdownMessage>
             </ShowcaseItem>
           </ShowcaseSection>
 
           {/* Component Variants */}
           <ShowcaseSection
-            title="Component Variants"
-            description="Different display variants for various contexts"
+            title={ui("Component Variants")}
+            description={ui("Different display variants for various contexts")}
           >
-            <ShowcaseItem label="Default Variant (with background)">
+            <ShowcaseItem label={ui("Default Variant (with background)")}>
               <StreamdownMessage>{sampleMarkdownContent.capabilityDescription}</StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Compact Variant (no background)">
+            <ShowcaseItem label={ui("Compact Variant (no background)")}>
               <StreamdownMessage variant="compact">
                 {sampleMarkdownContent.capabilityDescription}
               </StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Inline Variant (for descriptions)">
+            <ShowcaseItem label={ui("Inline Variant (for descriptions)")}>
               <InlineStreamdownMessage className="text-muted-foreground">
                 {sampleMarkdownContent.capabilityDescription}
               </InlineStreamdownMessage>
@@ -382,16 +385,16 @@ export default function DevMarkdownPage() {
 
           {/* isAnimating States */}
           <ShowcaseSection
-            title="Animation States"
-            description="Compare isAnimating=true vs isAnimating=false"
+            title={ui("Animation States")}
+            description={ui("Compare isAnimating=true vs isAnimating=false")}
           >
-            <ShowcaseItem label="isAnimating={false} (default - completed message)">
+            <ShowcaseItem label={ui("isAnimating={false} (default - completed message)")}>
               <StreamdownMessage variant="inline" isAnimating={false}>
                 {sampleMarkdownContent.codeBlock}
               </StreamdownMessage>
             </ShowcaseItem>
 
-            <ShowcaseItem label="isAnimating={true} (streaming message)">
+            <ShowcaseItem label={ui("isAnimating={true} (streaming message)")}>
               <StreamdownMessage variant="inline" isAnimating={true}>
                 {sampleMarkdownContent.codeBlock}
               </StreamdownMessage>
@@ -400,16 +403,16 @@ export default function DevMarkdownPage() {
 
           {/* Usage Examples */}
           <ShowcaseSection
-            title="Usage in Code"
-            description="How to use the StreamdownMessage components"
+            title={ui("Usage in Code")}
+            description={ui("How to use the StreamdownMessage components")}
           >
-            <ShowcaseItem label="Import">
+            <ShowcaseItem label={ui("Import")}>
               <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";`}
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Streaming Message">
+            <ShowcaseItem label={ui("Streaming Message")}>
               <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<StreamdownMessage isAnimating={true}>
   {streamingText}
@@ -417,7 +420,7 @@ export default function DevMarkdownPage() {
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Completed Message">
+            <ShowcaseItem label={ui("Completed Message")}>
               <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<StreamdownMessage isAnimating={false}>
   {messageContent}
@@ -425,7 +428,7 @@ export default function DevMarkdownPage() {
               </pre>
             </ShowcaseItem>
 
-            <ShowcaseItem label="Inline for Descriptions">
+            <ShowcaseItem label={ui("Inline for Descriptions")}>
               <pre className="bg-muted p-4 text-sm overflow-x-auto">
                 {`<InlineStreamdownMessage className="text-muted-foreground">
   {description}

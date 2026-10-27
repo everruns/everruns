@@ -340,6 +340,7 @@ async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: public_id.to_string(),
                 name: "facet-agent".to_string(),
                 display_name: None,

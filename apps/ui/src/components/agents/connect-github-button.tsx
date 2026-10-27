@@ -11,6 +11,7 @@
 // (`suggested_owners`), and a typed organization. Once the App exists, the
 // button only finishes installing it.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Building2, ChevronDown, User } from "lucide-react";
 import { useConnectAgentGitHub } from "@/hooks/use-agent-github";
@@ -55,6 +56,7 @@ export function ConnectGitHubButton({
   /** The menu button's text before the App exists. */
   label?: string;
 }) {
+  const ui = useUiTranslations();
   const connect = useConnectAgentGitHub(agentId, returnTo);
   // "Another organization…" swaps the button for a small input; null hides it.
   const [otherOrg, setOtherOrg] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export function ConnectGitHubButton({
           onClick={() => onConnect()}
           disabled={connect.isPending}
         >
-          Finish installing
+          {ui("Finish installing")}
         </Button>
         {errorText}
       </>
@@ -97,7 +99,7 @@ export function ConnectGitHubButton({
     // Not a <form>: the trigger editor renders this inside its own form.
     return (
       <div className="space-y-1">
-        <Label htmlFor={inputId}>GitHub organization</Label>
+        <Label htmlFor={inputId}>{ui("GitHub organization")}</Label>
         <div className="flex flex-wrap items-center gap-2">
           <Input
             id={inputId}
@@ -109,7 +111,7 @@ export function ConnectGitHubButton({
                 submit();
               }
             }}
-            placeholder="your-org"
+            placeholder={ui("your-org")}
             className="max-w-xs"
           />
           <Button
@@ -118,14 +120,14 @@ export function ConnectGitHubButton({
             onClick={submit}
             disabled={connect.isPending || !otherOrg.trim()}
           >
-            Connect
+            {ui("Connect")}
           </Button>
           <Button type="button" variant="ghost" size={size} onClick={() => setOtherOrg(null)}>
-            Cancel
+            {ui("Cancel")}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          You need permission to create GitHub Apps in that organization.
+          {ui("You need permission to create GitHub Apps in that organization.")}
         </p>
         {errorText}
       </div>
@@ -144,10 +146,10 @@ export function ConnectGitHubButton({
         <DropdownMenuPositioner align="start">
           <DropdownMenuContent className="w-60">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Create the App in</DropdownMenuLabel>
+              <DropdownMenuLabel>{ui("Create the App in")}</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => onConnect()}>
                 <User className="size-4" aria-hidden="true" />
-                Personal account
+                {ui("Personal account")}
               </DropdownMenuItem>
               {organizations.map((login) => (
                 <DropdownMenuItem key={login} onClick={() => onConnect(login)}>
@@ -158,7 +160,7 @@ export function ConnectGitHubButton({
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setOtherOrg("")}>
-              Another organization…
+              {ui("Another organization…")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenuPositioner>

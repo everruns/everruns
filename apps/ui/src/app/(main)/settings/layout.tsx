@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { SettingsIcon } from "@/components/icons/facet-icons";
 import Link from "next/link";
 import { notFound, usePathname } from "next/navigation";
@@ -17,6 +18,7 @@ interface SettingsLayoutProps {
 }
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const { flags, isLoading: featureFlagsLoading } = useFeatureFlagsState();
   const { hasRole } = useOrg();
@@ -43,9 +45,11 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       <div className="flex items-center gap-4 border-b px-6 py-4">
         <IconTile icon={<SettingsIcon />} />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {ui("Settings")}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Organization defaults, members, and your personal preferences.
+            {ui("Organization defaults, members, and your personal preferences.")}
           </p>
         </div>
       </div>
@@ -54,16 +58,16 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         <nav className="settings-navigation border-b bg-card p-3 lg:w-64 lg:border-b-0 lg:border-r lg:p-4 lg:overflow-y-auto">
           <div className="space-y-6">
             {settingsSections.map((section) => (
-              <div key={section.label}>
+              <div key={ui(section.label ?? "")}>
                 <div className="px-3 pb-2 text-xs font-medium text-muted-foreground">
-                  {section.label}
+                  {ui(section.label ?? "")}
                 </div>
                 <div className="settings-navigation-items grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">
                   {section.items.map((item) => {
                     const isActive = pathname === item.href;
                     return (
                       <Link
-                        key={item.name}
+                        key={ui(item.name)}
                         href={item.href}
                         prefetch={false}
                         className={cn(
@@ -76,7 +80,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                       >
                         <item.icon className="h-4 w-4" />
                         <div>
-                          <div className="font-medium">{item.name}</div>
+                          <div className="font-medium">{ui(item.name)}</div>
                         </div>
                       </Link>
                     );

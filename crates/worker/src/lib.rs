@@ -33,6 +33,7 @@ pub mod phase_reads;
 pub mod platform;
 mod reveal_storage;
 pub mod runtime_host;
+pub mod self_checks;
 pub mod session_lifecycle;
 pub mod session_task_reaper;
 mod system_decisions;

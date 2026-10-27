@@ -22,6 +22,14 @@ pub struct ChannelContextCapability;
 
 #[async_trait]
 impl Capability for ChannelContextCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Контекст каналу",
+            "Передає агенту відомості про учасників і поточний контекст розмови в каналі. Зберігає контекст після перезапуску.",
+        )]
+    }
+
     fn id(&self) -> &str {
         CHANNEL_CONTEXT_CAPABILITY_ID
     }

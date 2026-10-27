@@ -7,6 +7,7 @@
  * indicator and markdown rendering via Streamdown.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/chat/message-content";
@@ -103,6 +104,7 @@ interface StreamingMessageProps {
 }
 
 export function StreamingMessage({ messageId, text, className }: StreamingMessageProps) {
+  const ui = useUiTranslations();
   const visibleText = useSmoothedText(text, messageId);
 
   return (
@@ -112,7 +114,7 @@ export function StreamingMessage({ messageId, text, className }: StreamingMessag
           <span className="absolute inline-flex h-full w-full animate-ping bg-primary/55" />
           <span className="relative inline-flex h-1.5 w-1.5 bg-primary" />
         </span>
-        Generating
+        {ui("Generating")}
       </div>
 
       <div className="streaming-cursor">

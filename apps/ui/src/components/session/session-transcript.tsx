@@ -8,6 +8,7 @@
 // `ChatPanel` keeps this component and adds the composer on top, so the two
 // surfaces cannot drift.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, type ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
 import { getEventData } from "@/lib/api/types";
@@ -45,6 +46,7 @@ export function SessionTranscript({
   emptyState?: ReactNode;
   messageActions?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const {
     events,
@@ -103,11 +105,11 @@ export function SessionTranscript({
       const text = getMessageText(data).trim();
       anchors.push({
         id: event.id,
-        label: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+        label: text.length > 80 ? ui("{value0}…", { value0: text.slice(0, 80) }) : text,
       });
     }
     return anchors;
-  }, [chatEvents, getMessageText]);
+  }, [chatEvents, getMessageText, ui]);
 
   const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
     scrollContainerRef,

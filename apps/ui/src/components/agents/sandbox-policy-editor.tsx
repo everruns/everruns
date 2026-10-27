@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
@@ -183,6 +184,7 @@ function TemplateBindingNameInput({
   disabled: boolean;
   onRename: (name: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [draft, setDraft] = useState(name);
   const error = validateBindingName(draft, name, templates);
 
@@ -194,7 +196,7 @@ function TemplateBindingNameInput({
   return (
     <div className="min-w-0 flex-1 space-y-1">
       <Input
-        aria-label={`Sandbox binding name ${name}`}
+        aria-label={ui("Sandbox binding name {value0}", { value0: name })}
         value={draft}
         onChange={(event) => setDraft(event.target.value.toLowerCase())}
         onBlur={commit}
@@ -235,10 +237,11 @@ function NetworkPolicyFields({
   disabled: boolean;
   onNetworkChange: (network: NetworkPolicy) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-network-${name}`}>Outbound network</Label>
+        <Label htmlFor={`sandbox-network-${name}`}>{ui("Outbound network")}</Label>
         <Select
           value={network.mode}
           onValueChange={(mode) =>
@@ -254,15 +257,15 @@ function NetworkPolicyFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="allow">Open</SelectItem>
-            <SelectItem value="allowlist">Only listed domains</SelectItem>
-            <SelectItem value="deny">Blocked</SelectItem>
+            <SelectItem value="allow">{ui("Open")}</SelectItem>
+            <SelectItem value="allowlist">{ui("Only listed domains")}</SelectItem>
+            <SelectItem value="deny">{ui("Blocked")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       {network.mode === "allowlist" ? (
         <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={`sandbox-domains-${name}`}>Allowed domains</Label>
+          <Label htmlFor={`sandbox-domains-${name}`}>{ui("Allowed domains")}</Label>
           <Textarea
             id={`sandbox-domains-${name}`}
             value={network.allowed_hosts.join("\n")}
@@ -300,6 +303,7 @@ function ModalOptionFields({
   setOption: (key: string, value: unknown) => void;
   onNetworkChange: (network: NetworkPolicy) => void;
 }) {
+  const ui = useUiTranslations();
   const injected = Array.isArray(options.inject_connections) ? options.inject_connections : [];
   const injectGithub = injected.includes("github");
   // Modal cannot inject credentials when egress is blocked or limited to domains.
@@ -309,7 +313,7 @@ function ModalOptionFields({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-runtime-${name}`}>Runtime</Label>
+        <Label htmlFor={`sandbox-runtime-${name}`}>{ui("Runtime")}</Label>
         <Select
           value={typeof options.runtime === "string" ? options.runtime : "vm"}
           onValueChange={(value) => setOption("runtime", value === "vm" ? "" : value)}
@@ -319,24 +323,24 @@ function ModalOptionFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="vm">VM (own kernel)</SelectItem>
-            <SelectItem value="gvisor">gVisor container</SelectItem>
+            <SelectItem value="vm">{ui("VM (own kernel)")}</SelectItem>
+            <SelectItem value="gvisor">{ui("gVisor container")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-image-${name}`}>Image</Label>
+        <Label htmlFor={`sandbox-image-${name}`}>{ui("Image")}</Label>
         <Input
           id={`sandbox-image-${name}`}
           value={optionString(options, "image")}
           onChange={(event) => setOption("image", event.target.value)}
-          placeholder="python:3.13-slim with git and curl"
+          placeholder={ui("python:3.13-slim with git and curl")}
           disabled={disabled}
           className="font-mono"
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-cpu-${name}`}>CPU cores</Label>
+        <Label htmlFor={`sandbox-cpu-${name}`}>{ui("CPU cores")}</Label>
         <Input
           id={`sandbox-cpu-${name}`}
           type="number"
@@ -345,12 +349,12 @@ function ModalOptionFields({
           step={0.125}
           value={optionString(options, "cpu")}
           onChange={numeric("cpu")}
-          placeholder="Provider default"
+          placeholder={ui("Provider default")}
           disabled={disabled}
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-memory-${name}`}>Memory (MiB)</Label>
+        <Label htmlFor={`sandbox-memory-${name}`}>{ui("Memory (MiB)")}</Label>
         <Input
           id={`sandbox-memory-${name}`}
           type="number"
@@ -358,12 +362,12 @@ function ModalOptionFields({
           max={262_144}
           value={optionString(options, "memory_mb")}
           onChange={numeric("memory_mb")}
-          placeholder="Provider default"
+          placeholder={ui("Provider default")}
           disabled={disabled}
         />
       </div>
       <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+        <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
         <Input
           id={`sandbox-workspace-${name}`}
           value={optionString(options, "workspace_path")}
@@ -376,15 +380,16 @@ function ModalOptionFields({
       <div className="flex items-start gap-3 pt-6">
         <Switch
           id={`sandbox-inject-github-${name}`}
-          aria-label="Use my GitHub connection"
+          aria-label={ui("Use my GitHub connection")}
           checked={injectGithub && injectionAllowed}
           onCheckedChange={(checked) => setOption("inject_connections", checked ? ["github"] : "")}
           disabled={disabled || !injectionAllowed}
         />
         <p className="text-xs text-muted-foreground">
-          Use my GitHub connection for api.github.com and git. Modal adds the token to requests, so
-          the agent never sees it.
-          {injectionAllowed ? "" : " Needs open network."}
+          {ui(
+            "Use my GitHub connection for api.github.com and git. Modal adds the token to requests, so the agent never sees it.",
+          )}
+          {injectionAllowed ? "" : ui(" Needs open network.")}
         </p>
       </div>
       <NetworkPolicyFields
@@ -408,22 +413,24 @@ function DesktopField({
   disabled: boolean;
   onDesktopChange: (on: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const on =
     options.desktop === true || (typeof options.desktop === "object" && options.desktop !== null);
   return (
     <div className="flex items-start gap-3 sm:col-span-2">
       <Switch
         id={`sandbox-desktop-${name}`}
-        aria-label="Desktop"
+        aria-label={ui("Desktop")}
         checked={on}
         onCheckedChange={onDesktopChange}
         disabled={disabled}
       />
       <div className="space-y-1">
-        <Label htmlFor={`sandbox-desktop-${name}`}>Desktop</Label>
+        <Label htmlFor={`sandbox-desktop-${name}`}>{ui("Desktop")}</Label>
         <p className="text-xs text-muted-foreground">
-          Start the sandbox with a Linux desktop and give the agent the computer tool to see and use
-          it. Screenshots cost image tokens.
+          {ui(
+            "Start the sandbox with a Linux desktop and give the agent the computer tool to see and use it. Screenshots cost image tokens.",
+          )}
         </p>
       </div>
     </div>
@@ -445,21 +452,22 @@ function E2BOptionFields({
   setOption: (key: string, value: unknown) => void;
   onNetworkChange: (network: NetworkPolicy) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-template-${name}`}>E2B template</Label>
+        <Label htmlFor={`sandbox-template-${name}`}>{ui("E2B template")}</Label>
         <Input
           id={`sandbox-template-${name}`}
           value={optionString(options, "template")}
           onChange={(event) => setOption("template", event.target.value)}
-          placeholder="base"
+          placeholder={ui("base")}
           disabled={disabled}
           className="font-mono"
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-timeout-${name}`}>Provider timeout (seconds)</Label>
+        <Label htmlFor={`sandbox-timeout-${name}`}>{ui("Provider timeout (seconds)")}</Label>
         <Input
           id={`sandbox-timeout-${name}`}
           type="number"
@@ -474,7 +482,7 @@ function E2BOptionFields({
         />
       </div>
       <div className="space-y-2 sm:col-span-2">
-        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+        <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
         <Input
           id={`sandbox-workspace-${name}`}
           value={optionString(options, "workspace_path")}
@@ -527,6 +535,7 @@ function TemplateSpecEditor({
   onDefault: () => void;
   onRemove: () => void;
 }) {
+  const ui = useUiTranslations();
   const descriptor = targets.find((target) => targetKey(target) === specTargetKey(spec));
   const options = targetOptions(spec);
   const managed = spec.target.kind === "managed";
@@ -568,7 +577,10 @@ function TemplateSpecEditor({
   };
 
   return (
-    <section className="space-y-5 border bg-background p-4" aria-label={`Sandbox ${name}`}>
+    <section
+      className="space-y-5 border bg-background p-4"
+      aria-label={ui("Sandbox {value0}", { value0: name })}
+    >
       <div className="flex items-start gap-2">
         <TemplateBindingNameInput
           name={name}
@@ -582,10 +594,14 @@ function TemplateSpecEditor({
           size="sm"
           onClick={onDefault}
           disabled={disabled || isDefault}
-          aria-label={isDefault ? `${name} is the default sandbox` : `Make ${name} default`}
+          aria-label={
+            isDefault
+              ? ui("{value0} is the default sandbox", { value0: name })
+              : ui("Make {value0} default", { value0: name })
+          }
         >
           <Star className="size-3.5" />
-          {isDefault ? "Default" : "Make default"}
+          {isDefault ? ui("Default") : ui("Make default")}
         </Button>
         <Button
           type="button"
@@ -593,14 +609,14 @@ function TemplateSpecEditor({
           size="icon"
           onClick={onRemove}
           disabled={disabled}
-          aria-label={`Remove ${name}`}
+          aria-label={ui("Remove {value0}", { value0: name })}
         >
           <Trash2 className="size-4" />
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`sandbox-target-${name}`}>Runs in</Label>
+        <Label htmlFor={`sandbox-target-${name}`}>{ui("Runs in")}</Label>
         <Select
           value={specTargetKey(spec)}
           onValueChange={(value) => {
@@ -629,7 +645,7 @@ function TemplateSpecEditor({
                 disabled={!target.available}
               >
                 {target.display_name || targetLabel(target)}
-                {target.available ? "" : " (unavailable)"}
+                {target.available ? "" : ui(" (unavailable)")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -637,7 +653,7 @@ function TemplateSpecEditor({
         {descriptor && !descriptor.available ? (
           <p className="flex items-start gap-1.5 text-xs text-destructive">
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-            {descriptor.reason || "This target is unavailable on this deployment."}
+            {descriptor.reason || ui("This target is unavailable on this deployment.")}
           </p>
         ) : null}
       </div>
@@ -653,7 +669,7 @@ function TemplateSpecEditor({
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            Recovery: {descriptor.durability.replaceAll("_", " ")} · Containment:{" "}
+            {ui("Recovery:")} {descriptor.durability.replaceAll("_", " ")} {ui("· Containment:")}{" "}
             {descriptor.containment_levels.join(", ")}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -665,7 +681,7 @@ function TemplateSpecEditor({
       {managed ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={`sandbox-credential-${name}`}>Provider account</Label>
+            <Label htmlFor={`sandbox-credential-${name}`}>{ui("Provider account")}</Label>
             <Select
               value={credentialSource}
               onValueChange={(source) =>
@@ -710,18 +726,18 @@ function TemplateSpecEditor({
               <p className="text-xs text-muted-foreground">{selectedCredential.description}</p>
             ) : null}
             <p className="text-xs text-muted-foreground">
-              Personal connections are managed in{" "}
+              {ui("Personal connections are managed in")}{" "}
               <Link href="/settings/connections" className="underline underline-offset-2">
-                Connections
+                {ui("Connections")}
               </Link>
-              ; Agent connections belong to its Virtual User.
+              {ui("; Agent connections belong to its Virtual User.")}
             </p>
             {hasTriggers && credentialSource === "session_user" ? (
               // A trigger starts its session without a person, so the server
               // falls back to the organization's sole account for the provider.
               <p className="flex items-start gap-1.5 text-xs text-warning">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-                Triggered runs have no user account; they use the organization account.
+                {ui("Triggered runs have no user account; they use the organization account.")}
               </p>
             ) : null}
           </div>
@@ -732,7 +748,7 @@ function TemplateSpecEditor({
                   providerAccounts.length > 0 ? `sandbox-organization-account-${name}` : undefined
                 }
               >
-                Organization account
+                {ui("Organization account")}
               </Label>
               {providerAccounts.length > 0 ? (
                 <>
@@ -750,14 +766,17 @@ function TemplateSpecEditor({
                     disabled={disabled}
                   >
                     <SelectTrigger id={`sandbox-organization-account-${name}`} className="w-full">
-                      <SelectValue placeholder="Select an account" />
+                      <SelectValue placeholder={ui("Select an account")} />
                     </SelectTrigger>
                     <SelectContent>
                       {providerAccounts.map((account) => (
                         <SelectItem key={account.id} value={account.id}>
                           <ProviderOptionLabel
                             iconName={providerIconName}
-                            label={`${providerName} · ${account.name}`}
+                            label={ui("{value0} · {value1}", {
+                              value0: providerName,
+                              value1: account.name,
+                            })}
                           />
                         </SelectItem>
                       ))}
@@ -765,7 +784,7 @@ function TemplateSpecEditor({
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     <Link href="/sandboxes/accounts" className="underline underline-offset-2">
-                      Manage organization provider accounts
+                      {ui("Manage organization provider accounts")}
                     </Link>
                   </p>
                 </>
@@ -773,14 +792,14 @@ function TemplateSpecEditor({
                 <div className="flex items-start gap-2 border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
                   <ProviderIcon iconName={providerIconName} className="mt-0.5 size-4 shrink-0" />
                   <p>
-                    This organization has no {providerName} account yet.{" "}
+                    {ui("This organization has no")} {providerName} {ui("account yet.")}{" "}
                     <Link
                       href="/sandboxes/accounts"
                       className="text-foreground underline underline-offset-2"
                     >
-                      Add a {providerName} account
+                      {ui("Add a")} {providerName} {ui("account")}
                     </Link>{" "}
-                    in Provider accounts, then pick it here.
+                    {ui("in Provider accounts, then pick it here.")}
                   </p>
                 </div>
               )}
@@ -823,7 +842,7 @@ function TemplateSpecEditor({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-size-${name}`}>Compute size</Label>
+                <Label htmlFor={`sandbox-size-${name}`}>{ui("Compute size")}</Label>
                 <Select
                   value={typeof options.size === "string" ? options.size : "default"}
                   onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
@@ -833,25 +852,25 @@ function TemplateSpecEditor({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">Provider default</SelectItem>
-                    <SelectItem value="small">Small</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="large">Large</SelectItem>
+                    <SelectItem value="default">{ui("Provider default")}</SelectItem>
+                    <SelectItem value="small">{ui("Small")}</SelectItem>
+                    <SelectItem value="medium">{ui("Medium")}</SelectItem>
+                    <SelectItem value="large">{ui("Large")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-snapshot-${name}`}>Snapshot</Label>
+                <Label htmlFor={`sandbox-snapshot-${name}`}>{ui("Snapshot")}</Label>
                 <Input
                   id={`sandbox-snapshot-${name}`}
                   value={typeof options.snapshot === "string" ? options.snapshot : ""}
                   onChange={(event) => setOption("snapshot", event.target.value)}
-                  placeholder={daytonaDesktop ? "Desktop image" : "Provider default"}
+                  placeholder={daytonaDesktop ? ui("Desktop image") : ui("Provider default")}
                   disabled={disabled || daytonaDesktop}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+                <Label htmlFor={`sandbox-workspace-${name}`}>{ui("Workspace path")}</Label>
                 <Input
                   id={`sandbox-workspace-${name}`}
                   value={typeof options.workspace_path === "string" ? options.workspace_path : ""}
@@ -862,7 +881,9 @@ function TemplateSpecEditor({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`sandbox-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
+                <Label htmlFor={`sandbox-auto-stop-${name}`}>
+                  {ui("Provider auto-stop (minutes)")}
+                </Label>
                 <Input
                   id={`sandbox-auto-stop-${name}`}
                   type="number"
@@ -877,7 +898,7 @@ function TemplateSpecEditor({
                       event.target.value ? Number(event.target.value) : "",
                     )
                   }
-                  placeholder="Provider default"
+                  placeholder={ui("Provider default")}
                   disabled={disabled}
                 />
               </div>
@@ -913,7 +934,7 @@ function TemplateSpecEditor({
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-idle-action-${name}`}>When idle</Label>
+          <Label htmlFor={`sandbox-idle-action-${name}`}>{ui("When idle")}</Label>
           <Select
             value={lifecycle.idle_action}
             onValueChange={(idle_action) =>
@@ -931,15 +952,15 @@ function TemplateSpecEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="checkpoint_and_stop">Checkpoint and stop</SelectItem>
-              <SelectItem value="stop">Stop</SelectItem>
-              <SelectItem value="keep_running">Keep running</SelectItem>
-              <SelectItem value="delete">Delete</SelectItem>
+              <SelectItem value="checkpoint_and_stop">{ui("Checkpoint and stop")}</SelectItem>
+              <SelectItem value="stop">{ui("Stop")}</SelectItem>
+              <SelectItem value="keep_running">{ui("Keep running")}</SelectItem>
+              <SelectItem value="delete">{ui("Delete")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-idle-after-${name}`}>Idle after (seconds)</Label>
+          <Label htmlFor={`sandbox-idle-after-${name}`}>{ui("Idle after (seconds)")}</Label>
           <Input
             id={`sandbox-idle-after-${name}`}
             type="number"
@@ -959,7 +980,7 @@ function TemplateSpecEditor({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-delete-after-${name}`}>Delete after paused</Label>
+          <Label htmlFor={`sandbox-delete-after-${name}`}>{ui("Delete after paused")}</Label>
           <Select
             value={retention}
             onValueChange={(choice) => {
@@ -983,7 +1004,9 @@ function TemplateSpecEditor({
               ))}
               {retention === "custom" ? (
                 <SelectItem value="custom">
-                  {`${Math.round((spec.lifecycle?.delete_after_seconds ?? 0) / 3_600)} hours`}
+                  {ui("{value0} hours", {
+                    value0: Math.round((spec.lifecycle?.delete_after_seconds ?? 0) / 3_600),
+                  })}
                 </SelectItem>
               ) : null}
             </SelectContent>
@@ -993,7 +1016,7 @@ function TemplateSpecEditor({
 
       {managed ? (
         <div className="space-y-2">
-          <Label htmlFor={`sandbox-bootstrap-${name}`}>Bootstrap commands</Label>
+          <Label htmlFor={`sandbox-bootstrap-${name}`}>{ui("Bootstrap commands")}</Label>
           <Textarea
             id={`sandbox-bootstrap-${name}`}
             value={(spec.bootstrap?.commands ?? []).join("\n")}
@@ -1014,7 +1037,9 @@ function TemplateSpecEditor({
             className="font-mono text-xs"
           />
           <p className="text-xs text-muted-foreground">
-            Runs once when Everruns creates replacement compute. Do not put credentials here.
+            {ui(
+              "Runs once when Everruns creates replacement compute. Do not put credentials here.",
+            )}
           </p>
         </div>
       ) : null}
@@ -1037,6 +1062,7 @@ export function SandboxPolicyEditor({
   /** Edit one reusable Sandbox Template definition, not an Agent binding policy. */
   definitionMode?: boolean;
 }) {
+  const ui = useUiTranslations();
   const { data, isLoading, error } = useSandboxTargets();
   const { data: sandboxTemplates = [] } = useSandboxTemplates();
   const { data: organizationConnections = [] } = useOrganizationConnections();
@@ -1116,7 +1142,7 @@ export function SandboxPolicyEditor({
     <div className="space-y-5">
       {!definitionMode ? (
         <div className="space-y-2">
-          <Label htmlFor="sandbox-policy">Session choice</Label>
+          <Label htmlFor="sandbox-policy">{ui("Session choice")}</Label>
           <Select
             value={value?.mode ?? "fixed"}
             onValueChange={(mode) =>
@@ -1129,15 +1155,20 @@ export function SandboxPolicyEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="fixed" disabled={entries.length > 1}>
-                Fixed: sessions cannot override
+                {ui("Fixed: sessions cannot override")}
               </SelectItem>
-              <SelectItem value="selectable">Selectable: declared sandboxes only</SelectItem>
-              <SelectItem value="configurable">Configurable: allow constrained one-offs</SelectItem>
+              <SelectItem value="selectable">
+                {ui("Selectable: declared sandboxes only")}
+              </SelectItem>
+              <SelectItem value="configurable">
+                {ui("Configurable: allow constrained one-offs")}
+              </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Fixed is the safe default. Playground only shows a picker for selectable or configurable
-            Agents.
+            {ui(
+              "Fixed is the safe default. Playground only shows a picker for selectable or configurable Agents.",
+            )}
           </p>
         </div>
       ) : null}
@@ -1163,7 +1194,7 @@ export function SandboxPolicyEditor({
       {error ? (
         <p className="flex items-start gap-1.5 text-sm text-destructive">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-          Could not load the execution targets offered by this deployment.
+          {ui("Could not load the execution targets offered by this deployment.")}
         </p>
       ) : null}
 
@@ -1171,7 +1202,9 @@ export function SandboxPolicyEditor({
         <div className="space-y-2">
           {!definitionMode && sandboxTemplates.length > 0 ? (
             <>
-              <p className="text-xs font-medium text-muted-foreground">Use a Sandbox Template</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                {ui("Use a Sandbox Template")}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {sandboxTemplates.map((sandboxTemplate) => (
                   <Button
@@ -1189,14 +1222,14 @@ export function SandboxPolicyEditor({
                 ))}
               </div>
               <Link href="/sandboxes/templates" className="text-xs text-muted-foreground underline">
-                Manage Sandbox Templates
+                {ui("Manage Sandbox Templates")}
               </Link>
             </>
           ) : null}
-          <p className="text-xs font-medium text-muted-foreground">Add a sandbox target</p>
+          <p className="text-xs font-medium text-muted-foreground">{ui("Add a sandbox target")}</p>
           <div className="flex flex-wrap gap-2">
             {isLoading ? (
-              <span className="text-sm text-muted-foreground">Loading targets…</span>
+              <span className="text-sm text-muted-foreground">{ui("Loading targets…")}</span>
             ) : null}
             {availableTargets.map((target) => (
               <Button

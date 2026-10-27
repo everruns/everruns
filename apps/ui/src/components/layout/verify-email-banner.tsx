@@ -7,6 +7,7 @@
 // hit (auth-flow dead-end audit). Deliberately NOT dismissible: dismissing it
 // would recreate the dead end it exists to close. The resend endpoint is
 // enumeration-safe and only issues a token for an unverified local account.
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { MailWarning, Loader2 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export function VerifyEmailBanner() {
 }
 
 function VerifyEmailBannerInner({ email }: { email: string }) {
+  const ui = useUiTranslations();
   const resend = useResendVerification();
   const [cooldown, setCooldown] = useState(0);
   const [sent, setSent] = useState(false);
@@ -61,11 +63,17 @@ function VerifyEmailBannerInner({ email }: { email: string }) {
         <MailWarning className="h-[15px] w-[15px]" />
       </span>
       <span className="text-[13px] tracking-[-0.01em]">
-        <strong className="font-semibold">Verify your email.</strong>{" "}
+        <strong className="font-semibold">{ui("Verify your email.")}</strong>{" "}
         {sent ? (
-          <>We sent a new link to {email}. Check your inbox.</>
+          <>
+            {ui("We sent a new link to")} {email}
+            {ui(". Check your inbox.")}
+          </>
         ) : (
-          <>We sent a link to {email}. Confirm it to keep full access.</>
+          <>
+            {ui("We sent a link to")} {email}
+            {ui(". Confirm it to keep full access.")}
+          </>
         )}
       </span>
       <span className="flex-1" />

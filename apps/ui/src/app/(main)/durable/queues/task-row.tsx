@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -28,6 +29,7 @@ export function getTaskStatusIcon(status: TaskStatus) {
 }
 
 export function TaskRow({ task }: { task: DurableTask }) {
+  const ui = useUiTranslations();
   return (
     <TableRow>
       <TableCell>
@@ -98,14 +100,14 @@ export function TaskRow({ task }: { task: DurableTask }) {
             <LinkButton
               variant="ghost"
               size="sm"
-              aria-label={`View workflow ${task.workflow_id}`}
+              aria-label={ui("View workflow {value0}", { value0: task.workflow_id })}
               href={`/durable/workflows/${task.workflow_id}`}
             >
               <ExternalLink className="h-3 w-3" />
             </LinkButton>
           ) : (
             <Badge variant="outline" className="text-xs">
-              standalone
+              {ui("standalone")}
             </Badge>
           )}
         </div>

@@ -122,6 +122,9 @@ impl From<&str> for AgentStatus {
 /// An agent defines the behavior and capabilities of an AI assistant.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Agent {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default)]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Org-scoped service account used when a tool acts as the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type=Option<String>)]
@@ -391,6 +394,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            localizations: Default::default(),
             is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import * as React from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -185,12 +186,13 @@ export function EntityCardFooter({
 
 /** Quiet tags shared by entity cards, distinct from capability chips. */
 export function EntityCardTags({ tags }: { tags: string[] }) {
+  const ui = useUiTranslations();
   const [expanded, setExpanded] = React.useState(false);
   if (tags.length === 0) return null;
   const visibleTags = expanded ? tags : tags.slice(0, 3);
   return (
     <div
-      aria-label="Tags"
+      aria-label={ui("Tags")}
       className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
     >
       {visibleTags.map((tag) => (

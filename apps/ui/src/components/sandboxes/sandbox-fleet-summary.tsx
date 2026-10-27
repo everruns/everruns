@@ -3,6 +3,7 @@
 // The fleet's summary strip. Every figure that names a set of Sandboxes is also
 // the button that filters the table to that set.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { SandboxFleetStats } from "@/lib/api/sandboxes";
 import { cn } from "@/lib/utils";
 import {
@@ -78,6 +79,7 @@ export function SandboxFleetSummary({
   onState: (state: string) => void;
   onNeedsAttention: (value: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const live = LIVE_STATES.reduce((sum, s) => sum + countOf(stats, s), 0);
   const running = countOf(stats, "running");
   const paused = countOf(stats, "paused");
@@ -95,7 +97,7 @@ export function SandboxFleetSummary({
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <Tile
-        label="Live now"
+        label={ui("Live now")}
         value={String(live)}
         active={state === "live" && !needsAttention}
         onClick={() => {
@@ -119,14 +121,18 @@ export function SandboxFleetSummary({
           </span>
         ) : null}
       </Tile>
-      <Tile label={`Created, ${window} days`} value={String(created)} hint={trend} />
       <Tile
-        label={`Running time, ${window} days`}
+        label={ui("Created, {value0} days", { value0: window })}
+        value={String(created)}
+        hint={trend}
+      />
+      <Tile
+        label={ui("Running time, {value0} days", { value0: window })}
         value={formatRunningTime(stats?.running_seconds_in_window ?? 0)}
         hint={`${stats?.recoveries_in_window ?? 0} lost and rebuilt`}
       />
       <Tile
-        label="Live by provider"
+        label={ui("Live by provider")}
         value={String(providers.length)}
         hint={
           providers.length === 0
@@ -135,7 +141,7 @@ export function SandboxFleetSummary({
         }
       />
       <Tile
-        label="Needs attention"
+        label={ui("Needs attention")}
         value={String(stats?.needs_attention ?? 0)}
         tone="attention"
         active={needsAttention}
@@ -148,10 +154,10 @@ export function SandboxFleetSummary({
       <div
         className="flex flex-wrap gap-1.5 sm:col-span-2 xl:col-span-5"
         role="group"
-        aria-label="Filter by state"
+        aria-label={ui("Filter by state")}
       >
         <StateChip
-          label="All"
+          label={ui("All")}
           count={stats?.by_state.reduce((sum, entry) => sum + entry.count, 0)}
           active={state === "all" && !needsAttention}
           onClick={() => {

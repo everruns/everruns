@@ -16,6 +16,7 @@
 // Only the contents of each zone change per page; position and mechanics stay identical.
 // These primitives are presentational and prop-driven so any page can adopt the language.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -80,14 +81,15 @@ export function PageBreadcrumb({
   className?: string;
   group?: boolean;
 }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const groupLabel = group ? navigationGroupForPath(pathname ?? "") : undefined;
   if (groupLabel) {
-    items = [{ label: groupLabel }, ...items];
+    items = [{ label: ui(groupLabel) }, ...items];
   }
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label={ui("Breadcrumb")}
       className={cn(
         "flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground",
         className,
@@ -311,6 +313,7 @@ export function SectionTabs({
   className?: string;
   "aria-label"?: string;
 }) {
+  const ui = useUiTranslations();
   const Container = items.every((item) => item.href) ? "nav" : "div";
   return (
     <Container
@@ -330,13 +333,13 @@ export function SectionTabs({
             : "border-transparent text-muted-foreground hover:text-foreground",
         );
         const accessibility = {
-          "aria-label": typeof item.label === "string" ? item.label : undefined,
+          "aria-label": typeof item.label === "string" ? ui(item.label) : undefined,
           "aria-description": item.count !== undefined ? `${item.count} items` : undefined,
         };
         const content = (
           <>
             {item.icon}
-            {item.label}
+            {typeof item.label === "string" ? ui(item.label) : item.label}
             {item.count !== undefined && (
               <span className="text-xs font-normal tabular-nums text-muted-foreground">
                 {item.count}
@@ -386,9 +389,10 @@ export function PageJumpNav({
   items: PageJumpNavItem[];
   className?: string;
 }) {
+  const ui = useUiTranslations();
   return (
     <nav
-      aria-label="Jump to section"
+      aria-label={ui("Jump to section")}
       className={cn(
         "flex max-w-full items-center gap-3 overflow-x-auto py-2 text-[13px] text-muted-foreground",
         className,
@@ -396,7 +400,7 @@ export function PageJumpNav({
     >
       <span className="inline-flex shrink-0 items-center gap-1.5">
         <ArrowRight className="size-3.5" />
-        Jump to
+        {ui("Jump to")}
       </span>
       {items.map((item) => (
         <a
@@ -404,7 +408,7 @@ export function PageJumpNav({
           href={item.href}
           className="shrink-0 transition-colors hover:text-foreground"
         >
-          {item.label}
+          {typeof item.label === "string" ? ui(item.label) : item.label}
         </a>
       ))}
     </nav>

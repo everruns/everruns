@@ -164,6 +164,12 @@ fn version() -> u32 {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Manifest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(
+        default,
+        skip_serializing_if = "everruns_contracts::runtime::localization::EntityLocalizations::is_empty"
+    )]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Portable format version. Currently 1; omitted values default to 1.
     #[serde(default = "version")]
     pub schema_version: u32,
@@ -572,6 +578,9 @@ impl AgentPackage {
             })
         };
         let m = &self.manifest;
+        if let Err(message) = m.localizations.validate() {
+            fail("localizations".into(), &message);
+        }
         if m.schema_version != SCHEMA_VERSION {
             fail("schema_version".into(), "unsupported version; expected 1");
         }

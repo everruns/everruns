@@ -1,4 +1,4 @@
-use super::{Findings, plural};
+use super::{Findings, plural, worker_reports};
 use crate::domains::system::doctor::{CheckArea, DoctorCheck, SystemDoctor};
 use chrono::Utc;
 use everruns_durable::{CircuitState, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo};
@@ -19,6 +19,9 @@ const MIN_TOKEN_LEN: usize = 32;
 pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
     let mut found = Findings::default();
     found.check(auth_check(doctor));
+    if !doctor.env.dev_mode && doctor.env.worker_token_len.is_some() {
+        found.check(rejected_logins(doctor));
+    }
 
     let Some(store) = doctor.workflow_store.as_ref() else {
         found.check(
@@ -28,7 +31,8 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         return found;
     };
 
-    let workers = match store.list_workers(WorkerFilter::active()).await {
+    // Every worker with a fresh heartbeat, draining ones included.
+    let workers = match store.list_workers(WorkerFilter::default()).await {
         Ok(workers) => workers,
         Err(error) => {
             found.check(
@@ -40,7 +44,11 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
             return found;
         }
     };
-    let live = fresh(workers);
+    let now = Utc::now();
+    let (live, draining): (Vec<WorkerInfo>, Vec<WorkerInfo>) = fresh(workers)
+        .into_iter()
+        .filter(|worker| worker.status != "stopped")
+        .partition(|worker| worker.status != "draining");
     let groups: BTreeSet<&str> = live
         .iter()
         .filter_map(|worker| worker.worker_group.as_deref())
@@ -71,6 +79,15 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         ))
     });
 
+    found.check(worker_reports::versions_check(
+        &live,
+        env!("CARGO_PKG_VERSION"),
+    ));
+    found.check(worker_reports::drain_check(&draining, now));
+    for check in worker_reports::self_report_checks(&live, doctor.env.nats_url.is_some(), now) {
+        found.check(check);
+    }
+
     let health = store.get_system_health().await.ok();
     found.check(capacity_check(
         &live,
@@ -98,6 +115,11 @@ fn fresh(workers: Vec<WorkerInfo>) -> Vec<WorkerInfo> {
         .into_iter()
         .filter(|worker| worker.last_heartbeat_at > cutoff)
         .collect()
+}
+
+fn rejected_logins(doctor: &SystemDoctor) -> DoctorCheck {
+    let (rejected, last) = crate::worker_link::grpc_service::rejected_worker_calls();
+    worker_reports::rejected_logins_check(rejected, last, doctor.env.strict(), Utc::now())
 }
 
 fn auth_check(doctor: &SystemDoctor) -> DoctorCheck {

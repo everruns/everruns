@@ -1,3 +1,6 @@
+"use client";
+
+import { useUiTranslations } from "@/providers/locale-provider";
 import type { ReactNode } from "react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { cn } from "@/lib/utils";
@@ -25,6 +28,7 @@ export function EntityIdentity({
   className,
   labelClassName,
 }: EntityIdentityProps) {
+  const ui = useUiTranslations();
   if (!truncate) {
     return (
       <span
@@ -38,7 +42,7 @@ export function EntityIdentity({
         >
           {children}
         </span>
-        <CopyButton value={value} label={`Copy ID: ${value}`} kind="id" />
+        <CopyButton value={value} label={ui("Copy ID: {value0}", { value0: value })} kind="id" />
       </span>
     );
   }
@@ -52,7 +56,7 @@ export function EntityIdentity({
       <span data-slot="entity-identity-label" className={cn("min-w-0 truncate", labelClassName)}>
         {children}
       </span>
-      <CopyButton value={value} label={`Copy ID: ${value}`} kind="id" />
+      <CopyButton value={value} label={ui("Copy ID: {value0}", { value0: value })} kind="id" />
     </span>
   );
 }

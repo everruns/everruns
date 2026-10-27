@@ -11,6 +11,8 @@
  */
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -51,6 +53,8 @@ function ThreadContent({
   onPageMessage?: () => void;
   notice?: ReactNode;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { session, agent, agentId, sessionLoading } = useSessionContext();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
   // an untitled thread takes its display title from the same list the sidebar
@@ -66,14 +70,14 @@ function ThreadContent({
         preview: session?.preview ?? listEntry?.preview ?? null,
       });
 
-  const counterpart = getDisplayName(agent);
+  const counterpart = getDisplayName(agent, displayLocale);
 
   // A coordinator thread runs the Chat's own agent, but it is not the Chat:
   // its intro and description would describe the wrong conversation.
   const coordinatorThread = !!coordinatorId && session?.parent_session_id === coordinatorId;
   const platformIntro = agent && !coordinatorThread ? resolvePlatformChatIntro(agent) : null;
 
-  usePageTitle(session ? title : null, "Chat");
+  usePageTitle(session ? title : null, ui("Chat"));
 
   if (sessionLoading) {
     return (
@@ -87,8 +91,10 @@ function ThreadContent({
   if (!session) {
     return (
       <ResourceNotFound
-        title="Thread not found"
-        description="This thread may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Thread not found")}
+        description={ui(
+          "This thread may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/chats"
         backLabel="Back to Chat"
         resourceId={threadId}
@@ -104,8 +110,10 @@ function ThreadContent({
   ) {
     return (
       <ResourceNotFound
-        title="Thread not found"
-        description="This session is available as a recording. Use Playground to test its Agent."
+        title={ui("Thread not found")}
+        description={ui(
+          "This session is available as a recording. Use Playground to test its Agent.",
+        )}
         backHref={`/sessions/${threadId}/trace`}
         backLabel="Open recording"
         resourceId={threadId}

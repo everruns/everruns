@@ -17,6 +17,8 @@
  */
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
@@ -63,6 +65,8 @@ export function NewPlaygroundChatForm({
   endUserId?: string;
   children?: ReactNode;
 } = {}) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: allAgents = [], isLoading: agentsLoading } = useAgents();
   const agents = allAgents.filter((a) => !(a.name === "platform-chat"));
@@ -110,7 +114,7 @@ export function NewPlaygroundChatForm({
 
   usePageReadContext({
     entityType: "playground_chat",
-    label: "Playground choices",
+    label: ui("Playground choices"),
     formId: "choices",
     fields: ["counterparts", "sandboxes", "choices_truncated"],
     values: {
@@ -118,11 +122,11 @@ export function NewPlaygroundChatForm({
         [
           ...agents.map((a) => ({
             value: `${AGENT_VALUE_PREFIX}${a.id}`,
-            name: getDisplayName(a).slice(0, 128),
+            name: getDisplayName(a, displayLocale).slice(0, 128),
           })),
           ...availableHarnesses.map((h) => ({
             value: `${HARNESS_VALUE_PREFIX}${h.name}`,
-            name: getDisplayName(h).slice(0, 128),
+            name: getDisplayName(h, displayLocale).slice(0, 128),
           })),
         ].slice(0, 500),
       ),
@@ -136,7 +140,7 @@ export function NewPlaygroundChatForm({
   const chat = usePageFormDraft({
     schema: playgroundDraftSchema,
     entityType: "playground_chat",
-    label: "New Playground chat",
+    label: ui("New Playground chat"),
     enabled: !optionsLoading,
     values: { counterpart: selection, sandbox, dry_run: dryRun, end_user_id: endUserId ?? "" },
     readonlyFields: ["end_user_id"],
@@ -192,9 +196,9 @@ export function NewPlaygroundChatForm({
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          There are no agents or harnesses available for a chat yet.
+          {ui("There are no agents or harnesses available for a chat yet.")}
         </p>
-        <Button onClick={() => router.push("/agents/new")}>Create an agent</Button>
+        <Button onClick={() => router.push("/agents/new")}>{ui("Create an agent")}</Button>
       </div>
     );
   }
@@ -207,19 +211,19 @@ export function NewPlaygroundChatForm({
           value={selection}
           onValueChange={selectCounterpart}
           ariaLabel="Chat counterpart"
-          placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
+          placeholder={optionsLoading ? ui("Loading options...") : ui("Pick an agent or harness")}
           searchPlaceholder="Search agents and harnesses"
           clearable={false}
           disabled={optionsLoading}
           options={[
             ...harnesses.map((harness) => ({
               value: `${HARNESS_VALUE_PREFIX}${harness.name}`,
-              label: getDisplayName(harness),
+              label: getDisplayName(harness, displayLocale),
               group: "Harnesses",
             })),
             ...agents.map((agent) => ({
               value: `${AGENT_VALUE_PREFIX}${agent.id}`,
-              label: getDisplayName(agent),
+              label: getDisplayName(agent, displayLocale),
               group: "Agents",
             })),
           ]}
@@ -231,25 +235,27 @@ export function NewPlaygroundChatForm({
                 onClick={() => setShowDeprecated((shown) => !shown)}
                 aria-pressed={showDeprecated}
               >
-                {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+                {showDeprecated ? ui("Hide deprecated") : ui("Show deprecated")}
               </button>
             ) : undefined
           }
         />
         {selectedAgent?.sandbox_policy && sandboxNames.length > 0 && sandboxMode !== "fixed" ? (
           <Select value={selectedSandbox} onValueChange={setSandbox}>
-            <SelectTrigger className="w-full" aria-label="Sandbox">
-              <SelectValue placeholder="Pick a sandbox" />
+            <SelectTrigger className="w-full" aria-label={ui("Sandbox")}>
+              <SelectValue placeholder={ui("Pick a sandbox")} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectLabel>Runs in</SelectLabel>
+                <SelectLabel>{ui("Runs in")}</SelectLabel>
                 {sandboxNames.map((name) => {
                   const spec = sandboxTemplates[name];
                   const target = spec.target.provider || spec.target.kind;
                   return (
                     <SelectItem key={name} value={name}>
-                      {name === selectedAgent.sandbox_policy?.default ? `${name} (default)` : name}{" "}
+                      {name === selectedAgent.sandbox_policy?.default
+                        ? ui("{value0} (default)", { value0: name })
+                        : name}{" "}
                       · {target}
                     </SelectItem>
                   );
@@ -259,23 +265,24 @@ export function NewPlaygroundChatForm({
           </Select>
         ) : selectedAgent?.sandbox_policy && sandboxNames.length > 0 ? (
           <div className="border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Sandbox: </span>
-            {selectedSandbox} · fixed by Agent
+            <span className="text-muted-foreground">{ui("Sandbox:")} </span>
+            {selectedSandbox} {ui("· fixed by Agent")}
           </div>
         ) : usesManagedBashkitSandbox ? (
           <div className="border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Sandbox: </span>
-            Bashkit Virtual Workspace · fixed by Bashkit Worker
+            <span className="text-muted-foreground">{ui("Sandbox:")} </span>
+            {ui("Bashkit Virtual Workspace · fixed by Bashkit Worker")}
           </div>
         ) : null}
         {children}
         <div className="flex items-start gap-2">
           <Checkbox id="dry-run" checked={dryRun} onCheckedChange={setDryRun} className="mt-0.5" />
           <label htmlFor="dry-run" className="text-sm">
-            <span className="font-medium">Dry run</span>
+            <span className="font-medium">{ui("Dry run")}</span>
             <span className="block text-xs text-muted-foreground">
-              Tools that only read run for real. Every other action is simulated and changes
-              nothing.
+              {ui(
+                "Tools that only read run for real. Every other action is simulated and changes nothing.",
+              )}
             </span>
           </label>
         </div>
@@ -289,7 +296,7 @@ export function NewPlaygroundChatForm({
           ) : (
             <MessageCircle className="size-4" />
           )}
-          {dryRun ? "Start test run" : "Start Playground chat"}
+          {dryRun ? ui("Start test run") : ui("Start Playground chat")}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}
