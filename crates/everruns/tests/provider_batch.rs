@@ -1,4 +1,5 @@
 //! Offline acceptance tests of the public Framework API and real HTTP driver.
+//! Dedicated servers isolate timed-out responses and shared-client keepalive connections.
 #![cfg(feature = "anthropic")]
 
 use std::time::Duration;
@@ -75,7 +76,7 @@ async fn results(server: &MockServer, rows: Vec<Value>) {
 
 #[tokio::test]
 async fn submit_persist_reconstruct_poll_collect_in_submission_order() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     let saved = serde_json::to_string(&ticket).unwrap();
     for private in [
@@ -126,7 +127,7 @@ async fn submit_persist_reconstruct_poll_collect_in_submission_order() {
 
 #[tokio::test]
 async fn cancellation_keeps_completed_results_and_is_repeatable_after_end() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     state(&server, "in_progress").await;
     Mock::given(method("POST"))
@@ -183,7 +184,7 @@ async fn missing_duplicate_and_unknown_ids_fail_collection() {
         vec![success("first", "a"), success("first", "b")],
         vec![success("first", "a"), success("stranger", "b")],
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = submit(&server).await;
         state(&server, "ended").await;
         results(&server, rows).await;
@@ -197,7 +198,7 @@ async fn missing_duplicate_and_unknown_ids_fail_collection() {
 
 #[tokio::test]
 async fn tenant_account_provider_endpoint_and_ticket_version_are_checked_before_io() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     let initial = server.received_requests().await.unwrap().len();
     for scope in ["tenant-b/account-a", "tenant-a/account-b"] {
@@ -215,7 +216,7 @@ async fn tenant_account_provider_endpoint_and_ticket_version_are_checked_before_
             BatchError::ScopeMismatch
         );
     }
-    let other = MockServer::start().await;
+    let other = MockServer::builder().start().await;
     assert_eq!(
         client(&other, "tenant-a/account-a")
             .poll(&ticket)
@@ -244,7 +245,7 @@ async fn tenant_account_provider_endpoint_and_ticket_version_are_checked_before_
 
 #[tokio::test]
 async fn credentials_are_resolved_from_the_current_client_and_can_rotate() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     Mock::given(method("GET"))
         .and(path("/v1/messages/batches/msgbatch_test"))
@@ -271,7 +272,7 @@ async fn unknown_creation_outcomes_are_never_retried() {
             .set_body_json(job("in_progress"))
             .set_delay(Duration::from_millis(200)),
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         Mock::given(method("POST"))
             .and(path("/v1/messages/batches"))
             .respond_with(response)
@@ -293,7 +294,7 @@ async fn unknown_creation_outcomes_are_never_retried() {
 
 #[tokio::test]
 async fn poll_failures_can_retry_the_same_ticket_without_recreating_the_job() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     Mock::given(method("GET"))
         .and(path("/v1/messages/batches/msgbatch_test"))
@@ -326,7 +327,7 @@ async fn expired_and_rejected_items_are_distinct_from_job_errors() {
         ("expired", BatchItemError::Expired),
         ("errored", BatchItemError::Server),
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = submit(&server).await;
         state(&server, "ended").await;
         results(&server,vec![success("first","ok"),json!({"custom_id":"second","result":{"type":kind,"error":{"type":"error","error":{"type":"api_error","message":"private"}}}})]).await;
@@ -340,7 +341,7 @@ async fn expired_and_rejected_items_are_distinct_from_job_errors() {
 
 #[tokio::test]
 async fn local_validation_and_unsupported_providers_never_send() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     assert_eq!(
         client(&server, "scope").submit().await.unwrap_err(),
         BatchError::InvalidRequest("batch has no requests")
@@ -422,7 +423,7 @@ impl everruns::ChatDriver for NoBatch {
 
 #[tokio::test]
 async fn bounded_reads_and_redirects_fail_without_leaking_data() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     let ticket = submit(&server).await;
     state(&server, "ended").await;
     results(
@@ -439,7 +440,7 @@ async fn bounded_reads_and_redirects_fail_without_leaking_data() {
         BatchError::ResponseTooLarge
     );
     server.reset().await;
-    let sink = MockServer::start().await;
+    let sink = MockServer::builder().start().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(302).insert_header("location", sink.uri()))
         .mount(&server)
@@ -456,7 +457,7 @@ async fn bounded_reads_and_redirects_fail_without_leaking_data() {
 
 #[tokio::test]
 async fn definite_rejections_and_provider_retention_are_not_uncertain_creation() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(429).set_body_string("private provider details"))
         .mount(&server)
@@ -491,7 +492,7 @@ async fn malformed_result_files_fail_without_partial_success() {
         "{\"custom_id\":\"first\",\"result\":{\"type\":\"future_state\"}}",
         "{\"custom_id\":\"first\",\"result\":{\"type\":\"succeeded\",\"message\":{}}}",
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = submit(&server).await;
         state(&server, "ended").await;
         Mock::given(method("GET"))
@@ -517,7 +518,7 @@ async fn nested_provider_error_envelopes_keep_actionable_item_categories() {
         ("overloaded_error", BatchItemError::Server),
         ("future_error", BatchItemError::Other),
     ] {
-        let server = MockServer::start().await;
+        let server = MockServer::builder().start().await;
         let ticket = submit(&server).await;
         state(&server, "ended").await;
         results(&server, vec![success("first", "ok"), json!({"custom_id":"second","result":{"type":"errored","error":{"type":"error","error":{"type":kind,"message":"private"}}}})]).await;
@@ -531,7 +532,7 @@ async fn nested_provider_error_envelopes_keep_actionable_item_categories() {
 
 #[tokio::test]
 async fn reconciled_jobs_recover_a_ticket_without_resubmission() {
-    let server = MockServer::start().await;
+    let server = MockServer::builder().start().await;
     state(&server, "ended").await;
     results(
         &server,
