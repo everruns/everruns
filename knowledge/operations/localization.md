@@ -257,6 +257,12 @@ field. Harness display identity is not inherited from its parent. Capability
 schema overlays use the same order, merged from least to most specific while
 preserving configuration values and validation semantics.
 
+The command catalog exposes these maps as JSON `--localizations` flags. Schema
+changes must refresh the checked-in CLI command contract and offline evaluation
+catalog, then the CLI golden contract and reference pages; their inventory tests
+guard the server, terminal CLI and evaluation surfaces against drift. See
+[Command Tree](../execution/command-tree.md#one-command-line-two-surfaces).
+
 ### Browser locale detection
 
 - The browser client should detect locale from `navigator.languages` / `navigator.language`
