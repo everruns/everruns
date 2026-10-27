@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{SessionId, TurnId};
 
 use crate::events::Event;
 
@@ -39,6 +39,10 @@ pub struct ActorFence {
     pub session_id: SessionId,
     pub holder: String,
     pub fence: u64,
+    /// A detached tool call's appends: checked against the call's detached
+    /// record instead of the actor lease (`fence` is unused), because its turn
+    /// parked and released the lease (see `engine::tool_detach`).
+    pub detached_tool_call_id: Option<String>,
     on_lost: Option<Arc<tokio::sync::watch::Sender<bool>>>,
 }
 
@@ -48,6 +52,7 @@ impl std::fmt::Debug for ActorFence {
             .field("session_id", &self.session_id)
             .field("holder", &self.holder)
             .field("fence", &self.fence)
+            .field("detached_tool_call_id", &self.detached_tool_call_id)
             .finish_non_exhaustive()
     }
 }
@@ -58,7 +63,20 @@ impl ActorFence {
             session_id,
             holder: holder.into(),
             fence,
+            detached_tool_call_id: None,
             on_lost: None,
+        }
+    }
+
+    /// The fence of `holder`'s detached call `tool_call_id` of `session_id`.
+    pub fn detached_call(
+        session_id: SessionId,
+        holder: impl Into<String>,
+        tool_call_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            detached_tool_call_id: Some(tool_call_id.into()),
+            ..Self::new(session_id, holder, 0)
         }
     }
 
@@ -175,6 +193,13 @@ pub struct ActorJournal {
     pub head_sequence: Option<i32>,
 }
 
+/// A tool call a holder took off its turn (see `engine::tool_detach`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct DetachedCallKey {
+    pub session_id: SessionId,
+    pub tool_call_id: String,
+}
+
 /// The control plane's runnable index and lease protocol.
 #[async_trait]
 pub trait ActorLeaseStore: SessionActorStore {
@@ -189,6 +214,53 @@ pub trait ActorLeaseStore: SessionActorStore {
         ttl: Duration,
         max_leased_per_org: Option<u32>,
     ) -> Result<Vec<LeasedActor>>;
+
+    /// Record `call` of turn `turn_id` as running on `holder`, which leases
+    /// the actor with `fence`, for `ttl`. While the record lives the actor is
+    /// not leased. `false` when the store keeps no records or the lease is
+    /// gone: the call stays with its turn.
+    async fn detach_tool_call(
+        &self,
+        _call: &DetachedCallKey,
+        _turn_id: TurnId,
+        _holder: &str,
+        _fence: u64,
+        _ttl: Duration,
+    ) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Extend `holder`'s live records among `calls` by `ttl`; returns those
+    /// still live. The holder stops every other call.
+    async fn renew_detached_tool_calls(
+        &self,
+        _holder: &str,
+        _ttl: Duration,
+        _calls: &[DetachedCallKey],
+    ) -> Result<Vec<DetachedCallKey>> {
+        Ok(Vec::new())
+    }
+
+    /// `call`'s `tool.completed` is stored: drop its record. `None` when the
+    /// record was gone (cancelled or expired), else whether it was the
+    /// session's last, which made the actor runnable.
+    async fn complete_detached_tool_call(
+        &self,
+        _call: &DetachedCallKey,
+        _holder: &str,
+    ) -> Result<Option<bool>> {
+        Ok(None)
+    }
+
+    /// Expire `holder`'s records among `calls` now: it stopped them, and the
+    /// next lease resumes their turns from the log.
+    async fn expire_detached_tool_calls(
+        &self,
+        _holder: &str,
+        _calls: &[DetachedCallKey],
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Ownership and journal operations for one known session.

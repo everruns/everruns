@@ -649,6 +649,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
                 Finish::Retry(error)
             }
         };
+        // Calls the act detached outlive the turn only when it parked with its
+        // own events stored; see `tool_detach`.
+        crate::engine::tool_detach::turn_ended(matches!(finish, Finish::Park));
         self.hosts.turn_ended(&drive).await;
         Ok(finish)
     }

@@ -61,6 +61,10 @@ struct AgentEventMetadata {
 pub struct ActorAppendFence<'a> {
     pub holder: &'a str,
     pub fence: i64,
+    /// The append is a detached tool call's: it is checked against the
+    /// call's `detached_tool_calls` row instead of the actor lease
+    /// (`Database::create_events_detached`).
+    pub detached_tool_call: Option<&'a str>,
 }
 
 #[derive(Clone)]
@@ -615,6 +619,15 @@ impl EventService {
             .collect::<Result<Vec<_>>>()?;
         let session_id = single_session(&rows);
         let stored = match fence {
+            Some(ActorAppendFence {
+                holder,
+                detached_tool_call: Some(tool_call_id),
+                ..
+            }) => {
+                self.db
+                    .create_events_detached(rows, holder, tool_call_id)
+                    .await
+            }
             Some(fence) => {
                 self.db
                     .create_events_fenced(rows, fence.holder, fence.fence)

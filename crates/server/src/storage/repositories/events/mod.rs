@@ -349,6 +349,35 @@ impl Database {
         holder: &str,
         fence: i64,
     ) -> Result<Vec<EventRow>> {
+        self.create_events_checked(inputs, holder, fence, None)
+            .await
+    }
+
+    /// Insert `inputs` for the detached tool call `tool_call_id`, only while
+    /// `holder` holds its unexpired `detached_tool_calls` row on every session
+    /// the batch writes to: the call's turn parked and no longer holds the
+    /// actor lease (knowledge/execution/detached-tool-calls.md). Otherwise
+    /// nothing is written and the error downcasts to
+    /// [`ActorLeaseFenceRejected`]. The row is taken `FOR SHARE`, so a cancel
+    /// or the expiry sweep deleting it waits for the append, and an append
+    /// after either is refused.
+    pub async fn create_events_detached(
+        &self,
+        inputs: Vec<CreateEventRow>,
+        holder: &str,
+        tool_call_id: &str,
+    ) -> Result<Vec<EventRow>> {
+        self.create_events_checked(inputs, holder, 0, Some(tool_call_id))
+            .await
+    }
+
+    async fn create_events_checked(
+        &self,
+        inputs: Vec<CreateEventRow>,
+        holder: &str,
+        fence: i64,
+        detached_tool_call: Option<&str>,
+    ) -> Result<Vec<EventRow>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
@@ -370,17 +399,34 @@ impl Database {
         .bind(&sessions)
         .execute(&mut *tx)
         .await?;
-        let held: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT session_id FROM session_actors \
-             WHERE session_id = ANY($1) AND lease_holder = $2 AND lease_fence = $3 \
-               AND lease_expires_at > NOW() \
-             ORDER BY session_id FOR SHARE",
-        )
-        .bind(&sessions)
-        .bind(holder)
-        .bind(fence)
-        .fetch_all(&mut *tx)
-        .await?;
+        let held: Vec<Uuid> = match detached_tool_call {
+            None => {
+                sqlx::query_scalar(
+                    "SELECT session_id FROM session_actors \
+                     WHERE session_id = ANY($1) AND lease_holder = $2 AND lease_fence = $3 \
+                       AND lease_expires_at > NOW() \
+                     ORDER BY session_id FOR SHARE",
+                )
+                .bind(&sessions)
+                .bind(holder)
+                .bind(fence)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+            Some(tool_call_id) => {
+                sqlx::query_scalar(
+                    "SELECT session_id FROM detached_tool_calls \
+                     WHERE session_id = ANY($1) AND holder = $2 AND tool_call_id = $3 \
+                       AND expires_at > NOW() \
+                     ORDER BY session_id FOR SHARE",
+                )
+                .bind(&sessions)
+                .bind(holder)
+                .bind(tool_call_id)
+                .fetch_all(&mut *tx)
+                .await?
+            }
+        };
         if let Some(lost) = sessions.iter().find(|id| !held.contains(id)) {
             tx.rollback().await?;
             return Err(ActorLeaseFenceRejected {

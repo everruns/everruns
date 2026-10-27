@@ -1,15 +1,16 @@
 //! [`ActorLeaseStore`] over the worker link: the gRPC side of the session
 //! actor RPCs (`LeaseActors`, `RenewActorLease`, `ReleaseActor`,
-//! `ReadActorJournal`).
+//! `ReadActorJournal`) and the detached tool call RPCs.
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_internal_protocol::proto;
 use uuid::Uuid;
 
 use crate::actor_lease_store::{
-    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, LeasedActor, SessionActorStore,
+    ActorJournal, ActorLeaseStore, ActorRelease, ActorRenewal, DetachedCallKey, LeasedActor,
+    SessionActorStore,
 };
 use crate::grpc_adapters::{
     GrpcClient, grpc_missing_field, grpc_status_to_error, proto_event_to_core, uuid_to_proto,
@@ -88,6 +89,108 @@ impl ActorLeaseStore for GrpcActorLeaseStore {
             })
             .collect()
     }
+
+    async fn detach_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        turn_id: TurnId,
+        holder: &str,
+        fence: u64,
+        ttl: std::time::Duration,
+    ) -> Result<bool> {
+        let response = self
+            .client
+            .inner
+            .client()
+            .detach_tool_call(proto::DetachToolCallRequest {
+                call: Some(call_to_wire(call)),
+                turn_id: Some(uuid_to_proto(turn_id.uuid())),
+                holder: holder.to_string(),
+                fence: fence_to_wire(fence)?,
+                ttl_ms: ttl_ms(ttl),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(response.detached)
+    }
+
+    async fn renew_detached_tool_calls(
+        &self,
+        holder: &str,
+        ttl: std::time::Duration,
+        calls: &[DetachedCallKey],
+    ) -> Result<Vec<DetachedCallKey>> {
+        let response = self
+            .client
+            .inner
+            .client()
+            .renew_detached_tool_calls(proto::RenewDetachedToolCallsRequest {
+                holder: holder.to_string(),
+                ttl_ms: ttl_ms(ttl),
+                calls: calls.iter().map(call_to_wire).collect(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        response.live.into_iter().map(call_from_wire).collect()
+    }
+
+    async fn complete_detached_tool_call(
+        &self,
+        call: &DetachedCallKey,
+        holder: &str,
+    ) -> Result<Option<bool>> {
+        let response = self
+            .client
+            .inner
+            .client()
+            .complete_detached_tool_call(proto::CompleteDetachedToolCallRequest {
+                call: Some(call_to_wire(call)),
+                holder: holder.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(response.completed.then_some(response.resumable))
+    }
+
+    async fn expire_detached_tool_calls(
+        &self,
+        holder: &str,
+        calls: &[DetachedCallKey],
+    ) -> Result<()> {
+        self.client
+            .inner
+            .client()
+            .expire_detached_tool_calls(proto::ExpireDetachedToolCallsRequest {
+                holder: holder.to_string(),
+                calls: calls.iter().map(call_to_wire).collect(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(())
+    }
+}
+
+fn call_to_wire(call: &DetachedCallKey) -> proto::DetachedToolCallKey {
+    proto::DetachedToolCallKey {
+        session_id: Some(uuid_to_proto(call.session_id.uuid())),
+        tool_call_id: call.tool_call_id.clone(),
+    }
+}
+
+fn call_from_wire(call: proto::DetachedToolCallKey) -> Result<DetachedCallKey> {
+    let session_id = call
+        .session_id
+        .as_ref()
+        .ok_or_else(|| grpc_missing_field("detached call session_id"))?;
+    let session_id = Uuid::parse_str(&session_id.value)
+        .map_err(|e| AgentLoopError::store(format!("Invalid detached call session_id: {e}")))?;
+    Ok(DetachedCallKey {
+        session_id: SessionId::from_uuid(session_id),
+        tool_call_id: call.tool_call_id,
+    })
 }
 
 #[async_trait]
