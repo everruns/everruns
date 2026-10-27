@@ -504,5 +504,30 @@ async fn capability_only_queries_refine_without_disclosing_arbitrary_tools_or_hi
         panic!("search failed")
     };
     assert!(result["tools"].as_array().unwrap().len() <= 8);
-    assert!(result.to_string().find("private_ledger").is_none());
+    assert!(!result.to_string().contains("private_ledger"));
+}
+
+#[tokio::test]
+async fn capability_only_deferred_matches_identify_the_server_for_refinement() {
+    let definition = crate::deferred_mcp_server_definition("archive", Some("Record access"))
+        .with_capability_attribution("plugin:opaque", Some("Research"))
+        .with_capability_description("Obsidian observatory");
+    let search = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = search
+        .execute_with_context(json!({"query":"obsidian"}), &context(&[definition]))
+        .await
+    else {
+        panic!("search failed")
+    };
+    assert_eq!(result["tools"], json!([]));
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(result["available_servers"], json!(["archive"]));
+    assert_eq!(result["available_capabilities"], json!(["plugin:opaque"]));
 }

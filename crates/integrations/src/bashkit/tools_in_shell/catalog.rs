@@ -63,6 +63,13 @@ pub(crate) struct Pending {
     pub placeholder: Arc<dyn Tool>,
 }
 
+/// Authorized source refinements, distinct from operation matches.
+#[derive(Default)]
+pub(crate) struct SourceMatches {
+    pub servers: Vec<String>,
+    pub capabilities: Vec<String>,
+}
+
 /// Every tool the shell may call, in a stable order, plus the deferred
 /// servers not loaded yet.
 #[derive(Clone)]
@@ -420,30 +427,49 @@ impl Catalog {
             .collect()
     }
 
-    /// Authorized servers whose metadata matched, but whose operation did not.
-    /// These are browse suggestions, never operation matches.
-    pub fn source_matches(&self, query: &str, limit: usize) -> Vec<String> {
+    /// Authorized source context matches that need operation refinement.
+    pub fn source_matches(&self, query: &str, limit: usize) -> SourceMatches {
+        let mut matches = SourceMatches::default();
         if query.trim().is_empty() {
-            return Vec::new();
+            return matches;
         }
         let Some(index) = &self.search_index else {
-            return Vec::new();
+            return matches;
         };
-        let mut sources = Vec::new();
         for hit in index.search(query, limit, |name| self.searchable_names.contains(name)) {
-            if !hit.server_match || hit.tool_match {
+            if hit.tool_match {
                 continue;
             }
-            let source = parse_mcp_tool_name(&hit.name)
-                .map(|(server, _)| spell(&server))
-                .or_else(|| deferred_mcp_server_prefix(&hit.name).map(spell));
-            if let Some(source) = source
-                && !sources.contains(&source)
-            {
-                sources.push(source);
+            if hit.server_match || hit.capability_match {
+                let source = parse_mcp_tool_name(&hit.name)
+                    .map(|(server, _)| spell(&server))
+                    .or_else(|| deferred_mcp_server_prefix(&hit.name).map(spell));
+                if let Some(source) = source
+                    && !matches.servers.contains(&source)
+                {
+                    matches.servers.push(source);
+                }
+            }
+            if hit.capability_match {
+                let definition = self
+                    .source_registry
+                    .as_ref()
+                    .and_then(|registry| registry.tool_definition(&hit.name))
+                    .or_else(|| {
+                        self.entries
+                            .iter()
+                            .find(|entry| entry.tool_name == hit.name)
+                            .map(|entry| entry.tool.to_definition())
+                    });
+                if let Some(id) =
+                    definition.and_then(|definition| definition.hints().capability_id.clone())
+                    && !matches.capabilities.contains(&id)
+                {
+                    matches.capabilities.push(id);
+                }
             }
         }
-        sources
+        matches
     }
 }
 

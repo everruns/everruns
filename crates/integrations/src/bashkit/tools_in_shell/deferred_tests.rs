@@ -309,5 +309,9 @@ async fn capability_search_context_survives_a_deferred_server_loading_in_the_sam
     .await;
     assert_eq!(output["exit_code"], 0, "{output}");
     let stdout = output["stdout"].as_str().unwrap();
-    assert_eq!(stdout.matches("web-fetch").count(), 2, "{stdout}");
+    assert_eq!(stdout.matches("fetching").count(), 2, "{stdout}");
+    assert!(
+        !stdout.contains("tools web-fetch"),
+        "source-only queries request refinement: {stdout}"
+    );
 }

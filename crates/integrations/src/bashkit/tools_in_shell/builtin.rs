@@ -278,7 +278,10 @@ impl ToolsBuiltin {
         let catalog = self.catalog();
         let matches = catalog.search(&query, SEARCH_LIMIT);
         let source_matches = catalog.source_matches(&query, SEARCH_LIMIT);
-        if matches.is_empty() && source_matches.is_empty() {
+        if matches.is_empty()
+            && source_matches.servers.is_empty()
+            && source_matches.capabilities.is_empty()
+        {
             return text(format!(
                 "No tools match `{query}`. Run `tools --help` to list everything.\n"
             ));
@@ -294,12 +297,20 @@ impl ToolsBuiltin {
         if !matches.is_empty() {
             out.push_str("\nRun `<line> --help` for a tool's input.\n");
         }
-        if !source_matches.is_empty() {
+        if !source_matches.servers.is_empty() {
             out.push_str("\nServer description matches (browse these servers; these are not operation matches):\n");
-            for source in source_matches {
+            for source in source_matches.servers {
                 out.push_str(&format!(
                     "  {source}  Run `tools {source} --help` to browse its operations; refine search with an operation name.\n"
                 ));
+            }
+        }
+        if !source_matches.capabilities.is_empty() {
+            out.push_str(
+                "\nCapability context matches (refine with an operation name or action):\n",
+            );
+            for capability in source_matches.capabilities {
+                out.push_str(&format!("  {capability}\n"));
             }
         }
         text(out)

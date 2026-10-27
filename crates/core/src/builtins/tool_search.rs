@@ -704,9 +704,12 @@ impl ToolSearchTool {
                 // A server-domain match identifies a source, not a particular
                 // operation. Ask for refinement rather than promoting the
                 // first alphabetical operations from a large server.
-                if hit.server_match
-                    && let Some((source, _)) =
-                        crate::mcp_server::parse_mcp_tool_name(definition.name())
+                if (hit.server_match || hit.capability_match)
+                    && let Some(source) = crate::mcp_server::parse_mcp_tool_name(definition.name())
+                        .map(|(source, _)| source)
+                        .or_else(|| {
+                            crate::deferred_mcp_server_prefix(definition.name()).map(str::to_owned)
+                        })
                 {
                     matching_sources.insert(source);
                 }
@@ -798,10 +801,9 @@ impl ToolSearchTool {
                 break;
             }
             omitted_tools.pop();
-            result
-                .as_object_mut()
-                .expect("search result object")
-                .remove("omitted_tools");
+            if let Some(object) = result.as_object_mut() {
+                object.remove("omitted_tools");
+            }
         }
         if serialized_size(&result, limits.result_bytes).is_none() {
             return ToolExecutionResult::tool_error(

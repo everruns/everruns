@@ -56,7 +56,10 @@ static Bash tool description.
 }
 ```
 
-The CLI and bounded native search use the same authorized, server-aware index.
+The CLI and bounded native search use the same authorized index, including
+capability IDs, names and descriptions and MCP server context. Source-only
+matches return capability or server refinements instead of arbitrary operations.
+Capability context remains searchable after a deferred server loads in a script.
 Legacy native `tool_search` remains unchanged unless configured with
 `bounded: true`. See [Large MCP catalogs](/features/large-mcp-catalogs/) for
 discovery bounds, search configuration, and cache and authorization behavior.
