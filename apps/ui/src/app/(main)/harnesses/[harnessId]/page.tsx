@@ -262,10 +262,14 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
       summary:
         network.allowed.length || network.blocked.length
           ? [
-              ...(network.allowed.length ? [`${network.allowed.length} allowed`] : []),
-              ...(network.blocked.length ? [`${network.blocked.length} blocked`] : []),
+              ...(network.allowed.length
+                ? [ui("{value0} allowed", { value0: network.allowed.length })]
+                : []),
+              ...(network.blocked.length
+                ? [ui("{value0} blocked", { value0: network.blocked.length })]
+                : []),
             ].join(" · ")
-          : "Unrestricted",
+          : ui("Unrestricted"),
     },
     {
       id: "usage",

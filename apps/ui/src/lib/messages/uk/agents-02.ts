@@ -103,7 +103,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Він більше не містить інструментів чи інструкцій. Видаліть його.",
   "Iteration limit": "Ліміт ітерацій",
   "Jev returns a probability. The check trips at or above the threshold.":
-    "Jev повертає ймовірність. Чек спрацьовує на порозі або вище.",
+    "Jev повертає ймовірність. Перевірка спрацьовує на порозі або вище.",
   "JSON-RPC channel": "Канал JSON-RPC",
   "Just now · by Chat": "Щойно · через чат",
   "Keep running": "Продовжуйте бігти",
@@ -203,7 +203,7 @@ export const messages: Readonly<Record<string, string>> = {
   "No channels or triggers": "Немає каналів чи тригерів",
   "No channels yet": "Ще немає каналів",
   "No examples": "Без прикладів",
-  "No failed turns in this window.": "У цьому вікні немає невдалих поворотів.",
+  "No failed turns in this window.": "У цьому вікні немає невдалих ходів.",
   "No health check has been run for this configuration yet.":
     "Для цієї конфігурації ще не було запущено жодної перевірки працездатності.",
   "No identity": "Без ідентифікації",
@@ -217,7 +217,7 @@ export const messages: Readonly<Record<string, string>> = {
   "No MCP servers attached": "Сервери MCP не підключені",
   "No per-channel cap": "Немає обмеження на канал",
   "No presets": "Без попередніх налаштувань",
-  "No runs yet.": "Пробігів ще немає.",
+  "No runs yet.": "Запусків ще немає.",
   "No sessions yet. Start a test chat from the agent page to begin.":
     "Сесій ще немає. Для початку розпочніть тестовий чат зі сторінки агента.",
   "No Slack message received yet. Invite the bot to a channel, then @mention it to test.":
@@ -234,7 +234,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Not loaded": "Не завантажується",
   "Not set yet": "Ще не встановлено",
   "Nothing is checked yet. Add a preset, or add a check and choose what it looks at.":
-    "Ще нічого не перевірено. Додайте стиль або чек і виберіть, на що він дивиться.",
+    "Ще нічого не перевірено. Додайте стиль або перевірку і виберіть, на що він дивиться.",
   "Nothing to create. Comments appear under the Everruns App's name, shared with every agent that uses it. It works only on GitHub accounts an admin of your organization already connected:":
     "Нічого для створення. Коментарі відображаються під іменем додатка Everruns і надаються кожному агенту, який його використовує. Він працює лише з обліковими записами GitHub, до яких уже підключений адміністратор вашої організації:",
   "Observe this agent": "Спостерігайте за цим агентом",
@@ -341,7 +341,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Готовий приймати автентифіковані запити A2A JSON-RPC.",
   "Reconnect your Slack workspace": "Повторно підключіть свій робочий простір Slack",
   Refreshing: "Освіжає",
-  "Refreshing checks": "Оновлення чеків",
+  "Refreshing checks": "Оновлення перевірок",
   "Regenerate AG-UI token": "Відновити маркер AG-UI",
   "Regenerate FCP token": "Відновити маркер FCP",
   "Regenerate Public Chat token": "Відновити маркер публічного чату",
@@ -349,7 +349,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Відносні шляхи в дереві файлів нового сеансу. Файли підтримки навичок включені.",
   "Remove attachment": "Видалити вкладення",
   "Remove capability": "Видалити можливість",
-  "Remove check": "Зняти чек",
+  "Remove check": "Видалити перевірку",
   "Remove MCP server?": "Видалити сервер MCP?",
   "Remove removed capability {value0}": "Видалити видалену можливість {value0}",
   "Remove unavailable capability {value0}": "Видалити недоступну можливість {value0}",

@@ -71,10 +71,10 @@ export const messages: Readonly<Record<string, string>> = {
   "account yet.": ".",
   Across: "Поперек",
   Activation: "Активація",
-  "Active turns": "Активні повороти",
+  "Active turns": "Активні ходи",
   "Activity unavailable": "Діяльність недоступна",
   "Acts as the person": "Виконує роль особи",
-  "Add a": "Додати a",
+  "Add a": "Додати",
   "Add a channel from an agent's Integrations tab. New channels start as drafts and take no traffic until you publish them.":
     "Додайте канал із вкладки Інтеграції агента. Нові канали починаються як чернетки й не отримують трафіку, доки ви їх не опублікуєте.",
   "Add a sandbox target": "Додайте ціль пісочниці",
@@ -83,7 +83,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Add an organization preset or a custom HTTP server.":
     "Додайте попередні налаштування організації або спеціальний HTTP-сервер.",
   "Add channel": "Додати канал",
-  "Add check": "Додати чек",
+  "Add check": "Додати перевірку",
   "Add preset": "Додати попередні налаштування",
   "Add pull request trigger": "Додати тригер запиту на отримання",
   "Add this agent to Slack or use credentials from an existing Slack app below.":
@@ -114,7 +114,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Agent source": "Джерело агента",
   "AgentID client ID": "Ідентифікатор клієнта AgentID",
   "AgentID sign-in": "Вхід за допомогою AgentID",
-  "Agents running": "Бігають агенти",
+  "Agents running": "Агенти працюють",
   "Agents that work for {value0}: what each one is doing, how it is reached, and what is misconfigured.":
     "Агенти, які працюють на {value0}: що кожен з них робить, як до нього звертаються та що неправильно налаштовано.",
   "agents/support or agents/support/agent.toml": "agents/support або agents/support/agent.toml",
@@ -209,10 +209,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Channel settings": "Налаштування каналу",
   Channels: "Канали",
   "Channels (": "Канали (",
-  "Checking package…": "Перевірка посилки…",
+  "Checking package…": "Перевірка пакета…",
   "Checking Slack connections…": "Перевірка підключень Slack…",
-  "Checkpoint and stop": "КПП і зупинка",
-  Checks: "Чеки",
+  "Checkpoint and stop": "Зберегти контрольну точку й зупинити",
+  Checks: "Перевірки",
   "Checks Error": "Помилка перевірок",
   "Choose a repository": "Виберіть сховище",
   "Choose a workspace": "Виберіть робоче місце",
@@ -262,7 +262,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Could not load Agent Card.": "Не вдалося завантажити картку агента.",
   "Could not load Agent source.": "Не вдалося завантажити джерело агента.",
   "Could not load avatars.": "Не вдалося завантажити аватари.",
-  "Could not load failed turns.": "Не вдалося завантажити невдалі повороти.",
+  "Could not load failed turns.": "Не вдалося завантажити невдалі ходи.",
   "Could not load the execution targets offered by this deployment.":
     "Не вдалося завантажити цілі виконання, запропоновані цим розгортанням.",
   "Could not load the Slack app manifest.": "Не вдалося завантажити маніфест програми Slack.",
@@ -339,7 +339,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Each one is created as a draft channel. Nothing takes traffic until you publish it.":
     "Кожен з них створюється як проект каналу. Ніщо не забирає трафік, поки ви не опублікуєте це.",
   "Each person's own servers from Settings > My MCP servers. Not used by unattended runs or conversations with several people.":
-    "Власні сервери кожної особи в Налаштуваннях > Мої сервери MCP. Не використовується для пробіжок без нагляду або розмов з кількома людьми.",
+    "Власні сервери кожної особи в Налаштуваннях > Мої сервери MCP. Не використовується для запусків без нагляду або розмов з кількома людьми.",
   "Each user, or the agent if they have not connected":
     "Кожен користувач або агент, якщо вони не підключилися",
   "Edit as form": "Редагувати як форму",

@@ -60,7 +60,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Set the baseline network policy. Agents and sessions can only narrow it, never widen it.":
     "Встановити базову мережеву політику. Агенти та сесії можуть лише звузити його, а не розширити.",
   "Shared runtime configuration: base prompt, capabilities, and policies sessions inherit.":
-    "Спільна конфігурація середовища виконання: базова підказка, можливості та успадкування сеансів політик.",
+    "Спільна конфігурація середовища виконання: базові інструкції, можливості та успадкування сеансів політик.",
   "Show harness inheritance chain": "Показати обв’язку ланцюга успадкування",
   "Shown as an intro box on a fresh thread when the bound agent leaves the field empty. Images are allowed. Hidden once the user types.":
     "Відображається як вступне поле у новому потоці, коли пов’язаний агент залишає поле порожнім. Зображення дозволені. Приховано, коли користувач вводить текст.",
@@ -84,4 +84,7 @@ export const messages: Readonly<Record<string, string>> = {
   "When to choose this harness": "Коли вибрати цю обв’язку",
   "Which harness should I use?": "Яку обв’язку вибрати?",
   "You are a helpful assistant...": "Ти корисний помічник...",
+  Unrestricted: "Без обмежень",
+  "{value0} allowed": "Дозволено: {value0}",
+  "{value0} blocked": "Заблоковано: {value0}",
 };
