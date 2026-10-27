@@ -71,15 +71,34 @@ impl Default for DirectEgressService {
     }
 }
 
-impl DirectEgressService {
-    pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::builder()
+/// The HTTP client behind every unpinned, unproxied egress request.
+///
+/// Decision: one client per process, cloned into each service. Building a
+/// reqwest client loads and parses every system root certificate (the
+/// platform verifier). The server builds egress services per API request
+/// (`Ctx::minimal` -> `CapabilityService` -> `McpServerService`), so on the
+/// production load test that parse was the largest CPU cost of posting a
+/// message. The client carries no per-service state: policy, meters, and
+/// proxy routing stay on each service, and proxied or pinned requests still
+/// build their own client.
+fn shared_direct_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(DEFAULT_REQUEST_TIMEOUT)
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
-                .expect("build direct egress HTTP client"),
+                .expect("build direct egress HTTP client")
+        })
+        .clone()
+}
+
+impl DirectEgressService {
+    pub fn new() -> Self {
+        Self {
+            client: shared_direct_client(),
             system_policy: None,
             open_reads: Arc::new(OpenReadMeter::from_env()),
             reputation: None,
