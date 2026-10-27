@@ -20,6 +20,7 @@ use everruns_core::Caller;
 
 /// A REST change in progress: checked, not yet recorded.
 pub struct RestChange {
+    _lease: Option<super::mutation_guard::Lease>,
     ctx: Ctx,
     operation: &'static str,
     pending: Option<PendingChange>,
@@ -56,11 +57,23 @@ impl RestChange {
             action,
             id: SubjectId::Output("id"),
         };
-        let pending = PendingChange::prepare(change, Value::Object(params), &ctx)?;
-        if let Some(pending) = &pending {
-            pending.check_context(&ctx).await?;
+        let lease = if let Some(reference) = entity_ref.filter(|_| kind != EntityKind::Session) {
+            Some(
+                super::mutation_guard::acquire(
+                    &ctx,
+                    &super::mutation_guard::Key::new(&ctx, kind, reference),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+        let mut pending = PendingChange::prepare(change, Value::Object(params), &ctx)?;
+        if let Some(pending) = &mut pending {
+            pending.prepare_write(&ctx).await?;
         }
         Ok(Self {
+            _lease: lease,
             ctx,
             operation,
             pending,

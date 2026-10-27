@@ -32,19 +32,6 @@ function NavLink({ item, pathname }: { item: NavigationItem; pathname: string })
   return (
     <Link
       href={item.href}
-      onClick={(event) => {
-        if (
-          item.href === "/chats" &&
-          chatMode &&
-          !event.metaKey &&
-          !event.ctrlKey &&
-          !event.shiftKey &&
-          !event.altKey
-        ) {
-          event.preventDefault();
-          chatMode.setOpen(true);
-        }
-      }}
       prefetch={false}
       aria-current={isActive ? "page" : undefined}
       onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}

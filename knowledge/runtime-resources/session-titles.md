@@ -34,6 +34,8 @@ roll back together. The reservation remains committed on failure. Advisory work
 may be dropped under load or during shutdown; the next eligible turn can try
 again. This deliberately uses bounded process tasks rather than durable queued
 jobs: the feature does not promise eventual generation.
+The composed listener future has a bounded stack footprint, so model resolution
+and event emission do not exhaust ordinary runtime or test thread stacks.
 
 The Session capability's legacy `auto_title` prompt asks the main agent to make
 an explicit title write. Keep it off when automatic maintenance owns naming;

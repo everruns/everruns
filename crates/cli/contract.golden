@@ -200,6 +200,8 @@ models default get	--context-revision --reason
 models delete	--context-revision --id --reason <id>
 models get	--context-revision --id --reason <id>
 models list	--context-revision --favorites-only --include-stale --reason --service --source
+models selection apply	--changes! --context-revision --reason
+models selection undo	--changes! --context-revision --reason
 models update	--capabilities... --context-revision --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --reason --service
 notifications list	--context-revision --limit --reason
 notifications view mark	--context-revision --notification-id --reason <notification_id>
@@ -209,7 +211,10 @@ observers get	--context-revision --observer-id --reason <observer_id>
 observers list	--context-revision --include-archived --reason
 observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
 observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
+organization-accounts get	--context-revision --id! --reason
+organization-accounts update	--context-revision --id! --name! --reason
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason
+orgs decision-settings get	--context-revision --org! --reason
 orgs egress-allowlist get	--context-revision --org! --reason
 orgs egress-allowlist grant set	--context-revision --granted --open --org! --reason
 orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
@@ -218,6 +223,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
+orgs update	--agentid-agents-per-owner --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --small-model-id --system-decisions --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason
@@ -269,6 +275,8 @@ resources grants grant	--constraints --consumer-id --consumer-scope! --context-r
 resources grants list	--context-revision --id! --reason
 resources grants revoke	--context-revision --grant-id! --id! --reason
 sandbox-targets list	--context-revision --reason
+sandbox-template-metadata get	--context-revision --id! --reason
+sandbox-template-metadata update	--context-revision --description --display-name --id! --reason
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
@@ -356,11 +364,15 @@ tasks list	--context-revision --created-after --kind --limit --reason --root-ses
 user connections list	--context-revision --provider --reason
 user connections providers list	--context-revision --reason --search
 users list	--context-revision --reason --search
+users me update	--context-revision --id! --name! --reason
+users profile get	--context-revision --id! --reason
 virtual-users create	--avatar-url --context-revision --description --locale --name! --reason --timezone --usage
 virtual-users delete	--context-revision --id --reason <id>
 virtual-users destroy	--context-revision --id --reason <id>
 virtual-users get	--context-revision --id --reason <id>
 virtual-users list	--context-revision --include-archived --limit --offset --reason --search --usage
+virtual-users self-profile get	--context-revision --id! --reason
+virtual-users self-profile update	--avatar-url --context-revision --description --id! --locale --name --reason --status --timezone
 virtual-users update	--avatar-url --context-revision --description --id --locale --name --reason --status --timezone <id>
 whoami
 workspaces delete	--context-revision --reason --workspace-id <workspace_id>

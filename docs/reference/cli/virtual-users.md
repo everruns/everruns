@@ -18,6 +18,8 @@ Runtime accounts for consumers or services.
 | [`virtual-users get`](#virtual-users-get) | Get a single virtual user by ID. |
 | [`virtual-users list`](#virtual-users-list) | List virtual users by usage and search. |
 | [`virtual-users update`](#virtual-users-update) | Update a virtual user. |
+| [`virtual-users self-profile get`](#virtual-users-self-profile-get) | Read your own organization profile. |
+| [`virtual-users self-profile update`](#virtual-users-self-profile-update) | Update your own organization profile without changing lifecycle. |
 
 ## virtual-users create
 
@@ -146,4 +148,48 @@ Example:
 ```bash
 # Change a virtual user's display name
 everruns virtual-users update identity_01h9 --name triage-bot --reason 'Match the team naming'
+```
+
+## virtual-users self-profile get
+
+Read your own organization profile.
+
+```bash
+everruns virtual-users self-profile get [OPTIONS] --id <id>
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Required. |
+
+Example:
+
+```bash
+# Read the organization profile bound to your signed-in account
+everruns virtual-users self-profile get --id identity_01h9
+```
+
+## virtual-users self-profile update
+
+Update your own organization profile without changing lifecycle.
+
+```bash
+everruns virtual-users self-profile update [OPTIONS] --id <id>
+```
+
+| Flag | Description |
+|---|---|
+| `--avatar-url <AVATAR_URL>` | Profile image URL. |
+| `--description <DESCRIPTION>` | Human-readable description. |
+| `--id <ID>` | Required. |
+| `--locale <LOCALE>` | Locale used for agent-facing defaults. |
+| `--name <NAME>` | Human-readable name. |
+| `--status <STATUS>` |  |
+| `--timezone <TIMEZONE>` | IANA time zone used for agent-facing defaults. |
+
+Example:
+
+```bash
+# Set your own organization profile timezone without management authority
+everruns virtual-users self-profile update --id identity_01h9 --timezone Europe/London --reason 'Use my local timezone'
 ```

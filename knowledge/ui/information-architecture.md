@@ -120,15 +120,18 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
 
 ### Adopted Chat workspace
 
-The Chat threads adoption feature is disabled by default. An organisation owner/admin
-opts in through Features settings; deployment availability alone is not enrolment.
-Without that opt-in, the existing sidebar and conversation routes retain their behavior.
+Chat and fresh **subchats** are unconditional personal conversation surfaces.
+Each subchat is a new instance of the managed Agent, with separate history and
+workspace files. Selecting one replaces the main conversation; it never opens
+beside another Chat. Creation and recent conversations stay in the sidebar.
+The Subchats panel is a list, with search and history links, not another composer.
 
-In the adopted workspace the global sidebar contains only Chat. The permanent conversation
-stays alongside an integrated Threads panel containing personal side conversations and
-background work owned by that permanent conversation. Creation, search, history, and
-resolution live in the panel. Opening a thread preserves the permanent conversation;
-the panel can expand and becomes a full-screen drawer on mobile. Existing URLs remain valid.
+The **Chat workspace** Adoption feature (`chat_mode`) adds page-side Chat and
+page context only on app pages. Full Chat routes retain one conversation.
+The independent **Chat background work** feature (`chat_threads`) adds delegation
+and the Work tab. Work belongs to the active Chat instance; a delegated child
+uses its validated Chat parent. Both features default off and preserve existing
+organization enrollment. See [flag proposal and ownership](chat-mode.md#proposed-flag-schema-not-migrated).
 
 An idle conversation remains open. Explicit Resolve/Reopen reuse the durable archive
 lifecycle; resolved conversations retain their transcript and require reopening to send.
@@ -147,7 +150,7 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
   concurrent tabs and retries; an existing conversation is always adopted.
   Its sidebar entry remains a prominent navigation control on every route;
-  **New side chat** is the subordinate action for a separate conversation.
+  **New subchat** is the subordinate action for a separate conversation.
 * **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
   instructions, introduction, and starters. No Agent or harness picker appears in Chat.
   New chat opens an empty draft and creates a fresh side conversation on first send,

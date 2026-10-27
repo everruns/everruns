@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
+import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, LockKeyhole, Plus, RefreshCw, ShieldCheck, Users, Trash2 } from "lucide-react";
 import { useOrg } from "@/providers/org-provider";
@@ -52,6 +53,14 @@ function ValueForm({
   onSaved: () => Promise<unknown>;
   onCancel: () => void;
 }) {
+  usePageReadContext({
+    fields: ["interaction"],
+    values: { interaction: "Credential values are entered manually and are unavailable to Chat." },
+    entityType: "manual_dialog",
+    label: "Credential value",
+    formId: "credential_value",
+    priority: 100,
+  });
   const [value, setValue] = useState("");
   const [expires, setExpires] = useState("");
   const [pending, setPending] = useState(false);
@@ -190,7 +199,10 @@ function AccessDialog({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto">
+      <DialogContent
+        chatProtected="Credential controls"
+        className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>Access to {credential.label}</DialogTitle>
           <DialogDescription>
@@ -366,7 +378,10 @@ function AddBinding({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto">
+      <DialogContent
+        chatProtected="Credential controls"
+        className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>Add credential binding</DialogTitle>
           <DialogDescription>
@@ -746,7 +761,7 @@ function ScopedCredentialsPanelContent({
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent chatProtected="Credential controls" className="max-w-md">
           <DialogHeader>
             <DialogTitle>Revoke {revoking?.label}?</DialogTitle>
             <DialogDescription>

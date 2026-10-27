@@ -180,6 +180,12 @@ impl AutomaticSessionTitlesListener {
     }
 
     async fn generate_for_turn(&self, session_id: SessionId, sequence: i32) -> Result<()> {
+        // Bound the composed listener future: model resolution and event writes
+        // otherwise put several large async states on the caller's thread stack.
+        Box::pin(self.generate_for_turn_inner(session_id, sequence)).await
+    }
+
+    async fn generate_for_turn_inner(&self, session_id: SessionId, sequence: i32) -> Result<()> {
         let Some(events) = self.events.get().and_then(Weak::upgrade) else {
             return Ok(());
         };

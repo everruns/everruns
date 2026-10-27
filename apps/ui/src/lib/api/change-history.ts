@@ -50,11 +50,15 @@ export const HISTORY_PAGE_SIZE = 50;
 export async function listEntityHistory(
   entityRef: string,
   before?: string,
+  kind?: string,
+  signal?: AbortSignal,
 ): Promise<EntityHistoryPage> {
   const params = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE) });
   if (before) params.set("before", before);
+  if (kind) params.set("kind", kind);
   const response = await api.get<EntityChange[]>(
     `/v1/history/${refPath(entityRef)}?${params.toString()}`,
+    ...(signal ? [{ signal }] : []),
   );
   const entries = response.data;
   return {
@@ -67,9 +71,10 @@ export async function listEntityHistory(
 export async function getEntityRevision(
   entityRef: string,
   revision: number,
+  kind?: string,
 ): Promise<EntityRevision> {
   const response = await api.get<EntityRevision>(
-    `/v1/history/${refPath(entityRef)}/revisions/${revision}`,
+    `/v1/history/${refPath(entityRef)}/revisions/${revision}${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`,
   );
   return response.data;
 }
@@ -79,11 +84,15 @@ export async function diffEntityRevisions(
   entityRef: string,
   from: number,
   to?: number,
+  kind?: string,
+  signal?: AbortSignal,
 ): Promise<FieldDiff[]> {
   const params = new URLSearchParams({ from: String(from) });
   if (to !== undefined) params.set("to", String(to));
+  if (kind) params.set("kind", kind);
   const response = await api.get<FieldDiff[]>(
     `/v1/history/${refPath(entityRef)}/diff?${params.toString()}`,
+    ...(signal ? [{ signal }] : []),
   );
   return response.data;
 }
@@ -93,9 +102,9 @@ export async function restoreEntityRevision(
   entityRef: string,
   revision: number,
   reason: string,
-  options?: { expected_revision: number; fields?: string[] },
-): Promise<RestoreResult> {
-  const response = await api.post<RestoreResult>(
+  options?: { expected_revision?: number; fields?: string[]; kind?: string },
+): Promise<RestoreResult & { revision?: number | null }> {
+  const response = await api.post<RestoreResult & { revision?: number | null }>(
     `/v1/history/${refPath(entityRef)}/restore`,
     { revision, ...options },
     changeReasonOptions(reason),

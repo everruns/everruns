@@ -9,7 +9,7 @@ tags: [ui, test-case, platform-chat, feature-flags]
 
 ## Preconditions
 
-- Test organization with Adoption → Chat mode enabled, configured real model,
+- Test organization with Adoption → Chat workspace enabled, configured real model,
   and fictional records. Enable other area flags only in this test organization.
 - Test owner/admin plus a restricted member; a second organization with distinct data.
 
@@ -31,7 +31,8 @@ tags: [ui, test-case, platform-chat, feature-flags]
    usable. Full form values must fail explicitly if oversized, rather than truncating.
 5. Visit Organization, Model defaults and Web search defaults. Ask for their current
    settings. Confirm the explicit public values match the controls. Asking to change
-   an immediate-save setting must not trigger its onChange or a server-write fallback.
+   a supported setting must stage it locally under Adoption, with no server write
+   before Save; follow TC010 for Save/Discard and feature-off autosave.
 6. Visit read-only operational/history pages, approvals, credentials, imports and
    financial settings. Ask for an edit. The tool must refuse mutation and explain
    use of the existing page controls. No approval, purchase, grant or credential is changed.
@@ -44,7 +45,7 @@ tags: [ui, test-case, platform-chat, feature-flags]
 9. From a read-only list, separately request an authorized saved-resource operation
    through normal platform commands, using a fictional record. It must retain the
    normal permission checks and must not be confused with editing an adjacent form.
-10. Disable Chat mode and reload representative pages. Verify the ordinary shell and
+10. Disable Chat workspace and reload representative pages. Verify the ordinary shell and
    existing page controls, with no browser draft tools in managed Platform Chat.
 
 ## Expected result

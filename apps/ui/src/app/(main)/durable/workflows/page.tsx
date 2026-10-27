@@ -1,5 +1,7 @@
 "use client";
 
+import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useState } from "react";
@@ -311,12 +313,57 @@ export default function WorkflowsPage() {
   const cancelMutation = useCancelWorkflow();
   const requeueMutation = useRequeueDlqEntry();
 
+  const workflows = workflowsData?.data || [];
+  const filteredWorkflows = searchQuery
+    ? workflows.filter(
+        (w) =>
+          w.workflow_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          w.id.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : workflows;
+
+  const tasks = tasksData?.data || [];
+  const dlqEntries = dlqData?.data || [];
+
+  useDurablePageRows(
+    "Workflows",
+    filteredWorkflows.map((w) => ({
+      id: w.id,
+      workflow_type: w.workflow_type,
+      status: w.status,
+      created_at: w.created_at,
+    })),
+    { enabled: activeTab === "workflows", loading: workflowsLoading, error: !!workflowsError },
+  );
+  useDurablePageRows(
+    "Tasks",
+    tasks.map((t) => ({
+      id: t.id,
+      activity_type: t.activity_type,
+      status: t.status,
+      attempt: t.attempt,
+      max_attempts: t.max_attempts,
+    })),
+    { enabled: activeTab === "tasks", loading: tasksLoading },
+  );
+  useDurablePageRows(
+    "Dead letter queue",
+    dlqEntries.map((t) => ({
+      id: t.id,
+      activity_type: t.activity_type,
+      attempts: t.attempts,
+      dead_at: t.dead_at,
+      requeue_count: t.requeue_count,
+    })),
+    { enabled: activeTab === "dlq", loading: dlqLoading },
+  );
+
   const isLoading = workflowsLoading;
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workflows</h1>
         </div>
         <div className="space-y-6">
@@ -329,8 +376,8 @@ export default function WorkflowsPage() {
 
   if (workflowsError) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Workflows</h1>
         </div>
         <Card>
@@ -350,18 +397,6 @@ export default function WorkflowsPage() {
     );
   }
 
-  const workflows = workflowsData?.data || [];
-  const filteredWorkflows = searchQuery
-    ? workflows.filter(
-        (w) =>
-          w.workflow_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          w.id.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : workflows;
-
-  const tasks = tasksData?.data || [];
-  const dlqEntries = dlqData?.data || [];
-
   const handleCancel = (workflowId: string) => {
     if (confirm("Are you sure you want to cancel this workflow?")) {
       cancelMutation.mutate(workflowId);
@@ -375,8 +410,8 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Workflows</h1>
       </div>
       <div className="space-y-6">

@@ -1389,15 +1389,15 @@ export interface CreateScheduleRequest {
 
 /** Request to update a schedule */
 export interface UpdateScheduleRequest {
-  description?: string;
+  description?: string | null;
   cron_expression?: string;
   timezone?: string;
   target?: ScheduleTarget;
   enabled?: boolean;
-  max_concurrent?: number;
+  max_concurrent?: number | null;
   catch_up_missed?: boolean;
-  max_catch_up?: number;
-  retry_policy?: Record<string, unknown>;
+  max_catch_up?: number | null;
+  retry_policy?: Record<string, unknown> | null;
 }
 
 /** Schedules list response */

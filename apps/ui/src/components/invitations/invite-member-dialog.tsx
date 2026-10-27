@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { z } from "zod";
+import { usePageFormDraft, draftText } from "@/components/chat-mode/use-page-form-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +39,11 @@ const DELIVERY_MESSAGE: Record<EmailDelivery, string> = {
   not_configured:
     "Email delivery isn't configured for this deployment. Share this invite link to add the member.",
 };
+const invitationSchema = z.strictObject({ email: draftText, role: z.enum(["member", "admin"]) });
+const ownerInvitationSchema = z.strictObject({
+  email: draftText,
+  role: z.enum(["member", "admin", "owner"]),
+});
 
 export function InviteMemberDialog({
   open,
@@ -49,6 +56,21 @@ export function InviteMemberDialog({
   const [created, setCreated] = useState<CreatedInvitation | null>(null);
   const [copied, setCopied] = useState(false);
   const createInvite = useCreateInvite();
+  const chat = usePageFormDraft({
+    schema: canInviteOwner ? ownerInvitationSchema : invitationSchema,
+    entityType: "invitation",
+    label: "Invite a member",
+    priority: 30,
+    enabled: open && !created,
+    baseline: "new",
+    dirty: !!email || role !== "member",
+    values: { email, role },
+    writable: !createInvite.isPending,
+    apply: (values) => {
+      setEmail(values.email);
+      setRole(values.role);
+    },
+  });
 
   useEffect(() => {
     if (open) {
@@ -62,6 +84,7 @@ export function InviteMemberDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
     setError(null);
     try {
       const result = await createInvite.mutateAsync({ email: email.trim(), role });
@@ -137,6 +160,7 @@ export function InviteMemberDialog({
           </>
         ) : (
           <form onSubmit={handleSubmit}>
+            {chat.notice}
             <DialogHeader>
               <DialogTitle>Invite a member</DialogTitle>
               <DialogDescription>
@@ -184,7 +208,7 @@ export function InviteMemberDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createInvite.isPending}>
+              <Button type="submit" disabled={chat.blocked || createInvite.isPending}>
                 {createInvite.isPending ? "Creating..." : "Create invitation"}
               </Button>
             </DialogFooter>

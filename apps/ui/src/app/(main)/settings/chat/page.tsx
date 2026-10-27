@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { z } from "zod";
+import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
 import { ChatIcon } from "@/components/icons/facet-icons";
 import { ModelPicker } from "@/components/models/model-picker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { usePageTitle } from "@/hooks";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
 import { useOrg } from "@/providers/org-provider";
 import type { Organization } from "@/lib/api/types";
+
+const chatSettingsSchema = z.strictObject({ chat_model_id: z.string() });
 
 export default function ChatSettingsPage() {
   usePageTitle("Chat", "Settings");
@@ -40,13 +43,17 @@ function ChatModelSettings({
   const [savedId, setSavedId] = useState(organization.chat_model_id || "");
   const [error, setError] = useState<string | null>(null);
   const update = useUpdateOrganization();
-  usePageReadContext({
-    fields: ["chat_model_id"],
-    values: { chat_model_id: modelId },
+  const draft = usePageSettingsDraft({
+    values: { chat_model_id: organization.chat_model_id ?? "" },
+    schema: chatSettingsSchema,
     entityType: "organization",
     entityId: organization.id,
+    formId: "chat_model",
     label: "Chat settings",
+    writable: canManage && !update.isPending,
+    save: (values) => update.mutateAsync({ chat_model_id: values.chat_model_id || null }),
   });
+  const selectedModel = draft.adopted ? draft.values.chat_model_id : modelId;
   async function save() {
     if (!canManage || update.isPending) return;
     setError(null);
@@ -76,8 +83,10 @@ function ChatModelSettings({
           <Label htmlFor="chat-model">Model</Label>
           <ModelPicker
             id="chat-model"
-            value={modelId}
-            onChange={setModelId}
+            value={selectedModel}
+            onChange={(id) =>
+              draft.adopted ? draft.setValues({ chat_model_id: id }) : setModelId(id)
+            }
             service="chat"
             organizationDefault
             requireTools
@@ -85,6 +94,7 @@ function ChatModelSettings({
             placeholder="Use agents and sessions default"
           />
         </div>
+        {draft.controls}
         {!canManage && (
           <p className="text-sm text-muted-foreground">
             Only organization owners and admins can change this setting.
@@ -95,7 +105,7 @@ function ChatModelSettings({
             {error}
           </p>
         )}
-        {canManage && (
+        {canManage && !draft.adopted && (
           <Button onClick={save} disabled={update.isPending || modelId === savedId}>
             {update.isPending ? "Saving…" : "Save"}
           </Button>

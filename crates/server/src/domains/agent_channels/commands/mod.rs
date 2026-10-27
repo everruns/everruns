@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
 
-async fn resolve_agent(
+pub(super) async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
 ) -> Result<crate::storage::AgentRow, CommandError> {
@@ -47,7 +47,7 @@ fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, Com
     Ok(redact_channel_for_response(channel.into_channel()))
 }
 
-fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
+pub(super) fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
     let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
     let mut config = channel.channel_config;
     if let Some(auth) = channel.auth

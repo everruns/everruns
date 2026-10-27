@@ -229,29 +229,28 @@ impl Command for GetSkillContent {
             .filter(|r| r.status != "deleted")
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
-        // Reconstruct SKILL.md with frontmatter
-        // Portable package digests include these bytes. Stable metadata order
-        // prevents unchanged linked skills from queuing repeated source commits.
-        let metadata: std::collections::BTreeMap<String, serde_json::Value> =
-            serde_json::from_value(row.metadata.clone()).unwrap_or_default();
-        let mut frontmatter = format!("---\nname: {}\ndescription: {}", row.name, row.description);
-        if let Some(ref license) = row.license {
-            frontmatter.push_str(&format!("\nlicense: {license}"));
-        }
-        if let Some(ref compat) = row.compatibility {
-            frontmatter.push_str(&format!("\ncompatibility: {compat}"));
-        }
-        if !metadata.is_empty() {
-            frontmatter.push_str("\nmetadata:");
-            for (k, v) in &metadata {
-                frontmatter.push_str(&format!("\n  {k}: {v}"));
+        // Serialize structured frontmatter so colons/newlines round-trip and
+        // history reads are deterministic regardless of metadata insertion order.
+        let mut frontmatter = serde_json::json!({"name":row.name,"description":row.description});
+        for (key, value) in [
+            ("license", &row.license),
+            ("compatibility", &row.compatibility),
+            ("allowed-tools", &row.allowed_tools),
+        ] {
+            if let Some(value) = value {
+                frontmatter[key] = value.clone().into();
             }
         }
-        if let Some(ref tools) = row.allowed_tools {
-            frontmatter.push_str(&format!("\nallowed-tools: {tools}"));
+        if row
+            .metadata
+            .as_object()
+            .is_some_and(|metadata| !metadata.is_empty())
+        {
+            frontmatter["metadata"] = row.metadata.clone();
         }
-        frontmatter.push_str("\n---\n\n");
-        let skill_md = format!("{frontmatter}{}", row.instructions);
+        let serialized = serde_yaml::to_string(&frontmatter)
+            .map_err(|error| CommandError::internal(error.into()))?;
+        let skill_md = format!("---\n{serialized}---\n\n{}", row.instructions);
 
         // Get files for archive-based skills
         let files = if row.source_type == "archive" {

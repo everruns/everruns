@@ -1,6 +1,8 @@
 "use client";
 
-import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
+import { z } from "zod";
+import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
+import { useOrg } from "@/providers/org-provider";
 
 // Web search → Defaults: edits the organization's `web_search_defaults`
 // (PATCH /v1/orgs/{org}). Every change saves the whole object at once, the
@@ -48,6 +50,25 @@ const PROVIDER_HINTS: Record<string, string> = {
   account: "Every search goes to this account first; free search answers when it cannot.",
 };
 
+const defaultsSchema = z.strictObject({
+  provider: z.enum(["auto", "native", "brave", "free", "account"]),
+  account_id: z.string().nullable(),
+  automatic_order: z.array(z.string()).max(100),
+  allow_native: z.boolean(),
+  fallback: z.enum(["next", "none"]),
+  results_per_search: z.number().int().min(1).max(WEB_SEARCH_MAX_RESULTS),
+  blocked_domains: z.array(z.string().refine(isValidDomain, "Use bare domain names.")).max(1000),
+});
+const normalizedDefaults = (value: WebSearchDefaults) => ({
+  provider: value.provider ?? "auto",
+  account_id: value.account_id ?? null,
+  automatic_order: value.automatic_order ?? [],
+  allow_native: value.allow_native ?? true,
+  fallback: value.fallback ?? "next",
+  results_per_search: value.results_per_search ?? WEB_SEARCH_DEFAULT_RESULTS,
+  blocked_domains: value.blocked_domains ?? [],
+});
+
 function errorText(error: unknown): string {
   if (error instanceof ApiError && error.message) return error.message;
   return "Could not save the web search defaults. Please try again.";
@@ -61,19 +82,34 @@ export function SearchDefaultsTab({
   canManage: boolean;
 }) {
   const save = useSaveWebSearchDefaults();
-  const [draft, setDraft] = useState<WebSearchDefaults>(catalog.defaults);
+  const { currentOrg } = useOrg();
+  const [legacyDraft, setDraft] = useState<WebSearchDefaults>(catalog.defaults);
+  const settings = usePageSettingsDraft({
+    schema: defaultsSchema,
+    values: normalizedDefaults(catalog.defaults),
+    entityType: "web_search_defaults",
+    entityId: currentOrg?.public_id,
+    label: "Web search defaults",
+    writable: canManage && !save.isPending,
+    save: (values) => save.mutateAsync(values),
+  });
+  const draft = settings.adopted ? settings.values : legacyDraft;
   const [error, setError] = useState<string | null>(null);
   const [domainError, setDomainError] = useState<string | null>(null);
 
   const accounts = catalog.accounts;
   const hosted = catalog.built_in.find((provider) => provider.id === AUTOMATIC_HOSTED);
   const entries = automaticEntries(draft, accounts, hosted);
-  const busy = !canManage || save.isPending;
+  const busy = !canManage || save.isPending || settings.pending;
   const nativePrice =
     catalog.built_in.find((provider) => provider.id === "native")?.price_note ??
     "Billed by the model provider, about $10 per 1,000 searches";
 
   const commit = async (next: WebSearchDefaults) => {
+    if (settings.adopted) {
+      settings.setValues(normalizedDefaults(next));
+      return;
+    }
     setDraft(next);
     setError(null);
     try {
@@ -105,32 +141,11 @@ export function SearchDefaultsTab({
     });
   }
 
-  usePageReadContext({
-    fields: [
-      "provider",
-      "account_id",
-      "automatic_order",
-      "allow_native",
-      "fallback",
-      "results_per_search",
-      "blocked_domains",
-    ],
-    values: {
-      provider: draft.provider ?? "auto",
-      account_id: draft.account_id ?? "",
-      automatic_order: JSON.stringify(draft.automatic_order ?? []),
-      allow_native: String(draft.allow_native ?? true),
-      fallback: draft.fallback ?? "next",
-      results_per_search: String(draft.results_per_search ?? 8),
-      blocked_domains: JSON.stringify(draft.blocked_domains ?? []),
-    },
-    entityType: "web_search_defaults",
-    label: "Web search defaults",
-  });
   const blocked = draft.blocked_domains ?? [];
 
   return (
     <div className="flex max-w-4xl flex-col gap-3">
+      {settings.controls}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

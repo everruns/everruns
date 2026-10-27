@@ -155,6 +155,8 @@ impl Command for DiffEntityRevisions {
 /// What a restore did.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RestoreResult {
+    /// The committed inverse's revision, for correlating subsequent reads.
+    pub revision: Option<i64>,
     /// The revision brought back.
     pub restored_revision: i64,
     /// The entity after the restore, as its update command returned it.
@@ -172,10 +174,10 @@ pub struct RestoreEntityRevision {
     pub kind: Option<String>,
     /// The revision to bring back.
     pub revision: i64,
-    /// Refuse if the Agent changed after this revision. Guarded restores are atomic.
+    /// Refuse if the resource changed after this revision.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_revision: Option<i64>,
-    /// Restore only these top-level Agent fields; omit to restore the full definition.
+    /// Restore only these top-level fields; omit to restore the full definition.
     /// Requires expected_revision. Secrets and fields the update cannot restore are refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fields: Option<Vec<String>>,
@@ -203,39 +205,56 @@ impl Command for RestoreEntityRevision {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
-        if self.expected_revision.is_some() || self.fields.is_some() {
-            return crate::storage::transaction::scope(
-                &ctx.db,
-                self.restore(ctx),
-                CommandError::internal,
-            )
-            .await;
+        let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
+        if !(kind == super::EntityKind::VirtualUser
+            && crate::domains::virtual_users::self_profile::owns(ctx, &entity_ref).await)
+        {
+            kind.manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.message))?;
         }
-        self.restore(ctx).await
+        if self.fields.is_some() && self.expected_revision.is_none() {
+            return Err(CommandError::bad_request(
+                "Field restore requires expected_revision",
+            ));
+        }
+        super::mutation_guard::run(
+            ctx,
+            super::mutation_guard::Key::new(ctx, kind, &entity_ref),
+            true,
+            self.restore(ctx),
+        )
+        .await
     }
 }
 
 impl RestoreEntityRevision {
     async fn restore(self, ctx: &Ctx) -> Result<RestoreResult, CommandError> {
         let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
-        kind.manage_policy()
-            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-            .map_err(|e| CommandError::forbidden(e.message))?;
+        if !(kind == super::EntityKind::VirtualUser
+            && crate::domains::virtual_users::self_profile::owns(ctx, &entity_ref).await)
+        {
+            kind.manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.message))?;
+        }
         if self.expected_revision.is_some() || self.fields.is_some() {
-            if kind != super::EntityKind::Agent || self.expected_revision.is_none() {
+            if self.expected_revision.is_none() {
                 return Err(CommandError::bad_request(
-                    "Guarded field restore requires an Agent and expected_revision",
+                    "Guarded field restore requires expected_revision",
                 ));
             }
-            ctx.db
-                .lock_agent_for_change(ctx.org_id(), &entity_ref)
-                .await?;
+            if kind == super::EntityKind::Agent {
+                ctx.db
+                    .lock_agent_for_change(ctx.org_id(), &entity_ref)
+                    .await?;
+            }
             let latest = ctx
                 .db
                 .latest_entity_revision(ctx.org_id(), kind.as_str(), &entity_ref)
                 .await?;
             if latest != self.expected_revision {
-                return Err(CommandError::conflict("This agent changed since Chat saved it. Review the latest changes before undoing.").with_code("entity_revision_changed"));
+                return Err(CommandError::conflict("This resource changed since it was saved. Review the latest changes before undoing.").with_code("entity_revision_changed"));
             }
         }
         let row = revision(ctx, &entity_ref, kind, Some(self.revision)).await?;
@@ -249,22 +268,86 @@ impl RestoreEntityRevision {
                 kind.as_str()
             )));
         };
+        if self.fields.is_some()
+            && (kind == super::EntityKind::Schedule
+                || (kind == super::EntityKind::AgentTrigger
+                    && current["trigger_type"] == "schedule"))
+        {
+            let pool = ctx
+                .workflow_store
+                .as_ref()
+                .and_then(|store| store.schedule_transaction_pool());
+            if !pool.as_ref().is_some_and(|pool| {
+                everruns_durable::schedule_transaction::same_pool(pool, ctx.db.pool())
+            }) {
+                return Err(CommandError::conflict(
+                    "This schedule store cannot participate in atomic Undo. Review and edit the schedule directly.",
+                ));
+            }
+        }
+        if self.fields.is_some()
+            && kind == super::EntityKind::AgentTrigger
+            && current["trigger_type"] == "mcp_event"
+        {
+            return Err(CommandError::conflict(
+                "MCP event subscriptions must be changed directly so remote subscription effects can be reviewed.",
+            ));
+        }
+        if let Some(expected) = self.expected_revision {
+            let latest = revision(ctx, &entity_ref, kind, Some(expected)).await?;
+            let latest = snapshot_of(&latest)?;
+            let captured = snapshot::capture(
+                ctx,
+                kind,
+                super::ChangeAction::Updated,
+                &entity_ref,
+                &Value::Null,
+            )
+            .await;
+            if !captured
+                .as_ref()
+                .is_some_and(|(now, _)| snapshot::matches_current(kind, latest, now))
+            {
+                return Err(CommandError::conflict("This resource changed outside its recorded revision. Review the current configuration before undoing.").with_code("entity_revision_changed"));
+            }
+        }
         let (command, mut params) = snapshot::restore_call(kind, &entity_ref, restored, &current)?;
+        let id_param = snapshot::restore_command(kind).map_or("id", |(_, id)| id);
+        let locators = snapshot::restore_locators(kind);
         if let Some(fields) = &self.fields {
             let values = params
                 .as_object_mut()
                 .expect("restore params are an object");
             if fields.is_empty()
-                || fields
-                    .iter()
-                    .any(|field| field == "id" || !values.contains_key(field))
+                || fields.iter().any(|field| {
+                    field == id_param
+                        || locators.contains(&field.as_str())
+                        || !values.contains_key(field)
+                })
             {
                 return Err(CommandError::bad_request(
-                    "Choose non-secret fields that the Agent update can restore",
+                    "Choose non-secret fields that this resource's update can restore",
                 ));
             }
-            values.retain(|field, _| field == "id" || fields.contains(field));
+            values.retain(|field, _| {
+                field == id_param || locators.contains(&field.as_str()) || fields.contains(field)
+            });
         }
+        let command = if kind == super::EntityKind::VirtualUser
+            && kind
+                .manage_policy()
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .is_err()
+        {
+            if params.get("status").is_some() {
+                return Err(CommandError::forbidden(
+                    "Self-service cannot restore lifecycle. Choose profile fields only.",
+                ));
+            }
+            "update_own_virtual_user_profile"
+        } else {
+            command
+        };
         let current_secrets = snapshot::secret_markers(ctx, kind, &entity_ref, &current).await;
         let warnings = snapshot::kept_warnings(restored, &current, &current_secrets, self.revision);
 
@@ -274,11 +357,27 @@ impl RestoreEntityRevision {
             intent.notices.push(warning.clone());
         }
         let restore_ctx = ctx.clone().with_change_intent(intent);
-        let entity = dispatch(command, params.clone(), &restore_ctx).await?;
-        let entity: Value = serde_json::from_str(&entity).unwrap_or(Value::Null);
+        let dispatch_params = if kind == super::EntityKind::AgentChannel {
+            crate::domains::agent_channels::history::prepare_restore(&restore_ctx, &params).await?
+        } else {
+            params.clone()
+        };
+        let entity = dispatch(command, dispatch_params, &restore_ctx).await?;
+        let mut entity: Value = serde_json::from_str(&entity).unwrap_or(Value::Null);
+        if kind == super::EntityKind::Skill {
+            entity = snapshot::read(&restore_ctx, kind, &entity_ref)
+                .await
+                .ok_or_else(|| CommandError::not_found("Skill"))?;
+        }
         let mut warnings = warnings;
-        let id_param = snapshot::restore_command(kind).map_or("id", |(_, id)| id);
-        let unrestored = snapshot::unrestored(&params, &entity, id_param);
+        let unrestored: Vec<_> = snapshot::unrestored(&params, &entity, id_param)
+            .into_iter()
+            .filter(|field| {
+                self.fields
+                    .as_ref()
+                    .is_none_or(|fields| fields.contains(field))
+            })
+            .collect();
         if self.fields.is_some() && !unrestored.is_empty() {
             // Guarded field undo is all-or-nothing. The outer transaction also
             // rolls back the nested update's history when an API cannot clear a field.
@@ -301,6 +400,10 @@ impl RestoreEntityRevision {
             warnings.push(warning);
         }
         Ok(RestoreResult {
+            revision: ctx
+                .db
+                .latest_entity_revision(ctx.org_id(), kind.as_str(), &entity_ref)
+                .await?,
             restored_revision: self.revision,
             entity,
             warnings,

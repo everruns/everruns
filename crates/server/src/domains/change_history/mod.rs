@@ -14,12 +14,15 @@
 // Design: knowledge/execution/change-reasons-and-manager-context.md.
 
 #[cfg(test)]
+mod account_tests;
+#[cfg(test)]
 mod command_tests;
 pub mod commands;
 pub mod context;
 #[cfg(test)]
 mod context_tests;
 pub mod intent;
+pub(crate) mod mutation_guard;
 pub mod registry;
 pub mod rest;
 pub mod revisions;
@@ -153,6 +156,7 @@ pub async fn on_platform(ctx: Ctx, session: everruns_contracts::typed_id::Sessio
 
 /// Everything about a pending change that is known before the command runs.
 pub struct PendingChange {
+    baseline: Option<(Value, String)>,
     kind: EntityKind,
     action: ChangeAction,
     id: SubjectId,
@@ -177,34 +181,127 @@ impl PendingChange {
             let Some(params) = params else {
                 return Ok(None);
             };
-            let Some(pending) = Self::prepare(change, params, ctx)? else {
+            let Some(mut pending) = Self::prepare(change, params, ctx)? else {
                 return Ok(None);
             };
-            pending.check_context(ctx).await?;
+            pending.prepare_write(ctx).await?;
             Ok(Some(pending))
         }
     }
 
+    async fn prepare_write(&mut self, ctx: &Ctx) -> Result<(), CommandError> {
+        self.check_context(ctx).await?;
+        self.check_expected_revision(ctx).await?;
+        if let Some(key) = self.resource_key(ctx) {
+            let latest = ctx
+                .db
+                .get_entity_revision(&crate::storage::entity_changes::EntityRevisionKey {
+                    org_id: ctx.org_id(),
+                    entity_kind: self.kind.as_str().into(),
+                    entity_ref: key.entity_ref.clone(),
+                    revision: None,
+                })
+                .await?;
+            let needs_baseline = latest.is_none()
+                || (self.kind == EntityKind::Skill
+                    && latest
+                        .as_ref()
+                        .and_then(|row| row.snapshot.as_ref())
+                        .is_some_and(|snapshot| snapshot.get("skill_md").is_none()));
+            if needs_baseline {
+                self.baseline = snapshot::capture(
+                    ctx,
+                    self.kind,
+                    ChangeAction::Updated,
+                    &key.entity_ref,
+                    &Value::Null,
+                )
+                .await;
+            }
+        }
+        Ok(())
+    }
+
     /// The entity an existing-entity change names, when its kind has manager
     /// context. Creates have no context yet.
-    fn context_key(&self, ctx: &Ctx) -> Option<ManagerContextKey> {
-        if !self.kind.has_manager_context() || self.action == ChangeAction::Created {
+    fn resource_key(&self, ctx: &Ctx) -> Option<ManagerContextKey> {
+        if matches!(
+            self.action,
+            ChangeAction::Created | ChangeAction::Forked | ChangeAction::Imported
+        ) {
             return None;
         }
         let entity_ref = match self.id {
+            SubjectId::CallerOrg => ctx.caller.org_public_id.clone(),
             SubjectId::Param(field) => subject_ref(&self.params, field)?,
             // Declared by the output's id (most updates echo the entity), so
             // before the run, find the param holding a ref of this kind.
-            SubjectId::Output(_) => self.params.as_object()?.values().find_map(|value| {
-                let text = value.as_str()?;
-                (EntityKind::from_ref(text) == Some(self.kind)).then(|| text.to_string())
-            })?,
+            SubjectId::Output(_) => super::change_history::snapshot::restore_command(self.kind)
+                .and_then(|(_, field)| subject_ref(&self.params, field))
+                .or_else(|| {
+                    self.params.as_object()?.values().find_map(|value| {
+                        let text = value.as_str()?;
+                        (EntityKind::from_ref(text) == Some(self.kind)).then(|| text.to_string())
+                    })
+                })?,
         };
         Some(ManagerContextKey {
             org_id: ctx.org_id(),
             entity_kind: self.kind.as_str().to_string(),
-            entity_ref,
+            entity_ref: mutation_guard::canonical_ref(self.kind, &entity_ref),
         })
+    }
+
+    fn context_key(&self, ctx: &Ctx) -> Option<ManagerContextKey> {
+        self.kind
+            .has_manager_context()
+            .then(|| self.resource_key(ctx))
+            .flatten()
+    }
+
+    async fn check_expected_revision(&self, ctx: &Ctx) -> Result<(), CommandError> {
+        let Some(raw) = &self.intent.expected_change else {
+            return Ok(());
+        };
+        if raw.len() > 512 {
+            return Err(CommandError::bad_request("Invalid expected-change guard"));
+        }
+        if self
+            .intent
+            .expected_change_checked
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Ok(());
+        }
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Expected {
+            kind: String,
+            id: String,
+            revision: i64,
+        }
+        let expected: Expected = serde_json::from_str(raw)
+            .map_err(|_| CommandError::bad_request("Invalid expected-change guard"))?;
+        let key = self.resource_key(ctx).ok_or_else(|| {
+            CommandError::bad_request("This operation cannot use a saved-change guard")
+        })?;
+        if expected.kind != self.kind.as_str()
+            || expected.id != key.entity_ref
+            || expected.revision < 0
+        {
+            return Err(CommandError::bad_request(
+                "The saved-change guard does not match this resource",
+            ));
+        }
+        let current = ctx
+            .db
+            .latest_entity_revision(ctx.org_id(), self.kind.as_str(), &key.entity_ref)
+            .await?
+            .unwrap_or(0);
+        if current != expected.revision {
+            return Err(CommandError::conflict("The saved version changed. Your draft is kept; review the latest version before saving.").with_code("entity_revision_changed"));
+        }
+        Ok(())
     }
 
     /// Hold the change to the manager context revision the caller said it
@@ -273,6 +370,7 @@ impl PendingChange {
             missing_agent_reason(ctx, &intent, kind)?;
         }
         Ok(Some(Self {
+            baseline: None,
             kind,
             action,
             id,
@@ -307,6 +405,10 @@ impl PendingChange {
         let subject = pending
             .as_ref()
             .map(|pending| (pending.kind, pending.action));
+        let baseline = pending
+            .as_ref()
+            .and_then(|pending| pending.baseline.clone());
+        let guarded_intent = pending.as_ref().map(|pending| pending.intent.clone());
         let row = pending.map(|pending| pending.row(meta, ctx, &output));
         async move {
             let atomic = crate::storage::transaction::in_transaction();
@@ -332,7 +434,65 @@ impl PendingChange {
                 row.snapshot = Some(snapshot);
                 row.snapshot_hash = Some(hash);
             }
-            if let Err(error) = ctx.db.record_entity_change(row).await {
+            let mut from_revision = None;
+            let recorded = crate::storage::transaction::scope(
+                &ctx.db,
+                async {
+                    if let Some((snapshot, hash)) = baseline {
+                        let mut initial = row.clone();
+                        initial.command = "entity_baseline".into();
+                        initial.action = "baseline".into();
+                        initial.reason = None;
+                        initial.changed_fields.clear();
+                        initial.actor_kind = "system".into();
+                        initial.actor_user_id = None;
+                        initial.via_session_id = None;
+                        initial.via_agent_id = None;
+                        initial.surface = "internal".into();
+                        initial.idempotency_key = None;
+                        initial.restored_from_revision = None;
+                        initial.snapshot = Some(snapshot);
+                        initial.snapshot_hash = Some(hash);
+                        from_revision = ctx.db.record_entity_change(initial).await?.revision;
+                    }
+                    ctx.db.record_entity_change(row).await
+                },
+                |error| error,
+            )
+            .await;
+            if let Ok(recorded) = &recorded
+                && let Some(intent) =
+                    guarded_intent.filter(|intent| intent.expected_change.is_some())
+            {
+                let expected: Option<serde_json::Value> = intent
+                    .expected_change
+                    .as_deref()
+                    .and_then(|raw| serde_json::from_str(raw).ok());
+                if expected.as_ref().is_some_and(|expected| {
+                    expected["kind"] == recorded.entity_kind
+                        && expected["id"] == recorded.entity_ref
+                }) {
+                    let revision = match recorded.revision {
+                        Some(revision) => revision,
+                        None => ctx
+                            .db
+                            .latest_entity_revision(
+                                ctx.org_id(),
+                                &recorded.entity_kind,
+                                &recorded.entity_ref,
+                            )
+                            .await?
+                            .unwrap_or(0),
+                    };
+                    *intent.committed_change.lock() = Some(intent::CommittedChange {
+                        kind: recorded.entity_kind.clone(),
+                        id: recorded.entity_ref.clone(),
+                        revision,
+                        from_revision,
+                    });
+                }
+            }
+            if let Err(error) = recorded {
                 tracing::error!(command, atomic, error = %error, "entity history write failed");
                 metrics::counter!(crate::metrics_names::ENTITY_HISTORY_WRITE_FAILURES).increment(1);
                 if atomic {
@@ -355,9 +515,13 @@ impl PendingChange {
 
     fn row(self, meta: &CommandMeta, ctx: &Ctx, output: &Value) -> Option<NewEntityChange> {
         let entity_ref = match self.id {
+            SubjectId::CallerOrg => Some(ctx.caller.org_public_id.clone()),
             SubjectId::Param(field) => subject_ref(&self.params, field),
             SubjectId::Output(field) => subject_ref(output, field),
         }?;
+        // History and the write guard must share the same identity even when
+        // a command accepts another UUID spelling or a legacy public prefix.
+        let entity_ref = mutation_guard::canonical_ref(self.kind, &entity_ref);
 
         let actor_kind = ActorKind::of(ctx, &self.intent);
         let via_session_id = self
@@ -438,9 +602,15 @@ fn changed_fields(params: &Value, entity_ref: &str) -> Vec<String> {
     let Some(object) = params.as_object() else {
         return Vec::new();
     };
+    let subject = snapshot::ref_uuid(entity_ref);
     let mut fields: Vec<String> = object
         .iter()
-        .filter(|(_, value)| !value.is_null() && value.as_str() != Some(entity_ref))
+        .filter(|(_, value)| {
+            !value.is_null()
+                && value.as_str().is_none_or(|text| {
+                    text != entity_ref && (subject.is_none() || snapshot::ref_uuid(text) != subject)
+                })
+        })
         .map(|(key, _)| key.clone())
         .collect();
     fields.sort();

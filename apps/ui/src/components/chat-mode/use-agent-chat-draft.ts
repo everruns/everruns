@@ -4,6 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AgentDraft, AgentDraftFields } from "@/components/agents/use-agent-draft";
 import type { FieldDiff } from "@/lib/api/types";
 import { normalizeCommunication } from "@/lib/agent-communication";
+import { usePageSavedChangeGuard } from "./page-change-review-provider";
 import {
   agentDraftPatchSchema,
   agentDraftPatchJsonSchema,
@@ -36,13 +37,23 @@ export function useAgentChatDraft({
   beginEdit: () => void;
 }) {
   const binding = useMemo(() => crypto.randomUUID(), [agentId]);
+  const savedGuard = usePageSavedChangeGuard({
+    id: binding,
+    entityType: "agent",
+    entityId: agentId,
+    dirty: draft.isDirty,
+    baseline: updatedAt ?? agentId,
+    enabled: true,
+  });
+  const savedBlocked =
+    blocked || savedGuard.conflict || (draft.isDirty && (savedGuard.loading || !!savedGuard.error));
   const [marks, setMarks] = useState<FieldDiff[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const current = useRef({ agentId, updatedAt, draft, writable, blocked, beginEdit });
+  const current = useRef({ agentId, updatedAt, draft, writable, blocked: savedBlocked, beginEdit });
   const version = useRef({ signature: "", revision: "" });
   const optimistic = useRef<PageDraftSnapshot<AgentDraftPatch> | null>(null);
   useLayoutEffect(() => {
-    current.current = { agentId, updatedAt, draft, writable, blocked, beginEdit };
+    current.current = { agentId, updatedAt, draft, writable, blocked: savedBlocked, beginEdit };
     optimistic.current = null;
   });
 

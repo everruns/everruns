@@ -1,5 +1,9 @@
 "use client";
 
+import { useDurablePageAccess } from "@/components/chat-mode/use-durable-page-rows";
+
+import { z } from "zod";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +17,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useEnqueueTask } from "@/hooks";
+
+const enqueueDraftSchema = z.strictObject({
+  activity_type: z.string(),
+  max_attempts: z.string().regex(/^(?:[1-9]|10)$/),
+  priority: z.string().regex(/^-?(?:[0-9]|10)$/),
+});
 
 export function EnqueueDialog({
   open,
@@ -28,8 +38,29 @@ export function EnqueueDialog({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const enqueueMutation = useEnqueueTask();
 
+  // Payloads may contain credentials. Chat can stage queue metadata, while the
+  // task body and the actual enqueue action stay in the manual form.
+  const { manage: canManageDraft } = useDurablePageAccess();
+  const chat = usePageFormDraft({
+    schema: enqueueDraftSchema,
+    entityType: "queued_task",
+    label: "Enqueue task metadata",
+    priority: 30,
+    enabled: open,
+    values: { activity_type: activityType, max_attempts: maxAttempts, priority },
+    baseline: "new",
+    dirty: !!activityType || maxAttempts !== "3" || priority !== "0",
+    writable: canManageDraft && !enqueueMutation.isPending,
+    apply: (next) => {
+      setActivityType(next.activity_type);
+      setMaxAttempts(next.max_attempts);
+      setPriority(next.priority);
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (chat.blocked) return;
     try {
       const parsed = JSON.parse(inputJson);
       setJsonError(null);
@@ -63,6 +94,7 @@ export function EnqueueDialog({
           <DialogDescription>Add a standalone task to the queue.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {chat.notice}
           <div className="space-y-2">
             <Label htmlFor="activity-type">Activity Type</Label>
             <Input
@@ -121,7 +153,10 @@ export function EnqueueDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={enqueueMutation.isPending || !activityType.trim()}>
+            <Button
+              type="submit"
+              disabled={chat.blocked || enqueueMutation.isPending || !activityType.trim()}
+            >
               {enqueueMutation.isPending ? "Enqueuing..." : "Enqueue"}
             </Button>
           </DialogFooter>

@@ -8,7 +8,10 @@
 // `recommendedModelIds`), and the footer applies the whole selection at once, so
 // a catalog of hundreds never has to be enabled row by row.
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { z } from "zod";
+import { usePageChatMode } from "@/components/chat-mode/chat-mode-context";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -205,7 +208,7 @@ export function ModelSelectionDrawer({
   mode: "enable" | "edit";
   recommend: boolean;
   showProvider?: boolean;
-  onApply: (selected: Set<string>) => void;
+  onApply: (selected: Set<string>, reviewedModels: ModelWithProvider[]) => void;
   applying: boolean;
   error?: string | null;
 }) {
@@ -250,12 +253,48 @@ function ModelSelectionBody({
   mode: "enable" | "edit";
   recommend: boolean;
   showProvider?: boolean;
-  onApply: (selected: Set<string>) => void;
+  onApply: (selected: Set<string>, reviewedModels: ModelWithProvider[]) => void;
   onCancel: () => void;
   applying: boolean;
   error?: string | null;
 }) {
+  const adopted = !!usePageChatMode();
+  const [reviewedModels, setReviewedModels] = useState(() => models.map((model) => ({ ...model })));
+  const displayedModels = adopted ? reviewedModels : models;
   const [selected, setSelected] = useState(() => initialSelection(models, { recommend }));
+  const choices = JSON.stringify(displayedModels.map((model) => model.id).sort());
+  const schema = useMemo(() => {
+    const ids = new Set<string>(JSON.parse(choices));
+    return z.strictObject({
+      selected_model_ids: z
+        .array(z.string().refine((id) => ids.has(id), "Choose a listed model."))
+        .max(ids.size),
+    });
+  }, [choices]);
+  const originalSelection = JSON.stringify(
+    [...initialSelection(displayedModels, { recommend })].sort(),
+  );
+  const selection = JSON.stringify([...selected].sort());
+  const dirty = selection !== originalSelection;
+  // Compare cleanliness to the frozen catalog, never a later server value
+  // that happens to equal the user's unsaved selection.
+  useLayoutEffect(() => {
+    if (adopted && !dirty && JSON.stringify(reviewedModels) !== JSON.stringify(models)) {
+      setReviewedModels(models.map((model) => ({ ...model })));
+      setSelected(initialSelection(models, { recommend }));
+    }
+  }, [adopted, dirty, reviewedModels, models, recommend]);
+  const chat = usePageFormDraft({
+    schema,
+    entityType: "model_selection",
+    label: title,
+    priority: 30,
+    values: { selected_model_ids: [...selected].sort() },
+    baseline: originalSelection,
+    dirty,
+    writable: !applying,
+    apply: (values) => setSelected(new Set(values.selected_model_ids)),
+  });
   return (
     <>
       <DrawerHeader className="p-0">
@@ -263,22 +302,38 @@ function ModelSelectionBody({
         <DrawerDescription>{description}</DrawerDescription>
       </DrawerHeader>
       <ModelSelectionList
-        models={models}
+        models={displayedModels}
         selected={selected}
         onSelectedChange={setSelected}
         showProvider={showProvider}
       />
+      {chat.notice}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <DrawerFooter className="flex-row justify-end gap-2 p-0">
+      <DrawerFooter className="flex-row flex-wrap justify-end gap-2 p-0">
+        {chat.adopted && (
+          <Button
+            variant="ghost"
+            disabled={applying}
+            onClick={() => {
+              setSelected(initialSelection(models, { recommend }));
+              setReviewedModels(models.map((model) => ({ ...model })));
+            }}
+          >
+            Discard
+          </Button>
+        )}
         <Button variant="outline" onClick={onCancel} disabled={applying}>
           Cancel
         </Button>
-        <Button onClick={() => onApply(selected)} disabled={applying}>
-          {applying ? "Saving…" : selectionActionLabel(models, selected, mode)}
+        <Button
+          onClick={() => !chat.blocked && onApply(selected, displayedModels)}
+          disabled={applying || chat.blocked}
+        >
+          {applying ? "Saving…" : selectionActionLabel(displayedModels, selected, mode)}
         </Button>
       </DrawerFooter>
     </>

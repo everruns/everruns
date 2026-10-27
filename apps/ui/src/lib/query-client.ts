@@ -1,8 +1,11 @@
 import { QueryClient, hashKey, type QueryKey } from "@tanstack/react-query";
 import { getActiveOrgId } from "@/lib/api/active-org";
+import { authQueryKeys } from "@/lib/auth-query-keys";
+
+const accountKeys = new Set([hashKey(authQueryKeys.config()), hashKey(authQueryKeys.user())]);
 
 /**
- * Cache identity includes the organization the data was fetched in.
+ * Resource cache identity includes the organization the data was fetched in.
  *
  * Most keys carry the org already — `useOrgScopedQuery` appends it, and the
  * session factories take it — but it is a convention every call site has to
@@ -25,8 +28,14 @@ import { getActiveOrgId } from "@/lib/api/active-org";
  * `lib/server-query.ts`).
  */
 export function createAppQueryClient(resolveOrgId: () => string | null = getActiveOrgId) {
-  const orgScopedQueryKeyHash = (queryKey: QueryKey): string =>
-    `${resolveOrgId() ?? "no-org"}::${hashKey(queryKey)}`;
+  const orgScopedQueryKeyHash = (queryKey: QueryKey): string => {
+    const key = hashKey(queryKey);
+    // THREAT[TM-TENANT-001]: only account identity and public auth config are
+    // global. Resource queries, including token lists, remain tenant-scoped.
+    // Re-keying identity after a switch makes its next refresh unmount page
+    // drafts through the authentication loading gate.
+    return `${accountKeys.has(key) ? "account" : (resolveOrgId() ?? "no-org")}::${key}`;
+  };
 
   return new QueryClient({
     defaultOptions: {

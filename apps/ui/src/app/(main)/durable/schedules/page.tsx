@@ -1,6 +1,13 @@
 "use client";
 
+import {
+  useDurablePageAccess,
+  useDurablePageRows,
+} from "@/components/chat-mode/use-durable-page-rows";
+
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { scheduleCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -209,7 +216,7 @@ function ScheduleRow({
   );
 }
 
-function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
+function CreateScheduleDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [cronExpression, setCronExpression] = useState("0 * * * * * *");
@@ -220,9 +227,43 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const createMutation = useCreateSchedule();
+  const { manage: canManageDraft } = useDurablePageAccess();
+  const chat = usePageFormDraft({
+    schema: scheduleCreateDraftSchema,
+    entityType: "schedule",
+    label: "Create schedule",
+    priority: 30,
+    enabled: open,
+    baseline: "new",
+    dirty:
+      !!name ||
+      !!description ||
+      !!targetName ||
+      targetInput !== "{}" ||
+      cronExpression !== "0 * * * * * *" ||
+      !enabled ||
+      targetType !== "workflow",
+    values: {
+      name,
+      description,
+      cron_expression: cronExpression,
+      target_type: targetType,
+      target_name: targetName,
+      enabled,
+    },
+    writable: canManageDraft && !createMutation.isPending,
+    apply: (values) => {
+      setName(values.name);
+      setDescription(values.description);
+      setCronExpression(values.cron_expression);
+      setTargetType(values.target_type);
+      setTargetName(values.target_name);
+      setEnabled(values.enabled);
+    },
+  });
 
   const handleSubmit = async () => {
-    if (!name || !cronExpression || !targetName) return;
+    if (chat.blocked || !name || !cronExpression || !targetName) return;
 
     setErrorMessage(null);
 
@@ -263,6 +304,7 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
           Create a new scheduled task to trigger workflows or activities automatically.
         </DialogDescription>
       </DialogHeader>
+      {chat.notice}
       <div className="grid gap-4 py-4">
         <div className="grid gap-2">
           <Label htmlFor="name">Name</Label>
@@ -345,7 +387,9 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
         </Button>
         <Button
           onClick={handleSubmit}
-          disabled={!name || !cronExpression || !targetName || createMutation.isPending}
+          disabled={
+            chat.blocked || !name || !cronExpression || !targetName || createMutation.isPending
+          }
         >
           {createMutation.isPending ? "Creating..." : "Create Schedule"}
         </Button>
@@ -375,10 +419,33 @@ export default function SchedulesPage() {
   const triggerMutation = useTriggerSchedule();
   const deleteMutation = useDeleteSchedule();
 
+  const schedules = schedulesData?.data || [];
+  const filteredSchedules = searchQuery
+    ? schedules.filter(
+        (s) =>
+          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.target.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.id.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : schedules;
+
+  useDurablePageRows(
+    "Schedules",
+    filteredSchedules.map((s) => ({
+      id: s.id,
+      name: s.name,
+      cron_expression: s.cron_expression,
+      enabled: s.enabled,
+      target_type: s.target.type,
+      target_name: s.target.name,
+    })),
+    { loading: isLoading, error: !!error },
+  );
+
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Schedules</h1>
         </div>
         <div className="space-y-6">
@@ -391,8 +458,8 @@ export default function SchedulesPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Schedules</h1>
         </div>
         <Card>
@@ -411,16 +478,6 @@ export default function SchedulesPage() {
       </div>
     );
   }
-
-  const schedules = schedulesData?.data || [];
-  const filteredSchedules = searchQuery
-    ? schedules.filter(
-        (s) =>
-          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.target.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.id.toLowerCase().includes(searchQuery.toLowerCase()),
-      )
-    : schedules;
 
   const handlePause = (scheduleId: string) => {
     pauseMutation.mutate(scheduleId);
@@ -444,7 +501,7 @@ export default function SchedulesPage() {
 
   return (
     <div className="container mx-auto p-6 overflow-hidden">
-      <div className="flex items-center justify-between mb-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Schedules</h1>
       </div>
       <div className="space-y-6">
@@ -479,7 +536,10 @@ export default function SchedulesPage() {
                 New Schedule
               </Button>
             </DialogTrigger>
-            <CreateScheduleDialog onClose={() => setCreateDialogOpen(false)} />
+            <CreateScheduleDialog
+              open={createDialogOpen}
+              onClose={() => setCreateDialogOpen(false)}
+            />
           </Dialog>
         </div>
 

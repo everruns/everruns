@@ -1,7 +1,15 @@
 "use client";
 
-import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+import {
+  useDurablePageAccess,
+  useDurablePageRows,
+} from "@/components/chat-mode/use-durable-page-rows";
 
+import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
+import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
+import { scheduleEditDraftSchema } from "@/components/chat-mode/page-form-schemas";
+
+import { usePageFormPrefill } from "@/components/chat-mode/use-page-form-prefill";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -177,9 +185,11 @@ function ExecutionRow({ execution }: { execution: ScheduleExecution }) {
 }
 
 function EditScheduleDialog({
+  open,
   schedule,
   onClose,
 }: {
+  open: boolean;
   schedule: {
     id: string;
     description?: string;
@@ -200,24 +210,69 @@ function EditScheduleDialog({
   const [maxCatchUp, setMaxCatchUp] = useState(schedule.max_catch_up?.toString() || "");
 
   const updateMutation = useUpdateSchedule();
+  const values = {
+    description,
+    cron_expression: cronExpression,
+    max_concurrent: maxConcurrent,
+    catch_up_missed: catchUpMissed,
+    max_catch_up: maxCatchUp,
+  };
+  const saved = {
+    description: schedule.description || "",
+    cron_expression: schedule.cron_expression,
+    max_concurrent: schedule.max_concurrent?.toString() || "",
+    catch_up_missed: schedule.catch_up_missed,
+    max_catch_up: schedule.max_catch_up?.toString() || "",
+  };
+  const applyValues = (next: typeof values) => {
+    setDescription(next.description);
+    setCronExpression(next.cron_expression);
+    setMaxConcurrent(next.max_concurrent);
+    setCatchUpMissed(next.catch_up_missed);
+    setMaxCatchUp(next.max_catch_up);
+  };
+  usePageFormPrefill({ identity: schedule.id, open, values, saved, apply: applyValues });
+  const { manage: canManageDraft } = useDurablePageAccess();
+  const chat = usePageFormDraft({
+    schema: scheduleEditDraftSchema,
+    entityType: "schedule",
+    entityId: schedule.id,
+    label: "Edit schedule",
+    priority: 30,
+    enabled: open,
+    values,
+    baseline: JSON.stringify(saved),
+    dirty: JSON.stringify(values) !== JSON.stringify(saved),
+    writable: canManageDraft && !updateMutation.isPending,
+    apply: applyValues,
+  });
 
   const handleSubmit = async () => {
+    if (chat.blocked) return;
     const request: UpdateScheduleRequest = {};
 
     if (description !== (schedule.description || "")) {
-      request.description = description || undefined;
+      request.description = description || (chat.adopted ? null : undefined);
     }
     if (cronExpression !== schedule.cron_expression) {
       request.cron_expression = cronExpression;
     }
     if (maxConcurrent !== (schedule.max_concurrent?.toString() || "")) {
-      request.max_concurrent = maxConcurrent ? parseInt(maxConcurrent, 10) : undefined;
+      request.max_concurrent = maxConcurrent
+        ? parseInt(maxConcurrent, 10)
+        : chat.adopted
+          ? null
+          : undefined;
     }
     if (catchUpMissed !== schedule.catch_up_missed) {
       request.catch_up_missed = catchUpMissed;
     }
     if (maxCatchUp !== (schedule.max_catch_up?.toString() || "")) {
-      request.max_catch_up = maxCatchUp ? parseInt(maxCatchUp, 10) : undefined;
+      request.max_catch_up = maxCatchUp
+        ? parseInt(maxCatchUp, 10)
+        : chat.adopted
+          ? null
+          : undefined;
     }
 
     try {
@@ -234,6 +289,19 @@ function EditScheduleDialog({
         <DialogTitle>Edit Schedule</DialogTitle>
         <DialogDescription>Update the schedule configuration.</DialogDescription>
       </DialogHeader>
+      {chat.notice}
+      {chat.adopted && chat.blocked && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            applyValues(saved);
+            chat.clear();
+          }}
+        >
+          Discard changes
+        </Button>
+      )}
       <div className="grid gap-4 py-4">
         <div className="grid gap-2">
           <Label htmlFor="description">Description</Label>
@@ -287,7 +355,7 @@ function EditScheduleDialog({
         <Button variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={updateMutation.isPending}>
+        <Button onClick={handleSubmit} disabled={chat.blocked || updateMutation.isPending}>
           {updateMutation.isPending ? "Saving..." : "Save Changes"}
         </Button>
       </DialogFooter>
@@ -324,10 +392,38 @@ export default function ScheduleDetailPage() {
   const triggerMutation = useTriggerSchedule();
   const deleteMutation = useDeleteSchedule();
 
+  useDurablePageRows(
+    "Schedule",
+    schedule
+      ? [
+          {
+            id: schedule.id,
+            name: schedule.name,
+            cron_expression: schedule.cron_expression,
+            enabled: schedule.enabled,
+            target_type: schedule.target.type,
+            target_name: schedule.target.name,
+          },
+        ]
+      : [],
+    { loading: scheduleLoading, error: !!scheduleError },
+  );
+  useDurablePageRows(
+    "Schedule executions",
+    (executionsData?.data ?? []).map((e) => ({
+      id: e.id,
+      status: e.status,
+      scheduled_at: e.scheduled_at,
+      started_at: e.started_at,
+      completed_at: e.completed_at,
+    })),
+    { loading: executionsLoading },
+  );
+
   if (scheduleLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Schedule Details</h1>
         </div>
         <div className="space-y-6">
@@ -341,8 +437,8 @@ export default function ScheduleDetailPage() {
 
   if (scheduleError || !schedule) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="operational-page container mx-auto p-6">
+        <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold">Schedule Details</h1>
         </div>
         <Card>
@@ -395,8 +491,8 @@ export default function ScheduleDetailPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="operational-page container mx-auto p-6">
+      <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">{schedule.name}</h1>
       </div>
       <div className="space-y-6">
@@ -453,6 +549,7 @@ export default function ScheduleDetailPage() {
                     </Button>
                   </DialogTrigger>
                   <EditScheduleDialog
+                    open={editDialogOpen}
                     schedule={schedule}
                     onClose={() => setEditDialogOpen(false)}
                   />

@@ -1,5 +1,7 @@
 "use client";
 
+import { useChatPageRows } from "@/components/chat-mode/page-view-state";
+
 import { FeaturesIcon } from "@/components/icons/facet-icons";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -19,6 +21,17 @@ export default function FeaturesSettingsPage() {
   const updateFlags = useUpdateOrgFeatureFlags();
 
   const availableFlags = data?.flags.filter((f) => f.can_manage) ?? [];
+
+  useChatPageRows(
+    "Organization features",
+    availableFlags.map((f) => ({
+      name: f.name,
+      label: f.label,
+      enabled: f.effective,
+      grade: f.grade,
+    })),
+    { loading: isLoading, error: !!error },
+  );
 
   const handleToggle = (flag: OrgFeatureFlagSetting, enabled: boolean) => {
     if (!canManage || !flag.can_manage) return;

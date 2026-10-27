@@ -169,7 +169,7 @@ export function McpToolLabelsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent chatProtected="Tool approval settings" className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Tools of {server.name}</DialogTitle>
           <DialogDescription>

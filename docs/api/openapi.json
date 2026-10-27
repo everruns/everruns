@@ -18222,6 +18222,88 @@
         }
       }
     },
+    "/v1/models/selection": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically apply reviewed enablement changes",
+        "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
+        "operationId": "apply_model_selection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyModelSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/models/selection/undo": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Atomically undo selected reviewed model enablement changes",
+        "description": "Atomically undo selected reviewed model enablement changes. Every model must still have its expected revision.",
+        "operationId": "undo_model_selection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoModelSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModelSelectionReceipt"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/models/{id}": {
       "get": {
         "tags": [
@@ -18878,6 +18960,92 @@
         }
       }
     },
+    "/v1/organization-accounts/{id}": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get organization account name",
+        "description": "Read an organization account's editable name. Credentials are never returned.",
+        "operationId": "get_organization_account",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAccountMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Rename organization account",
+        "description": "Rename an organization account while preserving its current credentials.",
+        "operationId": "update_organization_account_name",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationAccountNameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationAccountMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/orgs": {
       "get": {
         "tags": [
@@ -19178,6 +19346,45 @@
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/decision-settings": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get organization decision settings",
+        "description": "Read the active organization's decision-model selection without model credentials.",
+        "operationId": "get_org_decision_settings",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgDecisionSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
           "support": "preview"
         }
       }
@@ -20051,6 +20258,60 @@
         ],
         "responses": {
           "204": {}
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Rename connection",
+        "description": "Rename an organization account without replacing credentials.",
+        "operationId": "rename_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameOrganizationConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                }
+              }
+            }
+          }
         },
         "x-docs": {
           "audience": "public",
@@ -22968,6 +23229,92 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SandboxTargetsResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandbox-template-metadata/{id}": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Get sandbox template metadata",
+        "description": "Read editable Sandbox Template metadata, excluding execution configuration and environment values.",
+        "operationId": "get_sandbox_template_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateMetadata"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "summary": "Update sandbox template metadata",
+        "description": "Update Sandbox Template metadata while preserving its current execution specification.",
+        "operationId": "update_sandbox_template_metadata",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxTemplateMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateMetadata"
                 }
               }
             }
@@ -29280,6 +29627,45 @@
         }
       }
     },
+    "/v1/users/{id}/profile": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get your account profile",
+        "description": "Read your own editable profile, without email, tokens or credentials.",
+        "operationId": "get_account_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountProfile"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/virtual-users": {
       "get": {
         "tags": [
@@ -30698,6 +31084,92 @@
         }
       }
     },
+    "/v1/virtual-users/{id}/self-profile": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Get your organization profile",
+        "description": "Read your own organization profile.",
+        "operationId": "get_own_virtual_user_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Update your organization profile",
+        "description": "Update your own organization profile without changing lifecycle.",
+        "operationId": "update_own_virtual_user_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVirtualUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VirtualUser"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/workspaces": {
       "get": {
         "tags": [
@@ -31652,6 +32124,22 @@
             "type": "string"
           },
           "role": {
+            "type": "string"
+          }
+        }
+      },
+      "AccountProfile": {
+        "type": "object",
+        "description": "The signed-in account editable profile, excluding email and credentials.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -34619,6 +35107,21 @@
           "text": {
             "type": "string",
             "description": "The paragraph to add, markdown."
+          }
+        }
+      },
+      "ApplyModelSelection": {
+        "type": "object",
+        "description": "Apply a set of reviewed model enablement changes in one transaction.",
+        "required": [
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelSelectionChange"
+            }
           }
         }
       },
@@ -42835,6 +43338,11 @@
               "$ref": "#/components/schemas/ExportedPersonalAccessToken"
             },
             "description": "Personal access tokens owned by the user (no sensitive secrets — just metadata)."
+          },
+          "profile_history": {
+            "type": "array",
+            "items": {},
+            "description": "Private profile change records owned by the exporting account."
           },
           "user": {
             "$ref": "#/components/schemas/ExportedUserProfile",
@@ -53501,6 +54009,64 @@
           }
         }
       },
+      "ModelSelectionChange": {
+        "type": "object",
+        "description": "A reviewed model enablement change with the provider and state the user saw.",
+        "required": [
+          "id",
+          "provider_id",
+          "expected_enabled",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "expected_enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ModelSelectionReceipt": {
+        "type": "object",
+        "description": "The saved before and after values and revisions of a model selection change.",
+        "required": [
+          "id",
+          "from_revision",
+          "revision",
+          "before",
+          "after",
+          "label"
+        ],
+        "properties": {
+          "after": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "boolean"
+          },
+          "from_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ModelSource": {
         "type": "string",
         "description": "How the model was added to the system",
@@ -54831,6 +55397,18 @@
           "deleted"
         ]
       },
+      "OrgDecisionSettings": {
+        "type": "object",
+        "description": "The decision-model selection for the active organization.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "OrgEgressAllowlistResponse": {
         "type": "object",
         "description": "An organization's egress allowlist extension.",
@@ -54936,6 +55514,35 @@
             "items": {
               "$ref": "#/components/schemas/OrgFeatureFlagSetting"
             }
+          }
+        }
+      },
+      "OrganizationAccountMetadata": {
+        "type": "object",
+        "description": "Editable history contains only the account's display name.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationAccountNameRequest": {
+        "type": "object",
+        "description": "A new display name; account credentials remain unchanged.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -58390,6 +58997,18 @@
           }
         }
       },
+      "RenameOrganizationConnectionRequest": {
+        "type": "object",
+        "description": "A display-name change that preserves the connected account credential.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "ReportColumn": {
         "type": "object",
         "description": "One column header in a `ReportResult`. The ordered `columns` list\ndeclares the key set of each row in `rows`.",
@@ -59112,6 +59731,14 @@
             "type": "integer",
             "format": "int64",
             "description": "The revision brought back."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The committed inverse's revision, for correlating subsequent reads."
           },
           "warnings": {
             "type": "array",
@@ -60345,6 +60972,24 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp of the most recent definition or revision change."
+          }
+        }
+      },
+      "SandboxTemplateMetadataRequest": {
+        "type": "object",
+        "description": "Editable template metadata; omitted fields retain their current values.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -64682,6 +65327,28 @@
           }
         }
       },
+      "TemplateMetadata": {
+        "type": "object",
+        "description": "Editable Sandbox Template labels and metadata, excluding execution configuration.",
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/sbxtplId"
+          }
+        }
+      },
       "TextAnnotation": {
         "type": "object",
         "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time.",
@@ -67540,6 +68207,43 @@
           "timeout"
         ],
         "example": "completed"
+      },
+      "UndoModelSelection": {
+        "type": "object",
+        "description": "Restore reviewed model selections atomically while their revisions remain current.",
+        "required": [
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UndoModelSelectionItem"
+            }
+          }
+        }
+      },
+      "UndoModelSelectionItem": {
+        "type": "object",
+        "description": "A saved model selection change to restore at an expected current revision.",
+        "required": [
+          "id",
+          "from_revision",
+          "expected_revision"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
       },
       "UpdateAgentChannelRequest": {
         "type": "object",
@@ -74010,6 +74714,12 @@
         "description": "Prefixed identifier with 'paypol' prefix",
         "example": "paypol_01933b5a000070008000000000000001",
         "pattern": "^paypol_[0-9a-f]{32}$"
+      },
+      "sbxtplId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'sbxtpl' prefix",
+        "example": "sbxtpl_01933b5a000070008000000000000001",
+        "pattern": "^sbxtpl_[0-9a-f]{32}$"
       },
       "sessionId": {
         "type": "string",

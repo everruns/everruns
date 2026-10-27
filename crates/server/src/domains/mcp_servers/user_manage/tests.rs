@@ -287,10 +287,12 @@ async fn catalog_discovery_pages_are_bounded_and_do_not_repeat_or_skip_presets()
     assert_eq!(names.len(), 53);
     // Unavailable entries may fill a scanned page. Its cursor must still
     // reach the older approved presets, rather than falsely end discovery.
-    for index in 3..53 {
+    // Catalog order follows IDs; IDs generated in one millisecond need not
+    // follow insertion order. Disable the actual first page, not creation indices.
+    for server in first_servers {
         let row = fixture
             .db
-            .get_mcp_server_by_name(DEFAULT_ORG_ID, &format!("docs-{index}"))
+            .get_mcp_server_by_name(DEFAULT_ORG_ID, server["name"].as_str().unwrap())
             .await
             .unwrap()
             .unwrap();

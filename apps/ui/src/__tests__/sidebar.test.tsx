@@ -176,13 +176,13 @@ describe("Sidebar", () => {
     });
   });
 
-  it("keeps only Chat in navigation when the organization adopts threads", () => {
+  it("keeps subchats in navigation when the organization adopts background work", () => {
     mockFeatureFlags.chat_threads = true;
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
     render(<Sidebar />);
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
-    expect(screen.queryByTestId("sidebar-chat-threads")).not.toBeInTheDocument();
-    expect(screen.queryByText("Side conversation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
+    expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
 
   it("keeps search row focused on search only", () => {

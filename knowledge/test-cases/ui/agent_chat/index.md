@@ -6,7 +6,12 @@
 * [TC004: Draft conflicts and guarded Undo](TC004_draft_conflicts_and_undo.md) - Verify stale patches and Undo preserve later manual edits.
 * [TC005: Page and organization binding](TC005_page_and_org_binding.md) - Verify navigation, organization switches and other browsers cannot reuse a page binding.
 * [TC006: Draft permissions and saved-definition conflicts](TC006_draft_permissions_and_saved_conflicts.md) - Verify read-only, unauthorized, saving and conflicting forms refuse patches.
-* [TC007: Chat mode layout, persistence and rollout](TC007_chat_mode_layout_and_rollout.md) - Verify Adoption gating, persistent state, pane-scoped sheets and accessible responsive layouts.
+* [TC007: Chat workspace layout, persistence and rollout](TC007_chat_mode_layout_and_rollout.md) - Verify Adoption gating, persistent state, pane-scoped sheets and accessible responsive layouts.
 
 * [TC008: Chat context across app pages](TC008_all_page_context.md) - Verify identity, live view state, scoped summaries and read-only action boundaries across every app area.
 * [TC009: Chat edits shared page forms](TC009_shared_page_forms.md) - Verify staged edits, guarded Undo, independent forms, credentials and stable dialogs beyond Agents.
+* [TC010: Chat stages settings before Save](TC010_staged_settings.md) - Verify staged settings, explicit Save/Discard, conflicts, permissions and legacy autosave.
+* [TC011: Secondary forms and protected dialogs](TC011_secondary_forms.md) - Verify secondary drafts, refresh preservation, credential boundaries and dialog lifecycle.
+* [TC012: Operational page context](TC012_operational_context.md) - Verify visible status projections, platform authorization and manual action boundaries.
+
+* [TC013: Shared saved review and guarded Undo](TC013_shared_saved_review.md) - Verify diffs, saved inverses, concurrent edits, atomic batches and private account history.

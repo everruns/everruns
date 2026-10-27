@@ -442,7 +442,11 @@ export function StatCard({
 
 /** Responsive grid for {@link StatCard}s. Defaults to four columns on wide screens. */
 export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>{children}</div>;
+  return (
+    <div className={cn("page-stat-grid grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>
+      {children}
+    </div>
+  );
 }
 
 /* ──────────────────────────────── Empty state ──────────────────────────── */

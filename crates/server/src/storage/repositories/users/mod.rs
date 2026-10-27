@@ -284,7 +284,10 @@ impl Database {
         let personal_access_tokens = self.list_personal_access_tokens_for_user(user_id).await?;
         let orgs = self.list_user_organizations(user_id).await?;
 
+        let profile_history: serde_json::Value = sqlx::query_scalar("SELECT COALESCE(jsonb_agg(to_jsonb(h) - 'org_id' - 'owner_user_id' ORDER BY created_at, id), '[]'::jsonb) FROM account_entity_changes h WHERE owner_user_id = $1")
+            .bind(user_id).fetch_one(&self.pool).await?;
         let export = serde_json::json!({
+            "profile_history": profile_history,
             "user": {
                 "id": user.id.to_string(),
                 "email": user.email,

@@ -125,6 +125,11 @@ durable 9.1m to 2-3m.
 - **`--lib` and `--test` need different lib builds.** `--lib` compiles a test-mode lib,
   `--test` a plain one. They are distinct compilation units, so splitting them across
   invocations forces one genuine extra compilation. That cost is inherent to cargo.
+  Server test compilation bounds Cargo to one build job: the large library and
+  integration targets must not compete for hosted runner memory. This preserves
+  the selected targets, cached profiles and test execution concurrency. The shared
+  [compiler helper](../../.github/scripts/ci/libtest.py) applies the limit after
+  cache selection for both focused PR and broad main runs.
 - Measured on `everruns-server`: `--lib` cold 6m00, the first `--test` after it 3m41,
   each further `--test` ~29s. The residue is linking that test binary, which is
   unavoidable — the crate has 51 of them. CI shows the same shape (4m25 then 3m00 for

@@ -500,15 +500,15 @@ export default function McpCatalogPage() {
         </>
       )}
 
-      <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
+      <AddMcpServerDialog open={addServerOpen && canManage} onOpenChange={setAddServerOpen} />
       <EditMcpServerDialog
         server={editServer}
-        open={editServer !== null}
+        open={editServer !== null && canManage}
         onOpenChange={(open) => !open && setEditServer(null)}
       />
       <ManageHeadersDialog
         server={headersServer}
-        open={headersServer !== null}
+        open={headersServer !== null && canManage}
         onOpenChange={(open) => !open && setHeadersServer(null)}
       />
       {toolsServer && (
@@ -521,16 +521,16 @@ export default function McpCatalogPage() {
       )}
       <ArchiveConfirmDialog
         server={pendingArchiveServer}
-        open={pendingArchiveServer !== null}
+        open={pendingArchiveServer !== null && canManage}
         onOpenChange={(open) => !open && setPendingArchiveServer(null)}
       />
       <SetApiKeyDialog
         server={apiKeyServer}
-        open={apiKeyServer !== null}
+        open={apiKeyServer !== null && canManage}
         onOpenChange={(open) => !open && setApiKeyServer(null)}
       />
       <Dialog
-        open={pendingDeleteServer !== null}
+        open={pendingDeleteServer !== null && canDestroy}
         onOpenChange={(open) => !open && setPendingDeleteServer(null)}
       >
         <DialogContent>

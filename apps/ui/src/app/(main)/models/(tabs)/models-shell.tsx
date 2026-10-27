@@ -49,6 +49,8 @@ import { ApiError } from "@/lib/api/client";
 import { updateModel } from "@/lib/api/providers";
 import type { DriverId, ModelWithProvider, Provider } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
+import { useChatMode } from "@/components/chat-mode/chat-mode-context";
+import { applyModelSelection } from "@/lib/api/model-selection";
 import { selectionChanges } from "@/lib/model-selection";
 import { tabFromPath, tabHref } from "@/lib/tab-routes";
 
@@ -70,6 +72,8 @@ type Selection =
 export function ModelsShell({ children }: { children?: ReactNode }) {
   usePageTitle("Models");
   const queryClient = useQueryClient();
+  const chatMode = useChatMode();
+  const [applyingSelection, setApplyingSelection] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -182,10 +186,33 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         ? models.filter((model) => model.provider_id === selection.provider.id)
         : [];
 
-  const applySelection = async (selected: Set<string>) => {
+  const applySelection = async (selected: Set<string>, reviewedModels: ModelWithProvider[]) => {
     setSelectionError(null);
-    const changes = selectionChanges(selectionModels, selected);
-    const { failed } = await setModelsEnabled.mutateAsync(changes);
+    const changes = selectionChanges(chatMode ? reviewedModels : selectionModels, selected);
+    let failed: string[] = [];
+    if (chatMode) {
+      setApplyingSelection(true);
+      try {
+        await applyModelSelection(
+          changes.map((change) => {
+            const original = reviewedModels.find((model) => model.id === change.id)!;
+            return {
+              ...change,
+              provider_id: original.provider_id,
+              expected_enabled: original.enabled,
+            };
+          }),
+        );
+        await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      } catch (error) {
+        setSelectionError(errorDetail(error));
+        return;
+      } finally {
+        setApplyingSelection(false);
+      }
+    } else {
+      failed = (await setModelsEnabled.mutateAsync(changes)).failed;
+    }
     if (failed.length > 0) {
       setSelectionError(
         `${failed.length} of ${changes.length} models could not be updated. Try again.`,
@@ -322,7 +349,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
       </PageMain>
 
       <ConnectProviderSheet
-        open={connectOpen}
+        open={connectOpen && canManage}
         onOpenChange={setConnectOpen}
         providers={providers}
         onConnected={(text) => {
@@ -331,7 +358,7 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         }}
       />
       <ModelSelectionDrawer
-        open={selection !== null}
+        open={selection !== null && canManage}
         onOpenChange={(open) => !open && setSelection(null)}
         title={
           selection?.kind === "choose"
@@ -347,14 +374,14 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
         mode={selection?.kind === "choose" ? "edit" : "enable"}
         recommend={selection?.kind === "review"}
         showProvider={selection?.kind === "review"}
-        onApply={(selected) => void applySelection(selected)}
+        onApply={(selected, reviewedModels) => void applySelection(selected, reviewedModels)}
         applying={setModelsEnabled.isPending || reviewModels.isPending}
         error={selectionError}
       />
       <AddModelDialog
         writable={canManage}
         providers={providers}
-        open={addModelOpen}
+        open={addModelOpen && canManage}
         onOpenChange={setAddModelOpen}
       />
       {children}

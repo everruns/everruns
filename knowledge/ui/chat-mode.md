@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Page-aware Chat mode"
-description: "How the Adoption-gated split shell connects permanent Platform Chat to the current page, with shared context across app pages and typed draft editing."
+description: "How the Adoption-gated split shell connects a Platform Chat instance to the current page, with shared context across app pages and typed draft editing."
 tags:
   - ui
   - agents
@@ -33,12 +33,63 @@ the existing shell. The source catalog is
 [`feature_flags.rs`](../../crates/server/src/records/feature_flags.rs).
 
 The app layout owns one long-lived
-[`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx).
-It reuses the person's permanent Platform Chat and existing `SessionProvider`
-and `ChatPanel`. Entering via Chat or Command/Ctrl-J preserves the route and the
-mounted page. Back to app hides the Chat without tearing down its stream or
-composer. An organization switch destroys the shell's state. A direct `/chats`
-entry under the flag opens Chat beside Agents; side-chat URLs keep working.
+[`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx)
+and one [`ChatWorkspace`](../../apps/ui/src/components/chat/chat-workspace.tsx).
+Chat and every subchat are full conversation destinations: `/chats` opens the
+permanent conversation; `/chats/{id}` replaces it with the selected instance.
+Neither opens another conversation beside itself. History is a list destination.
+Command/Ctrl-J on a Chat destination focuses its existing composer.
+
+A **subchat** is a fresh instance of the managed Platform Chat Agent with its own
+session, transcript and workspace files. Creating one does not fork, seed or copy
+another transcript. The shared/private memory contract still applies; a new
+conversation is not a new identity or a separate organization. New subchat and
+recent subchats remain discoverable regardless of either Adoption flag. An empty
+draft creates its session only on first send; a failed first send reuses that
+session. Ordinary subchats keep normal pin/archive behavior.
+
+Command/Ctrl-J on an app page opens the selected personal Chat instance beside
+that page, defaulting to permanent Chat. The shell retains one mounted conversation
+and its composer when moving between full Chat and the page workspace. Back to
+app hides the conversation without tearing down its stream or composer. An
+organization switch destroys the shell's state. The mounted conversation settles
+already-owned page tool requests even after the split closes: the same original
+binding may finish, while navigation returns an unavailable-page result instead
+of leaving the turn waiting or touching a different form. Full Chat never claims
+a new page binding. Delegated child conversations
+are not selected as page editors. Page context is enabled only beside non-Chat
+pages, and the conversation list does not register filters as adjacent-page state.
+
+The Subchats panel lists independent conversations. Its optional **Work** tab
+shows delegation and background tasks belonging to the active Chat instance, or
+the validated Platform Chat parent of a delegated child. It never hosts a second
+conversation or a second composer. Existing task links remain usable without
+automatically enabling new delegation.
+
+The core **Settings → Chat** page uses the same guarded draft, saved review and
+Undo flow for its independent Chat model. That setting applies to permanent Chat
+and fresh subchats; it does not replace agent/session defaults. A new subchat's
+model preview waits for organization settings and follows the same default
+selection order as the server. See [model resolution](../foundations/models.md).
+
+### Proposed flag schema (not migrated)
+
+The existing keys remain compatible and retain their current organization
+rollouts. Their labels now describe the behavior: **Chat workspace** (`chat_mode`)
+and **Chat background work** (`chat_threads`). The proposed key cleanup is:
+
+| Surface | Proposed key | Availability |
+| --- | --- | --- |
+| Chat, fresh subchats, history, pin/archive | None | Core, always available |
+| Page-side Chat, page context, draft/review tools | `chat_workspace` | Organization Adoption opt-in; replaces `chat_mode` |
+| Delegation capability and Work panel | `chat_background_work` | Organization Adoption opt-in; replaces `chat_threads` |
+| External public-facing Chat | `public_chat` | Existing independent rollout; unchanged |
+
+There is no master Chat gate and neither Adoption feature depends on the other.
+Voice remains its cross-cutting capability flag. A future migration should resolve
+an explicitly configured new key first, then fall back to its old key when no new
+value exists. Do not OR aliases: an explicit false must win. Preserve enrollment,
+sessions and history; never enroll an organization as part of the rename.
 
 The desktop geometry follows the exploration: up to 600 px Chat on the left,
 the current page in the middle, and a 48 px navigation rail on the right.
@@ -128,20 +179,88 @@ Credential-bearing URL fields disable their adapter and incoming URL patches are
 validated. No redacted credential is ever written back as a form value.
 
 Providers have independent details, tracing and advanced Save forms. Their shared
-page binding returns named forms and permits one named form per patch. Child
+page binding returns named forms and permits one named form per patch. A collection
+uses the page title for its context chip, rather than the last registered form. Child
 validation and the aggregate size check run before mutation. Opening/closing or
 replacing a form rotates the collection binding. A dialog may take priority over
 the underlying page form, then unmount cleanly back to that page.
 
-Immediate-save settings (Organization, Model defaults, Web search defaults) expose
-explicit readable values without exposing their onChange save handlers. Other
-operational pages, credential setup, approvals, financial actions, imports and
-uploads provide read-only context and retain their normal page controls. A missing
+After Adoption, Organization, Model defaults and Web search defaults stage both
+mouse and Chat edits locally behind explicit Save/Discard controls. With Adoption
+off they retain autosave. Organization Profile fields, invitation and account names,
+provider connection metadata, model selection, MCP metadata, schedule editors,
+eval cases, report-builder settings, Playground setup and queue metadata use the
+same draft contract. Channel variants expose typed public configuration while
+preserving nested authentication settings. Grants and approval policy remain manual.
+
+Clean secondary forms follow refreshed saved values; dirty forms retain their
+work and block Save on a changed baseline. Closing/reopening starts a new binding.
+Credential and approval-only popups register a read-only context above underlying
+forms, so typing beside a protected popup cannot edit the page underneath it.
+Credential values, auth methods, queued/scheduled task payloads and generated tokens stay outside
+these projections. Setup, financial actions, imports and uploads retain their
+normal manual controls.
+
+Operational views project the status rows actually displayed, with explicit load,
+error and truncation state. Global durable summaries require the platform policy;
+a tenant administrator role alone is insufficient. Monitoring reflects its visible
+live, paused or replay state. These bounded scalar projections supplement the
+existing scoped query summaries and never include arbitrary payloads or errors.
+Settings navigation and viewport-based grids stack to the available page pane.
+Account identity/configuration keep stable cache keys across organization switches,
+so a later account refresh does not remount the page; see
+[Authentication](../security/authentication.md). Organization label/role refreshes
+update the active membership without switching its identity or resetting page caches.
+
+Other operational pages, credential setup, approvals and financial actions
+provide read-only context and retain their normal page controls. A missing
 writable form is not permission to save the adjacent page through server commands.
 Separately requested saved-resource operations retain the normal Platform Chat
 command flow; a failed form patch must never be reinterpreted as permission for
-a direct server save. Saved-change attribution and versioned inverse Undo remain
-Agent-specific.
+a direct server save.
+
+### Shared saved review
+
+Personal Settings follow the split navigation: Account is the global private account name; Profile is the organization virtual-user profile. Console Profile saves resolve `/me` to the proved self binding before the normal revision guard and journal. Members can review their own profile without management permission; self-service cannot restore lifecycle. Runtime self-service writes share the resource lock, and unrecorded changes invalidate saved Undo. Connections, MCP servers and AI clients retain their existing protected projections.
+
+Every supported existing-resource editor uses the same Adoption-only review
+controller as Agents. A local draft shows Before/After values with field and
+whole-draft Undo. Normal Save stays a user action. Before Save, the browser checks
+the resource revision captured when editing began; the server checks it again
+under the same resource lock ordinary writers and inverse Undo use. The response
+identifies the exact committed revision, so a later writer cannot enter this
+browser's review accidentally. Independent settings forms sharing an organization
+also share that organization's conflict boundary.
+
+Saved reviews survive page navigation within the organization. They show
+Before/After, per-field Undo, Undo all and History. Undo requires the reviewed
+revision, the resource's current edit authority and no dirty local draft. A newer
+save refuses the inverse without overwriting it. A failed review read after a
+successful Save is reported as saved; reloading history rebuilds the review
+without resubmitting the mutation. Only the active page and mounted forms poll;
+retained review groups are bounded. Organization changes dispose their receipts
+and reject late callbacks. Reload keeps server history, while temporary review
+markers start afresh.
+
+The exact resource mappings live in
+[`page-resource-history.ts`](../../apps/ui/src/components/chat-mode/page-resource-history.ts).
+Model selection applies reviewed boolean changes in one transaction and returns
+per-model revisions; Undo all is also atomic. It compares the picker-open values,
+so a background catalog refresh cannot silently replace that baseline. Account
+names and Sandbox Template metadata have inverses that preserve current credentials
+and execution specifications. Channel configuration inverses use an explicit public
+projection merged into current configuration; tokens, sign-in and approval policy
+are never replayed. Provider diagnostics preserve current headers. Account profile history
+is private to the account owner, independent of the active tenant, and is included
+in account export and erasure.
+
+Creation and irreversible actions retain draft review followed by their existing
+submit controls. Undo does not delete a newly created resource, revoke an issued
+token, unsend an invitation, replay a payment or dequeue a task. Protected settings
+and arbitrary execution payloads remain manual. An inverse whose old values no
+longer pass normal validation is refused with the review retained. Guarded schedule
+Undo requires the durable PostgreSQL store to share the command transaction;
+external stores and remote MCP subscription effects require direct review.
 
 Dialogs and drawers originating in the right page portal into its stable container.
 Chat, sidebar and global overlays retain their normal portal and modal behavior. While Chat is open they are
@@ -199,36 +318,26 @@ reads manager context before editing, and reports that the result is unsaved.
 An unavailable or stale draft is not permission to fall back to a server write.
 Without a browser adapter, the existing platform-command editing flow remains.
 
-## Attributing and undoing Agent changes
+## Attributing saved changes
 
-Use [entity history](../execution/change-reasons-and-manager-context.md), which
-already records the originating session and numbered snapshots. Do not infer
-saves by matching tool-output prose, and do not use the administrator audit log.
-While Chat is open, the Agent adapter polls history and refreshes the existing
-entity query when a new revision appears. Only revisions attributed to this
-permanent Chat receive gold markers. A different caller's revision establishes
-a new baseline. Multiple Chat saves between polls belong to the same inverse.
+[Entity history](../execution/change-reasons-and-manager-context.md) records the
+originating session and numbered snapshots. The shared review controller follows
+only changes attributed to the active Chat instance or a correlated browser Save. It
+never infers a mutation from tool-output prose or the administrator audit log.
+A foreign writer ends the uninterrupted Chat sequence, including writes between
+polls. Undo can reach only the Chat sequence after that writer.
 
-The initial implementation marks definition **fields**: instructions, primary
-configuration, and supported More rows and their settings sheets. A page toast
-counts those fields. Dismissal clears presentation state and leaves saves intact.
-Markers survive Back to app while the page remains mounted. A reload establishes
-a fresh observation baseline; historical changes remain available in History.
+Agents retain inline gold field markers for instructions and supported settings;
+all pages use the shared saved-review panel described above. Dismissal clears
+presentation state and leaves saved configuration and history intact. A reload
+starts a fresh observation baseline while History remains available.
 
-Undo uses the existing restore command with a selected field list and expected
-Agent revision. It acquires the Agent row lock before reading the current
-revision; ordinary Agent updates acquire the same lock before reading the
-definition. Validation, permissions, manager context, history, and the inverse
-commit in one transaction. A stale revision fails with a conflict. A selected
-field that the update API cannot restore also fails and rolls back completely;
-it must never disappear from the UI as if the inverse succeeded. Secrets are
-excluded. Undo all restores only the marked fields and preserves unrelated
-configuration. Each inverse is a new history entry.
-
-Draft values remain unsaved until the operator uses Save. If the saved Agent changes while a dirty draft is
-open, keep the draft and block Save until Discard reloads the saved definition.
-Dismissing Chat's toast does not remove this conflict. Otherwise an operator
-could silently save an older prompt over the Chat's work.
+Selected-field Undo runs through the resource's normal update validation,
+permissions and manager context. Unsupported old values refuse the inverse and
+keep its receipt; the UI must not treat a failed inverse as a successful Undo.
+Secrets and protected authority remain current. A dirty form keeps its values
+when the saved definition changes and blocks Save until Discard rebases it.
+Dismissing review markers does not remove that conflict.
 
 ## Integration decisions and next slices
 
@@ -245,8 +354,8 @@ could silently save an older prompt over the Chat's work.
   never navigate by scraping arbitrary shell output or assistant prose.
 - **Related resources:** MCP capabilities/configuration stored in the Agent
   definition follow its history. Credential values, independent connection
-  grants, channel state and other child resources require their own attribution
-  adapters and safe inverse policies; restoring an Agent must not restore a secret.
+  grants and child resources use their own authorization and inverse policies;
+  restoring an Agent must not restore an independent resource or a secret.
 - **Resource history:** shared context and form drafts do not imply saved-change
   attribution or inverse Undo. Add those only with that resource's authorization
   and revision-guarded history contract; do not clone the shell per page.
