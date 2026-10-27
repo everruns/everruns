@@ -148,7 +148,7 @@ describe("AgentTriggersPanel", () => {
 
     expect(container.querySelector("section#triggers")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Connect GitHub" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Own GitHub App")).not.toBeInTheDocument();
+    expect(screen.queryByText("Its own GitHub App")).not.toBeInTheDocument();
   });
 
   it("renders a GitHub trigger with events, repositories, and an editor link", () => {

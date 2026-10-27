@@ -10,13 +10,16 @@
 // Decision (D3): an agent without a GitHub identity chooses one explicitly:
 // its own App (recommended), or the shared Everruns App through an account an
 // org admin linked in Settings > Organization. The shared choice is offered
-// only when the org has a link; nothing falls back to it silently.
+// only when the org has a link; nothing falls back to it silently. The two
+// choices are rows that say what each one looks like on GitHub, so the copy
+// names the consequence (whose name comments carry, which repositories it can
+// reach) rather than the mechanism.
 //
 // Decision (D2): GitHub has no API to set an App logo, so a connected agent App
 // shows a "Set the avatar" step: download the agent's avatar, open the App's
 // settings page. Whether a logo is already set is not detected.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
@@ -58,9 +61,37 @@ import type { AgentGitHubStatus } from "@/lib/api/agent-github";
 import { pluralize } from "@/lib/formatting";
 
 const KIND_LABELS: Record<NonNullable<AgentGitHubStatus["kind"]>, string> = {
-  agent_app: "Own GitHub App",
-  everruns_app: "Everruns App",
+  agent_app: "Its own GitHub App",
+  everruns_app: "Shared Everruns App",
 };
+
+const CREATE_OWN_LABEL = "Create its App";
+const USE_SHARED_LABEL = "Use the shared App";
+
+function ChoiceRow({
+  title,
+  recommended = false,
+  action,
+  children,
+}: {
+  title: string;
+  recommended?: boolean;
+  action: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 py-3 last:pb-0">
+      <div className="min-w-0 flex-[1_1_24rem] space-y-1">
+        <h5 className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          {title}
+          {recommended && <Badge variant="outline">Recommended</Badge>}
+        </h5>
+        <p className="text-sm text-muted-foreground">{children}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">{action}</div>
+    </div>
+  );
+}
 
 /** The GitHub section of the agent page, a sibling of Channels and Triggers. */
 export function AgentGitHubSection({
@@ -76,7 +107,9 @@ export function AgentGitHubSection({
     <section id="github" className="flex min-w-0 flex-col gap-3">
       <div>
         <h3 className="text-lg font-semibold tracking-tight">GitHub</h3>
-        <p className="text-sm text-muted-foreground">Who this agent is on GitHub</p>
+        <p className="text-sm text-muted-foreground">
+          The name this agent uses when it reads code and comments on pull requests
+        </p>
       </div>
       <AgentGitHubCard agentId={agentId} avatar={avatar} githubTriggerCount={githubTriggerCount} />
     </section>
@@ -189,12 +222,14 @@ export function AgentGitHubCard({
                       : "All repositories"}
                   </p>
                 </>
+              ) : status.app_created ? (
+                <p className="text-sm text-muted-foreground">
+                  The agent&apos;s GitHub App exists but is not installed yet. Finish installing it
+                  and pick the repositories the agent may use.
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Give this agent its own GitHub App to read pull requests and comment as itself.
-                  {!status.app_created && " The App can only be installed where it is created."}
-                  {choices.length > 0 &&
-                    " Or act as the shared Everruns App on an account your organization linked."}
+                  Not connected. Choose how this agent appears on GitHub.
                 </p>
               )}
             </div>
@@ -215,61 +250,85 @@ export function AgentGitHubCard({
                 Disconnect
               </Button>
             </div>
-          ) : !isLoading && status ? (
+          ) : status?.app_created ? (
             <div className="flex flex-wrap items-center gap-2">
-              <ConnectGitHubButton
-                agentId={agentId}
-                status={status}
-                label={status.app_created ? undefined : "Create this agent's own GitHub App"}
-              />
-              {!status.app_created && <Badge variant="outline">Recommended</Badge>}
-              {choices.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={buttonVariants({ variant: "ghost", size: "sm" })}
-                    disabled={choose.isPending}
-                  >
-                    Use the Everruns app <ChevronDown className="size-4" aria-hidden="true" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuPositioner align="start">
-                    <DropdownMenuContent className="w-60">
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel>Linked GitHub accounts</DropdownMenuLabel>
-                        {choices.map((choice) => (
-                          <DropdownMenuItem
-                            key={choice.connection_id}
-                            onClick={() => onChoose(choice.connection_id)}
-                          >
-                            <span className="truncate">{choice.account}</span>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenuPositioner>
-                </DropdownMenu>
-              )}
-              {status.app_created && (
-                // An App that was never installed can be forgotten, e.g. to
-                // create it in an organization instead of a personal account.
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className={buttonVariants({ variant: "ghost", size: "icon" })}
-                    aria-label="GitHub actions"
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuPositioner>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={onDisconnect} disabled={disconnect.isPending}>
-                        Start over
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenuPositioner>
-                </DropdownMenu>
-              )}
+              <ConnectGitHubButton agentId={agentId} status={status} />
+              {/* An App that was never installed can be forgotten, e.g. to
+                  create it in an organization instead of a personal account. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={buttonVariants({ variant: "ghost", size: "icon" })}
+                  aria-label="GitHub actions"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuPositioner>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={onDisconnect} disabled={disconnect.isPending}>
+                      Start over
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPositioner>
+              </DropdownMenu>
             </div>
           ) : null}
         </div>
+        {!isLoading && status && !status.connected && !status.app_created && (
+          // Each choice is one row: what it is, what the user sees on GitHub
+          // as a result, and its own button. "Recommended" sits on the title
+          // so it reads as advice about the option, not about a button.
+          <div className="divide-y border-t">
+            <ChoiceRow
+              title="Give it its own GitHub App"
+              recommended={choices.length > 0}
+              action={
+                <ConnectGitHubButton agentId={agentId} status={status} label={CREATE_OWN_LABEL} />
+              }
+            >
+              Comments and reviews appear under the agent&apos;s own name. You create the App in
+              your personal GitHub account or in a GitHub organization, and it can only work on that
+              account&apos;s repositories.
+            </ChoiceRow>
+            {choices.length > 0 && (
+              <ChoiceRow
+                title="Use the shared Everruns App"
+                action={
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      className={buttonVariants({
+                        variant: "outline",
+                        size: "sm",
+                      })}
+                      disabled={choose.isPending}
+                    >
+                      {USE_SHARED_LABEL} <ChevronDown className="size-4" aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuPositioner align="end">
+                      <DropdownMenuContent className="w-60">
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel>Work on</DropdownMenuLabel>
+                          {choices.map((choice) => (
+                            <DropdownMenuItem
+                              key={choice.connection_id}
+                              onClick={() => onChoose(choice.connection_id)}
+                            >
+                              <span className="truncate">{choice.account}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenuPositioner>
+                  </DropdownMenu>
+                }
+              >
+                Nothing to create. Comments appear under the Everruns App&apos;s name, shared with
+                every agent that uses it. It works only on GitHub accounts an admin of your
+                organization already connected: {choices.map((choice) => choice.account).join(", ")}
+                .
+              </ChoiceRow>
+            )}
+          </div>
+        )}
         {status?.connected && status.missing_permissions.length > 0 && (
           <p className="border bg-muted/50 p-3 text-sm" role="status">
             This agent&apos;s GitHub App was created before CI triggers and lacks{" "}
