@@ -36860,7 +36860,8 @@
           "messaging",
           "storage",
           "observability",
-          "models"
+          "models",
+          "integrations"
         ]
       },
       "CheckCredentialsRequest": {

@@ -85,6 +85,44 @@ the cluster's worst value:
 max without(instance) (everruns_doctor_check_status) == 2
 ```
 
+## Adding your own checks
+
+If you build your own server on `everruns-server`, report your own services in
+the same page, gauges and exit code. Implement `DoctorExtension` and register
+it on your host composition:
+
+```rust
+use everruns_server::domains::system::doctor::{
+    CheckArea, DoctorCheck, DoctorExtension, DoctorExtensions, DoctorFindings,
+};
+
+struct Billing;
+
+#[async_trait::async_trait]
+impl DoctorExtension for Billing {
+    fn name(&self) -> &str {
+        "billing"
+    }
+
+    async fn run(&self) -> DoctorFindings {
+        let mut findings = DoctorFindings::default();
+        let check = DoctorCheck::new(CheckArea::Integrations, "integrations.billing", "Billing");
+        findings.check(if std::env::var("BILLING_KEY").is_ok() {
+            check.ok("Billing is configured.")
+        } else {
+            check.warning("BILLING_KEY is not set.").fix("Set BILLING_KEY.")
+        });
+        findings
+    }
+}
+
+composition.insert_extension(Arc::new(DoctorExtensions::new(vec![Arc::new(Billing)])));
+```
+
+Your checks show under **Integrations**. Report whether a setting is present,
+never its value, and keep network calls short: an extension that does not
+finish within 8 seconds shows as a warning.
+
 ## Readiness probe
 
 `GET /health/ready` answers `200` once the database is reachable and its

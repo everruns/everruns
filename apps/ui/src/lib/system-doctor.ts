@@ -14,6 +14,7 @@ export const CHECK_AREA_LABELS: Record<CheckArea, string> = {
   storage: "File storage",
   observability: "Observability",
   models: "Models",
+  integrations: "Integrations",
 };
 
 export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {

@@ -27,6 +27,7 @@ fn env(grade: DeploymentGrade) -> DoctorEnv {
         otel_disabled: false,
         rust_log: None,
         provider_keys: vec!["OpenAI"],
+        email: Ok(Some("Resend")),
     }
 }
 
@@ -614,4 +615,76 @@ fn preflight_output_shows_fixes_for_failing_checks_and_exits_non_zero() {
         ..report
     };
     assert_eq!(exit_code(&ok), 0);
+}
+
+struct Gateway;
+
+#[async_trait::async_trait]
+impl DoctorExtension for Gateway {
+    fn name(&self) -> &str {
+        "gateway"
+    }
+
+    async fn run(&self) -> DoctorFindings {
+        let mut findings = DoctorFindings::default();
+        findings.fact("Model gateway");
+        findings.check(
+            DoctorCheck::new(
+                CheckArea::Integrations,
+                "integrations.gateway",
+                "Model gateway",
+            )
+            .problem("The model gateway does not answer.")
+            .fix("Start it."),
+        );
+        findings
+    }
+}
+
+struct Hangs;
+
+#[async_trait::async_trait]
+impl DoctorExtension for Hangs {
+    fn name(&self) -> &str {
+        "billing"
+    }
+
+    async fn run(&self) -> DoctorFindings {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test]
+async fn host_checks_join_the_report_and_its_verdict() {
+    let report = doctor(env(DeploymentGrade::Dev))
+        .with_extensions(DoctorExtensions::new(vec![Arc::new(Gateway)]))
+        .run()
+        .await;
+    let gateway = check(&report, "integrations.gateway");
+    assert_eq!(gateway.status, CheckStatus::Problem);
+    assert_eq!(report.status, CheckStatus::Problem);
+    assert!(report.setup.iter().any(|fact| fact == "Model gateway"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_host_check_that_hangs_is_a_warning_not_a_stuck_report() {
+    let findings = super::extension::run_bounded(&Hangs).await;
+    assert_eq!(findings.checks.len(), 1);
+    assert_eq!(findings.checks[0].id, "integrations.billing");
+    assert_eq!(findings.checks[0].status, CheckStatus::Warning);
+}
+
+#[test]
+fn system_email_is_needed_only_where_people_sign_in_with_accounts() {
+    use super::checks::control_plane::email_check;
+    let mut env = env(DeploymentGrade::Prod);
+    assert_eq!(email_check(&env).status, CheckStatus::Ok);
+    env.email = Ok(None);
+    assert_eq!(email_check(&env).status, CheckStatus::Warning);
+    env.auth_mode = AuthMode::Admin;
+    assert_eq!(email_check(&env).status, CheckStatus::Info);
+    env.email = Err("RESEND_API_KEY is empty".to_string());
+    let broken = email_check(&env);
+    assert_eq!(broken.status, CheckStatus::Problem);
+    assert!(broken.summary.contains("RESEND_API_KEY is empty"));
 }
