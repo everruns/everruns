@@ -40,8 +40,11 @@ It therefore cannot rely on a client library choosing the right tenant.
 
 Server, scheduler, capability store, broker, provider relay and deployment
 identity issuer remain trusted. Container separation does not protect against
-their compromise or a compromised shared kernel/host. Tolerating host compromise
-requires a separately qualified VM/host boundary. Cache/timing side channels and
+their compromise or a compromised shared kernel/host. A VM can contain a guest
+kernel compromise, but an ordinary VM does not protect its memory from a
+compromised hypervisor/host. A host-compromise claim needs separate host trust
+domains or an explicitly qualified hardware boundary and its privilege
+assumptions; neither is established here. Cache/timing side channels and
 availability under total shared-infrastructure exhaustion are not covered by a
 logical tenant-data isolation claim.
 
@@ -204,6 +207,11 @@ an otherwise scoped credential RPC exposes authority shared by other tenants.
 Tenant-owned resources still require current grants and constrained egress.
 Moving a secret into a sidecar sharing the compromised executor's readable
 memory/files/IPC does not establish a new trust boundary.
+The same concern applies to personal OAuth tokens or reused keys whose upstream
+privileges exceed the assignment. A local grant does not narrow a copied raw
+credential. Direct delivery is acceptable only when the upstream independently
+enforces at most the permitted scope and validity; otherwise use the trusted
+relay or keep that feature outside the qualified executor mode.
 
 ## Revocation, replay and effects
 
@@ -214,6 +222,9 @@ that admission state. A stale cache may accelerate data retrieval, but cannot
 authorize an admission past a committed revocation. Loss of the authoritative
 store fails closed; a TTL cache or asynchronous invalidation alone cannot meet
 immediate revocation semantics.
+Cache keys include server-resolved scope and generation; a warm history or
+definition cache must not bypass the same authorization required for a cold
+read. Message/cursor selectors cannot be resolved through a foreign session.
 
 Revocation prevents **new admission** after its server commit. Work admitted
 before it may still complete or arrive over an already-buffered network path;

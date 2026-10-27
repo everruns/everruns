@@ -77,7 +77,8 @@ Run a deliberately malicious executor process with a real valid tenant-A
 assignment. It must have no scheduler bootstrap authority, other tenants'
 capabilities, deployment encryption/provider keys, database/broker credentials,
 or readable shared control sockets/volumes. Qualify sandbox credential exclusion
-separately. A process/container check alone cannot attest host-compromise safety.
+separately. A process/container check alone cannot attest host-compromise safety;
+a guest-VM escape test does not attest resistance to a compromised hypervisor.
 
 Exercise the real gRPC and HTTP listeners, server, local PostgreSQL, NATS and SSE
 with two tenants and simulated model/provider/payment endpoints. Test bounded
@@ -152,7 +153,7 @@ Record positive own-assignment behavior alongside rejection evidence.
 
 | Attack/fault | Required evidence |
 |---|---|
-| Valid A capability with B tenant, session, invocation, actor, resource, sandbox or parent IDs | Reject inconsistent scope before any protected access; test absent, guessed, valid and malformed selectors |
+| Valid A capability with B tenant, session, message/cursor, invocation, actor, resource, sandbox or parent IDs | Reject inconsistent scope before any protected access; test absent, guessed, valid and malformed selectors through both cold reads and warm caches |
 | Missing/invalid capability, API token substituted for worker authority, executor spoofing scheduler/another executor | Refuse authentication/role; no registration, global claim, cleanup scan or queue discovery |
 | Valid outer generic RPC with forbidden inner command, user/principal, platform or JSON operation | Decoded operation passes the same scoped authorizer; unknown new descriptors/verbs fail coverage and runtime admission |
 | Forged event type, protected provenance, human-input marker or accounting metadata | Runtime events cannot mint management/payment/grant authority; deferred listeners retain the server-derived assignment context and trusted relay receipts |
