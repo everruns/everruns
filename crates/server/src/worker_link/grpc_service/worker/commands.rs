@@ -347,13 +347,12 @@ impl WorkerServiceImpl {
             ));
         }
 
-        let api_base = self
-            .api_base_url
-            .clone()
-            .unwrap_or_else(|| "http://localhost:9300".to_string());
-        let ui_base = std::env::var("PUBLIC_APP_URL")
-            .or_else(|_| std::env::var("FRONTEND_URL"))
-            .unwrap_or_else(|_| api_base.clone());
+        // Same public base the in-process worker links with.
+        let ui_base = everruns_core::config::env_string_any(
+            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+            "http://localhost:9300",
+        );
+        let api_base = ui_base.clone();
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,

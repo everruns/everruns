@@ -94,7 +94,8 @@ pub(super) fn spawn_grpc_server(
                 grpc_svc.set_org_rate_limiter(Arc::new(deps.org_rate_limiter));
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                 // Mitigation: Bearer token auth + optional mTLS validated before spawn.
-                let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
+                let auth_interceptor =
+                    grpc_service::GrpcAuthInterceptor::new(Some(grpc_token.clone()));
                 tracing::info!("gRPC server listening on {}", grpc_addr);
 
                 let mut builder = tonic::transport::Server::builder();
@@ -107,11 +108,14 @@ pub(super) fn spawn_grpc_server(
                         }
                     }
                 }
+                // Workers GET image and file bytes from signed paths on this
+                // same endpoint, so bytes never ride inside gRPC messages.
+                let routes = grpc_svc.into_routes(grpc_token.clone());
                 if let Err(e) = builder
                     .layer(tonic::service::interceptor::InterceptorLayer::new(
                         auth_interceptor,
                     ))
-                    .add_service(grpc_svc.into_server())
+                    .add_routes(routes)
                     .serve(grpc_addr)
                     .await
                 {

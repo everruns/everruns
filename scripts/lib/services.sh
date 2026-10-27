@@ -202,7 +202,6 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
-    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     cargo run -p everruns-server
     ;;
 
@@ -220,7 +219,6 @@ case "$cmd" in
     export CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-$PROXY_URL_DEFAULT}
     export PUBLIC_APP_URL=${PUBLIC_APP_URL:-$PROXY_URL_DEFAULT}
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
-    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     cargo watch -w crates -x 'run -p everruns-server'
     ;;
 
@@ -302,7 +300,6 @@ case "$cmd" in
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
-    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export RUST_LOG=${RUST_LOG:-info}
 
     if configure_local_development_encryption_key; then
@@ -563,7 +560,6 @@ case "$cmd" in
     export APP_URL=${APP_URL:-$PUBLIC_APP_URL}
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
-    export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     if [ -z "${WORKER_GRPC_AUTH_TOKEN:-}" ]; then
       _raw="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t')"
       WORKER_GRPC_AUTH_TOKEN="${_raw:0:32}"

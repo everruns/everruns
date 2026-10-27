@@ -51,12 +51,15 @@ impl GrpcClient {
         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
         // Mitigation: Attach bearer token from WORKER_GRPC_AUTH_TOKEN env
         let auth = GrpcClientAuth::from_env();
+        let token = std::env::var("WORKER_GRPC_AUTH_TOKEN").ok();
+        let blobs = super::blob_fetch::BlobFetcher::new(channel.clone(), token.as_deref());
         let client = WorkerServiceClient::with_interceptor(channel, auth)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
             inner: SharedClient::new(client),
             checkpoints: CheckpointAvailability::new(),
+            blobs,
         }
     }
 }

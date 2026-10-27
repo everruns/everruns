@@ -39,6 +39,7 @@ use everruns_internal_protocol::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+mod blob_fetch;
 mod checkpoint_availability;
 mod compaction_checkpoints;
 mod connect;
@@ -68,43 +69,13 @@ fn grpc_command_error_to_error(error: proto::CommandError) -> AgentLoopError {
     }
 }
 
-/// Fetch image binary from a presigned URL and return as base64-encoded ResolvedImage.
-///
-/// Used when the control plane returns presigned URLs instead of inline base64 data,
-/// keeping gRPC messages small while still providing base64 data to LLM providers.
-async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedImage> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|e| AgentLoopError::store(format!("Failed to build HTTP client: {e}")))?;
-
-    let response = client.get(url).send().await.map_err(|e| {
-        AgentLoopError::store(format!("Failed to fetch image from presigned URL: {e}"))
-    })?;
-
-    if !response.status().is_success() {
-        return Err(AgentLoopError::store(format!(
-            "Presigned image fetch returned status {}",
-            response.status()
-        )));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| AgentLoopError::store(format!("Failed to read image response body: {e}")))?;
-
-    use base64::Engine;
-    let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(ResolvedImage::new(base64_data, media_type))
-}
-
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
     pub(crate) inner: SharedClient,
     checkpoints: Arc<CheckpointAvailability>,
+    /// GETs image and file bytes from signed paths on the same channel.
+    blobs: blob_fetch::BlobFetcher,
 }
 
 impl GrpcClient {
@@ -204,11 +175,18 @@ impl GrpcClient {
             .await
             .map_err(grpc_status_to_error)?;
 
-        response
-            .into_inner()
-            .image
-            .map(proto_stored_image_to_schema)
-            .transpose()
+        let response = response.into_inner();
+        let Some(info) = response.info else {
+            return Ok(None);
+        };
+        let data = self
+            .blobs
+            .fetch(&response.url, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(Some(StoredImage {
+            info: proto_stored_image_info_to_schema(info)?,
+            data,
+        }))
     }
 
     pub async fn get_default_provider_credentials(
@@ -884,16 +862,6 @@ fn proto_stored_image_info_to_schema(
             .map(proto_struct_to_json)
             .unwrap_or_else(|| serde_json::json!({})),
         created_at: proto_timestamp_or_now(proto_info.created_at.as_ref()),
-    })
-}
-
-fn proto_stored_image_to_schema(proto_image: proto::StoredImage) -> Result<StoredImage> {
-    let info = proto_image
-        .info
-        .ok_or_else(|| grpc_missing_field("No image info in response"))?;
-    Ok(StoredImage {
-        info: proto_stored_image_info_to_schema(info)?,
-        data: proto_image.data,
     })
 }
 
@@ -1734,12 +1702,21 @@ pub async fn load_turn_context_for_execution(
 use crate::core::{file_services::FileResolver, image_services::ImageResolver};
 use std::collections::HashMap;
 
+/// Model-ready image: providers take base64, so encode once the bytes arrive.
+fn resolved_image(bytes: &[u8], media_type: String) -> ResolvedImage {
+    use base64::Engine;
+    ResolvedImage::new(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+        media_type,
+    )
+}
+
 impl GrpcOrgAdapter {
     /// Resolve multiple images in a batch (more efficient)
     ///
     /// Returns a HashMap mapping image_id to ResolvedImage for all found images.
     /// Missing images are silently skipped.
-    /// When the server returns presigned URLs, images are fetched via HTTP.
+    /// The server answers with signed links; the bytes are fetched over HTTP.
     pub async fn resolve_images_batch(
         &self,
         image_ids: &[Uuid],
@@ -1760,26 +1737,31 @@ impl GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        let mut result = HashMap::new();
-        for (id_str, data) in response.into_inner().images {
-            if let Ok(id) = Uuid::parse_str(&id_str) {
-                let resolved = if !data.url.is_empty() {
-                    fetch_image_from_url(&data.url, &data.media_type).await?
-                } else {
-                    ResolvedImage::new(data.base64, data.media_type)
-                };
-                result.insert(id, resolved);
-            }
-        }
-
-        Ok(result)
+        let links = response
+            .into_inner()
+            .images
+            .into_iter()
+            .filter_map(|(id_str, data)| {
+                let id = Uuid::parse_str(&id_str).ok()?;
+                Some(((id, data.media_type), data.url))
+            })
+            .collect();
+        let fetched = self
+            .client
+            .blobs
+            .fetch_all(links, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(fetched
+            .into_iter()
+            .map(|((id, media_type), bytes)| (id, resolved_image(&bytes, media_type)))
+            .collect())
     }
 
     /// Resolve multiple files in a batch (more efficient)
     ///
     /// Returns a HashMap mapping file_id to ResolvedFile for all found files.
-    /// Missing files are silently skipped. Files are always returned inline
-    /// as base64 (no presigned-URL variant, unlike images).
+    /// Missing files are silently skipped. The server answers with signed
+    /// links; the bytes are fetched over HTTP.
     pub async fn resolve_files_batch(
         &self,
         file_ids: &[Uuid],
@@ -1800,25 +1782,33 @@ impl GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        let mut result = HashMap::new();
-        for (id_str, data) in response.into_inner().files {
-            if let Ok(id) = Uuid::parse_str(&id_str) {
-                result.insert(
-                    id,
-                    ResolvedFile {
-                        base64: data.base64,
-                        media_type: data.media_type,
-                        filename: if data.filename.is_empty() {
-                            None
-                        } else {
-                            Some(data.filename)
-                        },
-                    },
-                );
-            }
-        }
-
-        Ok(result)
+        let links = response
+            .into_inner()
+            .files
+            .into_iter()
+            .filter_map(|(id_str, data)| {
+                let id = Uuid::parse_str(&id_str).ok()?;
+                let filename = Some(data.filename).filter(|name| !name.is_empty());
+                Some(((id, data.media_type, filename), data.url))
+            })
+            .collect();
+        let fetched = self
+            .client
+            .blobs
+            .fetch_all(links, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        use base64::Engine;
+        Ok(fetched
+            .into_iter()
+            .map(|((id, media_type, filename), bytes)| {
+                let file = ResolvedFile {
+                    base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                    media_type,
+                    filename,
+                };
+                (id, file)
+            })
+            .collect())
     }
 }
 
@@ -1827,7 +1817,7 @@ impl ImageResolver for GrpcOrgAdapter {
     /// Resolve a single image by ID
     ///
     /// Returns the base64-encoded image data and media type, or None if not found.
-    /// When the server returns a presigned URL, the image is fetched via HTTP.
+    /// The server answers with a signed link; the bytes are fetched over HTTP.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         let mut client = self.client.inner.client();
 
@@ -1847,12 +1837,12 @@ impl ImageResolver for GrpcOrgAdapter {
             return Ok(None);
         }
 
-        if !inner.url.is_empty() {
-            let resolved = fetch_image_from_url(&inner.url, &inner.media_type).await?;
-            Ok(Some(resolved))
-        } else {
-            Ok(Some(ResolvedImage::new(inner.base64, inner.media_type)))
-        }
+        let bytes = self
+            .client
+            .blobs
+            .fetch(&inner.url, blob_fetch::MAX_BLOB_BYTES)
+            .await?;
+        Ok(Some(resolved_image(&bytes, inner.media_type)))
     }
 }
 

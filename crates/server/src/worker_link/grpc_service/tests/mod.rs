@@ -669,6 +669,9 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     assert_eq!(denied.code(), tonic::Code::PermissionDenied);
 }
 
+/// Signing secret of the test server's worker byte paths.
+pub(crate) const TEST_BLOB_SECRET: &str = "test-blob-secret";
+
 pub(crate) async fn start_grpc_test_server(
     service: WorkerServiceImpl,
 ) -> (
@@ -705,7 +708,7 @@ pub(crate) async fn start_grpc_test_server(
             }
         });
         tonic::transport::Server::builder()
-            .add_service(service.into_server())
+            .add_routes(service.into_routes(TEST_BLOB_SECRET.to_string()))
             .serve_with_incoming(tokio_stream::wrappers::ReceiverStream::new(incoming_rx))
             .await
             .expect("grpc test server should run");
@@ -1424,3 +1427,4 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
 mod actors;
 mod checkpoint_encryption;
 mod runtime_command_view;
+mod worker_blobs;

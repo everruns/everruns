@@ -31,7 +31,6 @@ use crate::live_updates::task_notifications::TaskBroadcaster;
 use crate::records::wire::{schema_agent_to_proto, schema_harness_to_proto};
 use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
-use base64::Engine;
 use everruns_core::host::HostComposition;
 use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
@@ -322,11 +321,9 @@ pub struct WorkerServiceImpl {
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
-    /// Base URL for generating presigned image URLs (e.g., "http://127.0.0.1:9000")
-    /// When set, image resolution returns presigned URLs instead of base64 data.
-    api_base_url: Option<String>,
-    /// Signing secret for presigned URLs (WORKER_GRPC_AUTH_TOKEN)
-    presign_secret: Option<String>,
+    /// Signs the paths workers GET image and file bytes from. Set by
+    /// [`Self::into_routes`], which also serves those paths.
+    blob_links: Option<crate::api::internal_blobs::BlobLinkSigner>,
     /// Budget service for check_budget tool
     budget_service: Arc<crate::domains::budgets::BudgetService>,
     /// Central org rate limiter for gRPC-backed outbound tool calls.
@@ -456,13 +453,6 @@ impl WorkerServiceImpl {
                 db.database().clone(),
             )));
 
-        // Presigned URL support: when API_BASE_URL is set, image resolution
-        // returns presigned HTTP URLs instead of base64 data over gRPC.
-        let api_base_url = std::env::var("API_BASE_URL").ok().filter(|s| !s.is_empty());
-        let presign_secret = std::env::var("WORKER_GRPC_AUTH_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty());
-
         let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
 
         Self {
@@ -480,8 +470,7 @@ impl WorkerServiceImpl {
             sqldb_store,
             runner,
             connection_resolver,
-            api_base_url,
-            presign_secret,
+            blob_links: None,
             budget_service,
             org_rate_limiter: None,
             slack_provisioner: None,
@@ -552,16 +541,19 @@ impl WorkerServiceImpl {
         self.provider_services = services;
     }
 
-    /// Generate a presigned URL for an image, or None if presigned URLs are not configured.
-    fn presigned_image_url(&self, image_id: uuid::Uuid, org_id: i64) -> Option<String> {
-        match (&self.api_base_url, &self.presign_secret) {
-            (Some(base_url), Some(secret)) => {
-                Some(crate::api::internal_images::generate_presigned_url(
-                    base_url, image_id, org_id, secret,
-                ))
-            }
-            _ => None,
-        }
+    /// Signed path to an image or file attachment's bytes on this endpoint.
+    fn blob_url(
+        &self,
+        kind: crate::api::internal_blobs::BlobKind,
+        id: uuid::Uuid,
+        org_id: i64,
+    ) -> Result<String, Status> {
+        self.blob_links
+            .as_ref()
+            .map(|signer| signer.path(kind, id, org_id))
+            .ok_or_else(|| {
+                Status::failed_precondition("this endpoint does not serve worker byte paths")
+            })
     }
 
     fn domain_ctx_for_caller(&self, caller: everruns_core::Caller) -> crate::domains::common::Ctx {
@@ -696,6 +688,23 @@ impl WorkerServiceImpl {
             .max_encoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
     }
 
+    /// The whole worker endpoint: this gRPC service plus the signed paths
+    /// workers GET image and file bytes from (`api::internal_blobs`). One
+    /// secret keys both the paths this service hands out and the route that
+    /// checks them, so they can never disagree.
+    pub fn into_routes(mut self, signing_secret: String) -> tonic::service::Routes {
+        let db = self.db.clone();
+        self.blob_links = Some(crate::api::internal_blobs::BlobLinkSigner::new(
+            signing_secret.clone(),
+        ));
+        tonic::service::Routes::new(self.into_server())
+            .into_axum_router()
+            .merge(crate::api::internal_blobs::routes(
+                crate::api::internal_blobs::AppState { db, signing_secret },
+            ))
+            .into()
+    }
+
     /// Convert ResolvedModel to proto ResolvedModel
     fn resolved_model_to_proto(resolved: crate::services::ResolvedModel) -> proto::ResolvedModel {
         proto::ResolvedModel {
@@ -717,23 +726,6 @@ impl WorkerServiceImpl {
                 &row.metadata,
             )),
             created_at: Some(ip_datetime_to_proto_timestamp(row.created_at)),
-        }
-    }
-
-    fn image_row_to_proto(row: crate::storage::ImageRow) -> proto::StoredImage {
-        proto::StoredImage {
-            info: Some(Self::image_info_row_to_proto(
-                crate::storage::ImageInfoRow {
-                    id: row.id,
-                    org_id: row.org_id,
-                    filename: row.filename,
-                    content_type: row.content_type,
-                    size_bytes: row.size_bytes,
-                    metadata: row.metadata,
-                    created_at: row.created_at,
-                },
-            )),
-            data: row.data,
         }
     }
 
