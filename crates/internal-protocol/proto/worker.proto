@@ -89,6 +89,10 @@ service WorkerService {
     // Deregister a durable worker
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
 
+    // The worker's checks on its own setup, sent after registration and
+    // every few minutes; the system doctor shows them
+    rpc ReportDurableWorkerChecks(ReportDurableWorkerChecksRequest) returns (ReportDurableWorkerChecksResponse);
+
     // === Circuit breaker operations ===
     // Served over everruns-durable's DistributedCircuitBreaker for workers to
     // guard external calls. No worker calls them today: turn steps run
@@ -876,11 +880,35 @@ message RegisterDurableWorkerRequest {
     optional string worker_group = 2;
     repeated string activity_types = 3;
     int32 max_concurrency = 4;
+    // What the worker runs, so the system doctor can spot version skew.
+    // Unset or 0 from workers built before they reported it.
+    optional string version = 5;
+    optional string hostname = 6;
+    uint32 protocol_version = 7;
 }
 
 message RegisterDurableWorkerResponse {
     bool registered = 1;
 }
+
+// === Worker self-checks ===
+
+// One finding of the worker about its own setup. `status` is ok, info,
+// warning or problem, as in the system doctor.
+message WorkerSelfCheck {
+    string id = 1;
+    string title = 2;
+    string status = 3;
+    string summary = 4;
+    optional string fix = 5;
+}
+
+message ReportDurableWorkerChecksRequest {
+    string worker_id = 1;
+    repeated WorkerSelfCheck checks = 2;
+}
+
+message ReportDurableWorkerChecksResponse {}
 
 // === Heartbeat worker ===
 

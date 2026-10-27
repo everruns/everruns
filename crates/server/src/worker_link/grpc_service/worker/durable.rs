@@ -216,6 +216,9 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let store = self.durable_store()?;
 
+        // Protocol 0 is a worker built before workers reported one.
+        let metadata = (req.protocol_version > 0)
+            .then(|| serde_json::json!({ "protocol_version": req.protocol_version }));
         let worker_info = WorkerInfo {
             id: req.worker_id,
             worker_group: req.worker_group,
@@ -227,9 +230,9 @@ impl WorkerServiceImpl {
             backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
-            hostname: None,
-            version: None,
-            metadata: None,
+            hostname: req.hostname,
+            version: req.version,
+            metadata,
             tasks_completed: 0,
             tasks_failed: 0,
             avg_task_duration_ms: None,
@@ -243,6 +246,35 @@ impl WorkerServiceImpl {
         Ok(Response::new(RegisterDurableWorkerResponse {
             registered: true,
         }))
+    }
+
+    pub(crate) async fn handle_report_durable_worker_checks(
+        &self,
+        request: Request<ReportDurableWorkerChecksRequest>,
+    ) -> Result<Response<ReportDurableWorkerChecksResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+        let checks: Vec<serde_json::Value> = req
+            .checks
+            .into_iter()
+            .map(|check| {
+                serde_json::json!({
+                    "id": check.id,
+                    "title": check.title,
+                    "status": check.status,
+                    "summary": check.summary,
+                    "fix": check.fix,
+                })
+            })
+            .collect();
+        store
+            .record_worker_checks(&req.worker_id, serde_json::Value::Array(checks))
+            .await
+            .map_err(|e| {
+                tracing::warn!(worker_id = %req.worker_id, error = %e, "Failed to record worker checks");
+                Status::internal("Failed to record worker checks")
+            })?;
+        Ok(Response::new(ReportDurableWorkerChecksResponse {}))
     }
 
     pub(crate) async fn handle_heartbeat_durable_worker(

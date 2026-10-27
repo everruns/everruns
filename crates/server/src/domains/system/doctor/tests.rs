@@ -235,3 +235,178 @@ async fn readiness_requires_an_applied_schema() {
     .unwrap();
     assert_eq!(readiness(db.pool()).await, Err("migrations not applied"));
 }
+
+// --- what workers report about themselves ---------------------------------
+
+use super::checks::worker_reports::{
+    drain_check, rejected_logins_check, self_report_checks, versions_check,
+};
+
+fn reporting(id: &str, version: Option<&str>, protocol: Option<u32>) -> WorkerInfo {
+    let mut worker = WorkerInfo::new(id, ["actor"]);
+    worker.version = version.map(str::to_string);
+    worker.metadata = protocol.map(|protocol| serde_json::json!({ "protocol_version": protocol }));
+    worker
+}
+
+#[test]
+fn versions_flag_skew_and_old_protocols() {
+    let same = [reporting("w1", Some("1.0.0"), Some(1))];
+    assert_eq!(versions_check(&same, "1.0.0").status, CheckStatus::Ok);
+
+    let skew = [
+        reporting("w1", Some("1.0.0"), Some(1)),
+        reporting("w2", Some("0.9.0"), Some(1)),
+        reporting("w3", None, None),
+    ];
+    let check = versions_check(&skew, "1.0.0");
+    assert_eq!(check.status, CheckStatus::Warning);
+    assert!(
+        check.summary.contains("1 worker on 0.9.0"),
+        "{}",
+        check.summary
+    );
+    assert!(
+        check.summary.contains("too old to say"),
+        "{}",
+        check.summary
+    );
+
+    let old = [reporting("w1", Some("1.0.0"), Some(0))];
+    let check = versions_check(&old, "1.0.0");
+    assert_eq!(check.status, CheckStatus::Problem);
+    assert!(check.summary.contains("w1"));
+}
+
+#[test]
+fn only_long_drains_are_flagged() {
+    let now = chrono::Utc::now();
+    let draining = |minutes: i64| {
+        let mut worker = WorkerInfo::new("w1", ["actor"]);
+        worker.status = "draining".to_string();
+        let since = now - chrono::Duration::minutes(minutes);
+        worker.metadata = Some(serde_json::json!({ "draining_since": since.to_rfc3339() }));
+        worker
+    };
+    assert_eq!(drain_check(&[], now).status, CheckStatus::Ok);
+    assert_eq!(drain_check(&[draining(2)], now).status, CheckStatus::Info);
+    let stuck = drain_check(&[draining(40)], now);
+    assert_eq!(stuck.status, CheckStatus::Warning);
+    assert!(stuck.summary.contains("w1 (40 min)"), "{}", stuck.summary);
+}
+
+#[test]
+fn recent_rejected_worker_logins_lock_workers_out() {
+    let now = chrono::Utc::now();
+    assert_eq!(
+        rejected_logins_check(0, None, true, now).status,
+        CheckStatus::Ok
+    );
+    let recent = rejected_logins_check(3, Some(now - chrono::Duration::minutes(1)), true, now);
+    assert_eq!(recent.status, CheckStatus::Problem);
+    assert!(recent.summary.contains("3 worker calls"));
+    let dev = rejected_logins_check(3, Some(now), false, now);
+    assert_eq!(dev.status, CheckStatus::Warning);
+    let old = rejected_logins_check(3, Some(now - chrono::Duration::hours(2)), true, now);
+    assert_eq!(old.status, CheckStatus::Info);
+}
+
+fn with_report(id: &str, checks: serde_json::Value, age_minutes: i64) -> WorkerInfo {
+    let mut worker = WorkerInfo::new(id, ["actor"]);
+    let at = chrono::Utc::now() - chrono::Duration::minutes(age_minutes);
+    worker.metadata = Some(serde_json::json!({
+        "self_checks": checks,
+        "self_checked_at": at.to_rfc3339(),
+    }));
+    worker
+}
+
+#[test]
+fn self_reports_merge_across_workers_and_name_the_broken_ones() {
+    let now = chrono::Utc::now();
+    let proxy = |status: &str| {
+        serde_json::json!([{
+            "id": "egress_proxy", "title": "Egress proxy from this worker",
+            "status": status, "summary": format!("proxy {status}."),
+            "fix": "Start the proxy.",
+        }])
+    };
+    let workers = [
+        with_report("w1", proxy("ok"), 1),
+        with_report("w2", proxy("problem"), 1),
+        // A stale report is ignored, whatever it says.
+        with_report("w3", proxy("problem"), 60),
+    ];
+    let checks = self_report_checks(&workers, false, now);
+    assert_eq!(checks.len(), 1);
+    let check = &checks[0];
+    assert_eq!(check.id, "workers.self.egress_proxy");
+    assert_eq!(check.status, CheckStatus::Problem);
+    assert!(
+        check.summary.starts_with("1 of 2 workers"),
+        "{}",
+        check.summary
+    );
+    assert!(check.summary.contains("(w2)"), "{}", check.summary);
+    assert_eq!(check.fix.as_deref(), Some("Start the proxy."));
+
+    let healthy = self_report_checks(&[with_report("w1", proxy("ok"), 1)], false, now);
+    assert_eq!(healthy[0].status, CheckStatus::Ok);
+}
+
+#[test]
+fn nats_must_match_between_workers_and_server() {
+    let now = chrono::Utc::now();
+    let nats = |status: &str| serde_json::json!([{ "id": "nats", "status": status }]);
+    let status =
+        |workers: &[WorkerInfo], server: bool| self_report_checks(workers, server, now)[0].status;
+    let with = [with_report("w1", nats("ok"), 1)];
+    let without = [with_report("w1", nats("info"), 1)];
+    assert_eq!(status(&with, true), CheckStatus::Ok);
+    assert_eq!(status(&without, false), CheckStatus::Info);
+    assert_eq!(status(&without, true), CheckStatus::Warning);
+    assert_eq!(status(&with, false), CheckStatus::Problem);
+}
+
+#[tokio::test]
+async fn the_report_reads_versions_and_drains_from_the_registry() {
+    use everruns_durable::{InMemoryWorkflowEventStore, WorkerRegistry};
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    store
+        .register_worker(reporting("new", Some(env!("CARGO_PKG_VERSION")), Some(1)))
+        .await
+        .unwrap();
+    store
+        .register_worker(reporting("old", Some("0.0.1"), Some(1)))
+        .await
+        .unwrap();
+    store
+        .register_worker(reporting(
+            "leaving",
+            Some(env!("CARGO_PKG_VERSION")),
+            Some(1),
+        ))
+        .await
+        .unwrap();
+    store.drain_worker("leaving").await.unwrap();
+
+    let doctor = SystemDoctor::new(
+        Arc::new(StorageBackend::test_database()),
+        Some(store),
+        None,
+        env(DeploymentGrade::Dev),
+    );
+    let report = doctor.run().await;
+    let versions = check(&report, "workers.versions");
+    assert_eq!(versions.status, CheckStatus::Warning);
+    assert!(versions.summary.contains("0.0.1"), "{}", versions.summary);
+    // The draining worker is not counted as capacity.
+    assert!(
+        check(&report, "workers.connected")
+            .summary
+            .starts_with("2 workers"),
+        "{:#?}",
+        report.checks
+    );
+    assert_eq!(check(&report, "workers.draining").status, CheckStatus::Info);
+}

@@ -8,6 +8,7 @@ pub(super) mod models;
 pub(super) mod observability;
 pub(super) mod security;
 pub(super) mod storage;
+pub(super) mod worker_reports;
 pub(super) mod workers;
 
 pub(crate) use database::readiness;

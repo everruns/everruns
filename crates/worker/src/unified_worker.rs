@@ -375,9 +375,13 @@ where
             backpressure_reason: None,
             started_at: chrono::Utc::now(),
             last_heartbeat_at: chrono::Utc::now(),
-            hostname: None,
-            version: None,
-            metadata: None,
+            hostname: hostname::get()
+                .ok()
+                .and_then(|name| name.into_string().ok()),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            metadata: Some(serde_json::json!({
+                "protocol_version": everruns_internal_protocol::WORKER_PROTOCOL_VERSION,
+            })),
             tasks_completed: 0,
             tasks_failed: 0,
             avg_task_duration_ms: None,
@@ -387,6 +391,11 @@ where
         } else {
             info!(worker_id = %self.config.worker_id, "Worker registered");
         }
+        let self_checks = tokio::spawn(self_check_loop(
+            self.store.clone(),
+            self.config.worker_id.clone(),
+        ));
+        let _self_checks = StopMaintenance(self_checks);
 
         // Heartbeat task. It outlives the poll loop: a shutting-down worker
         // keeps heartbeating (not accepting) while in-flight tasks finish, so
@@ -660,6 +669,21 @@ where
         }
 
         Ok(task_count)
+    }
+}
+
+/// Sends the worker's checks on its own setup now and every
+/// [`crate::self_checks::REPORT_INTERVAL`] until the task is aborted. A failed
+/// send waits for the next round: the report is for operators, not the work.
+async fn self_check_loop<S: TaskStore>(store: Arc<S>, worker_id: String) {
+    let mut interval = tokio::time::interval(crate::self_checks::REPORT_INTERVAL);
+    loop {
+        interval.tick().await;
+        let env = crate::self_checks::SelfCheckEnv::from_env();
+        let checks = crate::self_checks::run(&env).await;
+        if let Err(error) = store.record_worker_checks(&worker_id, &checks).await {
+            debug!(%error, "worker self-check report not delivered");
+        }
     }
 }
 
