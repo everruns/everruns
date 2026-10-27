@@ -120,6 +120,41 @@ pub fn json_to_proto_struct(value: &serde_json::Value) -> Struct {
     }
 }
 
+/// Whether senders fill the `bytes *_json` siblings instead of the Struct fields.
+///
+/// Rollout switch: receivers already prefer the bytes and fall back to the
+/// Struct, but a receiver built before the bytes fields existed sees only the
+/// Struct. Flip this once every server and worker reads the bytes; then the
+/// Struct fields and this switch can go.
+pub const SEND_JSON_BYTES: bool = false;
+
+/// Encode a value as JSON bytes for a `*_json` field.
+///
+/// Infallible like the Struct path: serializing a well-formed domain value does
+/// not fail, so a failure is logged and the field is sent empty (read as absent).
+pub fn encode_json_bytes<T: serde::Serialize + ?Sized>(field: &'static str, value: &T) -> Vec<u8> {
+    serde_json::to_vec(value).unwrap_or_else(|e| {
+        tracing::error!(
+            field,
+            error = %e,
+            "internal-protocol: failed to serialize JSON field; sending empty (data lost)"
+        );
+        Vec::new()
+    })
+}
+
+/// Decode an optional JSON field sent either as `*_json` bytes or as a Struct.
+pub fn decode_optional_json<T: serde::de::DeserializeOwned>(
+    bytes: Option<&[u8]>,
+    legacy: Option<&Struct>,
+) -> Result<Option<T>, serde_json::Error> {
+    match (bytes, legacy) {
+        (Some(bytes), _) => serde_json::from_slice(bytes).map(Some),
+        (None, Some(s)) => serde_json::from_value(proto_struct_to_json(s)).map(Some),
+        (None, None) => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

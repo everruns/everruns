@@ -879,43 +879,7 @@ fn json_value_to_proto(value: serde_json::Value) -> prost_types::Value {
 
 /// Convert a domain `RuntimeMessage` to a proto `Message`.
 fn message_to_proto(message: &everruns_core::RuntimeMessage) -> proto::Message {
-    use everruns_internal_protocol::{datetime_to_proto_timestamp, uuid_to_proto_uuid};
-
-    let content_json_val = serde_json::to_value(&message.content).unwrap_or_default();
-    let content = Some(everruns_internal_protocol::json_to_proto_list(
-        &content_json_val,
-    ));
-
-    let controls = message.controls.as_ref().map(|c| {
-        let json = serde_json::to_value(c).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    let metadata = message.metadata.as_ref().map(|m| {
-        let json = serde_json::to_value(m).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    let external_actor = message.external_actor.as_ref().map(|ea| {
-        let json = serde_json::to_value(ea).unwrap_or_default();
-        everruns_internal_protocol::json_to_proto_struct(&json)
-    });
-
-    proto::Message {
-        id: Some(uuid_to_proto_uuid(message.id.uuid())),
-        role: message.role.to_string(),
-        content,
-        controls,
-        metadata,
-        created_at: Some(datetime_to_proto_timestamp(message.created_at)),
-        phase: message
-            .phase
-            .map(|phase| phase.as_provider_str().to_string()),
-        phase_source: message
-            .phase_source
-            .map(|source| source.as_str().to_string()),
-        external_actor,
-    }
+    everruns_internal_protocol::schema_message_to_proto(message)
 }
 
 /// Extract a RuntimeMessage from an Event's data field

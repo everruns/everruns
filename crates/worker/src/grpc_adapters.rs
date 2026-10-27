@@ -33,9 +33,7 @@ use everruns_contracts::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId
 // agent, harness and session records belong to the server; the transport shape
 // stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
-use everruns_internal_protocol::{
-    json_to_proto_list, json_to_proto_struct, proto_list_to_json, proto_struct_to_json,
-};
+use everruns_internal_protocol::{json_to_proto_list, json_to_proto_struct, proto_struct_to_json};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -1063,68 +1061,8 @@ impl GrpcAdapter {
 }
 
 fn proto_message_to_message(proto_msg: proto::Message) -> Result<RuntimeMessage> {
-    let id = proto_uuid_to_uuid(proto_msg.id.as_ref())?;
-
-    // Convert prost ListValue to Vec<ContentPart>
-    let content_json = proto_msg
-        .content
-        .as_ref()
-        .map(proto_list_to_json)
-        .unwrap_or_else(|| serde_json::Value::Array(vec![]));
-    let content: Vec<crate::core::ContentPart> = serde_json::from_value(content_json)
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message content: {}", e)))?;
-
-    // Convert prost Struct to Controls
-    let controls: Option<crate::core::Controls> = proto_msg
-        .controls
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message controls: {}", e)))?;
-
-    // Convert prost Struct to metadata
-    let metadata: Option<std::collections::HashMap<String, serde_json::Value>> = proto_msg
-        .metadata
-        .as_ref()
-        .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-        .transpose()
-        .map_err(|e| AgentLoopError::store(format!("Failed to parse message metadata: {}", e)))?;
-
-    let role = match proto_msg.role.to_lowercase().as_str() {
-        "system" => crate::core::RuntimeMessageRole::System,
-        "user" => crate::core::RuntimeMessageRole::User,
-        // Map both "assistant" (legacy) and "agent" to Agent role
-        "assistant" | "agent" => crate::core::RuntimeMessageRole::Agent,
-        "tool_result" => crate::core::RuntimeMessageRole::ToolResult,
-        _ => crate::core::RuntimeMessageRole::User,
-    };
-
-    Ok(RuntimeMessage {
-        id: id.into(),
-        role,
-        content,
-        // Reasoning rides along inside `content` as ordered reasoning parts.
-        phase: proto_msg
-            .phase
-            .as_deref()
-            .and_then(everruns_contracts::ExecutionPhase::from_provider_str),
-        phase_source: proto_msg
-            .phase_source
-            .as_deref()
-            .and_then(everruns_contracts::PhaseSource::from_str_opt),
-        controls,
-        metadata,
-        external_actor: {
-            use everruns_internal_protocol::proto_struct_to_json;
-            proto_msg
-                .external_actor
-                .as_ref()
-                .map(|s| serde_json::from_value(proto_struct_to_json(s)))
-                .transpose()
-                .unwrap_or(None)
-        },
-        created_at: proto_timestamp_or_now(proto_msg.created_at.as_ref()),
-    })
+    everruns_internal_protocol::proto_message_to_schema(proto_msg)
+        .map_err(|e| AgentLoopError::store(format!("Failed to parse message: {}", e)))
 }
 
 // ============================================================================

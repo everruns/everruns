@@ -3,6 +3,11 @@
 // Decision: Rust types in schemas crate are source of truth, proto mirrors them
 // Decision: Batched RPCs for latency optimization (GetTurnContext, EmitEventStream)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
+// Decision: the hot payloads (message content, event data) also have a sibling
+//   `bytes *_json` field holding the serde_json encoding. Building and walking a
+//   Struct tree per field was the largest CPU cost on the server under load.
+//   Receivers prefer the bytes and fall back to the Struct; senders switch over
+//   with `SEND_JSON_BYTES` once every receiver understands the bytes.
 
 syntax = "proto3";
 
@@ -519,6 +524,13 @@ message Message {
     // for the same reason — a derived phase is only `has_tool_calls`, and a
     // consumer cannot tell that from the value alone.
     optional string phase_source = 11;
+    // serde_json encodings of `content`, `controls`, `metadata` and
+    // `external_actor`; preferred over the Struct fields when set (empty
+    // `content_json` means absent).
+    bytes content_json = 12;
+    optional bytes controls_json = 13;
+    optional bytes metadata_json = 14;
+    optional bytes external_actor_json = 15;
 }
 
 message GetMessageRequest {
@@ -628,6 +640,10 @@ message EventRequest {
     google.protobuf.Struct data = 4;  // Event-specific payload (deserialized based on event_type)
     optional google.protobuf.Struct metadata = 5;  // Optional metadata object
     repeated string tags = 6;  // Optional tags
+    // serde_json encodings of `data` / `metadata`; preferred over the Struct
+    // fields when set (empty `data_json` means absent).
+    bytes data_json = 7;
+    optional bytes metadata_json = 8;
 }
 
 // Event - stored event with id and sequence assigned by storage
@@ -640,6 +656,10 @@ message Event {
     optional google.protobuf.Struct metadata = 6;  // Optional metadata object
     repeated string tags = 7;  // Optional tags
     int32 sequence = 8;  // Sequence number within session (always set for stored events)
+    // serde_json encodings of `data` / `metadata`; preferred over the Struct
+    // fields when set (empty `data_json` means absent).
+    bytes data_json = 9;
+    optional bytes metadata_json = 10;
 }
 
 message EventContext {
