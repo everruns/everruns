@@ -744,19 +744,24 @@ where
                 ))
             });
         // A call detaches only when nothing in its act waits on the client.
+        // Boxed, like each call: a child turn re-enters this act inline.
         let mut results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
-            schedule.await
+            Box::pin(schedule).await
         } else {
-            tool_detach::without(schedule).await
+            Box::pin(tool_detach::without(schedule)).await
         };
         results.extend(over_cap);
         if results
             .iter()
             .any(|result| result.status == tool_detach::DETACHED_STATUS)
         {
-            return self
-                .park_on_detached(&context, results, &tool_definitions, locale.as_deref())
-                .await;
+            return Box::pin(self.park_on_detached(
+                &context,
+                results,
+                &tool_definitions,
+                locale.as_deref(),
+            ))
+            .await;
         }
 
         // Count successes and errors, including client calls already settled
@@ -1523,29 +1528,32 @@ where
             _cancel_on_call_end: call_cancellation.drop_guard(),
         };
         if let Some(pre_hook_result) = pre_hook_result {
-            return tail.finish(Ok(pre_hook_result), None).await;
+            return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
         }
+        // Each branch boxed: a tool that runs a child turn re-enters the act
+        // inline, and these futures inline made the nested debug-build stack
+        // overflow 2 MiB.
         match detacher.zip(switches) {
             Some((detacher, switches)) => {
-                act_detach::run(
+                Box::pin(act_detach::run(
                     detacher,
                     switches,
                     tail,
                     self.tool_executor.clone(),
                     self.thread_cpu_clock.clone(),
-                )
+                ))
                 .await
             }
             None => {
                 // A tool that runs a child turn inline must not detach its
                 // calls into this turn's park.
-                let (result, cpu_ns) = tool_detach::without(self.invoke_observed(
+                let (result, cpu_ns) = Box::pin(tool_detach::without(self.invoke_observed(
                     &tail.execution_tool_call,
                     &tail.tool_def,
                     &tail.tool_context,
-                ))
+                )))
                 .await;
-                tail.finish(result, cpu_ns).await
+                Box::pin(tail.finish(result, cpu_ns)).await
             }
         }
     }
