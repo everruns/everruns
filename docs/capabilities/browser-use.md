@@ -123,5 +123,6 @@ later ones are not run; each answers that an earlier action failed.
 
 ## Availability
 
-Browser use is experimental and ships behind the `browserless_browser_use`
-feature flag (`FEATURE_BROWSERLESS_BROWSER_USE` sets its rollout grade).
+Browser use is experimental and ships behind the `browserless`
+feature flag (`FEATURE_BROWSERLESS` sets its rollout grade); agents pick it
+via the `browser_use` capability.
