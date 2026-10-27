@@ -141,7 +141,6 @@ const config = {
     LEGACY_MODEL: "scripted",
     TEST_CREATION_BUILD: "chat-71eae7eb9de56959711746bb",
     TENANT_ID: "chat",
-    AUTHORITY_TOKEN: "test-authority-secret-at-least-32-characters",
     OPENROUTER_API_KEY: "test",
     OPENROUTER_BASE_URL: `http://127.0.0.1:${model.address().port}/v1`,
   },
@@ -361,7 +360,35 @@ try {
   assert.equal(page.headers.get("set-cookie"), null);
   assert.match(await page.text(), /Message the room/);
   assert.equal((await fetch(base + "/rooms/shared/state")).status, 200);
-  assert.equal((await fetch(base + "/cells/private/state")).status, 404);
+  // These must stop at the production gateway before reaching either binding.
+  // Forged authority headers and payloads cannot turn a public chat request into
+  // an internal tool/authority operation. No service secret is configured.
+  const privatePaths = [
+    "/cells/private/state",
+    "/internal/shared/tool",
+    "/internal/shared/changed",
+    "/%69nternal/shared/tool",
+    "/rooms/shared/commands/internal/shared/tool",
+    "/tenants/chat/sessions/session_" + "1".repeat(32) + "/engine",
+    "/tenants/chat/sessions/session_" + "1".repeat(32) + "/watch",
+    "/rooms/shared/%2e%2e/%2e%2e/internal/shared/tool",
+  ];
+  for (const path of privatePaths) {
+    for (const method of ["GET", "POST"]) {
+      const denied = await fetch(base + path, {
+        method,
+        headers: {
+          authorization: "Bearer forged",
+          "content-type": "application/json",
+        },
+        ...(method === "POST"
+          ? { body: JSON.stringify({ operation: "create", type: "tool" }) }
+          : {}),
+      });
+      assert.equal(denied.status, 404, `${method} ${path}`);
+    }
+  }
+
   const a = await socket(),
     b = await socket();
   a.ws.send(JSON.stringify({ type: "select", username: "Alice" }));

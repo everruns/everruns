@@ -31,8 +31,7 @@ npm run build
 cp .dev.vars.example .dev.vars
 ```
 
-Set `OPENROUTER_API_KEY` in `.dev.vars`, and set `AUTHORITY_TOKEN` to an independent
-random secret of at least 32 characters. Start the local Worker:
+Set `OPENROUTER_API_KEY` in `.dev.vars`. Start the local Worker:
 
 ```sh
 npm run dev
@@ -158,15 +157,16 @@ npm test
 npx wrangler deploy --dry-run
 npx wrangler login
 npm run deploy
-npx wrangler secret put AUTHORITY_TOKEN
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-`AUTHORITY_TOKEN` is an application-generated internal service secret, not a
-Cloudflare API credential. Generate an independent random value of at least
-32 characters, for example with `openssl rand -hex 32`. The adapter uses it to
-authenticate room/session requests; it never goes to the browser. The room
-gateway never exposes privileged authority endpoints or the provider credential.
+Internal room/session calls use private Cloudflare Durable Object bindings.
+No internal service token is needed in this example. The public gateway forwards
+only the explicit chat routes and returns 404 for internal tool and session
+authority endpoints. Keep these DO fetch handlers private to their bindings;
+do not mount them behind another public route. The shared HTTP authority adapter
+continues to authenticate deployments that expose an authority service.
+The provider credential stays server-side.
 
 The demo has no browser access gate. Anyone with its URL can open rooms and send
 messages; room links need no access key or cookie. To disable the old gate on an

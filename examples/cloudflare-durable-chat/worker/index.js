@@ -10,7 +10,6 @@ import {
 } from "../pkg/everruns_cloudflare_durable_chat.js";
 import {
   SessionAuthority,
-  authenticate,
   address,
   readJson,
   failure,
@@ -32,10 +31,7 @@ initSync({ module: wasm });
 installSessionCommands(session_command, session_command_key);
 
 const MODEL = "meta/muse-spark-1.3-contributor";
-const headers = (env) => ({
-  authorization: `Bearer ${env.AUTHORITY_TOKEN}`,
-  "content-type": "application/json",
-});
+const JSON_HEADERS = { "content-type": "application/json" };
 async function stableId(prefix, value) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -51,12 +47,12 @@ function uuid(id) {
   return `${raw.slice(0, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}-${raw.slice(16, 20)}-${raw.slice(20)}`;
 }
 
-// No privileged authority route is exposed by the outer Worker. Each bridge is
-// scoped to one actor and its room, and credentials remain in the JS host.
+// Binding-only transport: the outer Worker never forwards session or internal
+// room routes. Keep this fetch override private to the SESSIONS binding; the
+// shared HTTP authority service still requires its own authentication.
 export class ChatSession extends SessionAuthority {
   async fetch(request) {
     try {
-      await authenticate(request, this.env.AUTHORITY_TOKEN);
       const scope = address(request, this.env);
       check(scope.operation === "engine", "unknown session operation");
       const body = await readJson(request);
@@ -163,7 +159,7 @@ async function sessionCall(env, room, session, kind, operation, body = {}) {
       `https://session.invalid/tenants/${tenant}/sessions/${session}/engine`,
       {
         method: "POST",
-        headers: headers(env),
+        headers: JSON_HEADERS,
         body: JSON.stringify({ operation, body, room, kind }),
       },
     ),
@@ -177,7 +173,7 @@ async function roomCall(env, room, operation, body) {
   const response = await stub.fetch(
     new Request(`https://room.invalid/internal/${room}/${operation}`, {
       method: "POST",
-      headers: headers(env),
+      headers: JSON_HEADERS,
       body: JSON.stringify(body),
     }),
   );
@@ -555,7 +551,6 @@ export class ChatRoom extends DurableObject {
       );
       check(internal || external, "unknown room route");
       const [, room, operation] = internal ?? external;
-      if (internal) await authenticate(request, this.env.AUTHORITY_TOKEN);
       await this.initialize(room);
       if (operation === "changed") {
         // Session journals live in other DOs. Their committed notifications

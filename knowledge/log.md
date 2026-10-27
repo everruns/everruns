@@ -133,6 +133,12 @@
 
 ## 2026-10-26
 
+* **Binding-only chat internals.** Remove the example-only internal bearer
+  secret and trust native DO bindings, with workerd coverage that the public
+  gateway rejects internal tool/session routes and forged credentials. Shared
+  HTTP authority authentication stays enabled. See
+  [The isolate host](framework/wasm-kernel.md).
+
 - Added persistent Ukrainian interface selection and generic agent/harness display
   localization, including the portable agent-file contract and revision restore.
 

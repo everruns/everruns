@@ -19,8 +19,7 @@ cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-Set `OPENROUTER_API_KEY` and replace `AUTHORITY_TOKEN` with an independent random
-secret of at least 32 characters before starting. The default model is
+Set `OPENROUTER_API_KEY` before starting. The default model is
 `meta/muse-spark-1.3-contributor` through OpenRouter. Provider charges apply, and
 the Contributor model uses submitted data for training. `MODEL` and
 `OPENROUTER_BASE_URL` are trusted deployment configuration.
@@ -105,15 +104,14 @@ CPU, memory, request and storage limits remain separate constraints.
 ```sh
 npx wrangler login
 npm run deploy
-npx wrangler secret put AUTHORITY_TOKEN
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-`AUTHORITY_TOKEN` is an application-generated service secret, not a Cloudflare
-API credential. Use an independent random value of at least 32 characters, for
-example `openssl rand -hex 32`. The adapter uses it to authenticate internal
-room/session requests. Keep it server-side; the Worker exposes only the room
-gateway and never exposes privileged authority operations to browsers.
+Internal room/session calls use private Cloudflare Durable Object bindings and
+need no service token. The public gateway forwards only the explicit chat routes;
+internal tool and session authority routes return 404. Do not expose these DO
+fetch handlers through another public gateway. The shared HTTP authority adapter
+retains its authentication for deployments that expose an authority service.
 
 The demo has no browser access gate: anyone with its URL can open rooms and send
 messages. Room links need no access key or cookie. For an existing deployment,

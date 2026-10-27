@@ -127,8 +127,11 @@ The old room payload is backed up before importing settled history, and queued
 messages retain their identities. Room application state is still one JSON row
 with small-demo bounds, no automatic compaction or per-user budget controls.
 The chat gateway is public with no browser access gate; individual identity and
-room-level authorization are not implemented. Internal authority calls retain
-an independent server-side service secret, separate from Cloudflare API credentials.
+room-level authorization are not implemented. Internal room/session calls trust
+private Cloudflare DO bindings; the public gateway allowlist excludes their
+routes, so this example needs no internal bearer secret. Do not expose these
+handlers through another public gateway. Shared HTTP authority authentication
+remains unchanged for service deployments.
 These remain application concerns; native SQLite host services do not implicitly
 provide equivalent ports for an object adapter.
 
