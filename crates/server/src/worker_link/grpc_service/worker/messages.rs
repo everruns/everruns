@@ -392,14 +392,17 @@ impl WorkerServiceImpl {
             .map(|event| i64::from(event.sequence))
             .max()
             .or(req.after_sequence);
-        let total_count = self
-            .db
-            .count_message_events(everruns_contracts::typed_id::SessionId::from_uuid(
-                session_id,
-            ))
-            .await
-            .map_err(|e| internal_status("Failed to count messages", e))?
-            .min(i32::MAX as i64) as i32;
+        let total_count = if req.skip_total_count.unwrap_or(false) {
+            0
+        } else {
+            self.db
+                .count_message_events(everruns_contracts::typed_id::SessionId::from_uuid(
+                    session_id,
+                ))
+                .await
+                .map_err(|e| internal_status("Failed to count messages", e))?
+                .min(i32::MAX as i64) as i32
+        };
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 

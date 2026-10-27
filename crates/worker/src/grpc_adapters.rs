@@ -42,6 +42,8 @@ mod checkpoint_availability;
 mod compaction_checkpoints;
 mod connect;
 mod event_batch;
+mod history_cache;
+mod load_messages;
 mod shared_client;
 use checkpoint_availability::CheckpointAvailability;
 pub use connect::DEFAULT_GRPC_REQUEST_TIMEOUT;
@@ -74,6 +76,8 @@ pub struct GrpcClient {
     checkpoints: Arc<CheckpointAvailability>,
     /// GETs image and file bytes from signed paths on the same channel.
     blobs: blob_fetch::BlobFetcher,
+    /// Session histories this worker already read (`history_cache`).
+    history: Arc<history_cache::HistoryCache>,
 }
 
 impl GrpcClient {
@@ -1021,42 +1025,6 @@ impl MessageRetriever for GrpcAdapter {
             messages,
             source_sequence,
         })
-    }
-}
-
-impl GrpcAdapter {
-    async fn load_with_message_limit(
-        &self,
-        session_id: SessionId,
-        message_limit: Option<i32>,
-        after_sequence: Option<i64>,
-    ) -> Result<(Vec<RuntimeMessage>, usize, Option<i64>)> {
-        let mut client = self.client.inner.client();
-
-        let request = proto::LoadMessagesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            message_limit,
-            after_sequence,
-        };
-
-        let response = client
-            .load_messages(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        let response = response.into_inner();
-        let total_count = if response.total_count > 0 {
-            response.total_count as usize
-        } else {
-            response.messages.len()
-        };
-
-        let messages = response
-            .messages
-            .into_iter()
-            .map(proto_message_to_message)
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok((messages, total_count, response.source_sequence))
     }
 }
 

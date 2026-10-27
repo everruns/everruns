@@ -3669,6 +3669,8 @@ dependencies = [
  "hostname",
  "http-body-util",
  "mimalloc",
+ "moka",
+ "prost",
  "prost-types",
  "reqwest",
  "serde",

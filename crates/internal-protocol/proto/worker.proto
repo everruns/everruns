@@ -546,6 +546,9 @@ message LoadMessagesRequest {
     Uuid session_id = 1;
     optional int32 message_limit = 2;
     optional int64 after_sequence = 3;
+    // Leave `total_count` at 0 instead of counting the session's messages.
+    // A worker extending its cached history sets it with `after_sequence`.
+    optional bool skip_total_count = 4;
 }
 
 message LoadMessagesResponse {
