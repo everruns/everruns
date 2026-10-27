@@ -11,6 +11,7 @@
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
+pub mod blob_wire;
 mod capability_wire;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;

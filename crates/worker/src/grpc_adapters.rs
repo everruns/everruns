@@ -132,31 +132,26 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    /// Store a generated image. The bytes go up over HTTP, not gRPC.
     pub async fn create_image_artifact(
         &self,
         org_id: i64,
         input: CreateStoredImage,
     ) -> Result<StoredImageInfo> {
-        let request = proto::CreateImageArtifactRequest {
-            org_id,
+        let head = everruns_internal_protocol::blob_wire::ImageUploadHead {
             filename: input.filename,
             content_type: input.content_type,
-            data: input.data,
-            metadata: Some(json_to_proto_struct(&input.metadata)),
+            metadata: input.metadata,
         };
-
-        let mut client = self.inner.client();
-        let response = client
-            .create_image_artifact(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let proto_image = response
-            .into_inner()
-            .image
-            .ok_or_else(|| grpc_missing_field("No image in response"))?;
-
-        proto_stored_image_info_to_schema(proto_image)
+        let stored = self.blobs.upload_image(org_id, &head, &input.data).await?;
+        Ok(StoredImageInfo {
+            id: stored.id.into(),
+            filename: stored.filename,
+            content_type: stored.content_type,
+            size_bytes: stored.size_bytes,
+            metadata: stored.metadata,
+            created_at: stored.created_at,
+        })
     }
 
     pub async fn get_image_artifact(

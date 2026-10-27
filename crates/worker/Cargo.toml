@@ -63,6 +63,10 @@ hostname = "0.4"
 # gRPC dependencies
 tonic.workspace = true
 prost-types.workspace = true
+# One-frame request body for uploads on the control-plane channel (already in
+# the tree through tonic).
+http-body-util = "0.1"
+bytes.workspace = true
 
 everruns = { workspace = true, default-features = false, features = ["bashkit", "utility-llm"] }
 [dev-dependencies]

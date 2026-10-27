@@ -169,3 +169,40 @@ async fn byte_paths_refuse_tampering() {
     let _ = shutdown.send(());
     server.await.unwrap();
 }
+
+#[tokio::test]
+async fn worker_uploads_a_generated_image_over_the_worker_endpoint() {
+    use everruns_contracts::runtime::image_services::{CreateStoredImage, ImageArtifactStore};
+    let (service, db) = worker_service();
+    let (addr, shutdown, server) = start_grpc_test_server(service).await;
+    let client = GrpcClient::connect(&addr).await.unwrap();
+    let adapter = GrpcOrgAdapter::new(client, ORG);
+    // Larger than one HTTP/2 data frame, and with newlines in both the
+    // metadata and the bytes.
+    let data: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    let metadata = serde_json::json!({"prompt": "a cat\nin two lines", "model": "gpt-image"});
+
+    let stored = adapter
+        .create_image(CreateStoredImage {
+            filename: "cat.png".into(),
+            content_type: "image/png".into(),
+            data: data.clone(),
+            metadata: metadata.clone(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(stored.filename, "cat.png");
+    assert_eq!(stored.size_bytes, data.len() as i64);
+    assert_eq!(stored.metadata, metadata);
+    let row = db
+        .get_image(ORG, stored.id.uuid())
+        .await
+        .unwrap()
+        .expect("image row");
+    assert_eq!(row.data, data);
+    assert_eq!(row.content_type, "image/png");
+
+    let _ = shutdown.send(());
+    server.await.unwrap();
+}

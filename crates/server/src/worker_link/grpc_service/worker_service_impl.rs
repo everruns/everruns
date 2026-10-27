@@ -104,8 +104,6 @@ delegate! {
     resolve_image => handle_resolve_image(ResolveImageRequest) -> ResolveImageResponse;
     resolve_images => handle_resolve_images(ResolveImagesRequest) -> ResolveImagesResponse;
     resolve_files => handle_resolve_files(ResolveFilesRequest) -> ResolveFilesResponse;
-    create_image_artifact => handle_create_image_artifact(CreateImageArtifactRequest)
-        -> CreateImageArtifactResponse;
     get_image_artifact => handle_get_image_artifact(GetImageArtifactRequest)
         -> GetImageArtifactResponse;
 
