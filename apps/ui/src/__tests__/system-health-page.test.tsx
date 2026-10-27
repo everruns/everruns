@@ -1,0 +1,78 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import SystemHealthPage from "@/app/(main)/system/health/page";
+import type { DoctorReport } from "@/lib/api/types";
+
+const mockRefresh = jest.fn();
+let mockReport: DoctorReport | undefined;
+
+jest.mock("@/hooks", () => ({
+  usePageTitle: () => {},
+  useSystemDoctor: () => ({ data: mockReport, isLoading: false, error: null }),
+  useRefreshSystemDoctor: () => ({ mutate: mockRefresh, isPending: false }),
+}));
+
+const report: DoctorReport = {
+  status: "problem",
+  checked_at: new Date().toISOString(),
+  version: "0.50.0",
+  grade: "prod",
+  auth_mode: "full",
+  setup: ["PostgreSQL 17.2", "2 API servers"],
+  checks: [
+    {
+      id: "database.migrations",
+      area: "database",
+      title: "Migrations applied",
+      status: "problem",
+      summary: "2 migrations are missing.",
+      why: "New features fail on the old schema.",
+      fix: "Run everruns-migrate.",
+      observed_at: new Date().toISOString(),
+    },
+    {
+      id: "database.reachable",
+      area: "database",
+      title: "Database reachable",
+      status: "ok",
+      summary: "The database answered in 3 ms.",
+      observed_at: new Date().toISOString(),
+    },
+    {
+      id: "messaging.nats",
+      area: "messaging",
+      title: "NATS",
+      status: "info",
+      summary: "Not used.",
+      observed_at: new Date().toISOString(),
+    },
+  ],
+};
+
+describe("System → Health", () => {
+  beforeEach(() => {
+    mockReport = report;
+    mockRefresh.mockClear();
+  });
+
+  it("shows the verdict, the fix for each problem and the rest by area", () => {
+    render(<SystemHealthPage />);
+    expect(screen.getByText("Needs attention: 1 problem.")).toBeInTheDocument();
+    expect(screen.getByText("PostgreSQL 17.2 · 2 API servers")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText("Run everruns-migrate.")).toBeInTheDocument();
+    expect(screen.getByText("The database answered in 3 ms.")).toBeInTheDocument();
+    expect(screen.getByText("Messaging")).toBeInTheDocument();
+  });
+
+  it("runs the checks again on request", () => {
+    render(<SystemHealthPage />);
+    fireEvent.click(screen.getByRole("button", { name: /check again/i }));
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains when the report cannot be loaded", () => {
+    mockReport = undefined;
+    render(<SystemHealthPage />);
+    expect(screen.getByText("Could not load the health report")).toBeInTheDocument();
+  });
+});

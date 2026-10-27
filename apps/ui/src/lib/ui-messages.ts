@@ -16,6 +16,7 @@ import { messages as catalog13 } from "./messages/uk/common-08";
 import { messages as catalog14 } from "./messages/uk/harnesses-01";
 import { messages as catalog15 } from "./messages/uk/operations-01";
 import { messages as catalog16 } from "./messages/uk/operations-02";
+import { messages as catalog19 } from "./messages/uk/operations-03";
 import { messages as catalog17 } from "./messages/uk/settings-01";
 import { messages as catalog18 } from "./messages/uk/settings-02";
 
@@ -40,4 +41,5 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   catalog16,
   catalog17,
   catalog18,
+  catalog19,
 );

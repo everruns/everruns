@@ -120,8 +120,21 @@ The table has a `kind` column so other process types can join it; the egress
 proxy has no database access in the open-source build, so its replicas are
 covered where its control endpoint lives (the SaaS checks).
 
+## Surfaces beyond the API
+
+- System → Health (`apps/ui`, route `/system/health`) is the first entry of
+  the System section (formerly "Durable Execution"), shown to platform users.
+- `everruns-server --doctor` runs the checks once from the command line
+  ([`preflight`](../../crates/server/src/domains/system/doctor/preflight.rs)),
+  with no running server and no sign-in, and exits 1 on a problem. It is not
+  one of the servers, so the replica checks never count it.
+  `everruns docker doctor` runs it inside the server container.
+- Each server exports `everruns_doctor_check_status{area,check}` every minute.
+  Every replica sweeps rather than one under a cluster lock: a gauge set only
+  by the lock holder would keep a stale value on the replicas that lost it.
+  The report cache keeps it to one run per replica per minute.
+
 ## Planned
 
-The System → Health page, chaining
-`everruns docker doctor` into it, an `everruns-server doctor` preflight, a
-Prometheus gauge per check, SaaS checks and the release gate.
+SaaS checks through a builder extension, the production release gate, and a
+small doctor for serve.

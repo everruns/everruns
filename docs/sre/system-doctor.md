@@ -27,7 +27,12 @@ and a problem after ten minutes.
 
 ## Run it
 
-You need to be a platform user.
+In the app, open **System → Health**. It shows the verdict, what needs
+attention with how to fix it, and every other check by area. **Check again**
+runs the checks now; **Copy report** copies a plain-text report to paste into
+an issue. The page and the API need a platform user.
+
+From the CLI:
 
 ```bash
 everruns system doctor --refresh true
@@ -51,6 +56,33 @@ script can fail on `problem`:
 
 ```bash
 everruns system doctor --refresh true --output json | jq -e '.status != "problem"'
+```
+
+## Without signing in
+
+The server binary runs the doctor on its own, against the services its
+environment names, and exits `1` when a check is a problem (warnings exit
+`0`). It needs no running server and no sign-in, so it works as a check before
+a deploy and from inside a container:
+
+```bash
+everruns-server --doctor           # plain text
+everruns-server --doctor --json    # the API's report shape
+docker compose exec server /app/everruns-server --doctor
+```
+
+`everruns docker doctor` runs it for you when your local instance is up.
+
+## Alerting
+
+Every server exports each check as a Prometheus gauge,
+`everruns_doctor_check_status{area,check}`, refreshed every minute: `0` ok or
+not used, `1` warning, `2` problem. `everruns_doctor_status` is the whole
+report on the same scale. Every replica exports the same checks, so alert on
+the cluster's worst value:
+
+```text
+max without(instance) (everruns_doctor_check_status) == 2
 ```
 
 ## Readiness probe

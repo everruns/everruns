@@ -51,7 +51,8 @@ async fn ready(State(state): State<HealthState>) -> (StatusCode, Json<ReadyRespo
     }
 }
 
-/// The system doctor over this server's own services.
+/// The system doctor over this server's own services, exporting its
+/// findings as Prometheus gauges.
 pub(super) fn system_doctor(
     db: &Arc<StorageBackend>,
     workflow_store: &Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -59,12 +60,15 @@ pub(super) fn system_doctor(
     auth_config: &AuthConfig,
     utility_llm_configured: bool,
 ) -> Arc<SystemDoctor> {
-    Arc::new(SystemDoctor::new(
+    let doctor = Arc::new(SystemDoctor::new(
         db.clone(),
         workflow_store.clone(),
         encryption.clone(),
         DoctorEnv::from_env(auth_config, utility_llm_configured),
-    ))
+    ));
+    // Its gauges are how alerting learns about a problem; see the sweep.
+    doctor::spawn_metrics_sweep(doctor.clone());
+    doctor
 }
 
 /// `/health` (liveness) and `/health/ready` (readiness).

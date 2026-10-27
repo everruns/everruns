@@ -38,12 +38,17 @@ impl Replicas {
         }
     }
 
-    /// How many servers run, counting this one when its first beat is not in
-    /// yet.
-    pub fn live_count(&self, this_id: &str) -> usize {
-        let counted = self.live.iter().any(|row| row.id == this_id);
-        self.live.len() + usize::from(!counted)
+    /// How many servers run. `this_id` is this server, counted even when its
+    /// first beat is not in yet; `None` for a command-line run.
+    pub fn live_count(&self, this_id: Option<&str>) -> usize {
+        let missing = this_id.is_some_and(|id| !self.live.iter().any(|row| row.id == id));
+        self.live.len() + usize::from(missing)
     }
+}
+
+/// This process's instance id, unless the doctor runs from the command line.
+pub(crate) fn this_id(doctor: &SystemDoctor) -> Option<&'static str> {
+    (!doctor.preflight).then(|| Instance::this_server().id.as_str())
 }
 
 /// Read the heartbeats once for every check that needs them.
@@ -63,21 +68,39 @@ pub(super) fn run(doctor: &SystemDoctor, replicas: &Replicas) -> Findings {
     if !replicas.known {
         return found;
     }
-    let this = Instance::this_server();
-    let count = replicas.live_count(&this.id);
+    let this = this_id(doctor);
+    let count = replicas.live_count(this);
     if count > 1 {
         found.fact(plural(count, "API server", "API servers"));
     }
     let uptime = TimeDelta::from_std(doctor.uptime()).unwrap_or_default();
-    found.check(servers_check(replicas, &this.id, uptime));
+    found.check(servers_check(replicas, this, uptime));
     if count > 1 {
         found.check(versions_check(replicas));
     }
     found
 }
 
-pub(crate) fn servers_check(replicas: &Replicas, this_id: &str, uptime: TimeDelta) -> DoctorCheck {
+pub(crate) fn servers_check(
+    replicas: &Replicas,
+    this_id: Option<&str>,
+    uptime: TimeDelta,
+) -> DoctorCheck {
     let check = DoctorCheck::new(AREA, "control_plane.servers", "API servers");
+    let Some(this_id) = this_id else {
+        // A command-line run: report what heartbeats, nothing about itself.
+        return match replicas.live.len() {
+            0 => check.info("No server is running against this database."),
+            1 => check.ok(format!(
+                "One server is running: {}.",
+                labels(&replicas.live).join(", ")
+            )),
+            count => check.ok(format!(
+                "{count} servers are running: {}.",
+                labels(&replicas.live).join(", ")
+            )),
+        };
+    };
     let beats_missing = !replicas.live.iter().any(|row| row.id == this_id);
     // Two missed beats: the first one is written at start.
     let grace = TimeDelta::from_std(HEARTBEAT_INTERVAL * 2).unwrap_or_default();

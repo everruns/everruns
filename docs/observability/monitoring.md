@@ -18,7 +18,7 @@ The feature uses the `monitoring` adoption flag and starts disabled. The
 organization's execution and actor ownership. Reading it requires session-read
 permission; opting in does not grant additional permissions.
 
-Platform operators open **Durable Execution → Monitoring** for the cross-org
+Platform operators open **System → Monitoring** for the cross-org
 view. This view also exposes worker capacity, reported load, and heartbeat
 freshness. Organization owners and admins cannot access this view unless they
 also have platform access.
