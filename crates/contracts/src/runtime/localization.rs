@@ -251,12 +251,18 @@ pub enum BackendLocale {
 }
 
 pub fn resolve_backend_locale(locale: Option<&str>) -> BackendLocale {
-    match locale
-        .map(str::trim)
-        .and_then(|value| value.split(['-', '_']).next())
-    {
-        Some(language) if language.eq_ignore_ascii_case("uk") => BackendLocale::Uk,
-        _ => BackendLocale::En,
+    // Only inspect the ASCII language prefix; do not allocate or pull a full
+    // Unicode tag-search iterator into size-constrained Engine deployments.
+    if locale.map(str::trim).is_some_and(|tag| {
+        let bytes = tag.as_bytes();
+        bytes
+            .get(..2)
+            .is_some_and(|language| language.eq_ignore_ascii_case(b"uk"))
+            && matches!(bytes.get(2), None | Some(b'-' | b'_'))
+    }) {
+        BackendLocale::Uk
+    } else {
+        BackendLocale::En
     }
 }
 
@@ -452,6 +458,17 @@ mod display_localization_tests {
             .map(|i| (format!("en-{i:03}"), json!({})))
             .collect::<serde_json::Map<_, _>>();
         assert!(serde_json::from_value::<EntityLocalizations>(json!(oversized)).is_err());
+    }
+
+    #[test]
+    fn backend_locale_requires_a_whole_language_prefix() {
+        for locale in ["uk", "uk-UA", "UK_ua", " uk-UA "] {
+            assert_eq!(resolve_backend_locale(Some(locale)), BackendLocale::Uk);
+        }
+        for locale in ["", "u", "ukulele", "ukrainian", "uké", "éuk-UA", "de"] {
+            assert_eq!(resolve_backend_locale(Some(locale)), BackendLocale::En);
+        }
+        assert_eq!(resolve_backend_locale(None), BackendLocale::En);
     }
 
     #[test]
