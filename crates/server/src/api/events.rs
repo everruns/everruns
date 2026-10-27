@@ -666,7 +666,7 @@ pub(crate) async fn session_event_sse(
                     }
 
                     enum Woke {
-                        Pushed(Option<Event>),
+                        Pushed(Option<Box<Event>>),
                         Quiet,
                         Cycle,
                     }
@@ -690,7 +690,7 @@ pub(crate) async fn session_event_sse(
                     // Wait for event, a quiet open turn, or connection cycle timeout
                     let cycle_remaining = state.max_duration.saturating_sub(state.connection_start.elapsed());
                     let woke = tokio::select! {
-                        event = recv_future => Woke::Pushed(event),
+                        event = recv_future => Woke::Pushed(event.map(Box::new)),
                         _ = quiet => Woke::Quiet,
                         _ = tokio::time::sleep(cycle_remaining) => Woke::Cycle,
                     };
