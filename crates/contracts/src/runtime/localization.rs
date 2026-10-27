@@ -16,8 +16,10 @@ use std::collections::BTreeMap;
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EntityLocalization {
+    /// Localized display name (1–255 characters when set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Localized description (1–2000 characters when set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }

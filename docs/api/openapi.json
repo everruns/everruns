@@ -33405,7 +33405,8 @@
             "example": "conversation"
           },
           "localizations": {
-            "$ref": "#/components/schemas/EntityLocalizations"
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",
@@ -33750,7 +33751,8 @@
             ]
           },
           "localizations": {
-            "$ref": "#/components/schemas/EntityLocalizations"
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": [
@@ -42042,13 +42044,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Localized description (1–2000 characters when set)."
           },
           "display_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Localized display name (1–255 characters when set)."
           }
         },
         "additionalProperties": false
@@ -45461,7 +45465,8 @@
             "description": "Display glyph name rendered by the UI (e.g. `bar-chart`)."
           },
           "localizations": {
-            "$ref": "#/components/schemas/EntityLocalizations"
+            "$ref": "#/components/schemas/EntityLocalizations",
+            "description": "Locale-keyed display names and descriptions."
           },
           "name": {
             "type": "string",

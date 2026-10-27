@@ -28,6 +28,7 @@ pub enum AgentHarnessStatus {
 /// Harness that a newly created session for this agent will resolve to.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentHarnessSummary {
+    /// Locale-keyed display names and descriptions.
     pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     #[schema(value_type = Option<String>)]
     pub id: Option<HarnessId>,

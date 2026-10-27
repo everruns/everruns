@@ -21,6 +21,7 @@ use super::common::impl_auth_state;
 /// A read-only harness example defined in code.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct HarnessExample {
+    /// Locale-keyed display names and descriptions.
     pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Unique slug (e.g. `data-analyst`).
     pub name: String,

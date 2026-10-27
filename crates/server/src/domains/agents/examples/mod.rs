@@ -27,6 +27,7 @@ pub const EXAMPLE_TAG_PREFIX: &str = "example:";
 /// A read-only agent example defined in code
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentExample {
+    /// Locale-keyed display names and descriptions.
     pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Name (e.g. "dad-jokes-agent")
     #[schema(example = "dad-jokes-agent")]

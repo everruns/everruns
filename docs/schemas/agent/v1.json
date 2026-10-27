@@ -77,6 +77,7 @@
             "string",
             "null"
           ],
+          "description": "Localized description (1–2000 characters when set).",
           "minLength": 1,
           "maxLength": 2000
         },
@@ -85,6 +86,7 @@
             "string",
             "null"
           ],
+          "description": "Localized display name (1–255 characters when set).",
           "minLength": 1,
           "maxLength": 255
         }

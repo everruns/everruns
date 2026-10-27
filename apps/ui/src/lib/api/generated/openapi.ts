@@ -8857,6 +8857,7 @@ export interface components {
        * @example conversation
        */
       harness_name: string;
+      /** @description Locale-keyed display names and descriptions. */
       localizations: components["schemas"]["EntityLocalizations"];
       /**
        * @description Name (e.g. "dad-jokes-agent")
@@ -9036,6 +9037,7 @@ export interface components {
     AgentHarnessSummary: {
       display_name?: string | null;
       id?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
       localizations: components["schemas"]["EntityLocalizations"];
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
@@ -13602,7 +13604,9 @@ export interface components {
      *     Addresses, tool identifiers and execution instructions never use these values.
      */
     EntityLocalization: {
+      /** @description Localized description (1–2000 characters when set). */
       description?: string | null;
+      /** @description Localized display name (1–255 characters when set). */
       display_name?: string | null;
     };
     /** @description Locale-keyed display overlays. Deserialization normalizes tags and bounds input. */
@@ -15522,6 +15526,7 @@ export interface components {
       display_name: string;
       /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
       icon?: string | null;
+      /** @description Locale-keyed display names and descriptions. */
       localizations: components["schemas"]["EntityLocalizations"];
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;

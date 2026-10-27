@@ -2035,12 +2035,14 @@
           "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
           "properties": {
             "description": {
+              "description": "Localized description (1–2000 characters when set).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
               "type": [
                 "string",
                 "null"
@@ -4867,12 +4869,14 @@
           "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
           "properties": {
             "description": {
+              "description": "Localized description (1–2000 characters when set).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
               "type": [
                 "string",
                 "null"
@@ -19723,12 +19727,14 @@
           "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
           "properties": {
             "description": {
+              "description": "Localized description (1–2000 characters when set).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
               "type": [
                 "string",
                 "null"
@@ -22339,12 +22345,14 @@
           "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
           "properties": {
             "description": {
+              "description": "Localized description (1–2000 characters when set).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
               "type": [
                 "string",
                 "null"
@@ -26034,12 +26042,14 @@
           "description": "Display-only translations shared by portable agent files and platform resources.\nAddresses, tool identifiers and execution instructions never use these values.",
           "properties": {
             "description": {
+              "description": "Localized description (1–2000 characters when set).",
               "type": [
                 "string",
                 "null"
               ]
             },
             "display_name": {
+              "description": "Localized display name (1–255 characters when set).",
               "type": [
                 "string",
                 "null"
