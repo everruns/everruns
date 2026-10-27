@@ -3,9 +3,8 @@
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_error::LlmError;
 use crate::llm_retry::{LlmRetryConfig, RetryMetadata};
-use crate::retry_failure::RetryFailure;
 use async_trait::async_trait;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{future::Future, sync::Arc, time::Duration};
 
 /// Secret-free, versioned continuation of one turn's reasoning iteration.
@@ -18,24 +17,12 @@ pub struct RetryCheckpoint {
     pub wake_at_ms: i64,
     pub total_wait_ms: u64,
     pub policy: LlmRetryConfig,
-    /// The provider failure the latest retry answers, so a window that
-    /// expires after executor loss still names its cause (EVE-1318).
-    /// Absent from checkpoints written before it existed; an unreadable one
-    /// is dropped rather than failing the turn's recovery.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "lenient_failure"
-    )]
-    pub last_failure: Option<RetryFailure>,
-}
-
-fn lenient_failure<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> std::result::Result<Option<RetryFailure>, D::Error> {
-    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
-        .and_then(|value| serde_json::from_value::<RetryFailure>(value).ok())
-        .map(RetryFailure::sanitized))
+    /// Sanitized copy of the provider failure the latest retry answers
+    /// ([`crate::retry_failure::retained`]), so a window that expires after
+    /// executor loss still names its cause (EVE-1318). Absent from
+    /// checkpoints written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failure: Option<Box<LlmError>>,
 }
 
 /// The session authority supplies time, fenced persistence and a durable wake.
@@ -171,16 +158,14 @@ pub fn budget_exhausted(retry: &RetryMetadata, elapsed: Duration) -> AgentLoopEr
         retry.attempts,
         elapsed.as_secs_f64()
     );
-    let mut error = match &retry.last_failure {
-        Some(failure) => {
-            message.push_str(&format!("; last provider failure: {failure}"));
-            let mut error = LlmError::new(failure.kind, String::new());
-            error.status = failure.status;
-            error.code = failure.code.clone();
-            error
-        }
-        None => LlmError::new(LlmErrorKind::Unavailable, String::new()),
-    };
+    let mut error = LlmError::new(LlmErrorKind::Unavailable, String::new());
+    if let Some(failure) = &retry.last_failure {
+        message.push_str("; last provider failure: ");
+        message.push_str(&failure.message);
+        error.kind = failure.kind;
+        error.status = failure.status;
+        error.code = failure.code.clone();
+    }
     message.push_str("; the turn is safe to resume");
     error.message = message;
     AgentLoopError::Llm(error).with_retry_metadata(retry)
@@ -309,7 +294,7 @@ async fn retain_retry(
         return Ok(error.with_retry_metadata(&metadata(&state)));
     }
     state.attempts += 1;
-    if let Some(failure) = RetryFailure::from_error(&error) {
+    if let Some(failure) = crate::retry_failure::retained(&error) {
         state.last_failure = Some(failure);
     }
     state.total_wait_ms = state.total_wait_ms.saturating_add(wait_ms);
@@ -469,8 +454,8 @@ mod tests {
     }
 
     #[test]
-    fn checkpoints_without_or_with_an_unreadable_failure_still_load() {
-        let mut stored = serde_json::to_value(RetryCheckpoint {
+    fn checkpoints_written_before_the_retained_failure_still_load() {
+        let stored = serde_json::to_value(RetryCheckpoint {
             version: 1,
             attempts: 1,
             started_at_ms: 0,
@@ -482,11 +467,8 @@ mod tests {
         })
         .unwrap();
         assert!(stored.get("last_failure").is_none());
-        let old: RetryCheckpoint = serde_json::from_value(stored.clone()).unwrap();
+        let old: RetryCheckpoint = serde_json::from_value(stored).unwrap();
         assert!(old.last_failure.is_none());
-        stored["last_failure"] = serde_json::json!({"kind": "from_a_newer_build"});
-        let newer: RetryCheckpoint = serde_json::from_value(stored).unwrap();
-        assert!(newer.last_failure.is_none());
     }
 
     #[tokio::test]

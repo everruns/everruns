@@ -1176,10 +1176,6 @@ impl ReasonAtom {
                                 "ReasonAtom: provider stream stall, retrying"
                             );
                             stream_retry_metadata.record_retry(wait_duration, None);
-                            stream_retry_metadata.record_failure(&AgentLoopError::llm_kind(
-                                crate::engine::error::LlmErrorKind::Unavailable,
-                                stall_error.message.clone(),
-                            ));
                             everruns_contracts::rt::sleep(wait_duration).await;
                             stream_state::restart(&self.event_emitter, &started, &text).await;
                             continue 'stream_attempt;

@@ -394,7 +394,7 @@ pub struct RetryMetadata {
     pub last_rate_limit_info: Option<RateLimitInfo>,
     /// Classification of the last provider failure that consumed a retry, so
     /// an exhausted budget still names its cause (EVE-1318).
-    pub last_failure: Option<crate::retry_failure::RetryFailure>,
+    pub last_failure: Option<Box<crate::llm_error::LlmError>>,
 }
 
 impl RetryMetadata {
@@ -438,7 +438,7 @@ impl RetryMetadata {
 
     /// Remember the classified provider failure a retry is answering.
     pub fn record_failure(&mut self, error: &crate::error::AgentLoopError) {
-        if let Some(failure) = crate::retry_failure::RetryFailure::from_error(error) {
+        if let Some(failure) = crate::retry_failure::retained(error) {
             self.last_failure = Some(failure);
         }
     }
