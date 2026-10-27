@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [api]
 links:
   docs: [/sre/environment-variables/]
-  prs: [everruns/everruns#PR]
+  prs: [everruns/everruns#4954]
 ---
 
 A worker used to hold one of its execution slots, the session lease and the whole turn in memory
