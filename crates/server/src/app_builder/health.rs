@@ -32,7 +32,7 @@ pub(super) struct ReadyResponse {
 /// `GET /health/ready`: the database answers and its schema matches this
 /// build. Orchestrators route traffic on it; liveness stays on `/health` so
 /// a database outage does not get healthy servers restarted.
-pub(super) async fn ready(State(state): State<HealthState>) -> (StatusCode, Json<ReadyResponse>) {
+async fn ready(State(state): State<HealthState>) -> (StatusCode, Json<ReadyResponse>) {
     match doctor::readiness(state.db.pool()).await {
         Ok(()) => (
             StatusCode::OK,
@@ -67,8 +67,16 @@ pub(super) fn system_doctor(
     ))
 }
 
+/// `/health` (liveness) and `/health/ready` (readiness).
+pub(super) fn routes(state: HealthState) -> axum::Router {
+    axum::Router::new()
+        .route("/health", axum::routing::get(endpoint))
+        .route("/health/ready", axum::routing::get(ready))
+        .with_state(state)
+}
+
 /// `GET /health`: liveness plus the build version and auth mode.
-pub(super) async fn endpoint(State(state): State<HealthState>) -> Json<HealthResponse> {
+async fn endpoint(State(state): State<HealthState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),

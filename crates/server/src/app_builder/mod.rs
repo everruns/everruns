@@ -1305,11 +1305,7 @@ impl ServerAppBuilder {
 
         // Main router
         let mut app = Router::new()
-            .route(
-                "/health/ready",
-                get(health::ready).with_state(health_state.clone()),
-            )
-            .route("/health", get(health::endpoint).with_state(health_state))
+            .merge(health::routes(health_state))
             .route(
                 "/api-doc/openapi.json",
                 get(|| async { Json(ApiDoc::openapi()) }),
