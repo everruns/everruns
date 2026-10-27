@@ -6,6 +6,8 @@
 * [Bound Secrets](bound-secrets.md) - Write-only API keys the platform puts on requests to one URL; the agent sees a placeholder.
 * [Audit Logging](audit-logging.md) - Audit logging.
 * [Threat Model](threat-model.md) - Security threat model.
+* [Assignment-bound Worker Isolation](worker-assignment-isolation.md) - Proposed executor trust boundary and authorization contract; not implemented or qualified.
+* [Worker Isolation Qualification and Rollout](worker-isolation-qualification.md) - Proposed adversarial evidence, compatibility rules and deployment approval gates.
 * [Security Testing](security-testing.md) - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain).
 * [Multitenancy](multitenancy.md) - Organization-based multitenancy.
 * [Permissions Model](permissions.md) - Fine-grained permissions model.
