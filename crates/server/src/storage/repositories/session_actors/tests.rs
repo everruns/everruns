@@ -721,6 +721,43 @@ async fn the_journal_tail_starts_at_the_latest_turn() {
     assert!(!rest.has_more);
 }
 
+// EVERRUNS-37: each `llm.generation` carries the turn's whole prompt (twice,
+// with the provider request body), so reading them made one resume fetch
+// megabytes the fold never looks at.
+#[tokio::test]
+async fn the_journal_leaves_out_llm_generations() {
+    let db = StorageBackend::test_database();
+    let id = session(&db, ORG_A).await;
+    let started = event(&db, id, "turn.started").await;
+    event(&db, id, "llm.generation").await;
+    let reasoned = event(&db, id, "reason.completed").await;
+    let generated = event(&db, id, "llm.generation").await;
+
+    let tail = db.read_session_actor_journal(id, None, 0).await.unwrap();
+    assert_eq!(
+        tail.events.iter().map(|e| e.sequence).collect::<Vec<_>>(),
+        vec![started, reasoned]
+    );
+    assert!(!tail.has_more);
+    assert_eq!(
+        tail.head_sequence,
+        Some(generated),
+        "the head is still the log's"
+    );
+
+    let page = db.read_session_actor_journal(id, None, 1).await.unwrap();
+    assert!(page.has_more, "a page counts only the events it returns");
+    let rest = db
+        .read_session_actor_journal(id, Some(page.events[0].sequence), 1)
+        .await
+        .unwrap();
+    assert_eq!(
+        rest.events.iter().map(|e| e.sequence).collect::<Vec<_>>(),
+        vec![reasoned]
+    );
+    assert!(!rest.has_more);
+}
+
 #[tokio::test]
 async fn deleting_the_session_removes_its_actor() {
     let db = StorageBackend::test_database();
