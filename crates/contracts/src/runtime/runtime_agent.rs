@@ -742,11 +742,13 @@ mod tests {
     fn echo_definition() -> ToolDefinition {
         crate::runtime::Tool::to_definition(&crate::runtime::tools::EchoTool)
             .with_capability_attribution("tool_fixture", Some("Tool Fixture"))
+            .with_capability_description("Neutral capability fixture with one tool.")
     }
 
     fn progress_definition() -> ToolDefinition {
         crate::runtime::Tool::to_definition(&crate::runtime::conversation::SendMessageTool)
             .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+            .with_capability_description("Neutral capability fixture with a prompt and tool.")
     }
 
     fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {

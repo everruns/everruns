@@ -11,6 +11,7 @@ pub(super) fn proto_mcp_tool_def_to_tool_definition(
     use everruns_contracts::tool_types::{BuiltinTool, ToolDefinition, ToolHints};
     let parameters = t.parameters.map(|s| proto_struct_to_json(&s));
     let mut hints = ToolHints {
+        capability_description: t.capability_description,
         readonly: t.readonly,
         destructive: t.destructive,
         idempotent: t.idempotent,

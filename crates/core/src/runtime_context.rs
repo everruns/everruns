@@ -162,7 +162,7 @@ pub async fn assemble_resolved_turn_context(
         message_source_sequence,
         model,
         resolved_model_id,
-        mcp_tool_definitions,
+        mut mcp_tool_definitions,
     } = input;
 
     let ResolvedRuntimeCapabilities {
@@ -170,6 +170,11 @@ pub async fn assemble_resolved_turn_context(
         resolved_capability_configs,
     } = resolve_snapshot_capabilities(&snapshot, capability_registry);
 
+    crate::capabilities::attribute_capability_mcp_tools(
+        &mut mcp_tool_definitions,
+        &resolved_capability_configs,
+        capability_registry,
+    );
     let resolved_locale = extract_locale_override(&messages).or_else(|| snapshot.locale.clone());
     let file_store =
         file_store.map(|fs| crate::mount_fs::scoped_prompt_file_store(fs, snapshot.workspace_id));

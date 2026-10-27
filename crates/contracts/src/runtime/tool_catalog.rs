@@ -13,7 +13,13 @@ use serde_json::Value;
 struct Document {
     name: String,
     length: usize,
-    server: Option<String>,
+    sources: Vec<Source>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Source {
+    Mcp(String),
+    Capability(String),
 }
 
 /// One ranked canonical tool identity. Resolve it against the current registry
@@ -24,6 +30,7 @@ pub struct ToolSearchHit {
     pub score: f64,
     pub tool_match: bool,
     pub server_match: bool,
+    pub capability_match: bool,
 }
 
 /// An immutable index for one registry revision. No schemas are duplicated in
@@ -31,7 +38,7 @@ pub struct ToolSearchHit {
 #[derive(Debug, Clone, Default)]
 pub struct ToolSearchIndex {
     documents: Vec<Document>,
-    sources: BTreeMap<String, HashMap<String, usize>>,
+    sources: BTreeMap<Source, HashMap<String, usize>>,
     postings: HashMap<String, Vec<(usize, usize)>>,
 }
 
@@ -114,8 +121,11 @@ impl ToolSearchIndex {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
                 .or_else(|| parsed.as_ref().map(|(name, _)| name.clone()));
+            let mut sources = Vec::new();
             if let Some(server) = &server {
-                index.sources.entry(server.clone()).or_insert_with(|| {
+                let source = Source::Mcp(server.clone());
+                sources.push(source.clone());
+                index.sources.entry(source).or_insert_with(|| {
                     let mut terms = HashMap::new();
                     add_terms(&mut terms, server, 2);
                     if let Some(description) = context
@@ -127,15 +137,34 @@ impl ToolSearchIndex {
                     terms
                 });
             }
+            if let Some(id) = &definition.hints().capability_id {
+                let source = Source::Capability(id.clone());
+                sources.push(source.clone());
+                index.sources.entry(source).or_insert_with(|| {
+                    let mut terms = HashMap::new();
+                    add_terms(&mut terms, id, 2);
+                    if let Some(name) = &definition.hints().capability_name {
+                        add_terms(&mut terms, name, 2);
+                    }
+                    if let Some(description) = &definition.hints().capability_description {
+                        add_terms(&mut terms, description, 1);
+                    }
+                    terms
+                });
+            }
             let mut terms = HashMap::new();
-            add_terms(
-                &mut terms,
-                parsed
-                    .as_ref()
-                    .map(|(_, name)| name.as_str())
-                    .unwrap_or(definition.name()),
-                4,
-            );
+            let operation_name = parsed
+                .as_ref()
+                .map(|(_, name)| name.as_str())
+                .or_else(|| {
+                    definition
+                        .hints()
+                        .capability_id
+                        .as_ref()
+                        .and_then(|id| definition.name().strip_prefix(&format!("{id}_")))
+                })
+                .unwrap_or(definition.name());
+            add_terms(&mut terms, operation_name, 4);
             add_terms(&mut terms, definition.description(), 1);
             schema_terms(definition.full_parameters(), &mut terms);
             let length = terms.values().sum();
@@ -150,7 +179,7 @@ impl ToolSearchIndex {
             index.documents.push(Document {
                 name: definition.name().to_owned(),
                 length,
-                server,
+                sources,
             });
         }
         index
@@ -208,7 +237,7 @@ impl ToolSearchIndex {
             .iter()
             .zip(&visible)
             .filter(|(_, allowed)| **allowed)
-            .filter_map(|(document, _)| document.server.as_deref())
+            .flat_map(|(document, _)| document.sources.iter())
             .collect();
         let source_scores: HashMap<_, _> = sources
             .iter()
@@ -258,12 +287,17 @@ impl ToolSearchIndex {
             .enumerate()
             .filter(|(position, _)| visible[*position])
             .filter_map(|(position, document)| {
-                let source_score = document
-                    .server
-                    .as_deref()
-                    .and_then(|source| source_scores.get(source))
-                    .copied()
-                    .unwrap_or(0.0);
+                let source_score: f64 = document
+                    .sources
+                    .iter()
+                    .filter_map(|source| source_scores.get(source))
+                    .sum();
+                let source_matches = |capability: bool| {
+                    document.sources.iter().any(|source| {
+                        matches!(source, Source::Capability(_)) == capability
+                            && source_scores.get(source).is_some_and(|score| *score > 0.0)
+                    })
+                };
                 let exact_match = exact == document.name.to_lowercase();
                 let tool_match = scores[position] > 0.0 || exact_match;
                 let score =
@@ -273,7 +307,8 @@ impl ToolSearchIndex {
                         name: document.name.clone(),
                         score,
                         tool_match,
-                        server_match: source_score > 0.0,
+                        server_match: source_matches(false),
+                        capability_match: source_matches(true),
                     }
                 })
             })
@@ -370,6 +405,28 @@ mod tests {
         assert_eq!(index.search("", 1, |_| true)[0].name, "mcp_atlas__get");
     }
 
+    #[test]
+    fn capability_context_is_searchable_without_promoting_arbitrary_operations() {
+        let mut target = operation("atlas", "get", "Read one item");
+        let mut hints = target.hints().clone();
+        hints.capability_id = Some("inventory_management".into());
+        hints.capability_name = Some("Logistics".into());
+        hints.capability_description = Some("Turquoise warehouse fulfillment".into());
+        target = target.with_hints(hints);
+        let index = ToolSearchIndex::new(&[target]);
+        for query in ["inventory_management", "Logistics", "Turquoise"] {
+            let hits = index.search(query, 8, |_| true);
+            assert_eq!(hits.len(), 1, "{query}");
+            assert!(hits[0].capability_match);
+            assert!(!hits[0].tool_match);
+            assert!(index.search_operations(query, 8, |_| true).is_empty());
+            assert!(index.search(query, 8, |_| false).is_empty());
+        }
+        let hits = index.search_operations("Turquoise get", 8, |_| true);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].capability_match && hits[0].tool_match);
+    }
+
     struct CatalogTool(ToolDefinition);
     #[async_trait]
     impl Tool for CatalogTool {
@@ -421,6 +478,81 @@ mod tests {
         );
         fork.clear();
         assert!(fork.search_index().search("", 8, |_| true).is_empty());
+    }
+
+    #[test]
+    fn capability_source_weight_is_independent_of_catalog_size_and_namespaces_do_not_collide() {
+        let platform = |name: &str| {
+            ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+                name: format!("platform_{name}"),
+                description: "Read one item".into(),
+                parameters: json!({"type":"object"}),
+                display_name: None,
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                full_parameters: None,
+                hints: Default::default(),
+            })
+            .with_capability_attribution("platform", Some("Control plane"))
+            .with_capability_description("Turquoise resources")
+        };
+        let small = ToolSearchIndex::new(&[
+            platform("get"),
+            operation("platform", "get", "Read one item"),
+        ]);
+        let mut large: Vec<_> = (0..9999).map(|n| platform(&format!("get_{n}"))).collect();
+        large.push(operation("platform", "get", "Read one item"));
+        let large = ToolSearchIndex::new(&large);
+        let a = small.search("turquoise", 8, |_| true);
+        let b = large.search("turquoise", 8, |_| true);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 8);
+        assert_eq!(a[0].score, b[0].score);
+        assert!(
+            b.iter()
+                .all(|hit| hit.capability_match && !hit.tool_match && !hit.server_match)
+        );
+        assert!(small.search_operations("platform", 8, |_| true).is_empty());
+    }
+
+    #[test]
+    fn registry_capability_context_reindexes_and_does_not_survive_tool_replacement() {
+        let definition = operation("atlas", "get", "Read one item")
+            .with_capability_attribution("inventory", Some("Logistics"))
+            .with_capability_description("Turquoise stock");
+        let mut registry = ToolRegistry::new();
+        registry.register(CatalogTool(operation("atlas", "get", "Read one item")));
+        let before = registry.search_index();
+        assert!(before.search("turquoise", 8, |_| true).is_empty());
+        registry.set_capability_context(&[definition]);
+        let contextual = registry.search_index();
+        assert!(!Arc::ptr_eq(&before, &contextual));
+        assert!(contextual.search("turquoise", 8, |_| true)[0].capability_match);
+        let mut fork = registry.clone();
+        fork.register_arc(Arc::new(CatalogTool(operation(
+            "atlas",
+            "get",
+            "Replacement",
+        ))));
+        assert!(
+            fork.search_index()
+                .search("turquoise", 8, |_| true)
+                .is_empty()
+        );
+        assert!(
+            !registry
+                .search_index()
+                .search("turquoise", 8, |_| true)
+                .is_empty()
+        );
+        registry.unregister("mcp_atlas__get");
+        assert!(
+            registry
+                .search_index()
+                .search("turquoise", 8, |_| true)
+                .is_empty()
+        );
     }
 
     #[test]

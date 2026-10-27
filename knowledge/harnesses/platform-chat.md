@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Platform Chat"
-description: "The canonical operator chat: one Bashkit shell over the everruns CLI, read-only product docs, and durable shared and private memory."
+description: "The canonical operator chat: bounded native platform and MCP discovery, a Bashkit shell, read-only product docs, and durable shared and private memory."
 tags:
   - everruns
   - harnesses
@@ -17,26 +17,26 @@ conversation starters. Generic supplies the execution environment. The reserved
 Agent name is reconciled once per organization; there is no feature flag or opt-in.
 Harnesses no longer supply conversation presentation.
 
-## One shell, one namespace
+## Bounded discovery and shell composition
 
-The assistant manages the platform through the `everruns` CLI in the same
-Bashkit shell it uses for files, pipes, filtering, loops, and redirection.
-Product documentation is read-only; scratch files belong to the conversation;
-shared and private notes outlive it. The executable composition and prompt
-live in [the Agent definition](../../crates/server/src/platform_chat_agent/mod.rs).
+The assistant searches the complete public command inventory and attached MCP
+catalogs through the shared bounded tool-search path. Native platform functions
+use structured arguments and the ordinary authorized command dispatcher.
+Capability IDs, names and descriptions and MCP source context help retrieval;
+source-only matches request refinement. Only selected optional schemas enter the
+active model view. Discovery never grants execution authority.
 
-The earlier `discover` / `query` / `execute` split forced the model to reason
-about tool selection without providing a permission boundary. Authorization
-already belongs to command execution. The shell uses that same command
-execution path and its existing policy checks; a different spelling grants
-no additional authority. Help is progressively disclosed by CLI node and leaf. Tool metadata and previews
-honor the same configured shell surface as execution, so the retired three-tool
-surface is not advertised alongside the shell.
+The same Bashkit shell retains `everruns` for bulk operations, pipes, filtering,
+loops and redirection. Hybrid tool routing allows CLI and native access to the
+same effective registry. Product documentation is read-only; scratch files belong
+to the conversation; shared and private notes outlive it. The executable
+composition and prompt live in [the Agent definition](../../crates/server/src/platform_chat_agent/mod.rs).
 
-The platform CLI is installed from the session's effective tool registry.
-Withholding platform capability from the effective Agent and harness composition also withholds the command.
-Arguments remain data across shell forwarding, and invocation bounds prevent
-one shell loop from amplifying a turn into unbounded control-plane calls.
+The legacy three-tool interface remains explicitly selectable as
+`surface: scripted`, while `surface: shell` hides native functions. Every surface
+uses the current session organization and caller, command policy and manager
+context/history checks. Withholding the platform capability also withholds the
+command surface; discovery and previously disclosed schemas grant no authority.
 
 ## Built-in operating skills
 
@@ -119,7 +119,7 @@ harness definitions retain ownership of that composition.
 * New chat creates no side session before first send; Playground never appears in history.
 * Existing orgs upgrade with prior opt-in both enabled and disabled.
 * Existing canonical and preview conversations keep their IDs and files and
-  use the shell surface on subsequent turns.
+  use bounded native discovery and the shell on subsequent turns.
 * Resumed conversations can read docs after restart and cannot modify them.
 * Existing shared notes survive; new notes are visible across chat threads.
 * Private memory and cross-org isolation keep their existing boundaries.
@@ -130,7 +130,7 @@ run on PostgreSQL (a per-test database from the embedded cluster). Behavioral ca
 [Platform Chat test cases](../test-cases/agents/platform_chat/) and
 [UI chat test cases](../test-cases/ui/chats/).
 
-The offline evaluation defaults to the canonical shell surface. A frozen
+The offline evaluation retains its shell subject as a comparison surface. A frozen
 historical three-tool subject remains selectable as `legacy` for comparisons;
 it is not provisioned as a product harness. See
 [the eval study](../../evals/platform-capability/README.md).

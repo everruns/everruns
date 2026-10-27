@@ -303,6 +303,7 @@ pub mod tests {
     /// the same mock. This prevents wiring bugs where a tool is
     /// registered but the store is not passed through.
     pub struct MockPlatformStore {
+        pub platform_calls: std::sync::Mutex<Vec<(String, serde_json::Value)>>,
         pub harness: HarnessDefinition,
         pub extra_harnesses:
             std::sync::Mutex<std::collections::HashMap<HarnessId, HarnessDefinition>>,
@@ -337,6 +338,7 @@ pub mod tests {
     impl MockPlatformStore {
         pub fn new() -> Self {
             Self {
+                platform_calls: std::sync::Mutex::new(Vec::new()),
                 harness: HarnessDefinition {
                     capabilities: vec![AgentCapabilityConfig::new("session")],
                     ..HarnessDefinition::new("test-harness", "You are helpful.")
@@ -371,6 +373,14 @@ pub mod tests {
 
     #[async_trait]
     impl PlatformStore for MockPlatformStore {
+        async fn platform_run(&self, command: &str, params: serde_json::Value) -> Result<String> {
+            self.platform_calls
+                .lock()
+                .unwrap()
+                .push((command.into(), params.clone()));
+            Ok(params.to_string())
+        }
+
         async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
             Ok(arguments.to_string())
         }

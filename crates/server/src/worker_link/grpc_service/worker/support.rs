@@ -107,6 +107,7 @@ pub(crate) fn mcp_tool_definition_to_proto(
             .and_then(|(_, name)| name)
             .unwrap_or_default()
             .to_string(),
+        capability_description: hints.capability_description.clone(),
         readonly: hints.readonly,
         destructive: hints.destructive,
         idempotent: hints.idempotent,

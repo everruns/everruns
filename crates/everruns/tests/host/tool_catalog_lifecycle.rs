@@ -133,7 +133,7 @@ impl Capability for DynamicPlugin {
     }
 
     fn description(&self) -> &str {
-        "A plugin capability used to verify live tool catalog changes."
+        "Turquoise records and live tool catalog changes."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -543,4 +543,109 @@ async fn plugin_namespace_definition_contributes_to_runtime_context() {
             .any(|config| config.capability_id() == "plugin:microsoft-docs"),
         "runtime resolves the plugin namespace as an installed capability"
     );
+}
+
+#[tokio::test]
+async fn bounded_native_search_uses_live_capability_context_and_preserves_the_baseline() {
+    let recorder = Arc::new(Recorder::new([
+        Reply::Text("baseline"),
+        Reply::Call("tool_search", json!({"query":"turquoise action"})),
+        Reply::Call("dynamic_plugin_action", json!({"label":"first"})),
+        Reply::Text("found the plugin"),
+        Reply::Call("tool_search", json!({"query":"dynamic_plugin_action"})),
+        Reply::Call("dynamic_plugin_action", json!({"count":2})),
+        Reply::Text("used current schema"),
+        Reply::Call("dynamic_plugin_action", json!({"count":3})),
+        Reply::Text("revocation respected"),
+    ]));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(everruns_core::builtins::tool_search::ToolSearchCapability::new());
+    let platform = HostComposition::builder()
+        .capability_registry(capabilities)
+        .build();
+    let harness_id = everruns_contracts::typed_id::HarnessId::from_seed(3402);
+    let agent_id = everruns_contracts::typed_id::AgentId::from_seed(3402);
+    let session_id = everruns_contracts::typed_id::SessionId::from_seed(3402);
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(platform)
+        .provider_with_default_model(
+            everruns_contracts::runtime_provider::Provider::new(
+                "recording",
+                RecordingDriver(recorder.clone()),
+            ),
+            "recording-model",
+        )
+        .harness(
+            HarnessBuilder::new("bounded catalog", "Stable instructions.")
+                .id(harness_id)
+                .capability(everruns_contracts::CapabilityRef::with_config(
+                    "tool_search",
+                    json!({"bounded":true}),
+                ))
+                .build(),
+        )
+        .agent(
+            AgentBuilder::new("bounded agent", "Use discovered tools.")
+                .id(agent_id)
+                .max_iterations(5)
+                .build(),
+        )
+        .session(
+            SessionBuilder::new(harness_id)
+                .id(session_id)
+                .agent(agent_id)
+                .build(),
+        )
+        .build()
+        .await
+        .unwrap();
+    runtime
+        .run_text_turn(session_id, "Establish baseline")
+        .await
+        .unwrap();
+    let state = Arc::new(PluginState::default());
+    runtime
+        .register_capability(Arc::new(DynamicPlugin(state.clone())))
+        .unwrap();
+    runtime
+        .activate_capability(session_id, "dynamic_plugin")
+        .await
+        .unwrap();
+    runtime
+        .run_text_turn(session_id, "Find the turquoise capability action")
+        .await
+        .unwrap();
+    assert_eq!(*state.executed_versions.lock().unwrap(), vec![0]);
+    *state.schema_version.lock().unwrap() = 1;
+    runtime
+        .run_text_turn(session_id, "Use the current operation schema")
+        .await
+        .unwrap();
+    runtime
+        .deactivate_capability(session_id, "dynamic_plugin")
+        .await
+        .unwrap();
+    runtime
+        .run_text_turn(session_id, "Try the revoked operation")
+        .await
+        .unwrap();
+    assert_eq!(*state.executed_versions.lock().unwrap(), vec![0, 1]);
+    let requests = recorder.requests.lock().unwrap();
+    let baseline = requests[0].baseline_tools.as_ref().unwrap();
+    assert!(!baseline.to_string().contains("dynamic_plugin_action"));
+    assert!(
+        !requests[1]
+            .current_tools
+            .to_string()
+            .contains("dynamic_plugin_action")
+    );
+    assert!(
+        requests[2]
+            .current_tools
+            .to_string()
+            .contains("dynamic_plugin_action")
+    );
+    for request in &requests[1..] {
+        assert_eq!(request.baseline_tools.as_ref(), Some(baseline));
+    }
 }

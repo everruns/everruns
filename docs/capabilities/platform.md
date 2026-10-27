@@ -9,7 +9,7 @@ appliesTo: [platform, cloud]
 | **ID** | `platform` |
 | **Category** | Platform |
 | **Risk** | High |
-| **Tools** | `discover`, `query`, `execute` by default; `everruns` in the session shell with `surface: shell` |
+| **Tools** | Native `platform_<command>` functions by default; `everruns` in the session shell with `surface: shell` |
 | **Dependencies** | `skills`; `session_file_system` when embedded docs are enabled |
 | **Mounts** | `/workspace/docs`, the Everruns documentation, read-only, when embedded docs are enabled |
 
@@ -19,16 +19,37 @@ command inventory, so models can discover current names and schemas instead of
 guessing them or relying on a separate handwritten API.
 
 Platform Chat includes this capability by default. Other agents and harnesses
-must be assigned it explicitly. Because `execute` can mutate platform resources,
+must be assigned it explicitly. Because platform commands can mutate resources,
 the capability is high-risk and follows the normal admin-only assignment rule.
 
 ## Interfaces and built-in skills
 
-Platform Chat uses `{"ref":"platform","config":{"surface":"shell"}}`.
-This exposes the same operations through `everruns <noun> <verb>` in its shell,
-with progressive `--help`, JSON output, pipes, and workspace redirection. It
-hides the three tools described below. Omitting `surface` retains those tools.
-Both interfaces use the same command authorization and documentation mounts.
+Platform Chat uses native `platform_<command>` functions with bounded
+[Tool Search](/capabilities/tool-search/). The full public command inventory is
+searchable alongside attached MCP tools; only selected schemas enter the active
+native tool view. Search includes capability IDs, names and descriptions plus
+MCP server context. A capability-only match asks for refinement rather than
+revealing arbitrary operations. Search describes operations, not resource state.
+
+```json
+{
+  "capabilities": [
+    {"ref": "platform"},
+    {"ref": "tool_search", "config": {"bounded": true}}
+  ]
+}
+```
+
+Call the discovered function with structured JSON arguments. Arrays and objects
+remain JSON values. Mutations accept `reason` and `context_revision`, using the
+same history and manager-context checks as the shell.
+
+Platform Chat retains `everruns <noun> <verb>` in its shell for bulk work, with
+progressive `--help`, JSON output, pipes, and workspace redirection. Its hybrid
+[Tools in Shell](/capabilities/tools-in-shell/) interface also searches the same
+registry. `surface: shell` exposes only the command-line interface;
+`surface: scripted` explicitly selects the three scripted tools below. Every
+interface uses the same command authorization and documentation mounts.
 
 Workspace builds also ship three read-only skills with this capability:
 
@@ -50,7 +71,7 @@ The external [MCP endpoint](/features/mcp/#skills-for-mcp-clients) serves these
 three skills plus `everruns-mcp`. Rust development guidance is maintained
 separately in the installable `everruns-framework` skill.
 
-## Tools
+## Scripted tools (`surface: scripted`)
 
 ### `discover`
 

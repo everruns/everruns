@@ -87,8 +87,11 @@ subchats and history remain available with either Adoption feature off.
 
 ## Platform access and memory
 
-Platform Chat uses the `everruns` command in its session shell to discover operations,
-read authoritative state, perform requested changes, and verify results. Product docs
+Platform Chat uses bounded `tool_search` for native platform functions and attached
+MCP tools. Search includes capability and server context and reveals selected
+schemas. It reads authoritative state, performs requested changes, and verifies
+results through those functions. The `everruns` command remains available in the
+session shell for bulk work. Product docs
 are mounted read-only at `/workspace/docs`. The Platform capability also supplies
 `everruns`, `everruns-cli`, and `everruns-agent-authoring` skills for product
 orientation, command workflows, and agent design. Discover and activate them
@@ -112,7 +115,9 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 
 | Capability | Purpose |
 |---|---|
-| Platform | Platform operations through the session shell |
+| Platform | Native platform functions and shell composition |
+| Tool Search | Bounded disclosure across platform and MCP operations |
+| Tools in Shell | Hybrid native and CLI access to the current registry |
 | Current Time | Ground relative time questions |
 | Task Management | Track work within a conversation |
 | Prompt Caching | Cache stable prompt content |

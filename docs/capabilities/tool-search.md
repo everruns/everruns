@@ -201,10 +201,12 @@ Allowlisted tools behave exactly like `DeferrablePolicy::Never` tools, their ful
 ### Legacy search ranking and result bounding
 
 The behavior in this section describes the default, legacy generic search.
-Bounded mode uses the server-aware index and active/result byte limits
+Bounded mode uses the capability- and server-aware index and active/result byte limits
 described in [Large MCP catalogs](/features/large-mcp-catalogs/). In bounded
-mode, a source-only query returns a server refinement rather than arbitrary
-operation schemas.
+mode, a source-only query returns a capability or server refinement rather than
+arbitrary operation schemas. Search includes capability IDs, names and public
+descriptions. Oversized schemas retain a bounded list of canonical operation
+names when the result byte budget permits.
 
 Because there is no hosted semantic index, `tool_search` ranks matches client-side with a deliberately simple, predictable scheme:
 

@@ -373,6 +373,15 @@ impl ToolDefinition {
         self
     }
 
+    /// Attach public capability context without changing execution hints.
+    pub fn with_capability_description(mut self, description: impl Into<String>) -> Self {
+        match &mut self {
+            Self::Builtin(tool) => tool.hints.capability_description = Some(description.into()),
+            Self::ClientSide(tool) => tool.hints.capability_description = Some(description.into()),
+        }
+        self
+    }
+
     /// Add the cross-cutting `human_intent` argument to the tool's JSON schema.
     ///
     /// This field is model-authored narration for UI rendering. Tool execution
@@ -560,6 +569,11 @@ pub struct ToolHints {
     /// Human-readable capability name snapshot for reporting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_name: Option<String>,
+
+    /// Public capability description used for source-aware tool retrieval.
+    /// Metadata only: it never grants execution authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_description: Option<String>,
 
     /// Entity noun for operation-based narration (e.g. "agent", "harness").
     /// When set, the narration system reads the `operation` argument and

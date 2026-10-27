@@ -862,6 +862,7 @@ pub(crate) fn attach_server_search_metadata(
         let ToolDefinition::Builtin(tool) = definition else {
             continue;
         };
+        tool.hints.capability_description = server.description.clone();
         let metadata = tool
             .hints
             .metadata

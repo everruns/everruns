@@ -43,3 +43,7 @@ other servers stay pending, and search, help, and calls remain within the
 current turn's visible scope. Custom Framework egress adapters must support
 `send_stream` for discovery. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
 [Tool Search](/capabilities/tool-search/), and [Tools in Shell](/capabilities/tools-in-shell/).
+
+## Update 2026-10-27
+
+Capability context and [native platform operations](/capabilities/platform/) now share bounded discovery.

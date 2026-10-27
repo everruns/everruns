@@ -302,6 +302,7 @@ pub trait Tool: Send + Sync {
 #[derive(Default, Clone)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
+    capability_context: HashMap<String, ToolHints>,
     search_index: std::sync::OnceLock<Arc<crate::runtime::tool_catalog::ToolSearchIndex>>,
 }
 
@@ -310,6 +311,7 @@ impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            capability_context: HashMap::new(),
             search_index: Default::default(),
         }
     }
@@ -358,18 +360,21 @@ impl ToolRegistry {
     /// If a tool with the same name already exists, it will be replaced.
     pub fn register(&mut self, tool: impl Tool + 'static) {
         self.search_index.take();
+        self.capability_context.remove(tool.name());
         self.tools.insert(tool.name().to_string(), Arc::new(tool));
     }
 
     /// Register a boxed tool
     pub fn register_boxed(&mut self, tool: Box<dyn Tool>) {
         self.search_index.take();
+        self.capability_context.remove(tool.name());
         self.tools.insert(tool.name().to_string(), Arc::from(tool));
     }
 
     /// Register an Arc-wrapped tool
     pub fn register_arc(&mut self, tool: Arc<dyn Tool>) {
         self.search_index.take();
+        self.capability_context.remove(tool.name());
         self.tools.insert(tool.name().to_string(), tool);
     }
 
@@ -403,7 +408,47 @@ impl ToolRegistry {
     /// Returns a Vec of ToolDefinition that can be passed to
     /// `RuntimeAgent::with_tools()`.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.values().map(|t| t.to_definition()).collect()
+        self.tools
+            .keys()
+            .filter_map(|name| self.tool_definition(name))
+            .collect()
+    }
+
+    /// Retain only public capability context from the collection view. Schemas
+    /// and execution hints always come from the current registered tool.
+    pub fn set_capability_context(&mut self, definitions: &[ToolDefinition]) {
+        self.search_index.take();
+        self.capability_context = definitions
+            .iter()
+            .filter_map(|definition| {
+                let hints = definition.hints();
+                hints.capability_id.as_ref()?;
+                self.has(definition.name()).then(|| {
+                    (
+                        definition.name().to_owned(),
+                        ToolHints {
+                            capability_id: hints.capability_id.clone(),
+                            capability_name: hints.capability_name.clone(),
+                            capability_description: hints.capability_description.clone(),
+                            ..Default::default()
+                        },
+                    )
+                })
+            })
+            .collect();
+    }
+
+    /// Current authoritative definition with its collected source context.
+    pub fn tool_definition(&self, name: &str) -> Option<ToolDefinition> {
+        let mut definition = self.get(name)?.to_definition();
+        if let Some(context) = self.capability_context.get(name) {
+            let mut hints = definition.hints().clone();
+            hints.capability_id = context.capability_id.clone();
+            hints.capability_name = context.capability_name.clone();
+            hints.capability_description = context.capability_description.clone();
+            definition = definition.with_hints(hints);
+        }
+        Some(definition)
     }
 
     /// Reuse a lexical index until registration, replacement or removal changes
@@ -440,6 +485,7 @@ impl ToolRegistry {
     /// Remove a tool from the registry
     pub fn unregister(&mut self, name: &str) -> Option<Arc<dyn Tool>> {
         self.search_index.take();
+        self.capability_context.remove(name);
         self.tools.remove(name)
     }
 
@@ -447,6 +493,7 @@ impl ToolRegistry {
     pub fn clear(&mut self) {
         self.search_index.take();
         self.tools.clear();
+        self.capability_context.clear();
     }
 
     /// Create a builder for fluent tool registration

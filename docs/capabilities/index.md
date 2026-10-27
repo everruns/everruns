@@ -144,7 +144,7 @@ Agent self-management and platform control.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Platform](/capabilities/platform/) | `platform` | 3 |
+| [Platform](/capabilities/platform/) | `platform` | 350 |
 
 ### Generative UI
 

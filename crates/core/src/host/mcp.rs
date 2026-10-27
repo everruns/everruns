@@ -304,7 +304,10 @@ pub(crate) async fn discover_turn_tool_definitions(
         {
             let metadata = serde_json::json!({"mcp_server": {"name": name, "description": server.description.as_deref().unwrap_or_default()}});
             match definition {
-                ToolDefinition::Builtin(tool) => tool.hints.metadata = Some(metadata),
+                ToolDefinition::Builtin(tool) => {
+                    tool.hints.metadata = Some(metadata);
+                    tool.hints.capability_description = server.description.clone();
+                }
                 ToolDefinition::ClientSide(_) => {}
             }
         }

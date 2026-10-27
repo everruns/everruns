@@ -95,6 +95,7 @@ pub(super) async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     for tool in collected.tools {
         registry.register_boxed(tool);
     }
+    registry.set_capability_context(&collected.tool_definitions);
 
     // Only `Available` capabilities contribute hooks, matching
     // `collect_capability_tools_with_configs` (which skips non-available

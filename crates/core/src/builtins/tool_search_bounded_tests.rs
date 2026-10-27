@@ -194,6 +194,7 @@ async fn oversized_schema_is_not_reported_as_loaded() {
     };
     assert!(result["loaded"].as_array().unwrap().is_empty());
     assert_eq!(result["omitted_for_byte_budget"], 1);
+    assert_eq!(result["omitted_tools"], json!(["giant_record"]));
 }
 
 #[tokio::test]
@@ -453,4 +454,55 @@ async fn count_dependent_restriction_runs_once_over_the_complete_scope() {
         .build();
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(runtime.execution_tools().len(), 2);
+}
+
+#[tokio::test]
+async fn capability_only_queries_refine_without_disclosing_arbitrary_tools_or_hidden_sources() {
+    let mut definitions = definitions(40);
+    for definition in &mut definitions {
+        let mut hints = definition.hints().clone();
+        hints.capability_id = Some("ledger".into());
+        hints.capability_name = Some("Accounting".into());
+        hints.capability_description = Some("Obsidian settlement reconciliation".into());
+        *definition = definition.clone().with_hints(hints);
+    }
+    let mut hidden = builtin("hidden_record", "Read a record", json!({"type":"object"}));
+    let mut hints = hidden.hints().clone();
+    hints.capability_id = Some("private_ledger".into());
+    hints.capability_description = Some("Obsidian confidential".into());
+    hidden = hidden.with_hints(hints);
+    definitions.push(hidden);
+    let mut ctx = context(&definitions);
+    ctx.visible_tool_names = Some(Arc::new(
+        definitions
+            .iter()
+            .filter(|d| d.name() != "hidden_record")
+            .map(|d| d.name().to_owned())
+            .collect(),
+    ));
+    let search = ToolSearchTool {
+        reveal: Reveal::Redefine,
+        limits: Some(CatalogLimits {
+            active_tools: 32,
+            active_bytes: 65536,
+            result_bytes: 32768,
+        }),
+    };
+    let ToolExecutionResult::Success(result) = search
+        .execute_with_context(json!({"query":"obsidian"}), &ctx)
+        .await
+    else {
+        panic!("search failed")
+    };
+    assert_eq!(result["tools"], json!([]));
+    assert_eq!(result["loaded"], json!([]));
+    assert_eq!(result["available_capabilities"], json!(["ledger"]));
+    let ToolExecutionResult::Success(result) = search
+        .execute_with_context(json!({"query":"obsidian record_00001"}), &ctx)
+        .await
+    else {
+        panic!("search failed")
+    };
+    assert!(result["tools"].as_array().unwrap().len() <= 8);
+    assert!(result.to_string().find("private_ledger").is_none());
 }

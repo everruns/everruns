@@ -291,3 +291,23 @@ fn hook_hides_the_placeholder_without_rewriting_bash_description() {
     assert_eq!(names, ["bash"]);
     assert_eq!(kept[0].description(), "bash tool");
 }
+
+#[tokio::test]
+async fn capability_search_context_survives_a_deferred_server_loading_in_the_same_script() {
+    let mut fixture = fixture(Listing::Tools);
+    let registry = Arc::make_mut(fixture.context.tool_registry.as_mut().unwrap());
+    let definition = registry
+        .tool_definition("web_fetch")
+        .unwrap()
+        .with_capability_attribution("fetching", Some("Retrieval"))
+        .with_capability_description("Granite observatory records");
+    registry.set_capability_context(&[definition]);
+    let output = run(
+        "tools search granite; tools docs search-docs q=hello; tools search granite",
+        &fixture.context,
+    )
+    .await;
+    assert_eq!(output["exit_code"], 0, "{output}");
+    let stdout = output["stdout"].as_str().unwrap();
+    assert_eq!(stdout.matches("web-fetch").count(), 2, "{stdout}");
+}

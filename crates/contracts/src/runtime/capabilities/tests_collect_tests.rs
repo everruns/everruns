@@ -675,6 +675,10 @@ async fn collection_preserves_exact_tool_identity_schema_and_attribution() {
             let hints = definition.hints();
             assert_eq!(hints.capability_id.as_deref(), Some(id));
             assert_eq!(hints.capability_name.as_deref(), Some(label));
+            assert_eq!(
+                hints.capability_description.as_deref(),
+                Some(registry.get(id).unwrap().description())
+            );
             let ToolDefinition::Builtin(tool) = definition else {
                 panic!("expected builtin")
             };

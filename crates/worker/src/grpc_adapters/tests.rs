@@ -24,6 +24,22 @@ fn mcp_search_metadata_survives_grpc_and_ranks_source_only_terms() {
 }
 
 #[test]
+fn capability_context_survives_worker_transport() {
+    let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
+        name: "mcp_alpha__search".into(),
+        description: "Search records".into(),
+        capability_id: "plugin:alpha".into(),
+        capability_name: "Rock records".into(),
+        capability_description: Some("Obsidian borehole surveying".into()),
+        ..Default::default()
+    });
+    let index = everruns_contracts::runtime::tool_catalog::ToolSearchIndex::new(&[definition]);
+    let hits = index.search("obsidian", 8, |_| true);
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].capability_match && !hits[0].tool_match);
+}
+
+#[test]
 fn mcp_search_metadata_is_optional_for_older_servers() {
     let definition = proto_mcp_tool_def_to_tool_definition(proto::McpToolDef {
         name: "mcp_alpha__search".into(),

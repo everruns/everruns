@@ -681,6 +681,8 @@ impl ToolSearchTool {
         let mut omitted = 0usize;
         let mut active_bytes = 2usize;
         let mut matching_sources = std::collections::BTreeSet::new();
+        let mut matching_capabilities = std::collections::BTreeSet::new();
+        let mut omitted_tools = Vec::new();
         let output = |matches: &Vec<Value>,
                       loaded: &Vec<String>,
                       omitted,
@@ -695,10 +697,9 @@ impl ToolSearchTool {
             .into_iter()
             .take(limits.active_tools.min(MAX_SEARCH_RESULTS))
         {
-            let Some(tool) = registry.get(&hit.name) else {
+            let Some(definition) = registry.tool_definition(&hit.name) else {
                 continue;
             };
-            let definition = tool.to_definition();
             if !hit.tool_match {
                 // A server-domain match identifies a source, not a particular
                 // operation. Ask for refinement rather than promoting the
@@ -709,6 +710,11 @@ impl ToolSearchTool {
                 {
                     matching_sources.insert(source);
                 }
+                if hit.capability_match
+                    && let Some(id) = &definition.hints().capability_id
+                {
+                    matching_capabilities.insert(id.clone());
+                }
                 continue;
             }
             let separator = usize::from(!loaded.is_empty());
@@ -717,11 +723,12 @@ impl ToolSearchTool {
                 limits.active_bytes.saturating_sub(active_bytes + separator),
             ) else {
                 omitted += 1;
+                omitted_tools.push(hit.name.clone());
                 continue;
             };
             let value = json!({"name": definition.name(), "description": definition.description(),
                 "parameters": definition.full_parameters(), "server_match": hit.server_match,
-                "operation_match": hit.tool_match});
+                "capability_match": hit.capability_match, "operation_match": hit.tool_match});
             matches.push(value);
             loaded.push(hit.name.clone());
             let pending: Vec<_> = loaded
@@ -737,6 +744,7 @@ impl ToolSearchTool {
                 matches.pop();
                 loaded.pop();
                 omitted += 1;
+                omitted_tools.push(hit.name.clone());
             } else {
                 active_bytes += size + separator;
             }
@@ -745,7 +753,8 @@ impl ToolSearchTool {
         let mut result = output(&matches, &loaded, omitted, &servers);
         if matches.is_empty() {
             // Bounded source browse, never a fallback listing every operation.
-            let sources: std::collections::BTreeSet<_> = if matching_sources.is_empty() {
+            let no_source_match = matching_sources.is_empty() && matching_capabilities.is_empty();
+            let sources: std::collections::BTreeSet<_> = if no_source_match {
                 registry
                     .tool_names()
                     .into_iter()
@@ -759,14 +768,40 @@ impl ToolSearchTool {
             } else {
                 matching_sources
             };
+            if no_source_match {
+                matching_capabilities.extend(
+                    registry
+                        .tool_definitions()
+                        .into_iter()
+                        .filter(|definition| allowed.contains(definition.name()))
+                        .filter_map(|definition| definition.hints().capability_id.clone()),
+                );
+            }
+            let mut capabilities: Vec<_> = matching_capabilities.into_iter().take(16).collect();
             let mut sources: Vec<_> = sources.into_iter().take(16).collect();
             loop {
+                result["available_capabilities"] = json!(capabilities);
                 result["available_servers"] = json!(sources);
-                if serialized_size(&result, limits.result_bytes).is_some() || sources.is_empty() {
+                if serialized_size(&result, limits.result_bytes).is_some()
+                    || (sources.is_empty() && capabilities.is_empty())
+                {
                     break;
                 }
-                sources.pop();
+                if sources.pop().is_none() {
+                    capabilities.pop();
+                }
             }
+        }
+        while !omitted_tools.is_empty() {
+            result["omitted_tools"] = json!(omitted_tools);
+            if serialized_size(&result, limits.result_bytes).is_some() {
+                break;
+            }
+            omitted_tools.pop();
+            result
+                .as_object_mut()
+                .expect("search result object")
+                .remove("omitted_tools");
         }
         if serialized_size(&result, limits.result_bytes).is_none() {
             return ToolExecutionResult::tool_error(

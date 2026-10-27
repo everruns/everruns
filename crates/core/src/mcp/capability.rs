@@ -157,6 +157,7 @@ impl McpCapability {
             full_parameters: None,
         })
         .with_capability_attribution(self.capability_id(), Some(self.server_name.clone()))
+        .with_capability_description(self.description.as_deref().unwrap_or_default())
     }
 }
 

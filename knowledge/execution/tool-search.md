@@ -64,9 +64,10 @@ matcher and its catalog presentation are unchanged by the bounded index.
 
 With bounded mode enabled, a registry-revision `ToolSearchIndex` uses BM25-style
 lexical ranking over operation names and descriptions, schema property names
-and descriptions, and MCP server names and configured descriptions. The index
-stores metadata, not duplicate schemas. Server context is scored once per
-server, so one large source does not get a vote for every tool it owns. CLI
+and descriptions, capability IDs, names and public descriptions, and MCP server
+names and configured descriptions. The index
+stores metadata, not duplicate schemas. Source context is scored once per
+capability or server, so one large source does not get a vote for every tool it owns. CLI
 `tools search` uses the same server-aware index; generic native search uses it
 when bounded mode is enabled.
 
@@ -78,8 +79,8 @@ execution through current server configuration and authorization.
 Search applies the current visible-operation allowlist before ranking. A
 server description may help find common operations such as `search`, `get`, or
 `list`, while server-qualified tool identities keep same-named operations
-separate. A match on server metadata alone returns a server refinement, not
-arbitrary operation schemas. The index is invalidated when the runtime registry changes. A
+separate. A match on source metadata alone returns a capability or server refinement,
+not arbitrary operation schemas. The index is invalidated when the runtime registry changes. A
 selected name is resolved against that registry before schema disclosure or
 execution.
 
@@ -105,8 +106,9 @@ releases those removals. A held definition is not an execution grant. There is n
 bound on cumulative schema/help history in the conversation. Inline removal
 does not reclaim earlier prompt tokens.
 
-Schemas that do not fit are omitted and counted, with guidance to refine the
-query. A source-only query returns a server refinement rather than arbitrary
+Schemas that do not fit are omitted and counted. Their bounded canonical names
+remain available when the result byte budget permits, so callers can refine or
+use CLI help without loading a large schema. A source-only query returns a server refinement rather than arbitrary
 operation schemas. If no operation matches, the result offers a bounded list
 of authorized server sources rather than returning the whole tool inventory. Results carry
 the full registered schema and reveal selected operations for the next model

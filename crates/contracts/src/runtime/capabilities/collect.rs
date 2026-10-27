@@ -674,6 +674,7 @@ async fn collect(
                     _ => definition,
                 }
                 .with_capability_attribution(id, Some(capability.name()))
+                .with_capability_description(capability.description())
             })
             .collect();
         preview_definitions.extend(definitions.iter().cloned());
@@ -947,7 +948,8 @@ async fn collect(
                 (None, Some(cat)) => def.with_category(cat),
                 _ => def,
             }
-            .with_capability_attribution(cap.id(), Some(cap.name()));
+            .with_capability_attribution(cap.id(), Some(cap.name()))
+            .with_capability_description(cap.description());
             tool_definitions.push(def);
         }
         narration_hooks.push(Arc::new(CapabilityNarrationHook(cap.clone())));
@@ -1079,6 +1081,7 @@ pub async fn apply_capabilities(
     for tool in collected.tools {
         tool_registry.register_boxed(tool);
     }
+    tool_registry.set_capability_context(&collected.tool_definitions);
 
     // Create modified runtime agent
     let mut runtime_agent = RuntimeAgent {

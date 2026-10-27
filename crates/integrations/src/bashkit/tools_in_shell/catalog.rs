@@ -67,6 +67,7 @@ pub(crate) struct Pending {
 /// servers not loaded yet.
 #[derive(Clone)]
 pub(crate) struct Catalog {
+    source_registry: Option<Arc<everruns_contracts::runtime::tools::ToolRegistry>>,
     entries: Vec<Entry>,
     pending: Vec<Pending>,
     search_index: Option<Arc<ToolSearchIndex>>,
@@ -142,6 +143,7 @@ impl Catalog {
         }
         pending.sort_by(|a, b| a.source.cmp(&b.source));
         let mut catalog = Self {
+            source_registry: context.tool_registry.clone(),
             entries,
             pending,
             search_index,
@@ -284,7 +286,12 @@ impl Catalog {
         let definitions: Vec<_> = self
             .entries
             .iter()
-            .map(|entry| entry.tool.to_definition())
+            .map(|entry| {
+                self.source_registry
+                    .as_ref()
+                    .and_then(|registry| registry.tool_definition(&entry.tool_name))
+                    .unwrap_or_else(|| entry.tool.to_definition())
+            })
             .chain(
                 self.pending
                     .iter()
@@ -588,6 +595,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         let mut catalog = Catalog {
+            source_registry: None,
             searchable_names: entries
                 .iter()
                 .map(|entry| entry.tool_name.clone())

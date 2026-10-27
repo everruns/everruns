@@ -577,6 +577,11 @@ fn inherit_mcp_server_search_context(
         let everruns_contracts::tool_types::ToolDefinition::Builtin(tool) = definition else {
             continue;
         };
+        if placeholder.hints().capability_id.is_some() {
+            tool.hints.capability_id = placeholder.hints().capability_id.clone();
+            tool.hints.capability_name = placeholder.hints().capability_name.clone();
+            tool.hints.capability_description = placeholder.hints().capability_description.clone();
+        }
         let metadata = tool.hints.metadata.get_or_insert_with(|| json!({}));
         let Some(metadata) = metadata.as_object_mut() else {
             // Preserve opaque metadata exactly; there is no safe way to add a

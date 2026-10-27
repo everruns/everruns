@@ -345,6 +345,8 @@ message McpToolDef {
     // MCP source name/description for catalog search. This carries retrieval
     // metadata only; current server configuration still authorizes execution.
     google.protobuf.Struct search_metadata = 11;
+    // Public contributing-capability context; retrieval metadata, not authority.
+    optional string capability_description = 12;
 }
 
 // ============================================================================
