@@ -66,7 +66,9 @@ The list lives in
 [`domains/system/doctor/checks/`](../../crates/server/src/domains/system/doctor/checks),
 one module per area: control plane, database (reachable, version,
 migrations, pools, long transactions), workers (connected, authentication,
-capacity, waiting sessions, dead letters, circuit breakers), security (sign-in,
+workers turned away for a wrong token, versions and worker protocol, long
+drains, capacity, waiting sessions, dead letters, circuit breakers, and the
+workers' own reports), security (sign-in,
 session signing secret, encryption key, stored secrets readable and rotation
 finished), messaging (NATS, Valkey), file storage (an S3 write, read and
 delete), observability (whether anything actually reads `/metrics`, traces,
@@ -81,10 +83,27 @@ Two judgments worth keeping:
   (rotation unfinished). A sample is decrypted too, to catch a key whose id
   stayed while its value changed.
 
+## Worker reports
+
+Workers send their version, host name and
+[worker protocol version](../../crates/internal-protocol/src/lib.rs) when they
+register, and a short list of checks on their own setup at registration and
+every five minutes
+([`self_checks`](../../crates/worker/src/self_checks.rs)): whether the egress
+proxy is reachable from the worker, whether sandbox egress settings are
+usable, and whether the worker uses NATS. Only what differs per worker is
+checked there; the server judges everything else. The server merges the
+reports per check across workers and names the workers that differ. It
+compares the NATS report with its own setting, because a worker with
+`NATS_URL` against a server without it sends streamed output in a way only
+NATS makes safe. Reports older than fifteen minutes are ignored.
+
+Refused worker calls are counted per server process, so a worker locked out
+by a wrong token shows up without reading the worker's log.
+
 ## Planned
 
-Worker version and self-reports (the registration message carries no
-version yet), a table of server and egress-proxy replicas for version skew
+A table of server and egress-proxy replicas for version skew
 and "NATS needed with several servers", the System → Health page, chaining
 `everruns docker doctor` into it, an `everruns-server doctor` preflight, a
 Prometheus gauge per check, SaaS checks and the release gate.

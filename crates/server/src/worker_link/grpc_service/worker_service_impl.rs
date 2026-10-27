@@ -85,6 +85,8 @@ delegate! {
         -> DrainDurableWorkerResponse;
     deregister_durable_worker => handle_deregister_durable_worker(DeregisterDurableWorkerRequest)
         -> DeregisterDurableWorkerResponse;
+    report_durable_worker_checks => handle_report_durable_worker_checks(ReportDurableWorkerChecksRequest)
+        -> ReportDurableWorkerChecksResponse;
 
     // Circuit breaker state.
     check_circuit_breaker => handle_check_circuit_breaker(CheckCircuitBreakerRequest)
