@@ -56,15 +56,11 @@ describe("System → Health", () => {
 
   it("shows the verdict, the fix for each problem and the rest by area", () => {
     render(<SystemHealthPage />);
-    expect(screen.getByText("1 problem needs attention.")).toBeInTheDocument();
-    expect(
-      screen.getByText("PostgreSQL 17.2 · 2 API servers"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Needs attention: 1 problem.")).toBeInTheDocument();
+    expect(screen.getByText("PostgreSQL 17.2 · 2 API servers")).toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("Run everruns-migrate.")).toBeInTheDocument();
-    expect(
-      screen.getByText("The database answered in 3 ms."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("The database answered in 3 ms.")).toBeInTheDocument();
     expect(screen.getByText("Messaging")).toBeInTheDocument();
   });
 
@@ -77,8 +73,6 @@ describe("System → Health", () => {
   it("explains when the report cannot be loaded", () => {
     mockReport = undefined;
     render(<SystemHealthPage />);
-    expect(
-      screen.getByText("Could not load the health report"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Could not load the health report")).toBeInTheDocument();
   });
 });

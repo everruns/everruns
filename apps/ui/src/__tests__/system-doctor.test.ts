@@ -1,15 +1,13 @@
 import type { DoctorCheck, DoctorReport } from "@/lib/api/types";
-import {
-  doctorReportText,
-  doctorVerdict,
-  groupDoctorChecks,
-} from "@/lib/system-doctor";
+import { doctorReportText, doctorVerdict, groupDoctorChecks } from "@/lib/system-doctor";
+import { uiMessages } from "@/lib/ui-messages";
 
-function check(
-  id: string,
-  status: DoctorCheck["status"],
-  area: DoctorCheck["area"],
-): DoctorCheck {
+const en = (message: string, values?: Record<string, unknown>) =>
+  message.replace(/\{(\w+)\}/g, (token, key: string) => String(values?.[key] ?? token));
+const uk = (message: string, values?: Record<string, unknown>) =>
+  en(uiMessages[message] ?? message, values);
+
+function check(id: string, status: DoctorCheck["status"], area: DoctorCheck["area"]): DoctorCheck {
   return {
     id,
     area,
@@ -20,10 +18,7 @@ function check(
   };
 }
 
-function report(
-  checks: DoctorCheck[],
-  status: DoctorReport["status"],
-): DoctorReport {
+function report(checks: DoctorCheck[], status: DoctorReport["status"]): DoctorReport {
   return {
     status,
     checked_at: "2026-10-27T08:00:00Z",
@@ -37,29 +32,23 @@ function report(
 
 describe("system doctor presentation", () => {
   it("states the verdict from problems and warnings, ignoring notes", () => {
-    expect(doctorVerdict(report([check("a", "ok", "database")], "ok"))).toBe(
-      "Everything is set up and working.",
+    const ok = report([check("a", "ok", "database")], "ok");
+    const warned = report(
+      [check("a", "warning", "messaging"), check("b", "info", "storage")],
+      "warning",
     );
-    expect(
-      doctorVerdict(
-        report(
-          [check("a", "warning", "messaging"), check("b", "info", "storage")],
-          "warning",
-        ),
-      ),
-    ).toBe("Everything works, with 1 warning to look at.");
-    expect(
-      doctorVerdict(
-        report(
-          [
-            check("a", "problem", "database"),
-            check("b", "problem", "workers"),
-            check("c", "warning", "models"),
-          ],
-          "problem",
-        ),
-      ),
-    ).toBe("2 problems need attention, and 1 warning.");
+    const broken = report(
+      [
+        check("a", "problem", "database"),
+        check("b", "problem", "workers"),
+        check("c", "warning", "models"),
+      ],
+      "problem",
+    );
+    expect(doctorVerdict(ok, en)).toBe("Everything is set up and working.");
+    expect(doctorVerdict(warned, en)).toBe("Everything works, with 1 warning to look at.");
+    expect(doctorVerdict(broken, en)).toBe("Needs attention: 2 problems and 1 warning.");
+    expect(doctorVerdict(broken, uk, "uk")).toBe("Потребує уваги: 2 проблеми і 1 попередження.");
   });
 
   it("lifts problems and warnings out and groups the rest by area in display order", () => {
@@ -71,11 +60,7 @@ describe("system doctor presentation", () => {
       check("nats.warn", "warning", "messaging"),
     ]);
     expect(attention.map((c) => c.id)).toEqual(["db.problem", "nats.warn"]);
-    expect(byArea.map((group) => group.area)).toEqual([
-      "control_plane",
-      "messaging",
-      "storage",
-    ]);
+    expect(byArea.map((group) => group.area)).toEqual(["control_plane", "messaging", "storage"]);
   });
 
   it("writes a plain-text report with the why and fix of each check", () => {

@@ -2,13 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle, useRefreshSystemDoctor, useSystemDoctor } from "@/hooks";
@@ -22,54 +16,25 @@ import {
   groupDoctorChecks,
 } from "@/lib/system-doctor";
 import { cn } from "@/lib/utils";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  RefreshCw,
-  XCircle,
-} from "lucide-react";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
+import { AlertTriangle, CheckCircle2, Info, RefreshCw, XCircle } from "lucide-react";
 
-function StatusIcon({
-  status,
-  className,
-}: {
-  status: CheckStatus;
-  className?: string;
-}) {
+function StatusIcon({ status, className }: { status: CheckStatus; className?: string }) {
   switch (status) {
     case "problem":
-      return (
-        <XCircle
-          className={cn("h-4 w-4 text-destructive", className)}
-          aria-hidden
-        />
-      );
+      return <XCircle className={cn("h-4 w-4 text-destructive", className)} aria-hidden />;
     case "warning":
-      return (
-        <AlertTriangle
-          className={cn("h-4 w-4 text-warning", className)}
-          aria-hidden
-        />
-      );
+      return <AlertTriangle className={cn("h-4 w-4 text-warning", className)} aria-hidden />;
     case "ok":
-      return (
-        <CheckCircle2
-          className={cn("h-4 w-4 text-success", className)}
-          aria-hidden
-        />
-      );
+      return <CheckCircle2 className={cn("h-4 w-4 text-success", className)} aria-hidden />;
     default:
-      return (
-        <Info
-          className={cn("h-4 w-4 text-muted-foreground", className)}
-          aria-hidden
-        />
-      );
+      return <Info className={cn("h-4 w-4 text-muted-foreground", className)} aria-hidden />;
   }
 }
 
 function Verdict({ report }: { report: DoctorReport }) {
+  const ui = useUiTranslations();
+  const { locale } = useLocale();
   const tone =
     report.status === "problem"
       ? "border-destructive/50 bg-destructive/5"
@@ -81,17 +46,18 @@ function Verdict({ report }: { report: DoctorReport }) {
       <CardContent className="flex items-start gap-3 py-4">
         <StatusIcon status={report.status} className="mt-0.5 h-5 w-5" />
         <div className="min-w-0 space-y-1">
-          <p className="font-medium">{doctorVerdict(report)}</p>
+          <p className="font-medium">{doctorVerdict(report, ui, locale)}</p>
           {report.setup.length > 0 && (
-            <p className="text-sm text-muted-foreground">
-              {report.setup.join(" · ")}
-            </p>
+            <p className="text-sm text-muted-foreground">{report.setup.join(" · ")}</p>
           )}
           <p className="text-xs text-muted-foreground">
-            Version {report.version} · grade {report.grade} · sign-in{" "}
-            {report.auth_mode} · checked{" "}
-            {formatDistanceToNow(new Date(report.checked_at), {
-              addSuffix: true,
+            {ui("Version {version} · grade {grade} · sign-in {auth} · checked {when}", {
+              version: report.version,
+              grade: report.grade,
+              auth: report.auth_mode,
+              when: formatDistanceToNow(new Date(report.checked_at), {
+                addSuffix: true,
+              }),
             })}
           </p>
         </div>
@@ -101,25 +67,22 @@ function Verdict({ report }: { report: DoctorReport }) {
 }
 
 function AttentionCheck({ check }: { check: DoctorCheck }) {
+  const ui = useUiTranslations();
   return (
     <li className="space-y-1 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <StatusIcon status={check.status} />
         <span className="font-medium">{check.title}</span>
-        <Badge variant="outline">{CHECK_AREA_LABELS[check.area]}</Badge>
-        <Badge
-          variant={check.status === "problem" ? "destructive" : "secondary"}
-        >
-          {CHECK_STATUS_LABELS[check.status]}
+        <Badge variant="outline">{ui(CHECK_AREA_LABELS[check.area])}</Badge>
+        <Badge variant={check.status === "problem" ? "destructive" : "secondary"}>
+          {ui(CHECK_STATUS_LABELS[check.status])}
         </Badge>
       </div>
       <p className="text-sm">{check.summary}</p>
-      {check.why && (
-        <p className="text-sm text-muted-foreground">{check.why}</p>
-      )}
+      {check.why && <p className="text-sm text-muted-foreground">{check.why}</p>}
       {check.fix && (
         <p className="text-sm">
-          <span className="font-medium">Fix: </span>
+          <span className="font-medium">{ui("Fix:")} </span>
           {check.fix}
         </p>
       )}
@@ -133,12 +96,7 @@ function AreaCheck({ check }: { check: DoctorCheck }) {
       <StatusIcon status={check.status} className="mt-0.5 shrink-0" />
       <div className="min-w-0">
         <span className="text-sm font-medium">{check.title}</span>
-        <p
-          className={cn(
-            "text-sm",
-            check.status === "info" && "text-muted-foreground",
-          )}
-        >
+        <p className={cn("text-sm", check.status === "info" && "text-muted-foreground")}>
           {check.summary}
         </p>
       </div>
@@ -147,29 +105,26 @@ function AreaCheck({ check }: { check: DoctorCheck }) {
 }
 
 function Header({ report }: { report?: DoctorReport }) {
+  const ui = useUiTranslations();
   const refresh = useRefreshSystemDoctor();
   return (
     <div className="operational-toolbar mb-6 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-bold">Health</h1>
+        <h1 className="text-2xl font-bold">{ui("Health")}</h1>
         <p className="text-sm text-muted-foreground">
-          Whether every part of this install is set up right and working.
+          {ui("Whether every part of this install is set up right and working.")}
         </p>
       </div>
       <div className="flex items-center gap-2">
-        {report && (
-          <CopyButton value={doctorReportText(report)} label="Copy report" />
-        )}
+        {report && <CopyButton value={doctorReportText(report)} label={ui("Copy report")} />}
         <Button
           variant="outline"
           size="sm"
           onClick={() => refresh.mutate()}
           disabled={refresh.isPending}
         >
-          <RefreshCw
-            className={cn("mr-2 h-4 w-4", refresh.isPending && "animate-spin")}
-          />
-          Check again
+          <RefreshCw className={cn("mr-2 h-4 w-4", refresh.isPending && "animate-spin")} />
+          {ui("Check again")}
         </Button>
       </div>
     </div>
@@ -177,7 +132,8 @@ function Header({ report }: { report?: DoctorReport }) {
 }
 
 export default function SystemHealthPage() {
-  usePageTitle("Health", "System");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Health"), ui("System"));
   const { data: report, isLoading, error } = useSystemDoctor();
 
   if (isLoading) {
@@ -199,13 +155,9 @@ export default function SystemHealthPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <XCircle className="mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-medium">
-              Could not load the health report
-            </h3>
+            <h3 className="mb-2 text-lg font-medium">{ui("Could not load the health report")}</h3>
             <p className="max-w-md text-sm text-muted-foreground">
-              {error instanceof Error
-                ? error.message
-                : "The server did not answer."}
+              {error instanceof Error ? error.message : ui("The server did not answer.")}
             </p>
           </CardContent>
         </Card>
@@ -222,8 +174,8 @@ export default function SystemHealthPage() {
         {attention.length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Needs attention</CardTitle>
-              <CardDescription>Problems first, then warnings.</CardDescription>
+              <CardTitle className="text-base">{ui("Needs attention")}</CardTitle>
+              <CardDescription>{ui("Problems first, then warnings.")}</CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="divide-y divide-border">
@@ -238,9 +190,7 @@ export default function SystemHealthPage() {
           {byArea.map(({ area, checks }) => (
             <Card key={area}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">
-                  {CHECK_AREA_LABELS[area]}
-                </CardTitle>
+                <CardTitle className="text-base">{ui(CHECK_AREA_LABELS[area])}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="divide-y divide-border">

@@ -34,10 +34,7 @@ import {
 } from "@/components/icons/facet-icons";
 import { ArrowRight, Plus } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import {
-  registryNavigationItems,
-  type RegistryNavigationItem,
-} from "@/lib/registry-navigation";
+import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
@@ -174,12 +171,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
 export const defaultRegistriesNavigation: NavigationItem[] = [
   ...registryNavigationItems.map<NavigationItem>(
     ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
-      const flag =
-        href === "/skills"
-          ? "skills"
-          : href === "/plugins"
-            ? "plugins"
-            : undefined;
+      const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
       return {
         name,
         href,
@@ -193,8 +185,7 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
   ),
   {
     name: "Knowledge",
-    description:
-      "Organize collections, sources and searchable knowledge for agents.",
+    description: "Organize collections, sources and searchable knowledge for agents.",
     href: "/knowledge",
     icon: KnowledgeIcon,
     flag: "knowledge",
@@ -257,18 +248,10 @@ export const defaultBottomNavigation: NavigationItem[] = [
 export const defaultDurableNavigation: NavigationItem[] = [
   {
     name: "Health",
-    description:
-      "Check that every part of the install is set up right and working.",
+    description: "Check that every part of the install is set up right and working.",
     href: "/system/health",
     icon: HealthIcon,
-    keywords: [
-      "doctor",
-      "status",
-      "diagnostics",
-      "setup",
-      "install",
-      "versions",
-    ],
+    keywords: ["doctor", "status", "diagnostics", "setup", "install", "versions"],
   },
   {
     name: "Monitoring",
@@ -370,9 +353,7 @@ function bestNavigationMatch(
   pathname: string,
   sections: NavigationSection[],
 ): { section: NavigationSection; item: NavigationItem } | undefined {
-  let best:
-    | { length: number; section: NavigationSection; item: NavigationItem }
-    | undefined;
+  let best: { length: number; section: NavigationSection; item: NavigationItem } | undefined;
   for (const section of sections) {
     for (const item of section.items) {
       const href = item.activePrefix ?? item.href;
@@ -408,9 +389,7 @@ export function visibleNavigationSections(
 }
 
 /** The System section: platform users only, like the pages it links to. */
-export function isDurableNavigationSection(
-  section: NavigationSection,
-): boolean {
+export function isDurableNavigationSection(section: NavigationSection): boolean {
   return section.items.some(
     (item) => isUnder(item.href, "/durable") || isUnder(item.href, "/system"),
   );

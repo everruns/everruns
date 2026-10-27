@@ -1,7 +1,4 @@
-import {
-  defaultNavigationSections,
-  navigationGroupForPath,
-} from "@/lib/navigation";
+import { defaultNavigationSections, navigationGroupForPath } from "@/lib/navigation";
 
 // EVE-869: a page's group is decided in exactly one place — the sidebar section
 // table. These pin the derivation the breadcrumb depends on.
@@ -36,12 +33,8 @@ describe("navigationGroupForPath", () => {
 
   it("follows the section table, so regrouping a route needs no page change", () => {
     const regrouped = defaultNavigationSections.map((section) =>
-      section.label === "Building"
-        ? { ...section, label: "Workshop" }
-        : section,
+      section.label === "Building" ? { ...section, label: "Workshop" } : section,
     );
-    expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe(
-      "Workshop",
-    );
+    expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
   });
 });

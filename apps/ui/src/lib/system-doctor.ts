@@ -1,11 +1,9 @@
 // Presentation rules for the system doctor report (System → Health).
 
-import type {
-  CheckArea,
-  CheckStatus,
-  DoctorCheck,
-  DoctorReport,
-} from "@/lib/api/types";
+import type { CheckArea, CheckStatus, DoctorCheck, DoctorReport } from "@/lib/api/types";
+import { formatCountLabel } from "@/lib/formatting";
+
+type Translate = (message: string, values?: Record<string, unknown>) => string;
 
 export const CHECK_AREA_LABELS: Record<CheckArea, string> = {
   control_plane: "Control plane",
@@ -26,22 +24,21 @@ export const CHECK_STATUS_LABELS: Record<CheckStatus, string> = {
 };
 
 /** The banner's one line: what the report means for the operator. */
-export function doctorVerdict(report: DoctorReport): string {
-  const problems = report.checks.filter(
-    (check) => check.status === "problem",
-  ).length;
-  const warnings = report.checks.filter(
-    (check) => check.status === "warning",
-  ).length;
-  if (problems > 0) {
-    return `${plural(problems, "problem needs", "problems need")} attention${
-      warnings > 0 ? `, and ${plural(warnings, "warning", "warnings")}` : ""
-    }.`;
+export function doctorVerdict(report: DoctorReport, ui: Translate, locale = "en"): string {
+  const count = (status: CheckStatus) =>
+    report.checks.filter((check) => check.status === status).length;
+  const problems = count("problem");
+  const warnings = count("warning");
+  const values = {
+    problems: formatCountLabel(problems, "problem", undefined, locale),
+    warnings: formatCountLabel(warnings, "warning", undefined, locale),
+  };
+  if (problems > 0 && warnings > 0) {
+    return ui("Needs attention: {problems} and {warnings}.", values);
   }
-  if (warnings > 0) {
-    return `Everything works, with ${plural(warnings, "warning", "warnings")} to look at.`;
-  }
-  return "Everything is set up and working.";
+  if (problems > 0) return ui("Needs attention: {problems}.", values);
+  if (warnings > 0) return ui("Everything works, with {warnings} to look at.", values);
+  return ui("Everything is set up and working.");
 }
 
 /** Checks split the way the page shows them: what needs a look, then the rest by area. */
@@ -66,7 +63,8 @@ export function groupDoctorChecks(checks: DoctorCheck[]): {
   return { attention, byArea };
 }
 
-/** Plain text for pasting into an issue or a chat with support. */
+/** Plain text for pasting into an issue or a chat with support. English on
+ * purpose: the server writes the check text in English, and support reads it. */
 export function doctorReportText(report: DoctorReport): string {
   const lines = [
     `Everruns ${report.version} system doctor: ${report.status}`,
@@ -75,15 +73,9 @@ export function doctorReportText(report: DoctorReport): string {
   if (report.setup.length > 0) lines.push(`Setup: ${report.setup.join(", ")}`);
   lines.push("");
   for (const check of report.checks) {
-    lines.push(
-      `[${check.status}] ${check.title} (${check.id}): ${check.summary}`,
-    );
+    lines.push(`[${check.status}] ${check.title} (${check.id}): ${check.summary}`);
     if (check.why) lines.push(`  Why: ${check.why}`);
     if (check.fix) lines.push(`  Fix: ${check.fix}`);
   }
   return lines.join("\n");
-}
-
-function plural(count: number, one: string, many: string): string {
-  return count === 1 ? `1 ${one}` : `${count} ${many}`;
 }
