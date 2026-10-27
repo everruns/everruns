@@ -28796,6 +28796,67 @@
         }
       }
     },
+    "/v1/system/doctor": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Check the whole install",
+        "operationId": "run_system_doctor",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "description": "Run every check now instead of returning the report from the last minute",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health of every part of the install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DoctorReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Platform user access is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The system doctor is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/task-webhooks": {
       "get": {
         "tags": [
@@ -36774,6 +36835,20 @@
           }
         }
       },
+      "CheckArea": {
+        "type": "string",
+        "description": "The part of the install a check covers. The order is the display order.",
+        "enum": [
+          "control_plane",
+          "database",
+          "workers",
+          "security",
+          "messaging",
+          "storage",
+          "observability",
+          "models"
+        ]
+      },
       "CheckCredentialsRequest": {
         "type": "object",
         "description": "Request to check a provider credential without storing it.",
@@ -36828,6 +36903,16 @@
             "description": "Whether the name is available for use."
           }
         }
+      },
+      "CheckStatus": {
+        "type": "string",
+        "description": "How a check came out. Ordered from best to worst so the report's verdict\nis the maximum.",
+        "enum": [
+          "ok",
+          "info",
+          "warning",
+          "problem"
+        ]
       },
       "CircuitBreakerResponse": {
         "type": "object",
@@ -41418,6 +41503,119 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "DoctorCheck": {
+        "type": "object",
+        "description": "One check's outcome, written for an operator: what is true, why it\nmatters, and what to do.",
+        "required": [
+          "id",
+          "area",
+          "title",
+          "status",
+          "summary",
+          "observed_at"
+        ],
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/CheckArea"
+          },
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How to fix it."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable identifier, `area.name`.",
+            "example": "database.migrations"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the check observed this."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "summary": {
+            "type": "string",
+            "description": "What the check found, in one sentence.",
+            "example": "All 14 migrations are applied."
+          },
+          "title": {
+            "type": "string",
+            "description": "Short name of what is checked.",
+            "example": "Migrations applied"
+          },
+          "why": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What goes wrong if this is not fixed."
+          }
+        }
+      },
+      "DoctorReport": {
+        "type": "object",
+        "description": "The whole install's health.",
+        "required": [
+          "status",
+          "checked_at",
+          "version",
+          "grade",
+          "auth_mode",
+          "setup",
+          "checks"
+        ],
+        "properties": {
+          "auth_mode": {
+            "type": "string",
+            "description": "Authentication mode.",
+            "example": "full"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the checks ran."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoctorCheck"
+            },
+            "description": "Every check, problems first."
+          },
+          "grade": {
+            "type": "string",
+            "description": "Deployment grade (`dev`, `poc`, `preview`, `prod`). Decides how strict\nthe security checks are.",
+            "example": "prod"
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What the doctor found this install is made of, one fact per entry.",
+            "example": [
+              "Postgres 16.4",
+              "3 workers",
+              "NATS",
+              "S3 blob storage"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "description": "The worst status of any check."
+          },
+          "version": {
+            "type": "string",
+            "description": "Server build version.",
+            "example": "0.50.0"
           }
         }
       },
@@ -74945,6 +75143,11 @@
       "x-displayName": "Monitoring"
     },
     {
+      "name": "system",
+      "description": "Whole-install health checks for platform operators",
+      "x-displayName": "System"
+    },
+    {
       "name": "durable-schedules",
       "description": "Durable scheduled tasks management endpoints",
       "x-displayName": "Durable schedules"
@@ -75080,6 +75283,7 @@
       "tags": [
         "durable",
         "monitoring",
+        "system",
         "durable-schedules",
         "sandbox-templates",
         "sandboxes",

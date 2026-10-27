@@ -14264,6 +14264,31 @@
     ]
   },
   {
+    "wire_name": "run_system_doctor",
+    "path": [
+      "system"
+    ],
+    "verb": "doctor",
+    "description": "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
+    "method": "GET",
+    "http_path": "/v1/system/doctor",
+    "args": [
+      {
+        "field": "refresh",
+        "long": "refresh",
+        "kind": "boolean",
+        "required": false,
+        "help": "Run every check now instead of returning the report from the last minute."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check every part of the install and list what needs fixing",
+        "command": "everruns system doctor --refresh true"
+      }
+    ]
+  },
+  {
     "wire_name": "health_check",
     "path": [
       "system"

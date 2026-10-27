@@ -18189,6 +18189,29 @@
     "read_only": true
   },
   {
+    "category": "system",
+    "cli": "system doctor",
+    "description": "Check whether the whole install is set up right and working: database, workers, keys, messaging, storage, monitoring.",
+    "input_schema": {
+      "properties": {
+        "refresh": {
+          "description": "Run every check now instead of returning the report from the last\nminute. Refreshes closer than five seconds apart share one run.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "run_system_doctor",
+    "output_shape": "unknown",
+    "path": "/v1/system/doctor",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "knowledge",
     "cli": "knowledge search",
     "description": "Search selected knowledge collections with immutable citations.",

@@ -96,6 +96,7 @@ pub mod sessions;
 pub mod skills;
 pub mod sse;
 pub mod state;
+pub mod system;
 pub mod task_webhooks;
 pub mod tool_approvals;
 pub mod tool_results;
