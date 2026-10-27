@@ -10,12 +10,14 @@
 //! THREAT[TM-LLM-003]: provider error text can echo request headers or user
 //! content. Only the Everruns classification, the status and short
 //! identifiers that pass a strict character allowlist are kept, never the
-//! provider message. The retained value reuses [`LlmError`] (boxed, so retry
-//! metadata held across awaits stays small) instead of a new serialized type,
-//! which keeps the Engine Worker Wasm upload within budget.
+//! provider message. The retained value is one short summary string, read back
+//! by [`exhausted_kind`] and [`exhausted_status`]: a string adds no serde code
+//! to the Engine Worker Wasm, whose upload has a fixed budget.
 
 use crate::error::AgentLoopError;
-use crate::llm_error::{LlmError, LlmErrorKind};
+#[cfg(test)]
+use crate::llm_error::LlmError;
+use crate::llm_error::LlmErrorKind;
 
 /// Largest identifier kept from a provider failure.
 const MAX_IDENTIFIER_BYTES: usize = 64;
@@ -24,10 +26,11 @@ const MAX_IDENTIFIER_BYTES: usize = 64;
 /// are a few hundred bytes.
 const MAX_SCAN_BYTES: usize = 64 * 1024;
 
-/// Bounded, secret-free copy of a provider failure: its kind, status and an
-/// allowlisted code, with a message that names only those and the safe
-/// `limit_source` / transport cause. `None` for anything that is not one.
-pub fn retained(error: &AgentLoopError) -> Option<Box<LlmError>> {
+/// Bounded, secret-free summary of a provider failure, such as
+/// `rate_limited (HTTP 429, code engine_overloaded)`: its kind label, status,
+/// allowlisted code, `limit_source` and transport cause, nothing else.
+/// `None` for anything that is not a provider failure.
+pub fn retained(error: &AgentLoopError) -> Option<String> {
     let AgentLoopError::Llm(error) = error else {
         return None;
     };
@@ -36,46 +39,63 @@ pub fn retained(error: &AgentLoopError) -> Option<Box<LlmError>> {
         end -= 1;
     }
     let scanned = &error.message[..end];
-    let code = error.code.as_deref().filter(|code| is_identifier(code));
-    let mut details: Vec<String> = Vec::new();
+    let mut summary = String::from(
+        KINDS
+            .iter()
+            .find(|(_, kind)| *kind == error.kind)
+            .map_or("other", |(label, _)| label),
+    );
+    // Plain pushes rather than `format!`: this runs in the size-budgeted Wasm.
+    let mut details = String::new();
+    let mut detail = |name: &str, value: &str| {
+        details.push_str(if details.is_empty() { " (" } else { ", " });
+        details.push_str(name);
+        details.push_str(value);
+    };
     if let Some(status) = error.status {
-        details.push(format!("HTTP {status}"));
+        detail("HTTP ", &status.to_string());
     }
-    if let Some(code) = code {
-        details.push(format!("code {code}"));
+    if let Some(code) = error.code.as_deref().filter(|code| is_identifier(code)) {
+        detail("code ", code);
     }
     if let Some(source) = limit_source(scanned) {
-        details.push(format!("limit_source {source}"));
+        detail("limit_source ", source);
     }
     if error.status.is_none()
         && let Some(cause) = transport_cause(scanned)
     {
-        details.push(cause.to_owned());
+        detail(cause, "");
     }
-    let mut summary = String::from(kind_label(error.kind));
     if !details.is_empty() {
-        summary.push_str(" (");
-        summary.push_str(&details.join(", "));
+        summary.push_str(&details);
         summary.push(')');
     }
-    let mut kept = LlmError::new(error.kind, summary);
-    kept.status = error.status;
-    kept.code = code.map(str::to_owned);
-    Some(Box::new(kept))
+    Some(summary)
 }
 
-fn kind_label(kind: LlmErrorKind) -> &'static str {
-    match kind {
-        LlmErrorKind::Authentication => "authentication",
-        LlmErrorKind::QuotaExhausted => "quota_exhausted",
-        LlmErrorKind::BillingPressure { .. } => "billing_pressure",
-        LlmErrorKind::RateLimited => "rate_limited",
-        LlmErrorKind::Unavailable => "unavailable",
-        LlmErrorKind::AttestationRequired => "attestation_required",
-        LlmErrorKind::InvalidRequest => "invalid_request",
-        LlmErrorKind::MalformedResponse => "malformed_response",
-        LlmErrorKind::Other => "other",
-    }
+/// Kinds a retained summary names. Only transient failures reach a retry;
+/// any other kind reads back as `Unavailable`, as before this was kept.
+const KINDS: [(&str, LlmErrorKind); 4] = [
+    ("rate_limited", LlmErrorKind::RateLimited),
+    ("unavailable", LlmErrorKind::Unavailable),
+    ("malformed_response", LlmErrorKind::MalformedResponse),
+    ("other", LlmErrorKind::Other),
+];
+
+/// The kind a retained summary names, for the terminal error.
+pub fn exhausted_kind(summary: &str) -> LlmErrorKind {
+    let label = summary.split(' ').next().unwrap_or_default();
+    KINDS
+        .iter()
+        .find(|(name, _)| *name == label)
+        .map_or(LlmErrorKind::Unavailable, |(_, kind)| *kind)
+}
+
+/// The HTTP status a retained summary names, for the terminal error.
+pub fn exhausted_status(summary: &str) -> Option<u16> {
+    let rest = &summary.as_bytes()[summary.find("(HTTP ")? + 6..];
+    let digits = rest.get(..3).filter(|d| d.iter().all(u8::is_ascii_digit))?;
+    Some(digits.iter().fold(0, |n, d| n * 10 + u16::from(d - b'0')))
 }
 
 fn is_identifier(value: &str) -> bool {
@@ -118,21 +138,22 @@ mod tests {
     fn keeps_classification_and_identifiers_but_never_provider_text() {
         let body = r#"{"error":{"code":"engine_overloaded","message":"Bearer sk-secret","metadata":{"limit_source": "upstream_provider_shared_pool"}}}"#;
         let kept = retained(&AgentLoopError::llm_http(429, body, body)).unwrap();
-        assert_eq!(kept.kind, LlmErrorKind::RateLimited);
-        assert_eq!(kept.status, Some(429));
         assert_eq!(
-            kept.message,
+            kept,
             "rate_limited (HTTP 429, code engine_overloaded, limit_source upstream_provider_shared_pool)"
         );
-        let stored = serde_json::to_string(&kept).unwrap();
-        assert!(!stored.contains("sk-secret"), "{stored}");
+        assert_eq!(exhausted_kind(&kept), LlmErrorKind::RateLimited);
+        assert_eq!(exhausted_status(&kept), Some(429));
 
         let timeout = retained(&AgentLoopError::llm_kind(
             LlmErrorKind::Unavailable,
             "error sending request: operation timed out",
         ))
         .unwrap();
-        assert_eq!(timeout.message, "unavailable (timeout)");
+        assert_eq!(timeout, "unavailable (timeout)");
+        assert_eq!(exhausted_kind(&timeout), LlmErrorKind::Unavailable);
+        assert_eq!(exhausted_status(&timeout), None);
+        assert_eq!(exhausted_kind("authentication"), LlmErrorKind::Unavailable);
         assert!(retained(&AgentLoopError::store("x")).is_none());
     }
 
@@ -147,8 +168,7 @@ mod tests {
         );
         error.code = Some("Bearer sk-secret".into());
         let kept = retained(&AgentLoopError::Llm(error)).unwrap();
-        assert_eq!(kept.code, None);
-        assert_eq!(kept.message, "rate_limited");
+        assert_eq!(kept, "rate_limited");
         assert_eq!(limit_source(r#"{"limit_source":"x y"}"#), None);
     }
 }

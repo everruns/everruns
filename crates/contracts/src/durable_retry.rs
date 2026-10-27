@@ -17,12 +17,12 @@ pub struct RetryCheckpoint {
     pub wake_at_ms: i64,
     pub total_wait_ms: u64,
     pub policy: LlmRetryConfig,
-    /// Sanitized copy of the provider failure the latest retry answers
+    /// Sanitized summary of the provider failure the latest retry answers
     /// ([`crate::retry_failure::retained`]), so a window that expires after
     /// executor loss still names its cause (EVE-1318). Absent from
     /// checkpoints written before it existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_failure: Option<Box<LlmError>>,
+    pub last_failure: Option<String>,
 }
 
 /// The session authority supplies time, fenced persistence and a durable wake.
@@ -161,10 +161,9 @@ pub fn budget_exhausted(retry: &RetryMetadata, elapsed: Duration) -> AgentLoopEr
     let mut error = LlmError::new(LlmErrorKind::Unavailable, String::new());
     if let Some(failure) = &retry.last_failure {
         message.push_str("; last provider failure: ");
-        message.push_str(&failure.message);
-        error.kind = failure.kind;
-        error.status = failure.status;
-        error.code = failure.code.clone();
+        message.push_str(failure);
+        error.kind = crate::retry_failure::exhausted_kind(failure);
+        error.status = crate::retry_failure::exhausted_status(failure);
     }
     message.push_str("; the turn is safe to resume");
     error.message = message;
