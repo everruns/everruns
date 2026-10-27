@@ -83,7 +83,7 @@ only a definitive missing-stream rejection, once, and never deletes a stream or
 rewrites an existing subject policy. Continuing errors require inspection of the
 broker and subject configuration; they must not be hidden by an API restart or by
 writing token deltas to PostgreSQL. Real-broker regressions live in
-[`event_delivery.rs`](../../crates/server/src/live_updates/event_delivery.rs).
+[`event_delivery`](../../crates/server/src/live_updates/event_delivery/mod.rs).
 
 ### PostgreSQL Listener Connectivity
 

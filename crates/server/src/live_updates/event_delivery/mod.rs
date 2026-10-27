@@ -289,21 +289,40 @@ impl NatsEventDelivery {
 
     pub async fn subscribe(&self, session_id: Uuid) -> Result<EventSubscription> {
         let subject = format!("{NATS_SUBJECT_PREFIX}.{session_id}");
-
-        let stream = self.ensure_stream().await?;
-
-        // Create an ephemeral push consumer for this SSE connection.
+        // Create an ephemeral pull consumer for this SSE connection.
         // DeliverPolicy::New means we only get events from now on.
         // For reconnection replay, the SSE handler queries PG separately.
-        let consumer = stream
-            .create_consumer(async_nats::jetstream::consumer::pull::Config {
-                filter_subject: subject,
-                deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New,
-                ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit,
-                ..Default::default()
-            })
+        let config = async_nats::jetstream::consumer::pull::Config {
+            filter_subject: subject,
+            deliver_policy: async_nats::jetstream::consumer::DeliverPolicy::New,
+            ack_policy: async_nats::jetstream::consumer::AckPolicy::Explicit,
+            ..Default::default()
+        };
+        // The stream was initialized at connect. Avoid a discovery round trip
+        // on every SSE connection; recover only a definite missing-stream
+        // rejection. A timeout may have created a consumer, so never retry it.
+        let consumer = match self
+            .jetstream
+            .create_consumer_on_stream(config.clone(), NATS_STREAM_NAME)
             .await
-            .context("Failed to create NATS consumer")?;
+        {
+            Ok(consumer) => consumer,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    async_nats::jetstream::stream::ConsumerErrorKind::JetStream(ref error)
+                        if error.error_code()
+                            == async_nats::jetstream::ErrorCode::STREAM_NOT_FOUND
+                ) =>
+            {
+                self.ensure_stream().await?;
+                self.jetstream
+                    .create_consumer_on_stream(config, NATS_STREAM_NAME)
+                    .await
+                    .context("Failed to create recovered NATS consumer")?
+            }
+            Err(error) => return Err(error).context("Failed to create NATS consumer"),
+        };
 
         let messages = consumer
             .messages()
@@ -391,12 +410,15 @@ fn mark_trimmed(event: &mut Event) {
 }
 
 #[cfg(test)]
+mod subscription_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use everruns_contracts::typed_id::{EventId, MessageId, SessionId, TurnId};
     use everruns_core::events::{EventData, OutputMessageDeltaData};
 
-    fn make_test_event(session_id: Uuid) -> Event {
+    pub(super) fn make_test_event(session_id: Uuid) -> Event {
         Event {
             id: EventId::new(),
             event_type: "output.message.delta".to_string(),
@@ -575,14 +597,14 @@ mod tests {
         Container(String),
     }
 
-    struct TestNatsServer {
+    pub(super) struct TestNatsServer {
         process: TestBroker,
         store: tempfile::TempDir,
-        port: u16,
+        pub(super) port: u16,
     }
 
     impl TestNatsServer {
-        async fn start() -> Self {
+        pub(super) async fn start() -> Self {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
             drop(listener);
@@ -636,7 +658,7 @@ mod tests {
             }
         }
 
-        fn url(&self) -> String {
+        pub(super) fn url(&self) -> String {
             format!("nats://127.0.0.1:{}", self.port)
         }
 
@@ -646,10 +668,18 @@ mod tests {
                     if let TestBroker::Native(process) = &mut self.process {
                         assert!(process.try_wait().unwrap().is_none(), "broker exited");
                     }
-                    if tokio::net::TcpStream::connect(("127.0.0.1", self.port))
+                    // A forwarded Docker port can accept TCP before the broker
+                    // speaks NATS. Require the application handshake and PONG.
+                    let ready =
+                        tokio::time::timeout(std::time::Duration::from_millis(250), async {
+                            match async_nats::connect(self.url()).await {
+                                Ok(client) => client.flush().await.is_ok(),
+                                Err(_) => false,
+                            }
+                        })
                         .await
-                        .is_ok()
-                    {
+                        .unwrap_or(false);
+                    if ready {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -659,7 +689,7 @@ mod tests {
             .expect("broker ready");
         }
 
-        async fn restart(&mut self, delivery: &NatsEventDelivery) {
+        pub(super) async fn restart(&mut self, delivery: &NatsEventDelivery) {
             match &mut self.process {
                 TestBroker::Native(process) => {
                     process.kill().unwrap();
