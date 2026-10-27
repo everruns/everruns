@@ -52,8 +52,8 @@ importers:
         specifier: ^7.4.1
         version: 7.4.1(@types/node@24.19.0)(esbuild@0.28.1)(yaml@2.8.4)
       js-yaml:
-        specifier: ^5.5.0
-        version: 5.5.0
+        specifier: ^4.3.2
+        version: 4.3.2
       marked:
         specifier: ^18.1.1
         version: 18.1.1
@@ -1181,9 +1181,6 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
-  argparse@3.0.3:
-    resolution: {integrity: sha512-Sn98ftV3KfsO8xfLPHG6oT8y+b0yvbrLgZjgPDXsharNY15tTAjqIsIju4S32nl6/iEUNNE4v+yL2Zhm8ooP3w==}
-
   aria-query@5.3.2:
     resolution: {integrity: sha512-COROpnaoap1E2F000S62r6A60uHZnmlvomhfyT2DlTcrY1OrBKn2UhH7qn5wTC9zMvD0AY7csdPSNwKP+7WiQw==}
     engines: {node: '>= 0.4'}
@@ -1961,10 +1958,6 @@ packages:
 
   js-yaml@4.3.2:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
-    hasBin: true
-
-  js-yaml@5.5.0:
-    resolution: {integrity: sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==}
     hasBin: true
 
   json-schema-traverse@1.0.0:
@@ -4177,8 +4170,6 @@ snapshots:
 
   argparse@2.0.1: {}
 
-  argparse@3.0.3: {}
-
   aria-query@5.3.2: {}
 
   array-iterate@2.0.1: {}
@@ -5186,10 +5177,6 @@ snapshots:
   js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
-
-  js-yaml@5.5.0:
-    dependencies:
-      argparse: 3.0.3
 
   json-schema-traverse@1.0.0: {}
 
