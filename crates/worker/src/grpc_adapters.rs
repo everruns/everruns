@@ -1814,13 +1814,9 @@ impl GrpcOrgAdapter {
 
 #[async_trait]
 impl ImageResolver for GrpcOrgAdapter {
-    /// Resolve a single image by ID
-    ///
-    /// Returns the base64-encoded image data and media type, or None if not found.
     /// The server answers with a signed link; the bytes are fetched over HTTP.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
         let mut client = self.client.inner.client();
-
         let request = proto::ResolveImageRequest {
             image_id: Some(uuid_to_proto(image_id)),
             org_id: self.org_id,
@@ -1830,19 +1826,20 @@ impl ImageResolver for GrpcOrgAdapter {
             .resolve_image(request)
             .await
             .map_err(grpc_status_to_error)?;
-
         let inner = response.into_inner();
-
         if !inner.found {
             return Ok(None);
         }
-
         let bytes = self
             .client
             .blobs
             .fetch(&inner.url, blob_fetch::MAX_BLOB_BYTES)
             .await?;
         Ok(Some(resolved_image(&bytes, inner.media_type)))
+    }
+
+    async fn resolve_images(&self, image_ids: &[Uuid]) -> Result<HashMap<Uuid, ResolvedImage>> {
+        self.resolve_images_batch(image_ids).await
     }
 }
 

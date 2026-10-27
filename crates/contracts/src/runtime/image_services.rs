@@ -110,4 +110,20 @@ pub trait ImageResolver: Send + Sync {
     ///
     /// Returns `None` if the image is not found.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
+
+    /// Resolve several references at once. Missing images are left out of the
+    /// map. The default resolves one at a time; transports with a batch call
+    /// override it, since a turn can reference many screenshots.
+    async fn resolve_images(
+        &self,
+        image_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, ResolvedImage>> {
+        let mut resolved = std::collections::HashMap::new();
+        for &image_id in image_ids {
+            if let Some(image) = self.resolve_image(image_id).await? {
+                resolved.insert(image_id, image);
+            }
+        }
+        Ok(resolved)
+    }
 }

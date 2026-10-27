@@ -750,24 +750,25 @@ impl MessageService {
                     everruns_core::EventData::InputMessage(data) => &data.message,
                     everruns_core::EventData::OutputMessageCompleted(data) => &data.message,
                     everruns_core::EventData::ToolCompleted(data) => {
-                        // Separate text and image parts from the result content
-                        let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> =
-                            Vec::new();
+                        // Separate text from media (inline images, and
+                        // screenshots stored as `image_file`).
+                        let mut media: Vec<everruns_core::ContentPart> = Vec::new();
                         let result: Option<serde_json::Value> =
                             data.result
                                 .as_ref()
                                 .map(|parts: &Vec<everruns_core::ContentPart>| {
                                     for part in parts {
-                                        if let everruns_core::ContentPart::Image(img) = part
-                                            && let (Some(b64), Some(mt)) =
-                                                (&img.base64, &img.media_type)
-                                        {
-                                            images.push(
-                                                everruns_contracts::tool_types::ToolResultImage {
-                                                    base64: b64.clone(),
-                                                    media_type: mt.clone(),
-                                                },
-                                            );
+                                        match part {
+                                            everruns_core::ContentPart::Image(img)
+                                                if img.base64.is_some()
+                                                    && img.media_type.is_some() =>
+                                            {
+                                                media.push(part.clone());
+                                            }
+                                            everruns_core::ContentPart::ImageFile(_) => {
+                                                media.push(part.clone());
+                                            }
+                                            _ => {}
                                         }
                                     }
                                     let text_parts: Vec<&everruns_core::ContentPart> = parts
@@ -783,18 +784,20 @@ impl MessageService {
                                     }
                                     serde_json::to_value(&text_parts).unwrap_or_default()
                                 });
-                        let msg = if images.is_empty() {
+                        let msg = if media.is_empty() {
                             everruns_core::RuntimeMessage::tool_result(
                                 &data.tool_call_id,
                                 result,
                                 data.error.clone(),
                             )
                         } else {
-                            everruns_core::RuntimeMessage::tool_result_with_images(
+                            let mut msg = everruns_core::RuntimeMessage::tool_result(
                                 &data.tool_call_id,
                                 result,
-                                images,
-                            )
+                                None,
+                            );
+                            msg.content.extend(media);
+                            msg
                         };
                         return Ok(Message {
                             id: msg.id,
