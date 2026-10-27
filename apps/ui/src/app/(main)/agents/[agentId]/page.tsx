@@ -128,6 +128,14 @@ import {
 const count = (n: number, singular: string, plural?: string) =>
   `${n} ${pluralize(n, singular, plural)}`;
 
+/** Shown on the More row. Empty means the provider's own output limit. */
+function maxOutputTokensSummary(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "Provider default";
+  if (!/^\d+$/.test(trimmed)) return trimmed;
+  return Number(trimmed).toLocaleString();
+}
+
 function healthSummary(latest: LatestHealthCheckRun | undefined): string {
   const run = latest?.run;
   if (!run) return "Not run";
@@ -322,6 +330,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     if (!result.ok) {
       selectTab("agent");
       if (BRANDING_FIELDS.some((field) => result.errors[field])) setOpenSection("branding");
+      else if (result.errors.max_output_tokens) setOpenSection("max_output_tokens");
       return;
     }
     try {
@@ -515,6 +524,11 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
         (draft.sandboxPolicy
           ? `${Object.keys(draft.sandboxPolicy.templates ?? {}).length} · default ${draft.sandboxPolicy.default}`
           : "None"),
+    },
+    {
+      id: "max_output_tokens",
+      label: "Max output tokens",
+      summary: maxOutputTokensSummary(draft.fields.max_output_tokens),
     },
     {
       id: "usage",

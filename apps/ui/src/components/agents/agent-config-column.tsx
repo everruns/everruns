@@ -12,7 +12,6 @@
 import { Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { TagInput } from "@/components/ui/tag-input";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { ModelPicker } from "@/components/models/model-picker";
@@ -153,42 +152,6 @@ export function AgentConfigColumn({
           )}
         </ChatChangeMark>
 
-        <ChatChangeMark field="max_output_tokens" className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="max-output-tokens">Max output tokens</FieldLabel>
-          {readOnly ? (
-            <span className="text-[13px] text-muted-foreground">
-              {agent.max_output_tokens?.toLocaleString() ?? "Provider default"}
-            </span>
-          ) : (
-            <Input
-              id="max-output-tokens"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={1}
-              placeholder="Provider default"
-              value={draft.fields.max_output_tokens}
-              onChange={(event) =>
-                edit((value: string) => draft.setField("max_output_tokens", value))(
-                  event.target.value,
-                )
-              }
-              aria-invalid={draft.errors.max_output_tokens ? true : undefined}
-              aria-describedby="max-output-tokens-hint"
-              className="bg-background"
-            />
-          )}
-          {draft.errors.max_output_tokens ? (
-            <p className="text-xs text-destructive">{draft.errors.max_output_tokens}</p>
-          ) : (
-            !readOnly && (
-              <p id="max-output-tokens-hint" className="text-xs text-muted-foreground">
-                Lower this if the provider says it can only afford fewer tokens.
-              </p>
-            )
-          )}
-        </ChatChangeMark>
-
         <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
           <FieldLabel htmlFor="communication">Communication</FieldLabel>
           {readOnly ? (
@@ -260,6 +223,7 @@ export function AgentConfigColumn({
                   files: "initial_files",
                   network: "network_access",
                   sandbox: "sandbox_policy",
+                  max_output_tokens: "max_output_tokens",
                   mcp: ["mcpServers", "mcp_servers"],
                   service: "service_virtual_user_id",
                 } as Record<string, string | string[]>
