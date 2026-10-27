@@ -1432,3 +1432,30 @@ async fn a_file_package_serves_a_real_session_and_pins_assets() {
     assert!(kinds(&events).contains(&"turn.completed"), "{events:?}");
     server._task.abort();
 }
+
+#[tokio::test]
+async fn the_doctor_reports_in_the_server_report_shape() {
+    let host = Host::new(app(), Mode::Eval, None).unwrap();
+    let server = serve(host).await;
+    let response = server.get("/v1/doctor").await;
+    assert_eq!(response.status(), 200);
+    let report: Value = response.json().await.unwrap();
+    assert_eq!(report["grade"], "eval");
+    assert!(report["checked_at"].is_string());
+    let ids: Vec<&str> = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| check["id"].as_str().unwrap())
+        .collect();
+    for id in [
+        "store.sessions",
+        "security.auth",
+        "models.routes",
+        "control_plane.schedules",
+    ] {
+        assert!(ids.contains(&id), "{id} missing from {ids:?}");
+    }
+    // In memory and open: notes for an eval run, never a problem.
+    assert_ne!(report["status"], "problem", "{report:#}");
+}

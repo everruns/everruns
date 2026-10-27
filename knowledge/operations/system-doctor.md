@@ -145,6 +145,11 @@ gauges. A composition extension rather than a builder method keeps the size-
 limited app builder from growing. Each extension is bounded: one that does not
 finish in time becomes a warning, never a stuck report.
 
-## Planned
+## serve
 
-The SaaS checks and production release gate, and a small doctor for serve.
+A serve app is one process with no workers or control plane, so the fleet
+checks do not apply. [`GET /v1/doctor`](../../crates/serve/src/doctor.rs)
+answers in the same report shape with what a serve app depends on: its session
+store, a model route for every agent, schedules keeping time, and whether its
+routes are open. It sits behind the app's auth like the other agent routes,
+and its strictness follows the mode (`start` is production).
