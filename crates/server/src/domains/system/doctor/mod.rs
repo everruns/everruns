@@ -15,6 +15,7 @@
 
 mod checks;
 mod env;
+pub mod extension;
 pub mod instances;
 pub mod preflight;
 pub mod types;
@@ -24,6 +25,7 @@ mod tests;
 
 pub(crate) use checks::readiness;
 pub use env::DoctorEnv;
+pub use extension::{DoctorExtension, DoctorExtensions, DoctorFindings};
 pub use types::{CheckArea, CheckStatus, DoctorCheck, DoctorReport};
 
 use crate::storage::StorageBackend;
@@ -109,6 +111,7 @@ fn area_label(area: CheckArea) -> &'static str {
         CheckArea::Storage => "storage",
         CheckArea::Observability => "observability",
         CheckArea::Models => "models",
+        CheckArea::Integrations => "integrations",
     }
 }
 
@@ -121,6 +124,8 @@ pub struct SystemDoctor {
     /// Run from the command line rather than inside a server: the replica
     /// checks must not count this process as a server.
     pub(crate) preflight: bool,
+    /// Checks the host adds; see [`extension`].
+    pub(crate) extensions: DoctorExtensions,
     started: Instant,
     cache: Mutex<Option<(Instant, DoctorReport)>>,
 }
@@ -138,6 +143,7 @@ impl SystemDoctor {
             encryption,
             env,
             preflight: false,
+            extensions: DoctorExtensions::default(),
             started: Instant::now(),
             cache: Mutex::new(None),
         }
@@ -146,6 +152,12 @@ impl SystemDoctor {
     /// Mark this doctor as a command-line run (see `preflight`).
     pub fn preflight(mut self) -> Self {
         self.preflight = true;
+        self
+    }
+
+    /// Add the host's own checks to every report.
+    pub fn with_extensions(mut self, extensions: DoctorExtensions) -> Self {
+        self.extensions = extensions;
         self
     }
 

@@ -1061,7 +1061,7 @@ impl ServerAppBuilder {
             &scheduler_store,
             &encryption,
             &auth_config,
-            host_composition.utility_llm_service().is_configured(),
+            &host_composition,
         ))
         .with_connection_resolver(optional_connection_resolver(
             &db,

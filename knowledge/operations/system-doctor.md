@@ -64,8 +64,8 @@ setting is a `problem` on `prod` and a `warning` on `dev`.
 
 The list lives in
 [`domains/system/doctor/checks/`](../../crates/server/src/domains/system/doctor/checks),
-one module per area: control plane (public address, utility model, server
-replicas and their versions), database (reachable, version,
+one module per area: control plane (public address, utility model, system
+email, server replicas and their versions), database (reachable, version,
 migrations, pools, long transactions), workers (connected, authentication,
 workers turned away for a wrong token, versions and worker protocol, long
 drains, capacity, waiting sessions, dead letters, circuit breakers, and the
@@ -74,7 +74,7 @@ session signing secret, encryption key, stored secrets readable and rotation
 finished), messaging (NATS, Valkey, both judged against the number of
 running servers), file storage (an S3 write, read and
 delete), observability (whether anything actually reads `/metrics`, traces,
-log level) and platform model keys.
+log level), platform model keys, and the host's own checks (Integrations).
 
 Two judgments worth keeping:
 
@@ -134,7 +134,17 @@ covered where its control endpoint lives (the SaaS checks).
   by the lock holder would keep a stale value on the replicas that lost it.
   The report cache keeps it to one run per replica per minute.
 
+## Host checks
+
+A distribution adds checks for its own services (identity provider, billing,
+model gateway) by registering
+[`DoctorExtensions`](../../crates/server/src/domains/system/doctor/extension.rs)
+on its `HostComposition`. They run with the built-in checks, appear in the
+same report under the Integrations area, and count toward the verdict and the
+gauges. A composition extension rather than a builder method keeps the size-
+limited app builder from growing. Each extension is bounded: one that does not
+finish in time becomes a warning, never a stuck report.
+
 ## Planned
 
-SaaS checks through a builder extension, the production release gate, and a
-small doctor for serve.
+The SaaS checks and production release gate, and a small doctor for serve.

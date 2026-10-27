@@ -10660,7 +10660,8 @@ export interface components {
       | "messaging"
       | "storage"
       | "observability"
-      | "models";
+      | "models"
+      | "integrations";
     /** @description Request to check a provider credential without storing it. */
     CheckCredentialsRequest: {
       /**
