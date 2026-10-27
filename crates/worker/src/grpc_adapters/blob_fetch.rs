@@ -13,13 +13,19 @@
 //! - The body is read frame by frame and abandoned once it passes the caller's
 //!   cap, so a wrong or hostile size cannot make the worker buffer unbounded
 //!   data.
+//! - Generated images go up the same way: one POST whose body is a JSON head
+//!   line and the raw bytes (`blob_wire`), never a protobuf field.
 
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_internal_protocol::blob_wire;
 use tonic::codegen::{Body as _, Service as _, http};
 use tonic::transport::Channel;
 
 /// Upper bound for any single fetched object: the image upload limit.
 pub(crate) const MAX_BLOB_BYTES: usize = 100 * 1024 * 1024;
+
+/// Upper bound for a JSON answer to an upload.
+const MAX_ANSWER_BYTES: usize = 1024 * 1024;
 
 /// How many paths one batch fetches at the same time.
 pub(crate) const FETCH_CONCURRENCY: usize = 8;
@@ -44,20 +50,52 @@ impl BlobFetcher {
 
     /// GET `path` and return its body, refusing anything over `max_bytes`.
     pub(crate) async fn fetch(&self, path: &str, max_bytes: usize) -> Result<Vec<u8>> {
-        let store = |what: &str, e: &dyn std::fmt::Display| {
-            AgentLoopError::store(format!("Failed to {what}: {e}"))
-        };
         if !path.starts_with("/internal/blobs/") {
             return Err(AgentLoopError::store(format!(
                 "Unexpected byte path from control plane: {path}"
             )));
         }
-        let mut request = http::Request::get(path);
+        self.send(
+            http::Request::get(path),
+            tonic::body::Body::empty(),
+            max_bytes,
+        )
+        .await
+    }
+
+    /// Store a generated image of `org_id` and return what the server stored.
+    pub(crate) async fn upload_image(
+        &self,
+        org_id: i64,
+        head: &blob_wire::ImageUploadHead,
+        data: &[u8],
+    ) -> Result<blob_wire::UploadedImage> {
+        let body = blob_wire::encode_image_upload(head, data)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode image upload: {e}")))?;
+        let request =
+            http::Request::post(format!("{}?org_id={org_id}", blob_wire::IMAGE_UPLOAD_PATH))
+                .header(http::header::CONTENT_TYPE, "application/octet-stream");
+        let body = tonic::body::Body::new(http_body_util::Full::new(bytes::Bytes::from(body)));
+        let answer = self.send(request, body, MAX_ANSWER_BYTES).await?;
+        serde_json::from_slice(&answer)
+            .map_err(|e| AgentLoopError::store(format!("Unreadable image upload answer: {e}")))
+    }
+
+    /// Send one request over the channel and read its body, up to `max_bytes`.
+    async fn send(
+        &self,
+        mut request: http::request::Builder,
+        body: tonic::body::Body,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>> {
+        let store = |what: &str, e: &dyn std::fmt::Display| {
+            AgentLoopError::store(format!("Failed to {what}: {e}"))
+        };
         if let Some(value) = &self.authorization {
             request = request.header(http::header::AUTHORIZATION, value.clone());
         }
         let request = request
-            .body(tonic::body::Body::empty())
+            .body(body)
             .map_err(|e| store("build byte request", &e))?;
 
         let mut channel = self.channel.clone();
@@ -67,12 +105,12 @@ impl BlobFetcher {
         let response = channel
             .call(request)
             .await
-            .map_err(|e| store("fetch bytes", &e))?;
+            .map_err(|e| store("transfer bytes", &e))?;
 
         let status = response.status();
         if !status.is_success() || response.headers().contains_key("grpc-status") {
             return Err(AgentLoopError::store(format!(
-                "Byte fetch refused (status {status}, grpc-status {:?})",
+                "Byte transfer refused (status {status}, grpc-status {:?})",
                 response.headers().get("grpc-status")
             )));
         }

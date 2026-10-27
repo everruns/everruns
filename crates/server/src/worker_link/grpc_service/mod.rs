@@ -65,8 +65,6 @@ use everruns_internal_protocol::proto::{
     CommitExecResponse,
     CompleteDurableTaskRequest,
     CompleteDurableTaskResponse,
-    CreateImageArtifactRequest,
-    CreateImageArtifactResponse,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     DrainDurableWorkerRequest,
