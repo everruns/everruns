@@ -7,6 +7,15 @@
 
 import type { Capability, CapabilityLocalization } from "@/lib/api/types";
 import { localeCandidates } from "@/lib/entity-localization";
+import { uiMessages } from "@/lib/ui-messages";
+
+// Category values remain stable for filtering/API use; only product labels
+// have catalog entries. Tenant-defined categories fall back verbatim.
+export function localizedCapabilityCategory(category: string, locale: string): string {
+  return localeCandidates(locale).includes("uk")
+    ? (uiMessages[`Capability category: ${category}`] ?? category)
+    : category;
+}
 
 function localizedField<K extends keyof CapabilityLocalization>(
   capability: Pick<Capability, "localizations">,

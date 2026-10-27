@@ -328,3 +328,7 @@ This is important for debugging disagreements between browser, session, schedule
 ## Implementation Notes
 
 - Resolve execution context once per turn, then pass it through the worker pipeline -- keep resolution logic centralized
+
+Built-in capability category labels use the UI catalog in lists, selectors and
+details. API category values and filter keys remain stable; unknown tenant
+categories display verbatim. Search accepts both source and translated labels.

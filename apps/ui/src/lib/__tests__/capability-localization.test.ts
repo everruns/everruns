@@ -1,5 +1,6 @@
 import {
   capabilitySummary,
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
   localizedConfigDescription,
@@ -151,5 +152,17 @@ describe("capability localization", () => {
   it("returns the base schema untouched for en", () => {
     expect(localizedConfigSchema(capability, "en")).toBe(capability.config_schema);
     expect(localizedConfigSchema({}, "uk")).toBeUndefined();
+  });
+});
+
+describe("capability category localization", () => {
+  it("translates product categories with regional fallback while preserving stable and custom values", () => {
+    expect(localizedCapabilityCategory("Network", "uk-UA")).toBe("Мережа");
+    expect(localizedCapabilityCategory("Execution", "uk")).toBe("Виконання");
+    expect(localizedCapabilityCategory("Uncategorized", "uk")).toBe("Без категорії");
+    expect(localizedCapabilityCategory("Network", "en")).toBe("Network");
+    expect(localizedCapabilityCategory("Network", "de")).toBe("Network");
+    expect(localizedCapabilityCategory("Customer tools", "uk")).toBe("Customer tools");
+    expect(localizedCapabilityCategory("constructor", "uk")).toBe("constructor");
   });
 });

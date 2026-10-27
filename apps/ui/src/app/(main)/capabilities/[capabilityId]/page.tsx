@@ -24,6 +24,7 @@ import {
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityCategory,
   localizedCapabilityDescription,
   localizedCapabilityName,
 } from "@/lib/capability-localization";
@@ -183,7 +184,10 @@ export default function CapabilityDetailPage({
             </span>
             {capability.category && (
               <span>
-                {ui("Category")} <span className="text-foreground">{capability.category}</span>
+                {ui("Category")}{" "}
+                <span className="text-foreground">
+                  {localizedCapabilityCategory(capability.category, locale)}
+                </span>
               </span>
             )}
           </>
@@ -289,7 +293,7 @@ export default function CapabilityDetailPage({
                 <div>
                   <p className="text-sm font-medium">{ui("Category")}</p>
                   <Badge variant="outline" className="mt-1">
-                    {capability.category}
+                    {localizedCapabilityCategory(capability.category, locale)}
                   </Badge>
                 </div>
               )}
