@@ -8,7 +8,7 @@ products: [platform]
 surfaces: [ui, cli, api, operations]
 links:
   docs: [/sre/system-doctor/]
-  prs: [everruns/everruns#4963, everruns/everruns#4965, everruns/everruns#4968]
+  prs: [everruns/everruns#4963, everruns/everruns#4965, everruns/everruns#4968, everruns/everruns#4971]
 ---
 
 **System → Health** checks every part of a self-hosted install and says, in plain words, what
