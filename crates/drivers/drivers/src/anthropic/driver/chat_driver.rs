@@ -1,17 +1,30 @@
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "batch.rs"]
+mod batch;
+
 use async_trait::async_trait;
 use chrono::DateTime;
 use futures::StreamExt;
 
 use super::*;
 
-#[async_trait]
-impl ChatDriver for AnthropicChatDriver {
-    async fn chat_completion_stream(
+pub(super) struct PreparedRequest {
+    pub(super) request: AnthropicRequest,
+    pub(super) needs_interleaved_thinking: bool,
+    pub(super) wants_million_context: bool,
+    pub(super) wants_cache_diagnostics: bool,
+    pub(super) conversation_betas: Vec<&'static str>,
+    pub(super) wants_server_compaction: bool,
+    pub(super) max_tokens_from_profile: bool,
+}
+
+impl AnthropicChatDriver {
+    pub(super) fn prepare_request(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
         messages: Vec<Message>,
         config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
+    ) -> Result<PreparedRequest> {
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
@@ -403,6 +416,39 @@ impl ChatDriver for AnthropicChatDriver {
             &mut request,
             prompt_cache.and_then(|cfg| cfg.retention.anthropic_ttl()),
         );
+        Ok(PreparedRequest {
+            request,
+            needs_interleaved_thinking,
+            wants_million_context,
+            wants_cache_diagnostics,
+            conversation_betas,
+            wants_server_compaction,
+            max_tokens_from_profile,
+        })
+    }
+}
+
+#[async_trait]
+impl ChatDriver for AnthropicChatDriver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn batch_driver(&self) -> Option<&dyn everruns_contracts::batch::BatchDriver> {
+        Some(self)
+    }
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &everruns_contracts::ProviderEndpoint,
+        messages: Vec<Message>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        let PreparedRequest {
+            request,
+            needs_interleaved_thinking,
+            wants_million_context,
+            wants_cache_diagnostics,
+            conversation_betas,
+            wants_server_compaction,
+            max_tokens_from_profile,
+        } = self.prepare_request(endpoint, messages, config)?;
         let request_messages = Arc::new(request.messages.clone());
 
         // Share the (possibly fallback-mutated) request across reconnect

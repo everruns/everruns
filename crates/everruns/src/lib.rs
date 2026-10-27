@@ -116,6 +116,9 @@ mod history;
 mod hooks;
 /// Stability: stable — no breaking change without a major bump; see [`stability`].
 pub mod llm;
+
+/// Stability: alpha — provider-native offline model requests.
+pub mod batch;
 mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;

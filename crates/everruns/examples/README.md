@@ -35,3 +35,14 @@ GitHub CLI:
 ```text
 cargo run -p everruns --features openai --example github_monitor -- --live OWNER/REPO PR_NUMBER
 ```
+
+## Provider-native batches
+
+These examples use `ANTHROPIC_API_KEY` and the real Anthropic Message Batches API; they can incur charges and take up to 24 hours.
+
+| Example | What it demonstrates | Run |
+|---|---|---|
+| [`batch_classification.rs`](batch_classification.rs) | Submit, persist intent and ticket, resume, collect validated classifications or cancel | `cargo run -p everruns --features anthropic --example batch_classification -- submit /tmp/reviews-001` |
+| [`batch_eval.rs`](batch_eval.rs) | Batch three eval cases, poll and score answers by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
+
+See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) for recovery, tenant isolation, provider and hosting limitations.
