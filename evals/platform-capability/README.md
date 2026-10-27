@@ -214,7 +214,9 @@ must be supplied through `OPENROUTER_API_KEY`.
 
 The bounded arm starts with `tool_search` only. It uses the production
 `ToolSearchIndex` over the same catalog's operation and source metadata; at most
-eight schemas fit in a 32 KiB search response. Its optional active view is bounded
+eight operation summaries fit in a 32 KiB search response. Full canonical
+schemas arrive as native functions on the next request, without duplication
+in search text. Its optional active view is bounded
 to 32 operations and 64 KiB, with recent disclosures preferred and definitions
 emitted in stable order. A call is admitted only if its schema was actually
 advertised in that model request; discovery in the same tool-call batch cannot
@@ -379,8 +381,9 @@ The per-task result explains the surface tradeoff. Simple agent lookup used
 7,681 input tokens with bounded native versus 14,403 with CLI; the three-family
 read used 10,476 versus 19,215. Description update used 80,056 versus 18,844;
 batch update used 224,374 versus 25,676 (including the failed bounded trial).
-The platform's agent-write schemas are about 31 KiB each. The fallback transport
-places selected schemas in search history and in subsequent function lists;
+In this historical run, agent-write schemas were about 31 KiB each and the
+fallback transport placed selected schemas in both search history and subsequent
+function lists. The current bounded arm avoids the search-history duplicate;
 CLI can use a small leaf help page and filter results in the shell. Native
 lookup and code-based composition therefore remain complementary.
 

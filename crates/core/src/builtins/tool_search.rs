@@ -736,8 +736,11 @@ impl ToolSearchTool {
                 omitted += 1;
                 continue;
             };
+            // The next native projection supplies the complete canonical schema.
+            // Repeating it here spends context twice and can reject a schema
+            // that fits active_bytes but exceeds result_bytes.
             let value = json!({"name": definition.name(), "description": definition.description(),
-                "parameters": definition.full_parameters(), "server_match": hit.server_match,
+                "server_match": hit.server_match,
                 "operation_match": hit.tool_match});
             matches.push(value);
             loaded.push(hit.name.clone());
@@ -931,6 +934,12 @@ impl Tool for ToolSearchTool {
     }
 
     fn description(&self) -> &str {
+        if self.limits.is_some() {
+            return "Search available tools and capabilities by keyword. Returns matching names \
+                and descriptions; selected tools receive their complete parameter schemas as \
+                native functions on the next step. Search results omit duplicate schemas. \
+                Call this before using a tool whose parameters you have not loaded yet.";
+        }
         "Search the available tools by keyword and load their full parameter \
          schemas. Returns matching tools with their names, descriptions, and JSON \
          parameter schemas. Call this before using any tool whose parameters you \

@@ -39,7 +39,9 @@ do not link the server crate. Feature flags and permissions are checked again
 when a call runs. Like the local CLI grammar, this catalog spans public operations
 across feature flags; disabled operations remain discoverable but cannot execute.
 Platform Chat also uses bounded `tool_search` with a threshold of 1, so only selected
-operation schemas join the active tool list. Search can match native operation
+operation schemas join the active tool list. Search results contain operation
+summaries; the complete schemas arrive as native functions on the next step
+without a duplicate copy in search history. Search can match native operation
 names and descriptions, plus declared capability names and descriptions. Its
 defaults are 32 optional
 schemas, 64 KiB of active schemas, and 32 KiB of search results. Bashkit Worker

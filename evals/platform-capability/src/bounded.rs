@@ -27,7 +27,7 @@ const SOURCE_DESCRIPTION: &str = "Discover and execute the authorized Everruns c
 pub fn search_tool() -> Value {
     json!({"type":"function","function":{
         "name":"tool_search",
-        "description":"Search Everruns platform operation names, descriptions, parameter documentation and platform source metadata. Returns at most eight full native schemas. Search results describe operations, not resource instances. Selected operations become callable on the next request; refine broad or oversized queries. Only a bounded recent set remains active.",
+        "description":"Search Everruns platform operation names, descriptions, parameter documentation and platform source metadata. Returns at most eight operation summaries; full schemas become native functions on the next request without being duplicated in search text. Search finds operations, not resource instances. Refine broad or oversized queries. Only a bounded recent set remains active.",
         "parameters":{"type":"object","properties":{"query":{"type":"string","maxLength":512}},"required":["query"],"additionalProperties":false}
     }})
 }
@@ -231,8 +231,10 @@ impl BoundedSurface {
                 continue;
             }
             let function = &definition["function"];
-            matches.push(json!({"name":hit.name,"description":function["description"],
-                "parameters":function["parameters"],"server_match":hit.server_match,"operation_match":hit.tool_match}));
+            matches.push(
+                json!({"name":hit.name,"description":function["description"],
+                "server_match":hit.server_match,"operation_match":hit.tool_match}),
+            );
             loaded.push(hit.name.clone());
             // Reserve the largest possible omission count while accepting each
             // match, as production does, so the final count cannot overflow.
@@ -342,8 +344,8 @@ mod tests {
                 );
             }
         }
-        // A top-eight hit is insufficient if an earlier small match crowds a
-        // real 31 KiB schema out of the default search response byte budget.
+        // The current update schema exceeds the search response budget, but
+        // fits the native schema budget and must still become callable.
         let mut surface = BoundedSurface::new();
         let output = result(&mut surface, "update agent");
         assert!(bytes(&output) <= MAX_RESULT_BYTES);
@@ -389,12 +391,18 @@ mod tests {
                     .any(|value| value == name),
                 "{name} omitted: {output}"
             );
-            let selected = output["tools"]
-                .as_array()
-                .unwrap()
+            assert!(
+                output["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|tool| tool.get("parameters").is_none())
+            );
+            let tools = surface.request_tools(3);
+            let selected = &tools
                 .iter()
-                .find(|value| value["name"] == name)
-                .unwrap();
+                .find(|tool| tool["function"]["name"] == name)
+                .unwrap()["function"];
             let expected = &surface.definitions[name]["function"];
             assert_eq!(selected["parameters"], expected["parameters"]);
         }
@@ -402,9 +410,9 @@ mod tests {
         assert!(
             tools
                 .iter()
-                .any(|tool| tool["function"]["name"] == "update_agent")
+                .any(|tool| tool["function"]["name"] == "create_agent")
         );
-        assert!(surface.callable("update_agent"));
+        assert!(surface.callable("create_agent"));
         assert!(bytes(&tools[1..]) <= MAX_ACTIVE_BYTES);
         assert!(tools.len() <= MAX_ACTIVE_TOOLS + 1);
     }
@@ -489,7 +497,11 @@ mod tests {
     #[test]
     fn result_limit_counts_full_envelope_and_never_exceeds_eight() {
         let entries = (0..20)
-            .map(|index| entry(&format!("read_record_{index:02}"), 100))
+            .map(|index| {
+                let mut value = entry(&format!("read_record_{index:02}"), 100);
+                value["description"] = json!(format!("Read records {}", "x".repeat(300)));
+                value
+            })
             .collect();
         let mut surface = BoundedSurface::from_catalog(entries, 32, 65536, 2048);
         let output = result(&mut surface, "read records");

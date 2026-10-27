@@ -2,6 +2,8 @@
 
 ## 2026-10-27
 
+- Bounded native search keeps full schemas in the function projection and returns only operation summaries, so current Agent write schemas fit without raising either byte budget. Added regression coverage for complete schema delivery and hosted native grading. See [Tool search](execution/tool-search.md).
+
 - Rebased native Platform discovery onto the current public inventory (350 operations), preserving live authorization and documenting the portable catalog’s feature-independent metadata boundary. See [Platform Chat](harnesses/platform-chat.md) and the [threat model](security/threat-model.md).
 
 - Added [Slate Design System Pages](ui/design-system.md): Slate published at everruns.com/docs/design-system/ from the app's own tokens and Facet icons, replacing the retired design tool export as the starting point for redesigns.

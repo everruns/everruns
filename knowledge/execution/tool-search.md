@@ -111,8 +111,9 @@ disclosure or execution.
 | `max_active_bytes` | 65,536 | 1 KiB–1 MiB | Serialized-byte budget for optional active schemas |
 | `max_result_bytes` | 32,768 | 1 KiB–64 KiB | Serialized-byte budget for one `tool_search` result |
 
-A bounded search returns at most eight matching schemas, regardless of the
-configured byte limit. Eager tools, client-side tools, owner-marked
+A bounded search returns at most eight matching operation summaries, regardless
+of the configured byte limit. Full canonical schemas arrive in the next native
+function projection; they are not duplicated in search-result history. Eager tools, client-side tools, owner-marked
 `DeferrablePolicy::Never` tools, and names in `never_defer` remain in the native
 view in addition to the optional schema budgets. Provider compatibility holds
 may temporarily retain a removed definition on the wire during a removal-only
@@ -123,12 +124,12 @@ releases those removals. A held definition is not an execution grant. There is n
 bound on cumulative schema/help history in the conversation. Inline removal
 does not reclaim earlier prompt tokens.
 
-Schemas that do not fit are omitted and counted, with guidance to refine the
-query. A source-only query returns a server refinement rather than arbitrary
+Schemas that do not fit the active-definition budget are omitted and counted,
+with guidance to refine the query. Summary metadata must also fit the separate
+search-result budget. A source-only query returns a server refinement rather than arbitrary
 operation schemas. If no operation matches, the result offers a bounded list
-of authorized server sources rather than returning the whole tool inventory. Results carry
-the full registered schema and reveal selected operations for the next model
-step. Bounded mode requires `reveal: "redefine"`; `reveal: "in_result"` is
+of authorized server sources rather than returning the whole tool inventory. Results identify the selected operations; their full registered schemas become
+callable native definitions on the next model step. Bounded mode requires `reveal: "redefine"`; `reveal: "in_result"` is
 rejected because typed calls need the registered schema to become active.
 
 Example:

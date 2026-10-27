@@ -107,12 +107,13 @@ transition. Held definitions must still fit the combined native tool budget:
 eager definitions plus the configured optional count and byte limits. If a
 lower live budget no longer admits the held list, the runtime releases those
 removals immediately.
-`max_result_bytes` bounds schemas returned by a search. Discovery remains
-progressive: the model searches, receives schemas for a bounded set of
-operations, then calls those operations using their registered schemas. A
-search result does not create a second execution path. If matching schemas do
-not fit in one result, search asks the model to narrow the query instead of
-presenting omitted schemas as available. `omitted_tools` names byte-omitted
+`max_result_bytes` bounds the operation summaries returned by a search. Full
+canonical schemas arrive as native functions on the next step, without being
+duplicated in search-result text. A schema can therefore exceed the search
+response budget while fitting the active native-definition budget. Discovery
+remains progressive and does not create a second execution path. If schemas
+exceed the active budget, or summaries exceed the result budget, search asks
+the model to narrow the query instead of presenting omitted operations as available. `omitted_tools` names byte-omitted
 candidates within the same result budget; search one name exactly to request
 that schema. These names do not make the operations callable. Removing an active schema does not
 remove its earlier transcript history; this feature does not set a cumulative

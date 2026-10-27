@@ -40,7 +40,8 @@ Platform capability with its native surface and bounded search:
 
 Search also matches declared capability names and descriptions, alongside
 native operation names, so Platform Chat can narrow from a capability to an
-operation without loading unrelated schemas.
+operation without loading unrelated schemas. Search returns summaries, with full
+schemas delivered as native functions on the next step to avoid duplicate context.
 
 Native calls use the same authorized dispatch as the shell, and current feature
 flags and permissions are checked when each call runs. See [the Platform

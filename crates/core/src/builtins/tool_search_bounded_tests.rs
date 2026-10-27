@@ -114,10 +114,7 @@ async fn capability_purpose_refines_without_loading_opaque_operations() {
         panic!("exact operation refinement should fit")
     };
     assert_eq!(refined["loaded"], json!(["opaque_0017"]));
-    assert_eq!(
-        refined["tools"][0]["parameters"],
-        definitions[17].full_parameters().clone()
-    );
+    assert!(refined["tools"][0].get("parameters").is_none());
     let mut request = RuntimeMessage::assistant("");
     request.content = vec![ContentPart::ToolCall(
         everruns_contracts::runtime::message::ToolCallContentPart::new(
@@ -133,6 +130,7 @@ async fn capability_purpose_refines_without_loading_opaque_operations() {
     let projected = hook(disclosure).transform(definitions);
     assert_eq!(projected.len(), 1);
     assert_eq!(projected[0].name(), "opaque_0017");
+    assert_eq!(projected[0].full_parameters(), &json!({"type":"object"}));
 }
 
 #[tokio::test]
@@ -209,7 +207,9 @@ async fn capability_browse_hints_cannot_crowd_out_omitted_operation_refinement()
     };
     tool.parameters = json!({"type":"object","description":"x".repeat(2000)});
     let context = context(&[definition]);
-    let ToolExecutionResult::Success(result) = bounded_tool(1024)
+    let mut search = bounded_tool(1024);
+    search.limits.as_mut().unwrap().active_bytes = 1024;
+    let ToolExecutionResult::Success(result) = search
         .execute_with_context(json!({"query":"opaque_zeta"}), &context)
         .await
     else {
@@ -249,6 +249,51 @@ fn hook(disclosure: ToolDisclosure) -> DeferSchemaHook {
             result_bytes: 32768,
         }),
     }
+}
+
+fn project_search_result(
+    query: &str,
+    result: Value,
+    definitions: Vec<ToolDefinition>,
+) -> Vec<ToolDefinition> {
+    let mut request = RuntimeMessage::assistant("");
+    request.content = vec![ContentPart::ToolCall(
+        everruns_contracts::runtime::message::ToolCallContentPart::new(
+            "search",
+            TOOL_SEARCH_TOOL_NAME,
+            json!({"query":query}),
+        ),
+    )];
+    hook(tool_disclosure(&[
+        request,
+        RuntimeMessage::tool_result("search", Some(result), None),
+    ]))
+    .transform(definitions)
+}
+
+#[tokio::test]
+async fn schema_larger_than_search_result_budget_is_delivered_as_a_full_native_function() {
+    let schema = json!({
+        "type":"object", "additionalProperties":false, "required":["id"],
+        "$defs":{"identifier":{"type":"string","enum":["kept"]}},
+        "properties":{"id":{"$ref":"#/$defs/identifier"}},
+        "description":"x".repeat(40000)
+    });
+    let definitions = vec![builtin("large_record", "Read a record", schema.clone())];
+    let ToolExecutionResult::Success(result) = bounded_tool(1024)
+        .execute_with_context(json!({"query":"large_record"}), &context(&definitions))
+        .await
+    else {
+        panic!("native schema fits even though search text has a smaller budget")
+    };
+    assert_eq!(result["loaded"], json!(["large_record"]));
+    assert!(result["tools"][0].get("parameters").is_none());
+    assert!(serde_json::to_vec(&result).unwrap().len() <= 1024);
+    let projected = project_search_result("large_record", result, definitions);
+    assert_eq!(projected.len(), 1);
+    assert_eq!(projected[0].full_parameters(), &schema);
+    assert!(serde_json::to_vec(&projected).unwrap().len() > 32768);
+    assert!(serde_json::to_vec(&projected).unwrap().len() <= 65536);
 }
 
 #[test]
@@ -461,7 +506,7 @@ async fn byte_omitted_operation_names_enable_exact_refinement_without_leaking_sc
         reveal: Reveal::Redefine,
         limits: Some(CatalogLimits {
             active_tools: 32,
-            active_bytes: 65536,
+            active_bytes: 32768,
             result_bytes: 32768,
         }),
     };
@@ -488,27 +533,30 @@ async fn byte_omitted_operation_names_enable_exact_refinement_without_leaking_sc
         panic!("exact refinement failed")
     };
     assert_eq!(refined["loaded"], json!(["update_agent"]));
+    assert!(refined["tools"][0].get("parameters").is_none());
+    let projected = project_search_result("update_agent", refined.clone(), definitions.clone());
     assert_eq!(
-        refined["tools"][0]["parameters"],
-        definitions[1].full_parameters().clone()
+        projected[0].full_parameters(),
+        definitions[1].full_parameters()
     );
     assert!(refined.get("omitted_tools").is_none());
     assert!(serde_json::to_vec(&refined).unwrap().len() <= 32768);
 }
 
 #[tokio::test]
-async fn exact_schema_at_result_byte_boundary_keeps_its_entire_budget() {
+async fn exact_summary_at_result_byte_boundary_keeps_its_entire_budget() {
     let name = "edge_record";
-    let description = "Read a record.";
-    let mut schema = json!({"type":"object","description":""});
+    let mut description = String::new();
+    let schema = json!({"type":"object"});
     let envelope = json!({
         "query":name,"tools":[{"name":name,"description":description,
-            "parameters":schema,"server_match":false,"operation_match":true}],
+            "server_match":false,"operation_match":true}],
         "loaded":[name],"bounded":true,"loading_mcp_servers":[],"omitted_for_byte_budget":0,
         "message":"Selected schemas become native functions next step. After loading a server, search again for its operation. Refine source-only or oversized matches."
     });
-    schema["description"] = json!("x".repeat(32768 - serde_json::to_vec(&envelope).unwrap().len()));
-    let context = context(&[builtin(name, description, schema.clone())]);
+    description = "x".repeat(32768 - serde_json::to_vec(&envelope).unwrap().len());
+    let definitions = vec![builtin(name, description, schema.clone())];
+    let context = context(&definitions);
     let tool = ToolSearchTool {
         reveal: Reveal::Redefine,
         limits: Some(CatalogLimits {
@@ -521,10 +569,12 @@ async fn exact_schema_at_result_byte_boundary_keeps_its_entire_budget() {
         .execute_with_context(json!({"query":name}), &context)
         .await
     else {
-        panic!("exact schema at the byte boundary should fit")
+        panic!("exact summary at the byte boundary should fit")
     };
     assert_eq!(result["loaded"], json!([name]));
-    assert_eq!(result["tools"][0]["parameters"], schema);
+    assert!(result["tools"][0].get("parameters").is_none());
+    let projected = project_search_result(name, result.clone(), definitions);
+    assert_eq!(projected[0].full_parameters(), &schema);
     assert!(result.get("omitted_tools").is_none());
     assert_eq!(serde_json::to_vec(&result).unwrap().len(), 32768);
 }
@@ -551,7 +601,7 @@ async fn omitted_name_hints_are_bounded_complete_utf8_identities_from_the_curren
         reveal: Reveal::Redefine,
         limits: Some(CatalogLimits {
             active_tools: 32,
-            active_bytes: 65536,
+            active_bytes: 1024,
             result_bytes: 1024,
         }),
     };
