@@ -7,7 +7,7 @@ significance: minor
 products: [platform, cloud]
 surfaces: [api, ui]
 links:
-  prs: [everruns/everruns#PRNUM]
+  prs: [everruns/everruns#4960]
 ---
 
 When a worker picks up a session it first reads the open turn's events. A turn
