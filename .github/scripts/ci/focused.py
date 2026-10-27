@@ -102,7 +102,16 @@ def real_server_targets(paths):
            or p in ('crates/server/src/storage/test_database.rs',
                     'crates/server/src/setup/storage_init.rs') for p in paths):
         return targets
-    return [target for target in targets if f'crates/server/tests/{target}.rs' in paths]
+    selected = {target for target in targets if f'crates/server/tests/{target}.rs' in paths}
+    if any(p.startswith(('crates/server/src/api/',
+                         'crates/server/src/domains/',
+                         'crates/server/src/app_builder/',
+                         'crates/server-macros/'))
+           or p == '.github/scripts/ci/focused.py' for p in paths):
+        # OpenAPI command declarations do not mount handlers. Exercise the
+        # production router and its token scopes before merging route changes.
+        selected.add('pat_scope_sweep_test')
+    return [target for target in targets if target in selected]
 
 
 def select(metadata, paths, root):

@@ -26,6 +26,8 @@ and relevant UI/docs checks. The affected set includes reverse Cargo dependencie
 server persistence, authorization, and migration changes add focused contracts.
 History and manager-context changes exercise the real REST/command revision
 contract before merge, including the first mutation's restorable baseline.
+API and command changes also exercise the production-router scope sweep;
+declaring a command's HTTP operation in OpenAPI does not mount its handler.
 The durable isolation job provisions its own source scanner. Missing or failed
 scans are incomplete checks, never evidence of a clean architecture boundary;
 the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both

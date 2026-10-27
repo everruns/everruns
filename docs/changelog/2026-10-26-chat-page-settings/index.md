@@ -19,6 +19,9 @@ Existing-resource editors share **Before/After**, field-level **Undo**, **Undo a
 and **History**. Save and Undo reject stale revisions. Reviews survive navigation;
 model selections apply and undo atomically. Private profile history stays owner-only.
 
+Connected-account names, Sandbox Template labels, and your organization profile
+share the guarded review flow through REST and Chat.
+
 **New subchat** starts an independent conversation on the same assistant. Selecting
 it replaces the conversation. Full Chat shows one conversation; Command/Ctrl-J
 opens page-side Chat from an app page. Core Chat and subchats need no feature flag.

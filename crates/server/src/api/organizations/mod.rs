@@ -141,8 +141,7 @@ impl AppState {
 }
 
 impl AppState {
-    /// Domain context for the commands served on these routes (the org
-    /// egress allowlist). Commands resolve their path org themselves.
+    /// Domain context for organization settings and account metadata commands.
     pub fn ctx(&self, org: &crate::auth::ResolvedOrg) -> crate::domains::common::Ctx {
         crate::domains::common::Ctx::minimal(
             everruns_core::Caller::from(org),
@@ -170,6 +169,9 @@ pub use crate::domains::organizations::types::UpdateOrganizationRequest;
 /// Build organization routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<crate::domains::organizations::provider_accounts::GetOrganizationAccount>()
+        .command::<crate::domains::organizations::provider_accounts::UpdateOrganizationAccountName>(
+        )
         .route(
             "/v1/orgs",
             get(list_organizations).post(create_organization),

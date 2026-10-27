@@ -2,6 +2,8 @@
 
 ## 2026-10-27
 
+- Mounted the page-review metadata routes and selected the production-router scope sweep for API and command changes, including structured missing-resource checks for both read and write routes. See [CI Build Time](project/ci-build-time.md).
+
 - History and manager-context changes now select their REST/command integration contract before merge, including the first mutation's restorable baseline. See [CI Build Time](project/ci-build-time.md).
 
 ## 2026-10-26
