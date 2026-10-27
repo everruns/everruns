@@ -169,7 +169,8 @@ Daytona desktops are recorded as video. Recording starts when the agent first us
 a turn and stops when the Session goes idle. The video is saved read-only to
 `/recordings/desktop-<start time>.mp4` in the Session's files, so it stays after the Sandbox is
 deleted, and the chat shows it under the turn with a player and a download link. Recordings count
-toward the Session's file storage, and one larger than 100 MB is not kept. Set `record` to `false`
+toward the Session's file storage, and one larger than the per-file limit (2 GB with object
+storage, 100 MB without) is not kept. Set `record` to `false`
 in the desktop settings to turn recording off:
 
 ```json

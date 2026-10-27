@@ -839,9 +839,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             return Ok(Vec::new());
         }
         let api_key = get_managed_api_key(context, &config.credential).await?;
-        crate::daytona::recording::collect(&build_client(api_key, config), &instance.external_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)
+        crate::daytona::recording::collect(
+            std::sync::Arc::new(build_client(api_key, config)),
+            &instance.external_id,
+        )
+        .await
+        .map_err(ToolExecutionResult::tool_error)
     }
 
     async fn pause(

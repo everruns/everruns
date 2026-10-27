@@ -793,6 +793,41 @@ impl DaytonaClient {
             .await
     }
 
+    /// [`Self::file_download`] as a stream of chunks, so a large file (a
+    /// desktop recording) is never held whole in memory.
+    pub async fn file_download_stream(
+        &self,
+        sandbox_id: &str,
+        path: &str,
+    ) -> Result<futures::stream::BoxStream<'static, Result<Vec<u8>, String>>, String> {
+        use futures::StreamExt;
+        let encoded = urlencoding::encode(path);
+        let url = format!(
+            "{}/{sandbox_id}/files/download?path={encoded}",
+            self.toolbox_base
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&self.api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to connect to sandbox: {e}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(format!("Sandbox API error ({status}): {body_text}"));
+        }
+        Ok(resp
+            .bytes_stream()
+            .map(|chunk| {
+                chunk
+                    .map(|bytes| bytes.to_vec())
+                    .map_err(|e| format!("Failed to read file bytes: {e}"))
+            })
+            .boxed())
+    }
+
     pub async fn file_upload(
         &self,
         sandbox_id: &str,
