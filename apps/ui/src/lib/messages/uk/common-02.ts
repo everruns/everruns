@@ -104,7 +104,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Blocked domains": "Заблоковані домени",
   "Blocked hosts": "Заблоковані хости",
   "Bosnian (Bosnia)": "боснійська (Боснія)",
-  Branch: "Відділення",
+  Branch: "Гілка",
   Branding: "Представлення",
   "Brave Search (any key)": "Brave Search (будь-яка клавіша)",
   Breadcrumb: "Навігаційний ланцюжок",

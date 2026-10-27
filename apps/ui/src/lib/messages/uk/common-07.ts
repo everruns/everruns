@@ -326,7 +326,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Сонце випромінює менше фіолетового світла, ніж синього",
   "The timeline could not be loaded": "Не вдалося завантажити шкалу часу",
   "The Workspace-tab panel, in the four sandbox states a session can actually have. The capability rows are the point: they answer “can this session run a build?” before a run proves it cannot.":
-    "Панель вкладок «Робоча область» у чотирьох станах ізольованого програмного середовища, які може мати сеанс. Рядки можливостей — це суть: вони відповідають «чи може ця сесія запускати збірку?» перш ніж пробіжка доведе, що це неможливо.",
+    "Панель вкладок «Робоча область» у чотирьох станах ізольованого програмного середовища, які може мати сеанс. Рядки можливостей — це суть: вони відповідають «чи може ця сесія запускати збірку?» перш ніж запуск доведе, що це неможливо.",
   Theme: "Тема",
   "These are the exact badge components used inside the session header.":
     "Це точні компоненти значка, які використовуються в заголовку сеансу.",

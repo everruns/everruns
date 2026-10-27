@@ -106,7 +106,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Move to": "Перейти до",
   ms: "мс",
   "Multi-turn transcript with the turn navigation rail (md+ screens). Hover a marker on the right gutter to preview the turn; click to jump. The active turn fills with the gold accent as you scroll.":
-    "Багатоповоротна транскрипція з поворотною навігаційною рейкою (екрани md+). Наведіть курсор на правий жолоб, щоб переглянути поворот; натисніть, щоб стрибнути. Активний поворот заповнюється золотим акцентом під час прокручування.",
+    "Багатоходова транскрипція з покроковою навігаційною рейкою (екрани md+). Наведіть курсор на правий жолоб, щоб переглянути хід; натисніть, щоб стрибнути. Активний хід виділяється золотим кольором під час прокручування.",
   "Multiple Sessions (Stacked)": "Кілька сеансів (складені)",
   "My Account": "Мій акаунт",
   "My agent experience": "Мій досвід роботи з агентами",
@@ -133,10 +133,10 @@ export const messages: Readonly<Record<string, string>> = {
   Never: "Ніколи",
   "Never returned by any provider, for every agent in this organization. Agents can add more.":
     "Ніколи не повернуто жодним постачальником для кожного агента в цій організації. Агенти можуть додати більше.",
-  "Never run": "Ніколи не біжи",
+  "Never run": "Ще не запускалося",
   "Never synced": "Ніколи не синхронізовано",
   new: "новий",
-  New: "Новинка",
+  New: "Створити",
   "New agent": "Новий агент",
   "New chat": "Новий чат",
   "New collection": "Нова колекція",
@@ -212,7 +212,7 @@ export const messages: Readonly<Record<string, string>> = {
   "No results": "Немає результатів",
   "No results for “": 'Немає результатів для "',
   "No results found": "Результатів не знайдено",
-  "No runs yet": "Пробігів ще немає",
+  "No runs yet": "Запусків ще немає",
   "No Sandbox is lost, failed, idle while running, or stuck in cleanup.":
     "Жодна пісочниця не втрачається, не виходить з ладу, не працює під час роботи чи не застряє під час очищення.",
   "No Sandbox ran in this window": "У цьому вікні пісочниця не запускалася",
@@ -267,7 +267,7 @@ export const messages: Readonly<Record<string, string>> = {
   Notifications: "Сповіщення",
   "Notifications, {value0} unread, {value1} unresolved issues":
     "Сповіщення, {value0} непрочитаних, {value1} невирішених проблем",
-  "Notify when a run needs attention.": "Повідомити, коли пробіг потребує уваги.",
+  "Notify when a run needs attention.": "Повідомити, коли запуск потребує уваги.",
   now: "зараз",
   Now: "Зараз",
   NVIDIA: "NVIDIA",

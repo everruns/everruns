@@ -88,7 +88,7 @@ export const messages: Readonly<Record<string, string>> = {
   "stdio (local process)": "stdio (локальний процес)",
   "System Prompt": "Системне повідомлення",
   "System prompt addition": "Доповнення системних інструкцій",
-  "System Prompt Addition": "Додавання системної підказки",
+  "System Prompt Addition": "Доповнення системних інструкцій",
   "The capability could not be loaded: {value0}": "Не вдалося завантажити можливість: {value0}",
   "This capability does not contribute any system prompt additions or tools.":
     "Ця можливість не вносить жодних доповнень системних інструкцій чи інструментів.",
