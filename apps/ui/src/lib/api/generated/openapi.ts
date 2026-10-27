@@ -7375,6 +7375,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/system/doctor": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Check the whole install */
+    get: operations["run_system_doctor"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/task-webhooks": {
     parameters: {
       query?: never;
@@ -10625,6 +10642,19 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description The part of the install a check covers. The order is the display order.
+     * @enum {string}
+     */
+    CheckArea:
+      | "control_plane"
+      | "database"
+      | "workers"
+      | "security"
+      | "messaging"
+      | "storage"
+      | "observability"
+      | "models";
     /** @description Request to check a provider credential without storing it. */
     CheckCredentialsRequest: {
       /**
@@ -10652,6 +10682,12 @@ export interface components {
       /** @description Whether the name is available for use. */
       available: boolean;
     };
+    /**
+     * @description How a check came out. Ordered from best to worst so the report's verdict
+     *     is the maximum.
+     * @enum {string}
+     */
+    CheckStatus: "ok" | "info" | "warning" | "problem";
     /** @description Circuit breaker response */
     CircuitBreakerResponse: {
       /**
@@ -13279,6 +13315,76 @@ export interface components {
       data: components["schemas"]["DlqEntryResponse"][];
       /** @description Total number of items matching the query, across all pages. */
       total: number;
+    };
+    /**
+     * @description One check's outcome, written for an operator: what is true, why it
+     *     matters, and what to do.
+     */
+    DoctorCheck: {
+      area: components["schemas"]["CheckArea"];
+      /** @description How to fix it. */
+      fix?: string | null;
+      /**
+       * @description Stable identifier, `area.name`.
+       * @example database.migrations
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the check observed this.
+       */
+      observed_at: string;
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description What the check found, in one sentence.
+       * @example All 14 migrations are applied.
+       */
+      summary: string;
+      /**
+       * @description Short name of what is checked.
+       * @example Migrations applied
+       */
+      title: string;
+      /** @description What goes wrong if this is not fixed. */
+      why?: string | null;
+    };
+    /** @description The whole install's health. */
+    DoctorReport: {
+      /**
+       * @description Authentication mode.
+       * @example full
+       */
+      auth_mode: string;
+      /**
+       * Format: date-time
+       * @description When the checks ran.
+       */
+      checked_at: string;
+      /** @description Every check, problems first. */
+      checks: components["schemas"]["DoctorCheck"][];
+      /**
+       * @description Deployment grade (`dev`, `poc`, `preview`, `prod`). Decides how strict
+       *     the security checks are.
+       * @example prod
+       */
+      grade: string;
+      /**
+       * @description What the doctor found this install is made of, one fact per entry.
+       * @example [
+       *       "Postgres 16.4",
+       *       "3 workers",
+       *       "NATS",
+       *       "S3 blob storage"
+       *     ]
+       */
+      setup: string[];
+      /** @description The worst status of any check. */
+      status: components["schemas"]["CheckStatus"];
+      /**
+       * @description Server build version.
+       * @example 0.50.0
+       */
+      version: string;
     };
     /** @description A GitHub trigger to create once GitHub is connected on the agent. */
     DraftGitHubTrigger: {
@@ -50729,6 +50835,54 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  run_system_doctor: {
+    parameters: {
+      query?: {
+        /** @description Run every check now instead of returning the report from the last minute */
+        refresh?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Health of every part of the install */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DoctorReport"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Platform user access is required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The system doctor is not available */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

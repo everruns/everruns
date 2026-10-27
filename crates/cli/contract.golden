@@ -359,6 +359,7 @@ skills list	--context-revision --include-archived --reason --search
 skills update	--context-revision --id --reason --skill-md --status <id>
 skills usage	--context-revision --reason
 status
+system doctor	--context-revision --reason --refresh
 system health	--context-revision --reason
 tasks list	--context-revision --created-after --kind --limit --reason --root-session-id --state
 user connections list	--context-revision --provider --reason
