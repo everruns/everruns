@@ -374,7 +374,9 @@ impl<H: ActorHosts> SessionActorDriver<H> {
             // A tail too large to transfer failed every lease here, ahead of
             // the guard, so one turn re-read ~200 MB every few seconds for
             // hours. The guard seals it from its first event instead.
-            Err(error) if poisoned && error.is_non_retryable() => lease.read_tail_head().await?,
+            Err(error) if poisoned && error.is_non_retryable() => {
+                lease.read_tail_head().await?.events
+            }
             Err(error) => return Err(error),
         };
         let started_at = tail
