@@ -172,6 +172,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # OpenTelemetry (exporter deps are activated only by everruns-core's
 # observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.33"
+opentelemetry-http = "0.33"
+http = "1"
 opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.33", features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = "0.34"

@@ -33,11 +33,14 @@ if printf '%s' "$CORE_PACKAGE" | jq -e '.features | has("llm-tests")' >/dev/null
   fail "everruns-core must not expose the dead llm-tests feature"
 fi
 
+# bytes/http/opentelemetry-http are OTLP host-adapter types, optional under otel;
+# the shipped default kernel and facade dependency-tree checks below remain strict.
 EXPECTED_NORMAL='a2a-client-lf
 a2a-lf
 anyhow
 async-trait
 base64
+bytes
 chrono
 chrono-tz
 cron
@@ -47,6 +50,7 @@ fs2
 futures
 futures-util
 globset
+http
 ignore
 inventory
 jsonschema
@@ -55,6 +59,7 @@ landlock
 libc
 moka
 opentelemetry
+opentelemetry-http
 opentelemetry-otlp
 opentelemetry_sdk
 rand
@@ -89,16 +94,19 @@ fi
 OPTIONAL=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select((.kind // "normal") == "normal" and .optional) | .name' | sort -u)
 EXPECTED_OPTIONAL='a2a-client-lf
 a2a-lf
+bytes
 chrono-tz
 eventsource-stream
 fs2
 futures-util
+http
 ignore
 jsonwebtoken
 landlock
 libc
 moka
 opentelemetry
+opentelemetry-http
 opentelemetry-otlp
 opentelemetry_sdk
 reqwest

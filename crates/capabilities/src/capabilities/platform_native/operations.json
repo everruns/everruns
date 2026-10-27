@@ -11627,6 +11627,39 @@
     "read_only": true
   },
   {
+    "description": "Read safe destination metadata. Never returns receiver authentication.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_tracing_destination_metadata",
+    "read_only": true
+  },
+  {
+    "description": "Read organization or agent trace routing without credentials.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_tracing_policy",
+    "read_only": true
+  },
+  {
     "description": "Get a single virtual user by ID.",
     "input_schema": {
       "description": "Get a single virtual user by ID.",
@@ -22758,6 +22791,81 @@
       "description": "Update a skill. Only provided fields are changed."
     },
     "name": "update_skill",
+    "read_only": false
+  },
+  {
+    "description": "Update safe destination metadata while preserving its receiver and current authentication.",
+    "input_schema": {
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "update_tracing_destination_metadata",
+    "read_only": false
+  },
+  {
+    "description": "Set organization or agent destinations for future turns. Requires organization settings authority; never accepts credentials.",
+    "input_schema": {
+      "$defs": {
+        "RoutingMode": {
+          "enum": [
+            "inherit",
+            "add",
+            "replace",
+            "off"
+          ],
+          "type": "string"
+        }
+      },
+      "properties": {
+        "destination_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expected_revision": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/RoutingMode"
+        }
+      },
+      "required": [
+        "id",
+        "mode",
+        "destination_ids"
+      ],
+      "type": "object"
+    },
+    "name": "update_tracing_policy",
     "read_only": false
   },
   {
