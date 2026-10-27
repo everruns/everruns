@@ -107,6 +107,8 @@ markkit = { version = "0.1.1", default-features = false, features = ["html", "do
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 http-body-util = "0.1"
+# Names this server replica in the system doctor (same crate the worker uses).
+hostname = "0.4"
 flate2.workspace = true
 tar.workspace = true
 # Mints ES256 personal-agent keys for the PACT tests (already linked via rustls).

@@ -64,13 +64,15 @@ setting is a `problem` on `prod` and a `warning` on `dev`.
 
 The list lives in
 [`domains/system/doctor/checks/`](../../crates/server/src/domains/system/doctor/checks),
-one module per area: control plane, database (reachable, version,
+one module per area: control plane (public address, utility model, server
+replicas and their versions), database (reachable, version,
 migrations, pools, long transactions), workers (connected, authentication,
 workers turned away for a wrong token, versions and worker protocol, long
 drains, capacity, waiting sessions, dead letters, circuit breakers, and the
 workers' own reports), security (sign-in,
 session signing secret, encryption key, stored secrets readable and rotation
-finished), messaging (NATS, Valkey), file storage (an S3 write, read and
+finished), messaging (NATS, Valkey, both judged against the number of
+running servers), file storage (an S3 write, read and
 delete), observability (whether anything actually reads `/metrics`, traces,
 log level) and platform model keys.
 
@@ -101,9 +103,25 @@ NATS makes safe. Reports older than fifteen minutes are ignored.
 Refused worker calls are counted per server process, so a worker locked out
 by a wrong token shows up without reading the worker's log.
 
+## Server replicas
+
+Every server process writes a heartbeat to `system_instances` at start and
+every 30 seconds ([`instances`](../../crates/server/src/domains/system/doctor/instances.rs)):
+its version, newest migration, host name, and whether NATS and Valkey are
+set. A doctor run on any replica reads them all. That gives the replica
+checks: how many servers run and which stopped in the last hour, servers on
+different versions (a warning during a rollout, a problem after ten
+minutes), NATS and Valkey unset while several servers run (each polls the
+database; rate limits multiply), and servers that disagree on either.
+
+Seen within 90 seconds counts as running. Rows are kept after a process
+stops, so a restarted pod is a new row and a stopped one stays as history.
+The table has a `kind` column so other process types can join it; the egress
+proxy has no database access in the open-source build, so its replicas are
+covered where its control endpoint lives (the SaaS checks).
+
 ## Planned
 
-A table of server and egress-proxy replicas for version skew
-and "NATS needed with several servers", the System → Health page, chaining
+The System → Health page, chaining
 `everruns docker doctor` into it, an `everruns-server doctor` preflight, a
 Prometheus gauge per check, SaaS checks and the release gate.

@@ -410,3 +410,154 @@ async fn the_report_reads_versions_and_drains_from_the_registry() {
     );
     assert_eq!(check(&report, "workers.draining").status, CheckStatus::Info);
 }
+
+// --- server replicas -------------------------------------------------------
+
+use super::checks::messaging::{disagreement, nats_check, valkey_check};
+use super::checks::replicas::{Replicas, servers_check, versions_check as server_versions_check};
+use super::instances::{Instance, InstanceDetails, InstanceRow, KIND_SERVER, recent, record};
+use chrono::TimeDelta;
+
+fn replica(id: &str, version: &str, started_ago: i64, seen_ago: i64) -> InstanceRow {
+    let now = chrono::Utc::now();
+    InstanceRow {
+        id: id.to_string(),
+        hostname: Some(format!("host-{id}")),
+        version: version.to_string(),
+        schema_version: Some(20261027072427),
+        details: InstanceDetails::default(),
+        started_at: now - TimeDelta::minutes(started_ago),
+        last_seen_at: now - TimeDelta::seconds(seen_ago),
+    }
+}
+
+fn replicas(rows: Vec<InstanceRow>) -> Replicas {
+    Replicas::from_rows(chrono::Utc::now(), rows)
+}
+
+#[test]
+fn stopped_servers_are_listed_and_a_missing_own_beat_is_flagged() {
+    let seen = replicas(vec![
+        replica("a", "1.0.0", 60, 5),
+        replica("b", "1.0.0", 60, 600),
+    ]);
+    let check = servers_check(&seen, "a", TimeDelta::minutes(5));
+    assert_eq!(check.status, CheckStatus::Ok);
+    assert!(
+        check.summary.contains("One server is running."),
+        "{}",
+        check.summary
+    );
+    assert!(
+        check
+            .summary
+            .contains("1 server stopped in the last hour: host-b"),
+        "{}",
+        check.summary
+    );
+
+    // This process just started: its first beat may not be in yet.
+    assert_eq!(
+        servers_check(&seen, "c", TimeDelta::seconds(10)).status,
+        CheckStatus::Ok
+    );
+    assert_eq!(
+        servers_check(&seen, "c", TimeDelta::minutes(5)).status,
+        CheckStatus::Warning
+    );
+    assert_eq!(seen.live_count("c"), 2);
+    assert_eq!(seen.live_count("a"), 1);
+}
+
+#[test]
+fn server_version_skew_is_a_warning_during_a_rollout_and_a_problem_after() {
+    let same = replicas(vec![
+        replica("a", "1.0.0", 60, 5),
+        replica("b", "1.0.0", 30, 5),
+    ]);
+    assert_eq!(server_versions_check(&same).status, CheckStatus::Ok);
+
+    let rolling = replicas(vec![
+        replica("a", "1.0.0", 60, 5),
+        replica("b", "1.1.0", 3, 5),
+    ]);
+    let check = server_versions_check(&rolling);
+    assert_eq!(check.status, CheckStatus::Warning);
+    assert!(
+        check
+            .summary
+            .contains("1 server on 1.0.0, 1 server on 1.1.0"),
+        "{}",
+        check.summary
+    );
+
+    let stuck = replicas(vec![
+        replica("a", "1.0.0", 60, 5),
+        replica("b", "1.1.0", 25, 5),
+    ]);
+    assert_eq!(server_versions_check(&stuck).status, CheckStatus::Problem);
+
+    // A stopped replica on another version is not skew.
+    let gone = replicas(vec![
+        replica("a", "1.1.0", 60, 5),
+        replica("b", "1.0.0", 60, 900),
+    ]);
+    assert_eq!(server_versions_check(&gone).status, CheckStatus::Ok);
+}
+
+#[tokio::test]
+async fn several_servers_need_nats_and_valkey_and_must_agree_on_them() {
+    assert_eq!(nats_check(None, 1).await.status, CheckStatus::Info);
+    assert_eq!(nats_check(None, 2).await.status, CheckStatus::Warning);
+    let valkey = valkey_check(None, 3).await;
+    assert_eq!(valkey.status, CheckStatus::Warning);
+    assert!(
+        valkey
+            .why
+            .as_deref()
+            .unwrap_or_default()
+            .contains("3 times")
+    );
+
+    let mut with = replica("a", "1.0.0", 60, 5);
+    with.details.nats = true;
+    let without = replica("b", "1.0.0", 60, 5);
+    let live = [with, without];
+    let ok = DoctorCheck::new(CheckArea::Messaging, "messaging.nats", "NATS").ok("Connected.");
+    let split = disagreement(ok, &live, "NATS", |row| row.details.nats);
+    assert_eq!(split.status, CheckStatus::Warning);
+    assert!(
+        split.summary.contains("host-a use it, host-b do not"),
+        "{}",
+        split.summary
+    );
+}
+
+#[tokio::test]
+async fn heartbeats_round_trip_and_a_running_doctor_sees_its_own_server() {
+    let db = StorageBackend::test_database();
+    let this = Instance::this_server();
+    record(db.pool(), this).await.unwrap();
+    // A second beat updates the row in place.
+    record(db.pool(), this).await.unwrap();
+    let (now, rows) = recent(db.pool(), KIND_SERVER, TimeDelta::hours(1))
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, this.id);
+    assert_eq!(rows[0].version, env!("CARGO_PKG_VERSION"));
+    assert!(rows[0].schema_version.is_some());
+    assert!(now - rows[0].last_seen_at < TimeDelta::seconds(30));
+
+    let doctor = SystemDoctor::new(Arc::new(db), None, None, env(DeploymentGrade::Dev));
+    let report = doctor.run().await;
+    let servers = check(&report, "control_plane.servers");
+    assert_eq!(servers.status, CheckStatus::Ok);
+    assert_eq!(servers.summary, "One server is running.");
+    assert!(
+        report
+            .checks
+            .iter()
+            .all(|c| c.id != "control_plane.server_versions")
+    );
+}

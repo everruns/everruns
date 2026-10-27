@@ -15,6 +15,7 @@
 
 mod checks;
 mod env;
+pub mod instances;
 pub mod types;
 
 #[cfg(test)]
