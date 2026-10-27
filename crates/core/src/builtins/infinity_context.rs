@@ -385,9 +385,8 @@ fn estimate_message_tokens(message: &RuntimeMessage) -> usize {
                     + image.base64.as_ref().map_or(50, String::len)
                     + image.media_type.as_ref().map_or(0, String::len)
             }
-            ContentPart::ImageFile(file) => {
-                file.image_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
-            }
+            // The model receives the image, not the reference: about 1,600 tokens.
+            ContentPart::ImageFile(_) => 1_600 * TOKEN_CHARS,
             ContentPart::File(file) => {
                 file.file_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
             }

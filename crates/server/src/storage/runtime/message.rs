@@ -267,19 +267,19 @@ fn event_to_message(
 /// copy that serialized the whole part list into the result text left the
 /// model with base64 inside a truncated string and no screenshot.
 pub(crate) fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessage {
-    // Separate text and image parts from the result content
-    let mut images: Vec<everruns_contracts::tool_types::ToolResultImage> = Vec::new();
+    // Separate text from media. Media (inline images, and screenshots the
+    // server moved to the image store as `image_file`) ride as their own parts
+    // after the result, in their original order.
+    let mut media: Vec<ContentPart> = Vec::new();
     let metadata = tool_result_metadata(&data);
     let result: Option<serde_json::Value> = data.result.map(|parts| {
-        // Collect image parts
         for part in &parts {
-            if let ContentPart::Image(img) = part
-                && let (Some(b64), Some(mt)) = (&img.base64, &img.media_type)
-            {
-                images.push(everruns_contracts::tool_types::ToolResultImage {
-                    base64: b64.clone(),
-                    media_type: mt.clone(),
-                });
+            match part {
+                ContentPart::Image(img) if img.base64.is_some() && img.media_type.is_some() => {
+                    media.push(part.clone());
+                }
+                ContentPart::ImageFile(_) => media.push(part.clone()),
+                _ => {}
             }
         }
         // For simple text results, extract just the text
@@ -292,7 +292,7 @@ pub(crate) fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessa
         {
             return serde_json::Value::String(t.text.clone());
         }
-        // Fall back to serializing text parts only (images handled separately)
+        // Fall back to serializing text parts only (media handled separately)
         if !text_parts.is_empty() {
             serde_json::to_value(&text_parts).unwrap_or_default()
         } else {
@@ -300,10 +300,12 @@ pub(crate) fn tool_completed_to_message(data: ToolCompletedData) -> RuntimeMessa
         }
     });
 
-    let mut message = if images.is_empty() {
+    let mut message = if media.is_empty() {
         RuntimeMessage::tool_result(&data.tool_call_id, result, data.error)
     } else {
-        RuntimeMessage::tool_result_with_images(&data.tool_call_id, result, images)
+        let mut message = RuntimeMessage::tool_result(&data.tool_call_id, result, None);
+        message.content.extend(media);
+        message
     };
     message.metadata = metadata;
     message

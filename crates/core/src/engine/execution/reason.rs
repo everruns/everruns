@@ -2177,25 +2177,25 @@ impl ReasonAtom {
             "ReasonAtom: resolving image_file references"
         );
 
-        // Resolve each image
-        for image_id in image_ids {
-            match resolver.resolve_image(image_id).await {
-                Ok(Some(image)) => {
-                    resolved.insert(image_id, image);
+        // One batch: a turn can reference many screenshots, and a remote
+        // worker would otherwise pay a round trip per image.
+        match resolver.resolve_images(&image_ids).await {
+            Ok(images) => {
+                for image_id in &image_ids {
+                    if !images.contains_key(image_id) {
+                        tracing::warn!(
+                            image_id = %image_id,
+                            "ReasonAtom: image not found during resolution"
+                        );
+                    }
                 }
-                Ok(None) => {
-                    tracing::warn!(
-                        image_id = %image_id,
-                        "ReasonAtom: image not found during resolution"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        image_id = %image_id,
-                        error = %e,
-                        "ReasonAtom: failed to resolve image"
-                    );
-                }
+                resolved = images;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "ReasonAtom: failed to resolve images"
+                );
             }
         }
 
