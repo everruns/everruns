@@ -24,6 +24,8 @@ Key values are listed on their own. A deleted schedule stays on the session as
 fire again, and the agent's `list_schedules` tool no longer returns it.
 Canceling a schedule still only disables it.
 
+![Files tab with an active schedule and a deleted schedule](./files-values-schedules@2x.png)
+
 ```json
 {
   "description": "Recheck the homepage",
