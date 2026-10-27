@@ -2,6 +2,8 @@
 
 ## 2026-10-27
 
+- Added [Slate Design System Pages](ui/design-system.md): Slate published at everruns.com/docs/design-system/ from the app's own tokens and Facet icons, replacing the retired design tool export as the starting point for redesigns.
+
 - Added [Framework provider-native batches](framework/batch-model-requests.md): explicit offline completions, scoped resumable tickets, uncertain submission reconciliation, and native Anthropic lifecycle support.
 
 - Mounted the page-review metadata routes and selected the production-router scope sweep for API and command changes, including structured missing-resource checks for both read and write routes. See [CI Build Time](project/ci-build-time.md).

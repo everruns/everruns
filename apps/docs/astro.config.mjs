@@ -462,6 +462,19 @@ export default defineConfig({
                 { label: "Event Reference", slug: "event-reference" },
                 { label: "ID Schema", slug: "advanced/id-schema" },
                 {
+                  // Slate, the UI design system: knowledge/ui/design-system.md.
+                  label: "Design System",
+                  collapsed: true,
+                  items: [
+                    { label: "Overview", slug: "design-system" },
+                    { label: "Foundations", slug: "design-system/foundations" },
+                    { label: "Components", slug: "design-system/components" },
+                    { label: "Page Layouts", slug: "design-system/layouts" },
+                    { label: "Icons and Brand", slug: "design-system/icons" },
+                    { label: "Writing", slug: "design-system/writing" },
+                  ],
+                },
+                {
                   // Generated from the everruns binary; see crates/cli/src/reference.rs.
                   label: "CLI Commands",
                   collapsed: true,
@@ -805,6 +818,12 @@ export default defineConfig({
               paths: ["event-reference", "reference/cli/**"],
             },
             {
+              label: "Design system",
+              description:
+                "Slate, the Everruns UI design system: tokens, components, page layouts, icons, and UI writing rules",
+              paths: ["design-system/**"],
+            },
+            {
               label: "Operations",
               description: "environment variables, admin container, and SRE runbooks",
               paths: ["sre/**"],
@@ -876,6 +895,7 @@ export default defineConfig({
             "reference/cli/**",
             "capabilities/platform-management",
             "changelog/**",
+            "design-system/**",
           ],
         }),
         // Validate internal links and hash anchors at build time so broken

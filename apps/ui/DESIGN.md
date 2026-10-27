@@ -126,14 +126,13 @@ truth); the prose below explains how to apply them.
 
 ## Reference and authority
 
-Use the [Everruns design project](https://claude.ai/design/p/019e0a57-7d4b-70aa-a3c2-8c3d3746126e)
-as a visual reference for Slate's page archetypes, density, and component anatomy. Exported design
-project archives are snapshots for review; they are not copied into the application and do not
-override repository sources.
-
-The reviewed ZIP export is pinned by filename, SHA-256 checksum, and review date in
-`design-reference.json`. Update that manifest whenever a newer export is adopted, then reconcile
-intent here and verify both `/dev/design-reference` and `/dev/ui-components`.
+The public [Slate design system pages](https://everruns.com/docs/design-system/) (source:
+`docs/design-system/` and `apps/docs/src/components/design-system/`) show the foundations,
+components, page layouts, icons, and writing rules as live examples. They read their tokens,
+dot grid, motion, and Facet icons from this app at build time, so those cannot drift; the
+example markup reproduces production components by hand. A redesign starts there, and the
+pull request that ships it updates the matching page. Intent and the maintenance contract:
+`knowledge/ui/design-system.md`.
 
 When references disagree, use this order:
 
@@ -141,10 +140,10 @@ When references disagree, use this order:
 2. This file for visual intent, hierarchy, and composition rules.
 3. Production components in `src/components/` for exact behavior and component APIs.
 4. `/dev/ui-components` for an interactive rendering of those production components.
-5. The external design project for visual comparison and page-level examples.
+5. The design system pages for page-level examples and the starting point of new designs.
 
-The external project should stay recognizably close to the product, but application code remains
-canonical. Reconcile meaningful drift here rather than introducing parallel CSS or mock components.
+Reconcile meaningful drift in the code and this file, then update the design system page,
+rather than introducing parallel CSS or mock components in the app.
 
 ## Overview
 
@@ -323,8 +322,8 @@ primary marker and a faint primary tint, with section spacing instead of repeate
   navy-to-gold sequence remains stable in each theme.
 - **Do** keep white text on saturated destructive fills, black scrims, and the
   white document canvas used for file previews.
-- **Don't** place dark text on a gold surface or use gold for body text, its
-  contrast is too low for WCAG AA.
+- **Don't** use gold for body text or as a text surface. The one solid gold fill is
+  the create button, whose label is navy (`primary`); other gold uses are tints.
 - **Don't** add decorative shadows to content cards or exceed `shadow-md` on overlays.
 - **Do** edit `src/app/design-system.css` and this file together, they must
   stay in sync.
