@@ -33,3 +33,6 @@ display_name = "Підтримка"
 ![Ukrainian interface language in Account settings](./language-settings@2x.png)
 
 ![Agent display-name translations for Ukrainian and German](./agent-localization@2x.png)
+
+Capability categories are translated in the catalog, filters, agent picker and
+detail pages. Category identifiers and custom category names stay stable.
