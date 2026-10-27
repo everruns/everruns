@@ -504,7 +504,10 @@ export default function OrgSetupPage() {
         currentIndex={arc.stepIndex(1)}
         stepLabel={arc.stepLabel(1)}
         brand={{
-          eyebrow: `Step ${arc.stepIndex(1) + 1} / ${arc.steps.length}`,
+          eyebrow: ui("Step {current} / {total}", {
+            current: arc.stepIndex(1) + 1,
+            total: arc.steps.length,
+          }),
           headline: "Bring your own model. Keys encrypted at rest.",
           features: [
             { label: ui("Durable execution engine"), done: true },

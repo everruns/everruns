@@ -253,19 +253,41 @@ pub enum BackendLocale {
 pub fn resolve_backend_locale(locale: Option<&str>) -> BackendLocale {
     match locale
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.replace('_', "-").to_ascii_lowercase())
+        .and_then(|value| value.split(['-', '_']).next())
     {
-        Some(value) if value == "uk" || value.starts_with("uk-") => BackendLocale::Uk,
+        Some(language) if language.eq_ignore_ascii_case("uk") => BackendLocale::Uk,
         _ => BackendLocale::En,
     }
 }
 
-pub struct BackendStrings {
+/// Control-plane cancellation copy, separate from the kernel's activity catalog
+/// so Engine/Wasm applications do not retain unused platform messages.
+pub struct CancellationStrings {
     pub turn_cancelled: &'static str,
     pub no_turn_running: &'static str,
     pub cancellation_reason: &'static str,
     pub cancellation_message: &'static str,
+}
+
+/// Localized deterministic session-cancellation responses and notices.
+pub fn cancellation_strings(locale: Option<&str>) -> &'static CancellationStrings {
+    match resolve_backend_locale(locale) {
+        BackendLocale::En => &CancellationStrings {
+            turn_cancelled: "Turn cancelled successfully",
+            no_turn_running: "No turn currently running",
+            cancellation_reason: "User requested cancellation",
+            cancellation_message: "User requested to cancel the work.",
+        },
+        BackendLocale::Uk => &CancellationStrings {
+            turn_cancelled: "Виконання успішно скасовано",
+            no_turn_running: "Наразі нічого не виконується",
+            cancellation_reason: "Користувач попросив скасувати виконання",
+            cancellation_message: "Користувач попросив скасувати роботу.",
+        },
+    }
+}
+
+pub struct BackendStrings {
     pub working: &'static str,
     pub current_directory: &'static str,
     pub and_more_actions: &'static str,
@@ -276,10 +298,6 @@ pub struct BackendStrings {
 }
 
 const EN_STRINGS: BackendStrings = BackendStrings {
-    turn_cancelled: "Turn cancelled successfully",
-    no_turn_running: "No turn currently running",
-    cancellation_reason: "User requested cancellation",
-    cancellation_message: "User requested to cancel the work.",
     working: "Working",
     current_directory: "current directory",
     and_more_actions: "and {count} more actions",
@@ -290,10 +308,6 @@ const EN_STRINGS: BackendStrings = BackendStrings {
 };
 
 const UK_STRINGS: BackendStrings = BackendStrings {
-    turn_cancelled: "Виконання успішно скасовано",
-    no_turn_running: "Наразі нічого не виконується",
-    cancellation_reason: "Користувач попросив скасувати виконання",
-    cancellation_message: "Користувач попросив скасувати роботу.",
     working: "Працюю",
     current_directory: "поточній директорії",
     and_more_actions: "і ще {count} дій",
@@ -458,5 +472,13 @@ mod display_localization_tests {
             );
         }
         assert_eq!(resolve_backend_locale(Some("UK_ua")), BackendLocale::Uk);
+        assert_eq!(
+            cancellation_strings(Some("UK_ua")).turn_cancelled,
+            "Виконання успішно скасовано"
+        );
+        assert_eq!(
+            cancellation_strings(Some("de")).turn_cancelled,
+            "Turn cancelled successfully"
+        );
     }
 }

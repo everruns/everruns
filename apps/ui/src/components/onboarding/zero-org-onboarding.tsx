@@ -120,7 +120,10 @@ export function ZeroOrgOnboarding({
         currentIndex={arc.stepIndex(0)}
         stepLabel={arc.stepLabel(0)}
         brand={{
-          eyebrow: `Step ${arc.stepIndex(0) + 1} / ${arc.steps.length}`,
+          eyebrow: ui("Step {current} / {total}", {
+            current: arc.stepIndex(0) + 1,
+            total: arc.steps.length,
+          }),
           headline: "Your workspace for agents, harnesses, and durable runs.",
           // "What you'll get" checklist — fills in on later steps.
           features: [

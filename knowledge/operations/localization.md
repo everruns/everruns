@@ -171,6 +171,10 @@ It does not apply to:
 - logs
 - raw internal error messages
 
+Keep platform-only copy separate from kernel activity catalogs so portable
+Engine applications can discard unused translations. Shared localization changes
+must preserve the complete Worker upload-size budget, including JavaScript glue.
+
 ### String model
 
 Use stable message keys with parameter interpolation, for example:

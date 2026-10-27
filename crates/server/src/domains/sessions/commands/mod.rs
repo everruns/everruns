@@ -1018,7 +1018,7 @@ impl Command for CancelSession {
     async fn execute(self, ctx: &Ctx) -> Result<CancelTurnResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
-        let strings = everruns_core::localization::backend_strings(session.locale.as_deref());
+        let strings = everruns_core::localization::cancellation_strings(session.locale.as_deref());
 
         if session.status != crate::domains::sessions::record::SessionStatus::Active {
             return Ok(CancelTurnResponse {

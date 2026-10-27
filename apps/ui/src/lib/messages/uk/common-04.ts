@@ -1,6 +1,18 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
   "Step {current} of {total}": "Крок {current} з {total}",
+  "Step {current} / {total}": "Крок {current} / {total}",
+  "Every step persisted: agents that survive restarts, deploys, and outages.":
+    "Кожен крок зберігається: агенти продовжують роботу після перезапусків, розгортань і збоїв.",
+  "Your workspace for agents, harnesses, and durable runs.":
+    "Ваш робочий простір для агентів, обв’язок і надійного виконання.",
+  "A verified identity is the first durable link in the chain.":
+    "Підтверджена особа — перша надійна ланка в ланцюжку.",
+  "Deploy your first agent and keep it running through restarts, deploys, and outages.":
+    "Розгорніть першого агента, який продовжуватиме працювати після перезапусків, розгортань і збоїв.",
+  "Bring your own model. Keys encrypted at rest.":
+    "Підключіть власну модель. Ключі зберігаються зашифрованими.",
+  "Setup complete": "Налаштування завершено",
   "Durable Agentic Harness · Unstoppable agents":
     "Надійна обв’язка агентів · Агенти, що не зупиняються",
   "Filipino (Philippines)": "Філіппінська (Філіппіни)",
