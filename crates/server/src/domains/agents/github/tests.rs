@@ -48,6 +48,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("gh-harness-{suffix}"),
                 display_name: None,
                 icon: None,
@@ -72,6 +73,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>) -> String {
     db.create_agent(
         DEFAULT_ORG_ID,
         CreateAgentRow {
+            localizations: Default::default(),
             public_id: public_id.clone(),
             name: format!("pr-summarizer-{suffix}"),
             display_name: Some("PR Summarizer".to_string()),

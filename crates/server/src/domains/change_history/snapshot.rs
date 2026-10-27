@@ -286,6 +286,16 @@ pub(super) fn matches_current(kind: EntityKind, recorded: &Value, current: &Valu
             );
         }
         if let Some(object) = value.as_object_mut() {
+            // Pre-localization revisions omit the newly defaulted empty map.
+            // Keep nonempty overlays in the comparison to detect concurrent edits.
+            if matches!(kind, EntityKind::Agent | EntityKind::Harness)
+                && object
+                    .get("localizations")
+                    .and_then(Value::as_object)
+                    .is_some_and(Map::is_empty)
+            {
+                object.remove("localizations");
+            }
             for locator in restore_locators(kind) {
                 object.remove(*locator);
             }
@@ -591,7 +601,14 @@ pub(super) fn restore_call(
             && !VOLATILE.contains(&field.as_str())
             && snapshot.get(field).is_none()
         {
-            params.insert(field.clone(), Value::Null);
+            let empty = if field == "localizations"
+                && matches!(kind, EntityKind::Agent | EntityKind::Harness)
+            {
+                serde_json::json!({})
+            } else {
+                Value::Null
+            };
+            params.insert(field.clone(), empty);
         }
     }
     if kind == EntityKind::Provider {

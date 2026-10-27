@@ -1,5 +1,7 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { ChannelIcon } from "@/components/agents/channels/channel-icon";
@@ -39,12 +41,14 @@ export function ChannelRow({
   activity: ChannelActivity | undefined;
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useDisplayLocale();
   const { channel, agent } = exposure;
   const state = channelState(exposure);
   const context = channelContext(channel);
   const sessions = activity?.sessions ?? 0;
   const daily = activity?.daily ?? EMPTY_DAYS;
-  const agentName = agent ? getDisplayName(agent) : "Unassigned";
+  const agentName = agent ? getDisplayName(agent, displayLocale) : "Unassigned";
   const lastSession = activity?.last_session_at ?? exposure.lastInvokedAt;
 
   return (
@@ -98,7 +102,10 @@ export function ChannelRow({
       <div className="min-w-0">
         <RunBars
           buckets={daily.map((count) => ({ runs: count, failed: 0 }))}
-          label={`${sessions} ${pluralize(sessions, "session")} in the last 7 days`}
+          label={ui("{value0} {value1} in the last 7 days", {
+            value0: sessions,
+            value1: pluralize(sessions, "session", undefined, displayLocale),
+          })}
           className="h-4"
         />
         <p className="mt-1 text-xs text-muted-foreground">{channelTrafficLine(activity)}</p>
@@ -128,11 +135,11 @@ export function ChannelRow({
             : "text-muted-foreground",
         )}
       >
-        {exposure.anonymous ? "Public access" : "Sign-in required"}
+        {exposure.anonymous ? ui("Public access") : ui("Sign-in required")}
       </p>
 
       <p className="text-muted-foreground">
-        {lastSession ? formatRelativeTime(lastSession) : "None in 7d"}
+        {lastSession ? formatRelativeTime(lastSession, displayLocale) : ui("None in 7d")}
       </p>
 
       <div className="lg:text-right">
@@ -153,6 +160,7 @@ function PublishButton({
   channelId: string;
   live: boolean;
 }) {
+  const ui = useUiTranslations();
   const publish = usePublishAgentChannel(agentId);
   const hint = channelPublishControl({
     enabled: true,
@@ -166,7 +174,7 @@ function PublishButton({
       title={hint}
       onClick={() => publish.mutate({ channelId, publish: !live })}
     >
-      {live ? "Unpublish" : "Publish"}
+      {live ? ui("Unpublish") : ui("Publish")}
     </Button>
   );
 }

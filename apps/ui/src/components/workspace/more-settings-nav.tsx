@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -21,9 +22,10 @@ export function MoreSettingsNav({
   onOpen: (id: string) => void;
   renderRow?: (row: MoreSettingsRow, content: ReactNode) => ReactNode;
 }) {
+  const ui = useUiTranslations();
   return (
-    <nav aria-label="More settings" className="flex flex-col pt-2 pb-4">
-      <p className="px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground">More</p>
+    <nav aria-label={ui("More settings")} className="flex flex-col pt-2 pb-4">
+      <p className="px-4 pt-2 pb-1 text-xs font-medium text-muted-foreground">{ui("More")}</p>
       {rows.map((row) => {
         const content = (
           <button

@@ -1,16 +1,18 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import { Layers } from "lucide-react";
 import type { SkillUsage } from "@/lib/api/types";
 
 export function SkillUsageRow({ usage }: { usage: SkillUsage | undefined }) {
+  const ui = useUiTranslations();
   const agents = usage?.agents ?? 0;
   const harnesses = usage?.harnesses ?? 0;
   const agentsLabel = `${agents} ${agents === 1 ? "agent" : "agents"}`;
   const harnessesLabel = `${harnesses} ${harnesses === 1 ? "harness" : "harnesses"}`;
   if (agents === 0 && harnesses === 0) {
-    return <div className="text-xs text-muted-foreground">Not in use</div>;
+    return <div className="text-xs text-muted-foreground">{ui("Not in use")}</div>;
   }
   return (
     <div className="flex items-center gap-3 text-xs text-muted-foreground">

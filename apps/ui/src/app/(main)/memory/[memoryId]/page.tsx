@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useFormattingLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { MemoryIcon } from "@/components/icons/facet-icons";
 import { use, useState } from "react";
 import { AlertCircle, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
@@ -33,6 +35,8 @@ import {
 import { formatDate, formatRelativeTime } from "@/lib/formatting";
 
 export default function MemoryDetailPage({ params }: { params: Promise<{ memoryId: string }> }) {
+  const { displayLocale } = useFormattingLocale();
+  const ui = useUiTranslations();
   const { memoryId } = use(params);
   const [editOpen, setEditOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -43,7 +47,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
   // `memory.manage` is the org settings permission, held by owners and admins.
   const { currentOrg } = useOrg();
   const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
-  usePageTitle(memory ? memory.name : null, "Memory");
+  usePageTitle(memory ? memory.name : null, ui("Memory"));
 
   if (isLoading) {
     return <MemoryDetailSkeleton />;
@@ -52,8 +56,8 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
   if (error || !memory) {
     return (
       <ResourceNotFound
-        title="Memory not found"
-        description="The requested memory is not available in the current organization."
+        title={ui("Memory not found")}
+        description={ui("The requested memory is not available in the current organization.")}
         backHref="/memory"
         backLabel="Back to Memory"
         resourceId={memoryId}
@@ -66,7 +70,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Memory", href: "/memory" }, { label: memory.name }]} />
+      <PageBreadcrumb items={[{ label: ui("Memory"), href: "/memory" }, { label: memory.name }]} />
 
       <PageMasthead
         icon={<MemoryIcon />}
@@ -75,13 +79,13 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
         badges={
           <>
             <Badge variant={getEntityStatusBadgeVariant(memory.status)}>{memory.status}</Badge>
-            {memory.is_readonly && <Badge variant="secondary">Read-only</Badge>}
+            {memory.is_readonly && <Badge variant="secondary">{ui("Read-only")}</Badge>}
           </>
         }
         meta={
           <>
             <span>
-              Source <span className="text-foreground">{sourceLabel(memory)}</span>
+              {ui("Source")} <span className="text-foreground">{sourceLabel(memory)}</span>
             </span>
           </>
         }
@@ -89,7 +93,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
           <>
             <Button variant="outline" onClick={() => setEditOpen(true)} disabled={isReadOnly}>
               <Pencil className="h-4 w-4" />
-              Edit
+              {ui("Edit")}
             </Button>
             {canSync && (
               <Button
@@ -102,7 +106,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
                 }
               >
                 <RefreshCw className="h-4 w-4" />
-                Sync
+                {ui("Sync")}
               </Button>
             )}
             <EntityActionsMenu
@@ -120,11 +124,11 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
         <PageMain>
           <Card>
             <CardHeader>
-              <CardTitle>Overview</CardTitle>
+              <CardTitle>{ui("Overview")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                {memory.description || "No description"}
+                {memory.description || ui("No description")}
               </p>
             </CardContent>
           </Card>
@@ -133,11 +137,11 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
         <PageRail>
           <Card>
             <CardHeader>
-              <CardTitle>Source</CardTitle>
+              <CardTitle>{ui("Source")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div>
-                <div className="font-medium">Provider</div>
+                <div className="font-medium">{ui("Provider")}</div>
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   {memory.source.provider === "github" ? (
                     <Github className="h-4 w-4" />
@@ -152,19 +156,19 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
               {memory.source.provider !== "manual" && (
                 <>
                   <div>
-                    <div className="font-medium">Branch</div>
+                    <div className="font-medium">{ui("Branch")}</div>
                     <div className="text-muted-foreground">{memory.source.branch}</div>
                   </div>
                   {memory.source.root_folder && (
                     <div>
-                      <div className="font-medium">Root Folder</div>
+                      <div className="font-medium">{ui("Root Folder")}</div>
                       <div className="font-mono text-muted-foreground">
                         {memory.source.root_folder}
                       </div>
                     </div>
                   )}
                   <div>
-                    <div className="font-medium">Resync</div>
+                    <div className="font-medium">{ui("Resync")}</div>
                     <div className="text-muted-foreground">{formatSyncInterval(memory)}</div>
                   </div>
                 </>
@@ -174,19 +178,23 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
 
           <Card>
             <CardHeader>
-              <CardTitle>Activity</CardTitle>
+              <CardTitle>{ui("Activity")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div>
-                <div className="font-medium">Created</div>
-                <div className="text-muted-foreground">{formatDate(memory.created_at)}</div>
+                <div className="font-medium">{ui("Created")}</div>
+                <div className="text-muted-foreground">
+                  {formatDate(memory.created_at, displayLocale)}
+                </div>
               </div>
               <div>
-                <div className="font-medium">Updated</div>
-                <div className="text-muted-foreground">{formatRelativeTime(memory.updated_at)}</div>
+                <div className="font-medium">{ui("Updated")}</div>
+                <div className="text-muted-foreground">
+                  {formatRelativeTime(memory.updated_at, displayLocale)}
+                </div>
               </div>
               <div>
-                <div className="font-medium">Sync</div>
+                <div className="font-medium">{ui("Sync")}</div>
                 <div className="text-muted-foreground">{formatSyncStatus(memory)}</div>
               </div>
               {memory.last_sync_error && (
@@ -197,8 +205,10 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
               )}
               {memory.archived_at && (
                 <div>
-                  <div className="font-medium">Archived</div>
-                  <div className="text-muted-foreground">{formatDate(memory.archived_at)}</div>
+                  <div className="font-medium">{ui("Archived")}</div>
+                  <div className="text-muted-foreground">
+                    {formatDate(memory.archived_at, displayLocale)}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -207,7 +217,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
       </PageColumns>
 
       <PageFooter>
-        <BackLink href="/memory">Back to Memory</BackLink>
+        <BackLink href="/memory">{ui("Back to Memory")}</BackLink>
       </PageFooter>
 
       <MemoryFormDialog

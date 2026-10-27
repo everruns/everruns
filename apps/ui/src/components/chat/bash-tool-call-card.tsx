@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, useEffect } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight, Terminal } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
@@ -75,6 +76,7 @@ export function BashToolResultDetails({
   showExitCode = true,
   exitCodeClassName,
 }: BashToolResultDetailsProps) {
+  const ui = useUiTranslations();
   const bashOutput = parseBashOutput(fullText);
 
   if (!bashOutput) {
@@ -120,7 +122,7 @@ export function BashToolResultDetails({
       )}
       {showExitCode && bashOutput.exit_code !== 0 && (
         <div className={cn("mt-3 text-[10px] text-destructive/70", exitCodeClassName)}>
-          exit code {bashOutput.exit_code}
+          {ui("exit code")} {bashOutput.exit_code}
         </div>
       )}
     </div>
@@ -134,6 +136,7 @@ export function BashToolResultDetails({
  * Output separates stdout/stderr with visual distinction.
  */
 export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashToolCallCardProps) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -207,7 +210,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
           <span className="inline-flex min-w-0 items-baseline gap-2 font-mono">
             <span className="truncate">
               <span className="opacity-50">$ </span>
-              {command ?? "bash"}
+              {command ?? ui("bash")}
             </span>
             {exitCodeLabel && (
               <span className={cn("flex-shrink-0 text-[10px] leading-none", failureClass)}>

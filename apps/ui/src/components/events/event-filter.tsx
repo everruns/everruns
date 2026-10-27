@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Filter } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -26,6 +27,7 @@ export function EventFilter({
   onlyLlmGeneration,
   onOnlyLlmGenerationChange,
 }: EventFilterProps) {
+  const ui = useUiTranslations();
   const activeFilterCount = (hideDeltaEvents ? 1 : 0) + (onlyLlmGeneration ? 1 : 0);
 
   return (
@@ -34,7 +36,7 @@ export function EventFilter({
         className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
       >
         <Filter className="size-3.5" />
-        Filter
+        {ui("Filter")}
         {activeFilterCount > 0 && (
           <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-xs">
             {activeFilterCount}
@@ -44,18 +46,18 @@ export function EventFilter({
       <DropdownMenuPositioner align="end">
         <DropdownMenuContent className="w-56">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Event Filters</DropdownMenuLabel>
+            <DropdownMenuLabel>{ui("Event Filters")}</DropdownMenuLabel>
             <DropdownMenuCheckboxItem
               checked={hideDeltaEvents}
               onCheckedChange={onHideDeltaEventsChange}
             >
-              Hide streaming events
+              {ui("Hide streaming events")}
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
               checked={onlyLlmGeneration}
               onCheckedChange={onOnlyLlmGenerationChange}
             >
-              Only llm.generation events
+              {ui("Only llm.generation events")}
             </DropdownMenuCheckboxItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

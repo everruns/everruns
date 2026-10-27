@@ -2,6 +2,50 @@
 use everruns_core::agent_package::{AgentPackage, Format};
 
 #[test]
+fn localizations_survive_every_agent_file_format_and_zip() {
+    let original = AgentPackage::parse(r#"{
+      "schema_version":1,"name":"support","display_name":"Support","instructions":"Help customers.",
+      "localizations":{"uk_UA":{"display_name":"Підтримка"},"uk":{"description":"Допомога клієнтам"},"de":{"display_name":"Kundensupport"}}
+    }"#, Format::Json).unwrap();
+    for format in [Format::Markdown, Format::Toml, Format::Yaml, Format::Json] {
+        let text = original.to_string(format).unwrap();
+        let restored = AgentPackage::parse(&text, format).unwrap();
+        assert!(
+            original.diff(&restored).unwrap().is_empty(),
+            "{format:?}: {text}"
+        );
+        assert_eq!(restored.manifest.name, "support");
+        assert_eq!(
+            restored
+                .manifest
+                .localizations
+                .resolve("UK-ua", |entry| entry.display_name.as_deref()),
+            Some("Підтримка")
+        );
+        assert_eq!(
+            restored
+                .manifest
+                .localizations
+                .resolve("de-DE", |entry| entry.display_name.as_deref()),
+            Some("Kundensupport")
+        );
+    }
+    let restored = AgentPackage::from_zip(&original.to_zip().unwrap()).unwrap();
+    assert!(original.diff(&restored).unwrap().is_empty());
+    let mut changed = restored;
+    changed
+        .manifest
+        .localizations
+        .0
+        .get_mut("de")
+        .unwrap()
+        .display_name = Some("Hilfe".into());
+    let diff = original.diff(&changed).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, "/localizations/de/display_name");
+}
+
+#[test]
 fn legacy_markdown_keeps_prompt_and_capability_config() {
     let package = AgentPackage::parse(
         "---\nname: Dad Jokes\ncapabilities:\n  - current_time\n---\nTell a joke.\n",

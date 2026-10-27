@@ -17,6 +17,7 @@
  * @see knowledge/ui/a2ui.md
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import {
   Component,
   createContext,
@@ -652,6 +653,7 @@ function SelectNode({
   options: { label: string; value: string }[];
   defaultValue: string;
 }) {
+  const ui = useUiTranslations();
   const [value, setValue] = useFieldValue(name, defaultValue);
   return (
     <div className="flex flex-col gap-1">
@@ -663,7 +665,7 @@ function SelectNode({
         onChange={(e) => setValue(e.target.value)}
         className="h-8 rounded-md border bg-background px-2 text-sm"
       >
-        {!defaultValue && <option value="">Select…</option>}
+        {!defaultValue && <option value="">{ui("Select…")}</option>}
         {options.map((opt, i) => (
           <option key={i} value={opt.value}>
             {opt.label || opt.value}

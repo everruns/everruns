@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
 import { useMemo } from "react";
 import {
   Select,
@@ -51,6 +52,7 @@ export function AgentSelect({
   disabled,
   ariaLabel = "Agent",
 }: AgentSelectProps) {
+  const { displayLocale } = useDisplayLocale();
   const noneValue = "__none__";
   const { data: agents = [] } = useAgents();
 
@@ -67,7 +69,7 @@ export function AgentSelect({
 
   const selectedAgent = value ? agentMap.get(value) : undefined;
   const displayValue = selectedAgent
-    ? getDisplayName(selectedAgent)
+    ? getDisplayName(selectedAgent, displayLocale)
     : includeNoneOption
       ? noneLabel
       : includeAll
@@ -84,7 +86,7 @@ export function AgentSelect({
         {includeAll && <SelectItem value="all">{allLabel}</SelectItem>}
         {agents.map((agent) => (
           <SelectItem key={agent.id} value={agent.id}>
-            {getDisplayName(agent)}
+            {getDisplayName(agent, displayLocale)}
           </SelectItem>
         ))}
       </SelectContent>

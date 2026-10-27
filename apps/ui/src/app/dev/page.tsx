@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { usePageTitle } from "@/hooks";
 import {
@@ -118,6 +119,7 @@ const devPages = [
 ];
 
 export default function DevPage() {
+  const ui = useUiTranslations();
   usePageTitle(isDev ? "Dev" : "Page not found");
   // Show 404-like message in production
   if (!isDev) {
@@ -125,7 +127,7 @@ export default function DevPage() {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
-          <p className="text-muted-foreground mt-2">Page not found</p>
+          <p className="text-muted-foreground mt-2">{ui("Page not found")}</p>
         </div>
       </div>
     );
@@ -138,15 +140,16 @@ export default function DevPage() {
           <div className="flex items-center gap-3">
             <FlaskConical className="h-7 w-7 text-primary" />
             <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-              Developer Tools
+              {ui("Developer Tools")}
             </p>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            UI reference pages
+            {ui("UI reference pages")}
           </h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            Development-only previews for the application’s canonical component styles and
-            behaviors.
+            {ui(
+              "Development-only previews for the application’s canonical component styles and behaviors.",
+            )}
           </p>
         </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -35,15 +36,17 @@ export function PublicChatSignInFields({
   agentIdClientId: string;
   update: SignInUpdate;
 }) {
+  const ui = useUiTranslations();
   return (
     <>
       <div className="space-y-3">
         <div className="flex items-center justify-between border p-3">
           <div>
-            <p className="text-sm font-medium">Google sign-in</p>
+            <p className="text-sm font-medium">{ui("Google sign-in")}</p>
             <p className="text-xs text-muted-foreground">
-              Require visitors to sign in with Google. When on, every request must present a valid
-              Google account; signed-in visitors skip the Turnstile challenge.
+              {ui(
+                "Require visitors to sign in with Google. When on, every request must present a valid Google account; signed-in visitors skip the Turnstile challenge.",
+              )}
             </p>
           </div>
           <Switch
@@ -57,25 +60,25 @@ export function PublicChatSignInFields({
         {googleEnabled && (
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="public_chat_google_client_id">Google OAuth client ID</Label>
+              <Label htmlFor="public_chat_google_client_id">{ui("Google OAuth client ID")}</Label>
               <Input
                 id="public_chat_google_client_id"
                 value={googleClientId}
                 onChange={(event) => update("publicChatGoogleClientId", event.target.value)}
                 className="font-mono"
-                placeholder="1234-abc.apps.googleusercontent.com"
+                placeholder={ui("1234-abc.apps.googleusercontent.com")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="public_chat_google_domains">Allowed domains (optional)</Label>
+              <Label htmlFor="public_chat_google_domains">{ui("Allowed domains (optional)")}</Label>
               <Input
                 id="public_chat_google_domains"
                 value={googleAllowedDomains}
                 onChange={(event) => update("publicChatGoogleAllowedDomains", event.target.value)}
-                placeholder="example.com, partner.com"
+                placeholder={ui("example.com, partner.com")}
               />
               <p className="text-xs text-muted-foreground">
-                Comma-separated. Leave blank to allow any Google account.
+                {ui("Comma-separated. Leave blank to allow any Google account.")}
               </p>
             </div>
           </div>
@@ -83,7 +86,9 @@ export function PublicChatSignInFields({
       </div>
       <AgentIdSignInFields
         idPrefix="public_chat"
-        description="Let AI agents sign in with their AgentID. Every request must present a valid AgentID token for your client; signed-in agents skip the Turnstile challenge."
+        description={ui(
+          "Let AI agents sign in with their AgentID. Every request must present a valid AgentID token for your client; signed-in agents skip the Turnstile challenge.",
+        )}
         enabled={agentIdEnabled}
         clientId={agentIdClientId}
         onEnabledChange={(checked) => {
@@ -112,28 +117,34 @@ export function AgentIdSignInFields({
   onEnabledChange: (checked: boolean) => void;
   onClientIdChange: (value: string) => void;
 }) {
+  const ui = useUiTranslations();
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between border p-3">
         <div>
-          <p className="text-sm font-medium">AgentID sign-in</p>
+          <p className="text-sm font-medium">{ui("AgentID sign-in")}</p>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label="AgentID sign-in" />
+        <Switch
+          checked={enabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={ui("AgentID sign-in")}
+        />
       </div>
       {enabled && (
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}_agentid_client_id`}>AgentID client ID</Label>
+          <Label htmlFor={`${idPrefix}_agentid_client_id`}>{ui("AgentID client ID")}</Label>
           <Input
             id={`${idPrefix}_agentid_client_id`}
             value={clientId}
             onChange={(event) => onClientIdChange(event.target.value)}
             className="font-mono"
-            placeholder="b7d41e0a-2c65-4f8b-9d31-0a5e7c2f4b18"
+            placeholder={ui("b7d41e0a-2c65-4f8b-9d31-0a5e7c2f4b18")}
           />
           <p className="text-xs text-muted-foreground">
-            The client ID of your app in the AgentID console. Tokens must be issued for it and last
-            ten minutes; AgentID is a sign-in, not a long-lived API key.
+            {ui(
+              "The client ID of your app in the AgentID console. Tokens must be issued for it and last ten minutes; AgentID is a sign-in, not a long-lived API key.",
+            )}
           </p>
         </div>
       )}

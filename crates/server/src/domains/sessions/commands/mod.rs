@@ -1018,11 +1018,12 @@ impl Command for CancelSession {
     async fn execute(self, ctx: &Ctx) -> Result<CancelTurnResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
+        let strings = everruns_core::localization::backend_strings(session.locale.as_deref());
 
         if session.status != crate::domains::sessions::record::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,
-                message: "No turn currently running".to_string(),
+                message: strings.no_turn_running.to_string(),
             });
         }
 
@@ -1043,7 +1044,7 @@ impl Command for CancelSession {
         if recorded_by_worker {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::Cancelled,
-                message: "Turn cancelled successfully".to_string(),
+                message: strings.turn_cancelled.to_string(),
             });
         }
 
@@ -1068,7 +1069,7 @@ impl Command for CancelSession {
                 EventContext::turn(turn_id, input_message_id),
                 TurnCancelledData {
                     turn_id,
-                    reason: Some("User requested cancellation".to_string()),
+                    reason: Some(strings.cancellation_reason.to_string()),
                     usage: None,
                 },
             );
@@ -1079,7 +1080,7 @@ impl Command for CancelSession {
             let user_message_event = EventRequest::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
-                InputMessageData::new(RuntimeMessage::user("User requested to cancel the work.")),
+                InputMessageData::new(RuntimeMessage::user(strings.cancellation_message)),
             );
             if let Err(error) = event_service.emit(user_message_event).await {
                 tracing::warn!(session_id = %session_id, error = %error, "Failed to emit user cancellation message");
@@ -1114,7 +1115,7 @@ impl Command for CancelSession {
 
         Ok(CancelTurnResponse {
             status: CancelStatus::Cancelled,
-            message: "Turn cancelled successfully".to_string(),
+            message: strings.turn_cancelled.to_string(),
         })
     }
 }

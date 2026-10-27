@@ -150,6 +150,7 @@ impl CacheFixture {
             .create_agent(
                 DEFAULT_ORG_ID,
                 CreateAgentRow {
+                    localizations: Default::default(),
                     public_id: AgentId::new().to_string(),
                     name: "cache-agent".into(),
                     display_name: None,

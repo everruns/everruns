@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import cronstrue from "cronstrue";
 import { CronExpressionParser } from "cron-parser";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,7 @@ export function CronInput({
   onTimezoneChange: (value: string) => void;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   const resolvedTimezone = timezone || "UTC";
   const description = describeCronExpression(value);
   const nextRuns = getNextRuns(value, resolvedTimezone);
@@ -167,7 +169,7 @@ export function CronInput({
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr),220px]">
         <div className="space-y-2">
-          <Label htmlFor="cron_expression">Cron expression</Label>
+          <Label htmlFor="cron_expression">{ui("Cron expression")}</Label>
           <Input
             id="cron_expression"
             value={value}
@@ -178,23 +180,23 @@ export function CronInput({
           />
           <p className={cn("text-xs", invalid ? "text-destructive" : "text-muted-foreground")}>
             {invalid
-              ? "Enter a valid 5-field cron, or a 7-field cron with * as the year."
+              ? ui("Enter a valid 5-field cron, or a 7-field cron with * as the year.")
               : description}
           </p>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cron_timezone">Timezone</Label>
+          <Label htmlFor="cron_timezone">{ui("Timezone")}</Label>
           <Input
             id="cron_timezone"
             value={timezone}
             onChange={(event) => onTimezoneChange(event.target.value)}
-            placeholder="UTC"
+            placeholder={ui("UTC")}
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-medium uppercase text-muted-foreground">Next 8 runs</p>
+        <p className="text-xs font-medium uppercase text-muted-foreground">{ui("Next 8 runs")}</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
           {nextRuns.length > 0 ? (
             nextRuns.map((run) => (
@@ -205,7 +207,7 @@ export function CronInput({
             ))
           ) : (
             <div className="col-span-full border border-dashed p-3 text-sm text-muted-foreground">
-              Next runs appear after the schedule is valid.
+              {ui("Next runs appear after the schedule is valid.")}
             </div>
           )}
         </div>

@@ -8,6 +8,7 @@
 // credentials. All failure copy stays generic (TM-AUTH-014/019): the door
 // never reveals whether an email already has an account.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -56,7 +57,8 @@ const OAUTH_ERROR_COPY: Record<string, string> = {
 };
 
 export default function LoginPage() {
-  usePageTitle("Log in");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Log in"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
@@ -207,13 +209,13 @@ export default function LoginPage() {
           className="mb-5 inline-flex items-center gap-[7px] text-[13px] text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="icon-sharp h-[15px] w-[15px]" strokeWidth={2} />
-          Back
+          {ui("Back")}
         </button>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Enter your password
+          {ui("Enter your password")}
         </h1>
         <p className="mt-[10px] text-sm text-muted-foreground">
-          Logging in as <b className="font-medium text-foreground">{email}</b>.
+          {ui("Logging in as")} <b className="font-medium text-foreground">{email}</b>.
         </p>
 
         <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
@@ -227,7 +229,7 @@ export default function LoginPage() {
                     href={`/forgot-password?email=${encodeURIComponent(email)}`}
                     className="font-medium underline underline-offset-2 hover:no-underline"
                   >
-                    reset your password
+                    {ui("reset your password")}
                   </Link>
                   .
                   {/* Enumeration-safe pointer shown to everyone (reveals nothing
@@ -237,15 +239,15 @@ export default function LoginPage() {
                   {hasOAuthProviders && (
                     <>
                       {" "}
-                      Signed up with Google or GitHub?{" "}
+                      {ui("Signed up with Google or GitHub?")}{" "}
                       <button
                         type="button"
                         onClick={handleBack}
                         className="font-medium underline underline-offset-2 hover:no-underline"
                       >
-                        Go back
+                        {ui("Go back")}
                       </button>{" "}
-                      and use that instead.
+                      {ui("and use that instead.")}
                     </>
                   )}
                 </>
@@ -254,19 +256,19 @@ export default function LoginPage() {
           )}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{ui("Password")}</Label>
               <Link
                 href="/forgot-password"
                 className="text-xs text-muted-foreground hover:text-primary hover:underline"
               >
-                Forgot password?
+                {ui("Forgot password?")}
               </Link>
             </div>
             <Input
               id="password"
               ref={passwordRef}
               type="password"
-              placeholder="Enter your password"
+              placeholder={ui("Enter your password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -277,11 +279,11 @@ export default function LoginPage() {
             {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Continuing...
+                {ui("Continuing...")}
               </>
             ) : (
               <>
-                Continue
+                {ui("Continue")}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </>
             )}
@@ -290,20 +292,20 @@ export default function LoginPage() {
 
         {canSignup && (
           <p className="mt-5 text-[13px] text-muted-foreground">
-            New to Everruns?{" "}
+            {ui("New to Everruns?")}{" "}
             <Link
               href={buildSignupHref(returnTo)}
               onClick={() => persistSignupEmail(email)}
               className="font-medium text-primary hover:underline"
             >
-              Create an account
+              {ui("Create an account")}
             </Link>
           </p>
         )}
 
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
-            Prefer Google or GitHub? Go back; it&apos;s one click and skips email verification.
+            {ui("Prefer Google or GitHub? Go back; it's one click and skips email verification.")}
           </p>
         )}
       </AuthShell>
@@ -313,18 +315,18 @@ export default function LoginPage() {
   // --- Phase 1: one door, SSO-primary ---
   return (
     <AuthShell>
-      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Log in</h1>
+      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">{ui("Log in")}</h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
-        Sign in to your Everruns console.
+        {ui("Sign in to your Everruns console.")}
         {canSignup && (
           <>
             {" "}
-            New to Everruns?{" "}
+            {ui("New to Everruns?")}{" "}
             <Link
               href={buildSignupHref(returnTo)}
               className="font-medium text-primary hover:underline"
             >
-              Create an account
+              {ui("Create an account")}
             </Link>
           </>
         )}
@@ -351,7 +353,7 @@ export default function LoginPage() {
                   disabled={oauthPending}
                 >
                   <OAuthProviderIcon provider={provider} />
-                  Continue with {providerInfo?.name ?? provider}
+                  {ui("Continue with")} {providerInfo?.name ?? provider}
                 </Button>
               );
             })}
@@ -362,7 +364,7 @@ export default function LoginPage() {
         {hasOAuthProviders && hasPasswordAuth && (
           <div className="flex items-center gap-[14px]">
             <span className="h-px flex-1 bg-border" />
-            <span className="font-mono text-[11px] text-muted-foreground">OR</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{ui("OR")}</span>
             <span className="h-px flex-1 bg-border" />
           </div>
         )}
@@ -371,12 +373,12 @@ export default function LoginPage() {
         {hasPasswordAuth && (
           <form onSubmit={handleEmailContinue} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{ui("Email")}</Label>
               <Input
                 id="email"
                 ref={emailRef}
                 type="email"
-                placeholder="you@company.com"
+                placeholder={ui("you@company.com")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -384,7 +386,7 @@ export default function LoginPage() {
               />
             </div>
             <Button type="submit" className="w-full">
-              Continue with email
+              {ui("Continue with email")}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>
@@ -393,7 +395,7 @@ export default function LoginPage() {
         {/* No auth methods available */}
         {!hasPasswordAuth && !hasOAuthProviders && (
           <div className="text-center text-muted-foreground py-4">
-            No authentication methods are currently configured.
+            {ui("No authentication methods are currently configured.")}
           </div>
         )}
       </div>

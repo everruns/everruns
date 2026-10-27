@@ -1,11 +1,13 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePageTitle } from "@/hooks";
 import { connectErrorMessage } from "@/lib/connect-error";
 
 function ConnectionCompleteInner() {
+  const ui = useUiTranslations();
   const searchParams = useSearchParams();
   // A failed connect lands here too (`status=error&connect_error=<code>`).
   const failed = searchParams.get("status") === "error";
@@ -28,8 +30,10 @@ function ConnectionCompleteInner() {
   return (
     <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
       {failed
-        ? `${connectErrorMessage(searchParams.get("connect_error"))} You can close this window.`
-        : "Connection complete. You can close this window."}
+        ? ui("{value0} You can close this window.", {
+            value0: connectErrorMessage(searchParams.get("connect_error")),
+          })
+        : ui("Connection complete. You can close this window.")}
     </div>
   );
 }

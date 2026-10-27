@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { ChannelHealthWarning } from "@/components/health/channel-health-warning";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ export function SlackChannelConfiguration({
   channel: AgentChannel;
   canManage: boolean;
 }) {
+  const ui = useUiTranslations();
   const capability = useSlackInstallCapability(canManage);
   const update = useUpdateAgentChannel(agentId, channel.id);
   const [draft, setDraft] = useState<ChannelFormState | null>(null);
@@ -52,7 +54,7 @@ export function SlackChannelConfiguration({
   return (
     <form
       className="space-y-4"
-      aria-label="Slack channel configuration"
+      aria-label={ui("Slack channel configuration")}
       onSubmit={(event) => {
         event.preventDefault();
         if (!dirty || update.isPending || !isChannelFormValid(state)) return;
@@ -100,7 +102,7 @@ export function SlackChannelConfiguration({
       )}
       <div className="flex flex-wrap items-center justify-end gap-3">
         <span role="status" className="text-xs text-muted-foreground">
-          {saved ? "Changes saved" : dirty ? "Unsaved changes" : ""}
+          {saved ? ui("Changes saved") : dirty ? ui("Unsaved changes") : ""}
         </span>
         {dirty && (
           <Button
@@ -113,7 +115,7 @@ export function SlackChannelConfiguration({
               update.reset();
             }}
           >
-            Discard changes
+            {ui("Discard changes")}
           </Button>
         )}
         <Button
@@ -121,7 +123,7 @@ export function SlackChannelConfiguration({
           size="sm"
           disabled={!dirty || update.isPending || !isChannelFormValid(state)}
         >
-          {update.isPending ? "Saving…" : "Save changes"}
+          {update.isPending ? ui("Saving…") : ui("Save changes")}
         </Button>
       </div>
     </form>

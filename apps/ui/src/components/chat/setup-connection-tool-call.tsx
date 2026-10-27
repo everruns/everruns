@@ -10,6 +10,7 @@
  * The workflow resumes only after the person confirms setup or skips it.
  */
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, LinkIcon, X } from "lucide-react";
@@ -44,6 +45,7 @@ export function SetupConnectionToolCall({
   setupUrl,
   toolResultsMap,
 }: SetupConnectionToolCallProps) {
+  const ui = useUiTranslations();
   const { data: providers = [], isLoading: providersLoading } = useConnectionProviders();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [setupOpened, setSetupOpened] = useState(false);
@@ -167,7 +169,9 @@ export function SetupConnectionToolCall({
       >
         {wasSuccess ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
         <ProviderIcon iconName={icon} className="h-4 w-4" />
-        {wasSuccess ? `${displayName} connected` : `${displayName} connection cancelled`}
+        {wasSuccess
+          ? ui("{value0} connected", { value0: displayName })
+          : ui("{value0} connection cancelled", { value0: displayName })}
       </div>
     );
   }
@@ -178,15 +182,17 @@ export function SetupConnectionToolCall({
         <ProviderIcon iconName={icon} className="h-5 w-5 text-foreground" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground">
-            {hasStructuredSetup ? setupTitle : `${displayName} connection required`}
+            {hasStructuredSetup
+              ? setupTitle
+              : ui("{value0} connection required", { value0: displayName })}
           </p>
           <p className="text-xs text-muted-foreground">
             {hasStructuredSetup
               ? setupDescription
-              : `Connect your ${displayName} account to continue`}
+              : ui("Connect your {value0} account to continue", { value0: displayName })}
           </p>
           {hasStructuredSetup && !safeSetupUrl && (
-            <p className="mt-1 text-xs text-destructive">The setup link is unavailable.</p>
+            <p className="mt-1 text-xs text-destructive">{ui("The setup link is unavailable.")}</p>
           )}
           {submissionError && <p className="mt-1 text-xs text-destructive">{submissionError}</p>}
         </div>
@@ -198,7 +204,7 @@ export function SetupConnectionToolCall({
             disabled={status === "submitting"}
             className="text-muted-foreground"
           >
-            Skip
+            {ui("Skip")}
           </Button>
           {usesSetupPage ? (
             setupOpened ? (
@@ -208,7 +214,7 @@ export function SetupConnectionToolCall({
                 disabled={status === "submitting"}
               >
                 <Check className="h-3.5 w-3.5 mr-1" />
-                I&apos;ve connected, continue
+                {ui("I've connected, continue")}
               </Button>
             ) : (
               <Button
@@ -217,7 +223,7 @@ export function SetupConnectionToolCall({
                 disabled={status === "submitting" || !effectiveSetupUrl}
               >
                 <LinkIcon className="h-3.5 w-3.5 mr-1" />
-                {subject === "agent" ? "Open agent MCP" : "Open connections"}
+                {subject === "agent" ? ui("Open agent MCP") : ui("Open connections")}
               </Button>
             )
           ) : (
@@ -227,7 +233,7 @@ export function SetupConnectionToolCall({
               disabled={status === "submitting" || providerLookupPending}
             >
               <LinkIcon className="h-3.5 w-3.5 mr-1" />
-              {providerLookupPending ? "Loading…" : "Connect"}
+              {providerLookupPending ? ui("Loading…") : ui("Connect")}
             </Button>
           )}
         </div>

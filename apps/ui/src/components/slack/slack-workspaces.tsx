@@ -14,6 +14,7 @@
  *   the token steps stay one click away: they are the path when the consent is not available to
  *   this workspace, and the self-hosted default.
  */
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, ExternalLink } from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
@@ -90,6 +91,7 @@ export function ConnectSlackWorkspaceChoice({
   reconnect?: boolean;
   onConnected?: (workspace: SlackWorkspace) => void | Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const [useToken, setUseToken] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function ConnectSlackWorkspaceChoice({
         <ConnectSlackWorkspace reconnect={reconnect} onConnected={onConnected} />
         {managerApp && (
           <Button type="button" variant="ghost" size="sm" onClick={() => setUseToken(false)}>
-            Connect with Slack instead
+            {ui("Connect with Slack instead")}
           </Button>
         )}
       </div>
@@ -122,16 +124,21 @@ export function ConnectSlackWorkspaceChoice({
   return (
     <div className="space-y-3">
       <p className="text-sm">
-        Approve Everruns in Slack, picking the workspace you want your agents in. Nothing to copy or
-        paste.
+        {ui(
+          "Approve Everruns in Slack, picking the workspace you want your agents in. Nothing to copy or paste.",
+        )}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={() => void start()} disabled={pending}>
           <Slack className="size-4" />
-          {pending ? "Opening Slack…" : reconnect ? "Reconnect with Slack" : "Connect with Slack"}
+          {pending
+            ? ui("Opening Slack…")
+            : reconnect
+              ? ui("Reconnect with Slack")
+              : ui("Connect with Slack")}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => setUseToken(true)}>
-          Use a configuration token instead
+          {ui("Use a configuration token instead")}
         </Button>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -146,6 +153,7 @@ export function ConnectSlackWorkspace({
   reconnect?: boolean;
   onConnected?: (workspace: SlackWorkspace) => void | Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const [token, setToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,7 +190,7 @@ export function ConnectSlackWorkspace({
           <StepNumber n={1} />
           <div className="space-y-2">
             <p>
-              Open Slack&apos;s app settings, signed in to the workspace you want your agents in.
+              {ui("Open Slack's app settings, signed in to the workspace you want your agents in.")}
             </p>
             <a
               href={SLACK_APPS_URL}
@@ -191,7 +199,7 @@ export function ConnectSlackWorkspace({
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               <Slack className="size-4" />
-              Open api.slack.com/apps
+              {ui("Open api.slack.com/apps")}
               <ExternalLink className="size-3.5" />
             </a>
           </div>
@@ -199,15 +207,15 @@ export function ConnectSlackWorkspace({
         <li className="flex gap-3">
           <StepNumber n={2} />
           <p>
-            Scroll to <strong>Your App Configuration Tokens</strong>, click{" "}
-            <strong>Generate Token</strong> and pick the workspace.
+            {ui("Scroll to")} <strong>{ui("Your App Configuration Tokens")}</strong>
+            {ui(", click")} <strong>{ui("Generate Token")}</strong> {ui("and pick the workspace.")}
           </p>
         </li>
         <li className="flex gap-3">
           <StepNumber n={3} />
           <div className="w-full space-y-2">
             <Label htmlFor="slack_configuration_refresh_token">
-              Copy the <strong>Refresh Token</strong> and paste it here
+              {ui("Copy the")} <strong>{ui("Refresh Token")}</strong> {ui("and paste it here")}
             </Label>
             <Input
               id="slack_configuration_refresh_token"
@@ -215,14 +223,14 @@ export function ConnectSlackWorkspace({
               autoComplete="off"
               value={token}
               onChange={(event) => setToken(event.target.value)}
-              placeholder="xoxe-1-..."
+              placeholder={ui("xoxe-1-...")}
               disabled={pending}
               aria-invalid={Boolean(SHAPE_MESSAGES[shape]) || Boolean(error)}
             />
             {SHAPE_MESSAGES[shape] && (
               <p className="text-xs text-destructive">{SHAPE_MESSAGES[shape]}</p>
             )}
-            {pending && <p className="text-xs text-muted-foreground">Connecting…</p>}
+            {pending && <p className="text-xs text-muted-foreground">{ui("Connecting…")}</p>}
             {error && <p className="text-xs text-destructive">{error}</p>}
             {error && shape === "refresh" && (
               <Button
@@ -231,7 +239,7 @@ export function ConnectSlackWorkspace({
                 size="sm"
                 onClick={() => void connect(token.trim())}
               >
-                {reconnect ? "Try reconnecting again" : "Try again"}
+                {reconnect ? ui("Try reconnecting again") : ui("Try again")}
               </Button>
             )}
           </div>
@@ -240,9 +248,9 @@ export function ConnectSlackWorkspace({
       <div className="flex gap-2 border border-warning/40 bg-warning/10 p-3 text-xs">
         <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
         <p>
-          This token can create and change any Slack app in that workspace. Everruns rotates it
-          immediately, stores only the encrypted replacement, and uses it only to create and update
-          your agents&apos; apps. Your Slack workspace may require an admin to generate it.
+          {ui(
+            "This token can create and change any Slack app in that workspace. Everruns rotates it immediately, stores only the encrypted replacement, and uses it only to create and update your agents' apps. Your Slack workspace may require an admin to generate it.",
+          )}
         </p>
       </div>
     </div>

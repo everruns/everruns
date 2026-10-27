@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import {
   observerDraftSchema,
@@ -69,6 +71,8 @@ function scorerErrors(scorers: ObserverScorerConfig[]): Record<number, string> {
 }
 
 export function ObserverForm({ observer, initial }: ObserverFormProps) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const router = useRouter();
   const createObserver = useCreateObserver();
   const updateObserver = useUpdateObserver();
@@ -212,27 +216,27 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
       {chatDraft.notice}
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>{ui("Details")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="observer-name">Name</Label>
+            <Label htmlFor="observer-name">{ui("Name")}</Label>
             <Input
               id="observer-name"
-              placeholder="Production quality monitor"
+              placeholder={ui("Production quality monitor")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
             {submitted && nameMissing && (
-              <p className="text-sm text-destructive">Name is required</p>
+              <p className="text-sm text-destructive">{ui("Name is required")}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="observer-description">Description</Label>
+            <Label htmlFor="observer-description">{ui("Description")}</Label>
             <Textarea
               id="observer-description"
-              placeholder="What this observer watches for..."
+              placeholder={ui("What this observer watches for...")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
@@ -241,7 +245,9 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="observer-sampling">
-              Sampling rate ({Math.round(samplingRate * 100)}% of turns)
+              {ui("Sampling rate (")}
+              {Math.round(samplingRate * 100)}
+              {ui("% of turns)")}
             </Label>
             <Input
               id="observer-sampling"
@@ -253,7 +259,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
               onChange={(e) => setSamplingRate(Number(e.target.value))}
             />
             <p className="text-xs text-muted-foreground">
-              Fraction of matching production turns this observer scores.
+              {ui("Fraction of matching production turns this observer scores.")}
             </p>
           </div>
         </CardContent>
@@ -261,18 +267,19 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Match rules</CardTitle>
+          <CardTitle>{ui("Match rules")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Optional filters. When left empty an observer considers all production sessions in the
-            org.
+            {ui(
+              "Optional filters. When left empty an observer considers all production sessions in the org.",
+            )}
           </p>
 
           <div className="space-y-2">
-            <Label>Agents</Label>
+            <Label>{ui("Agents")}</Label>
             {agents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No agents available.</p>
+              <p className="text-sm text-muted-foreground">{ui("No agents available.")}</p>
             ) : (
               <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
                 {agents.map((agent) => (
@@ -281,7 +288,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
                       checked={agentIds.includes(agent.id)}
                       onCheckedChange={() => toggleAgent(agent.id)}
                     />
-                    {getDisplayName(agent)}
+                    {getDisplayName(agent, displayLocale)}
                   </label>
                 ))}
               </div>
@@ -289,9 +296,9 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Harnesses</Label>
+            <Label>{ui("Harnesses")}</Label>
             {harnesses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No harnesses available.</p>
+              <p className="text-sm text-muted-foreground">{ui("No harnesses available.")}</p>
             ) : (
               <div className="flex max-h-48 flex-col gap-2 overflow-y-auto border p-3">
                 {harnesses.map((harness) => (
@@ -303,7 +310,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
                       checked={harnessIds.includes(harness.id)}
                       onCheckedChange={() => toggleHarness(harness.id)}
                     />
-                    {getDisplayName(harness)}
+                    {getDisplayName(harness, displayLocale)}
                   </label>
                 ))}
               </div>
@@ -311,10 +318,10 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="observer-tags">Session tags</Label>
+            <Label htmlFor="observer-tags">{ui("Session tags")}</Label>
             <Input
               id="observer-tags"
-              placeholder="comma, separated, tags"
+              placeholder={ui("comma, separated, tags")}
               value={sessionTags}
               onChange={(e) => setSessionTags(e.target.value)}
             />
@@ -324,7 +331,7 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Scorers</CardTitle>
+          <CardTitle>{ui("Scorers")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <ScorerEditor
@@ -333,24 +340,24 @@ export function ObserverForm({ observer, initial }: ObserverFormProps) {
             errors={submitted ? errors : undefined}
           />
           {submitted && noScorers && (
-            <p className="text-sm text-destructive">Add at least one scorer.</p>
+            <p className="text-sm text-destructive">{ui("Add at least one scorer.")}</p>
           )}
         </CardContent>
       </Card>
 
       {mutationError && (
         <Notice variant="destructive">
-          <NoticeTitle>Failed to save observer</NoticeTitle>
+          <NoticeTitle>{ui("Failed to save observer")}</NoticeTitle>
           <NoticeDescription>{mutationError.message}</NoticeDescription>
         </Notice>
       )}
 
       <div className="flex gap-4">
         <Button type="submit" disabled={isPending || chatDraft.blocked}>
-          {isPending ? "Saving..." : observer ? "Save changes" : "Create observer"}
+          {isPending ? ui("Saving...") : observer ? ui("Save changes") : ui("Create observer")}
         </Button>
         <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
+          {ui("Cancel")}
         </Button>
       </div>
     </form>

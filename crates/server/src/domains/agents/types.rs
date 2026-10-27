@@ -18,6 +18,12 @@ pub use crate::storage::{AgentRow, CreateAgentRow, UpdateAgent};
 /// Request to create a new agent
 #[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(
+        default,
+        skip_serializing_if = "everruns_contracts::runtime::localization::EntityLocalizations::is_empty"
+    )]
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     #[serde(default)]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
@@ -137,6 +143,9 @@ pub struct CreateAgentRequest {
 // publishes those into docs/api/openapi.json, and this is an internal note.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentRequest {
+    /// Locale-keyed display overlays; identifiers and execution instructions are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub localizations: Option<everruns_contracts::runtime::localization::EntityLocalizations>,
     #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:

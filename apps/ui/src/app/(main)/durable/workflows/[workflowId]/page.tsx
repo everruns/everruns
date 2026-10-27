@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useDurablePageRows } from "@/components/chat-mode/use-durable-page-rows";
 
 import { use } from "react";
@@ -87,11 +88,12 @@ function getEventIcon(eventType: string) {
 }
 
 function EventTimeline({ events }: { events: WorkflowEvent[] }) {
+  const ui = useUiTranslations();
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
         <Activity className="h-8 w-8 mb-2" />
-        <p className="text-sm">No events yet</p>
+        <p className="text-sm">{ui("No events yet")}</p>
       </div>
     );
   }
@@ -133,6 +135,7 @@ export default function WorkflowDetailPage({
 }: {
   params: Promise<{ workflowId: string }>;
 }) {
+  const ui = useUiTranslations();
   const { workflowId } = use(params);
 
   // Connect to workflow-specific SSE for real-time updates
@@ -144,7 +147,7 @@ export default function WorkflowDetailPage({
     error: workflowError,
     refetch,
   } = useWorkflow(workflowId);
-  usePageTitle(workflow?.workflow_type ?? null, "Workflow", "Durable");
+  usePageTitle(workflow?.workflow_type ?? null, ui("Workflow"), ui("Durable"));
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
 
@@ -167,7 +170,7 @@ export default function WorkflowDetailPage({
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workflow Details</h1>
+          <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
         </div>
         <div className="space-y-6">
           <Skeleton className="h-8 w-32" />
@@ -185,23 +188,23 @@ export default function WorkflowDetailPage({
     return (
       <div className="operational-page container mx-auto p-6">
         <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold">Workflow Details</h1>
+          <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Workflow Not Found</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Workflow Not Found")}</h3>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              The workflow could not be loaded. It may not exist or the API is unavailable.
+              {ui("The workflow could not be loaded. It may not exist or the API is unavailable.")}
             </p>
             <div className="flex gap-2">
               <LinkButton variant="outline" href="/durable/workflows">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Workflows
+                {ui("Back to Workflows")}
               </LinkButton>
               <Button onClick={() => refetch()} variant="outline">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
+                {ui("Retry")}
               </Button>
             </div>
           </CardContent>
@@ -219,7 +222,7 @@ export default function WorkflowDetailPage({
   return (
     <div className="operational-page container mx-auto p-6">
       <div className="operational-toolbar flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold">Workflow Details</h1>
+        <h1 className="text-2xl font-bold">{ui("Workflow Details")}</h1>
       </div>
       <div className="space-y-6">
         {/* Back link */}
@@ -228,7 +231,7 @@ export default function WorkflowDetailPage({
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
-          Back to Workflows
+          {ui("Back to Workflows")}
         </Link>
 
         {/* Header */}
@@ -248,7 +251,7 @@ export default function WorkflowDetailPage({
             </Badge>
             {workflow.status === "running" && (
               <Button variant="destructive" onClick={handleCancel}>
-                Cancel
+                {ui("Cancel")}
               </Button>
             )}
           </div>
@@ -258,23 +261,23 @@ export default function WorkflowDetailPage({
         <div className="operational-grid grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Details</CardTitle>
+              <CardTitle>{ui("Details")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Created</p>
+                  <p className="text-sm text-muted-foreground">{ui("Created")}</p>
                   <p className="font-medium">{new Date(workflow.created_at).toLocaleString()}</p>
                 </div>
                 {workflow.started_at && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Started</p>
+                    <p className="text-sm text-muted-foreground">{ui("Started")}</p>
                     <p className="font-medium">{new Date(workflow.started_at).toLocaleString()}</p>
                   </div>
                 )}
                 {workflow.completed_at && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Completed</p>
+                    <p className="text-sm text-muted-foreground">{ui("Completed")}</p>
                     <p className="font-medium">
                       {new Date(workflow.completed_at).toLocaleString()}
                     </p>
@@ -286,13 +289,13 @@ export default function WorkflowDetailPage({
                 <>
                   <Separator />
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Linked Session</p>
+                    <p className="text-sm text-muted-foreground mb-1">{ui("Linked Session")}</p>
                     <Link
                       href={`/sessions/${workflow.session_id}/trace`}
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
                       <ExternalLink className="h-4 w-4" />
-                      View Session
+                      {ui("View Session")}
                     </Link>
                   </div>
                 </>
@@ -302,8 +305,8 @@ export default function WorkflowDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle>Input</CardTitle>
-              <CardDescription>Workflow input parameters</CardDescription>
+              <CardTitle>{ui("Input")}</CardTitle>
+              <CardDescription>{ui("Workflow input parameters")}</CardDescription>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[150px]">
@@ -319,7 +322,7 @@ export default function WorkflowDetailPage({
         {(workflow.result || workflow.error) && (
           <Card>
             <CardHeader>
-              <CardTitle>{workflow.error ? "Error" : "Result"}</CardTitle>
+              <CardTitle>{workflow.error ? ui("Error") : ui("Result")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[200px]">
@@ -337,12 +340,12 @@ export default function WorkflowDetailPage({
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Event History</CardTitle>
-              <CardDescription>Timeline of workflow events</CardDescription>
+              <CardTitle>{ui("Event History")}</CardTitle>
+              <CardDescription>{ui("Timeline of workflow events")}</CardDescription>
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
+              {ui("Refresh")}
             </Button>
           </CardHeader>
           <CardContent>

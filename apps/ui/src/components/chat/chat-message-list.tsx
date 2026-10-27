@@ -311,7 +311,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   sessionActive = false,
   messageActions = false,
 }: ChatMessageListProps) {
-  const { locale, t } = useLocale();
+  const { locale, displayLocale, t } = useLocale();
   const { data: providers } = useProviders();
   const { data: agents } = useAgents();
   const approvalCalls = useMemo(() => {
@@ -565,10 +565,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   const agentNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents ?? []) {
-      map.set(agent.id, getDisplayName(agent));
+      map.set(agent.id, getDisplayName(agent, displayLocale));
     }
     return map;
-  }, [agents]);
+  }, [agents, displayLocale]);
 
   // Derive join/leave markers from participants. There is no participant SSE
   // event, so lines are inferred from `joined_at` / `left_at`. Guarded: only a

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { PlaygroundIcon } from "@/components/icons/facet-icons";
@@ -46,6 +48,8 @@ const GROUP_OPTIONS: Array<{ value: PlaygroundGroupBy; label: string }> = [
 ];
 
 function PlaygroundLibrary() {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const { data: agents = [] } = useAgents();
   const [search, setSearch] = useState("");
@@ -84,12 +88,12 @@ function PlaygroundLibrary() {
       }),
     enabled: !!currentOrg,
   });
-  usePageTitle("Playground");
+  usePageTitle(ui("Playground"));
 
   const selectedAgent = agents.find((agent) => agent.id === agentId);
   const selectedAgentLabel = agentId
     ? selectedAgent
-      ? getDisplayName(selectedAgent)
+      ? getDisplayName(selectedAgent, displayLocale)
       : agentId
     : null;
   const filtering = Boolean(search || agentId);
@@ -97,31 +101,33 @@ function PlaygroundLibrary() {
     const agent = agents.find((candidate) => candidate.id === bucket.value);
     return {
       id: bucket.value,
-      label: agent ? getDisplayName(agent) : bucket.value,
+      label: agent ? getDisplayName(agent, displayLocale) : bucket.value,
       count: bucket.count,
     };
   });
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Playground" }]} />
+      <PageBreadcrumb items={[{ label: ui("Playground") }]} />
       <PageMasthead
         icon={<PlaygroundIcon />}
-        title="Playground"
+        title={ui("Playground")}
         badges={activeFacets ? <Badge variant="outline">{activeFacets.total}</Badge> : undefined}
-        description="Test agents as virtual users. Playground chats are shared with your organisation."
+        description={ui(
+          "Test agents as virtual users. Playground chats are shared with your organisation.",
+        )}
         actions={
           <LinkButton href="/playground/new" variant="accent">
             <Plus className="size-4" />
-            New chat
+            {ui("New chat")}
           </LinkButton>
         }
       />
       <PageControlStrip className="flex flex-wrap items-center gap-2">
         <SearchInput
           containerClassName="w-64"
-          aria-label="Search Playground chats"
-          placeholder="Search Playground chats…"
+          aria-label={ui("Search Playground chats")}
+          placeholder={ui("Search Playground chats…")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -136,15 +142,15 @@ function PlaygroundLibrary() {
             )}
           >
             <ListFilter className="size-3.5 opacity-70" />
-            Filter
+            {ui("Filter")}
           </DropdownMenuTrigger>
           <DropdownMenuPositioner align="start">
             <DropdownMenuContent className="w-56">
               <DropdownMenuGroup>
-                <DropdownMenuLabel>Agent</DropdownMenuLabel>
+                <DropdownMenuLabel>{ui("Agent")}</DropdownMenuLabel>
                 {agentOptions.length === 0 ? (
                   <DropdownMenuItem disabled>
-                    {agentFacetsLoading ? "Loading agents" : "No agents"}
+                    {agentFacetsLoading ? ui("Loading agents") : ui("No agents")}
                   </DropdownMenuItem>
                 ) : (
                   agentOptions.map((option) => (
@@ -169,11 +175,11 @@ function PlaygroundLibrary() {
         </DropdownMenu>
         {selectedAgentLabel && (
           <span className="inline-flex h-7 items-center gap-1.5 border bg-card pr-1 pl-2 text-xs">
-            <span className="text-muted-foreground">Agent is</span>
+            <span className="text-muted-foreground">{ui("Agent is")}</span>
             <span className="font-medium">{selectedAgentLabel}</span>
             <button
               type="button"
-              aria-label="Remove filter"
+              aria-label={ui("Remove filter")}
               className="inline-flex size-5 items-center justify-center hover:bg-muted"
               onClick={() => {
                 setAgentId(null);
@@ -186,7 +192,7 @@ function PlaygroundLibrary() {
         )}
         <div className="flex-1" />
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span id="playground-group-label">Group by</span>
+          <span id="playground-group-label">{ui("Group by")}</span>
           <div
             role="radiogroup"
             aria-labelledby="playground-group-label"
@@ -223,8 +229,8 @@ function PlaygroundLibrary() {
             setPage(0);
           }}
           items={[
-            { value: "active", label: "Active" },
-            { value: "archived", label: "Archived" },
+            { value: "active", label: ui("Active") },
+            { value: "archived", label: ui("Archived") },
           ]}
         />
       </PageControlStrip>
@@ -239,26 +245,26 @@ function PlaygroundLibrary() {
           <PlaygroundIcon className="size-5 text-muted-foreground" />
           <div className="text-sm font-semibold">
             {filtering
-              ? "No matching Playground chats"
+              ? ui("No matching Playground chats")
               : archived
-                ? "No archived Playground chats"
-                : "No Playground chats yet"}
+                ? ui("No archived Playground chats")
+                : ui("No Playground chats yet")}
           </div>
           <p className="text-[13px] text-muted-foreground">
-            Choose an agent and a virtual user to start a shared chat.
+            {ui("Choose an agent and a virtual user to start a shared chat.")}
           </p>
         </div>
       )}
       <PageFooter>
         <span className="flex items-center gap-2">
           <Users className="size-3.5" />
-          Visible to everyone in {currentOrg?.name ?? "your organisation"}
+          {ui("Visible to everyone in")} {currentOrg?.name ?? ui("your organisation")}
         </span>
         {!!data?.total && (
           <div className="flex items-center gap-4">
             <span>
-              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, data.total)} of{" "}
-              {data.total}
+              {ui("Showing")} {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, data.total)}{" "}
+              {ui("of")} {data.total}
             </span>
             <div className="flex gap-2">
               <Button
@@ -267,7 +273,7 @@ function PlaygroundLibrary() {
                 disabled={page === 0}
                 onClick={() => setPage(page - 1)}
               >
-                Previous
+                {ui("Previous")}
               </Button>
               <Button
                 variant="outline"
@@ -275,7 +281,7 @@ function PlaygroundLibrary() {
                 disabled={(page + 1) * PAGE_SIZE >= data.total}
                 onClick={() => setPage(page + 1)}
               >
-                Next
+                {ui("Next")}
               </Button>
             </div>
           </div>

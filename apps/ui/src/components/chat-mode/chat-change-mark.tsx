@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { createContext, useContext, type ReactNode } from "react";
 import { X } from "lucide-react";
 import type { ChatChanges } from "./use-agent-chat-changes";
@@ -22,6 +23,7 @@ export function ChatChangeMark({
   children: ReactNode;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   const changes = useChatChanges();
   const mode = useChatMode();
   const draft = useContext(ChatDraftChangesContext);
@@ -38,26 +40,31 @@ export function ChatChangeMark({
       {children}
       {changed.map((diff) => (
         <p key={diff.field} className="py-1 text-[11px] text-muted-foreground">
-          Changed by chat ·{" "}
+          {ui("Changed by chat ·")}{" "}
           <button
             type="button"
             disabled={changes?.pending || mode?.page.editing || changes?.canUndo === false}
             onClick={() => void changes?.undo(diff.field)}
             className="underline underline-offset-2 disabled:opacity-50"
           >
-            Undo<span className="sr-only"> {diff.field}</span>
+            {ui("Undo")}
+            <span className="sr-only"> {diff.field}</span>
           </button>
         </p>
       ))}
       {draftChanged.map((diff) => (
         <p key={`draft-${diff.field}`} className="py-1 text-[11px] text-muted-foreground">
-          Draft edited by Chat ·{" "}
+          {ui("Draft edited by Chat ·")}{" "}
           <button
             type="button"
             className="underline underline-offset-2"
             onClick={() => draft?.undo(diff.field)}
           >
-            Undo<span className="sr-only"> draft {diff.field}</span>
+            {ui("Undo")}
+            <span className="sr-only">
+              {" "}
+              {ui("draft")} {diff.field}
+            </span>
           </button>
         </p>
       ))}
@@ -66,6 +73,7 @@ export function ChatChangeMark({
 }
 
 export function ChatDraftChangesToast() {
+  const ui = useUiTranslations();
   const draft = useContext(ChatDraftChangesContext);
   if (!draft || (!draft.fields.length && !draft.error)) return null;
   return (
@@ -74,11 +82,11 @@ export function ChatDraftChangesToast() {
       className="sticky bottom-3 z-10 mx-3 mt-3 border border-accent bg-card p-3 shadow-sm"
     >
       <div className="flex items-center gap-3 text-sm">
-        <span className="flex-1">Chat edited your draft. Save changes to apply it.</span>
+        <span className="flex-1">{ui("Chat edited your draft. Save changes to apply it.")}</span>
         <button type="button" className="text-xs underline" onClick={() => draft.undo()}>
-          Undo draft edits
+          {ui("Undo draft edits")}
         </button>
-        <button type="button" aria-label="Dismiss draft change markers" onClick={draft.clear}>
+        <button type="button" aria-label={ui("Dismiss draft change markers")} onClick={draft.clear}>
           <X className="size-4" />
         </button>
       </div>
@@ -101,6 +109,7 @@ export function ChatChangesToast({
   canUndo: boolean;
   editing: boolean;
 }) {
+  const ui = useUiTranslations();
   const changes = useChatChanges();
   if (!changes || changes.shared || (!changes.fields.length && !changes.error)) return null;
   return (
@@ -111,8 +120,12 @@ export function ChatChangesToast({
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="flex-1">
           {changes.fields.length
-            ? `Chat saved ${changes.fields.length} ${changes.fields.length === 1 ? "change" : "changes"} to ${name}`
-            : "Chat changes"}
+            ? ui("Chat saved {value0} {value1} to {value2}", {
+                value0: changes.fields.length,
+                value1: changes.fields.length === 1 ? "change" : "changes",
+                value2: name,
+              })
+            : ui("Chat changes")}
         </span>
         {canUndo && changes.fields.length > 0 && (
           <button
@@ -121,10 +134,14 @@ export function ChatChangesToast({
             disabled={changes.pending || editing}
             className="text-xs underline underline-offset-2 disabled:opacity-50"
           >
-            {changes.pending ? "Undoing…" : "Undo all"}
+            {changes.pending ? ui("Undoing…") : ui("Undo all")}
           </button>
         )}
-        <button type="button" onClick={changes.dismiss} aria-label="Dismiss Chat change markers">
+        <button
+          type="button"
+          onClick={changes.dismiss}
+          aria-label={ui("Dismiss Chat change markers")}
+        >
           <X className="size-4" />
         </button>
       </div>
@@ -136,8 +153,9 @@ export function ChatChangesToast({
       />
       {editing && changes.fields.length > 0 && (
         <p className="mt-1 text-xs text-muted-foreground">
-          Chat saved changes while you were editing. Your draft is kept. Discard it to review the
-          saved changes before continuing.
+          {ui(
+            "Chat saved changes while you were editing. Your draft is kept. Discard it to review the saved changes before continuing.",
+          )}
         </p>
       )}
       {changes.error && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { modelService } from "@/lib/model-capabilities";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
@@ -82,6 +83,7 @@ export function ModelRow({
   /** Extra title badges from the page, such as "Org default". */
   badges?: ReactNode;
 }) {
+  const ui = useUiTranslations();
   const [expanded, setExpanded] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const profile = model.profile;
@@ -107,14 +109,16 @@ export function ModelRow({
                 </Badge>
               )}
               {badges}
-              {model.is_new && <Badge variant="accent">New</Badge>}
+              {model.is_new && <Badge variant="accent">{ui("New")}</Badge>}
               {model.stale && (
                 <Badge
                   variant="outline"
                   className="border-warning/40 text-warning"
-                  title="The provider stopped listing this model in its last sync. It is kept so settings that use it can be changed first."
+                  title={ui(
+                    "The provider stopped listing this model in its last sync. It is kept so settings that use it can be changed first.",
+                  )}
                 >
-                  No longer listed
+                  {ui("No longer listed")}
                 </Badge>
               )}
               {profile?.decisions && (
@@ -122,11 +126,13 @@ export function ModelRow({
                   variant={profile.decisions.calibrated ? "success" : "outline"}
                   title={
                     profile.decisions.calibrated
-                      ? "Returns calibrated probabilities"
-                      : "Reports labels, not calibrated certainty. Hidden from decision pickers."
+                      ? ui("Returns calibrated probabilities")
+                      : ui(
+                          "Reports labels, not calibrated certainty. Hidden from decision pickers.",
+                        )
                   }
                 >
-                  {profile.decisions.calibrated ? "Calibrated" : "Uncalibrated"}
+                  {profile.decisions.calibrated ? ui("Calibrated") : ui("Uncalibrated")}
                 </Badge>
               )}
               {/* The family usually repeats the model id shown on the next line; show it
@@ -159,11 +165,11 @@ export function ModelRow({
                 </span>
               )}
               {profile?.release_date && (
-                <span title={`Released ${profile.release_date}`}>
+                <span title={ui("Released {value0}", { value0: profile.release_date })}>
                   <span aria-hidden className="mx-1">
                     ·
                   </span>
-                  Released {formatReleaseDate(profile.release_date)}
+                  {ui("Released")} {formatReleaseDate(profile.release_date)}
                 </span>
               )}
               {profile?.model_card_url && (
@@ -176,9 +182,11 @@ export function ModelRow({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-foreground hover:underline"
-                    title="The vendor's model card: capabilities, evaluations and safety testing"
+                    title={ui(
+                      "The vendor's model card: capabilities, evaluations and safety testing",
+                    )}
                   >
-                    Model card
+                    {ui("Model card")}
                   </a>
                 </span>
               )}
@@ -188,7 +196,7 @@ export function ModelRow({
                   size="sm"
                   onClick={() => setExpanded(!expanded)}
                   className="ml-2 h-6 px-1.5 align-baseline text-muted-foreground"
-                  title={expanded ? "Collapse profile details" : "Expand profile details"}
+                  title={expanded ? ui("Collapse profile details") : ui("Expand profile details")}
                 >
                   {expanded ? (
                     <ChevronUp className="h-3.5 w-3.5" />
@@ -204,21 +212,20 @@ export function ModelRow({
           {profile && (
             <div className="flex flex-wrap gap-1">
               {profile.reasoning && (
-                <Badge variant="secondary" className="text-xs" title="Reasoning">
-                  <Brain className="h-3 w-3 mr-1" />
-                  Reasoning
+                <Badge variant="secondary" className="text-xs" title={ui("Reasoning")}>
+                  <Brain className="h-3 w-3 mr-1" /> {ui("Reasoning")}
                 </Badge>
               )}
               {profile.tool_call && (
-                <Badge variant="secondary" className="text-xs" title="Tool Calling">
+                <Badge variant="secondary" className="text-xs" title={ui("Tool Calling")}>
                   <Wrench className="h-3 w-3 mr-1" />
-                  Tools
+                  {ui("Tools")}
                 </Badge>
               )}
               {profile.attachment && (
-                <Badge variant="secondary" className="text-xs" title="Attachments">
+                <Badge variant="secondary" className="text-xs" title={ui("Attachments")}>
                   <Image className="h-3 w-3 mr-1" />
-                  Vision
+                  {ui("Vision")}
                 </Badge>
               )}
             </div>
@@ -242,7 +249,7 @@ export function ModelRow({
               <TooltipTrigger asChild>
                 <span
                   role="img"
-                  aria-label={model.healthy ? "Model healthy" : "Model not ready"}
+                  aria-label={model.healthy ? ui("Model healthy") : ui("Model not ready")}
                   className={
                     "inline-block h-2.5 w-2.5 rounded-full " +
                     (model.healthy ? "bg-success" : "bg-muted-foreground/40")
@@ -252,8 +259,8 @@ export function ModelRow({
               <TooltipContent>
                 <p>
                   {model.healthy
-                    ? "Model is configured and ready for use"
-                    : "Provider is missing an API key or is disabled"}
+                    ? ui("Model is configured and ready for use")
+                    : ui("Provider is missing an API key or is disabled")}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -267,19 +274,19 @@ export function ModelRow({
                 disabled={isTogglingEnabled}
                 title={
                   model.enabled
-                    ? "Disable model (hide from UI pickers)"
-                    : "Enable model (show in UI pickers)"
+                    ? ui("Disable model (hide from UI pickers)")
+                    : ui("Enable model (show in UI pickers)")
                 }
               >
                 {model.enabled ? (
                   <>
                     <ToggleRight className="h-4 w-4 mr-1" />
-                    Disable
+                    {ui("Disable")}
                   </>
                 ) : (
                   <>
                     <ToggleLeft className="h-4 w-4 mr-1" />
-                    Enable
+                    {ui("Enable")}
                   </>
                 )}
               </Button>
@@ -287,8 +294,8 @@ export function ModelRow({
                 variant="ghost"
                 size="sm"
                 onClick={() => setEditOpen(true)}
-                aria-label={`Edit ${model.display_name}`}
-                title="Edit model"
+                aria-label={ui("Edit {value0}", { value0: model.display_name })}
+                title={ui("Edit model")}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -297,8 +304,8 @@ export function ModelRow({
                 size="sm"
                 className="text-destructive"
                 onClick={() => onDelete(model.id)}
-                aria-label={`Delete ${model.display_name}`}
-                title="Delete model"
+                aria-label={ui("Delete {value0}", { value0: model.display_name })}
+                title={ui("Delete model")}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -306,7 +313,7 @@ export function ModelRow({
           )}
           {!canManage && (
             <Badge variant={model.enabled ? "success" : "outline"}>
-              {model.enabled ? "Enabled" : "Available"}
+              {model.enabled ? ui("Enabled") : ui("Available")}
             </Badge>
           )}
         </div>
@@ -319,11 +326,19 @@ export function ModelRow({
               <div>
                 <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                   <Layers className="h-3.5 w-3.5" />
-                  Token Limits
+                  {ui("Token Limits")}
                 </div>
-                <div>Context: {formatTokens(profile.limits.context)}</div>
-                {profile.limits.input && <div>Input: {formatTokens(profile.limits.input)}</div>}
-                <div>Output: {formatTokens(profile.limits.output)}</div>
+                <div>
+                  {ui("Context:")} {formatTokens(profile.limits.context)}
+                </div>
+                {profile.limits.input && (
+                  <div>
+                    {ui("Input:")} {formatTokens(profile.limits.input)}
+                  </div>
+                )}
+                <div>
+                  {ui("Output:")} {formatTokens(profile.limits.output)}
+                </div>
               </div>
             )}
 
@@ -331,33 +346,41 @@ export function ModelRow({
               <div>
                 <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                   <DollarSign className="h-3.5 w-3.5" />
-                  Cost / 1M Tokens
+                  {ui("Cost / 1M Tokens")}
                 </div>
-                <div>Input: {formatCost(profile.cost.input)}</div>
-                <div>Output: {formatCost(profile.cost.output)}</div>
-                {profile.cost.cache_read && <div>Cache: {formatCost(profile.cost.cache_read)}</div>}
+                <div>
+                  {ui("Input:")} {formatCost(profile.cost.input)}
+                </div>
+                <div>
+                  {ui("Output:")} {formatCost(profile.cost.output)}
+                </div>
+                {profile.cost.cache_read && (
+                  <div>
+                    {ui("Cache:")} {formatCost(profile.cost.cache_read)}
+                  </div>
+                )}
               </div>
             )}
 
             <div>
               <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                 <Wrench className="h-3.5 w-3.5" />
-                Capabilities
+                {ui("Capabilities")}
               </div>
               <div className="space-y-0.5">
                 <div className={profile.tool_call ? "text-success" : "text-muted-foreground"}>
-                  {profile.tool_call ? "\u2713" : "\u2717"} Tool Calling
+                  {profile.tool_call ? "\u2713" : "\u2717"} {ui("Tool Calling")}
                 </div>
                 <div
                   className={profile.structured_output ? "text-success" : "text-muted-foreground"}
                 >
-                  {profile.structured_output ? "\u2713" : "\u2717"} Structured Output
+                  {profile.structured_output ? "\u2713" : "\u2717"} {ui("Structured Output")}
                 </div>
                 <div className={profile.reasoning ? "text-success" : "text-muted-foreground"}>
-                  {profile.reasoning ? "\u2713" : "\u2717"} Reasoning
+                  {profile.reasoning ? "\u2713" : "\u2717"} {ui("Reasoning")}
                 </div>
                 <div className={profile.attachment ? "text-success" : "text-muted-foreground"}>
-                  {profile.attachment ? "\u2713" : "\u2717"} Attachments
+                  {profile.attachment ? "\u2713" : "\u2717"} {ui("Attachments")}
                 </div>
               </div>
             </div>
@@ -365,18 +388,30 @@ export function ModelRow({
             <div>
               <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                 <Info className="h-3.5 w-3.5" />
-                Model Info
+                {ui("Model Info")}
               </div>
-              {profile.knowledge && <div>Knowledge: {profile.knowledge}</div>}
-              {profile.release_date && <div>Released: {profile.release_date}</div>}
-              {profile.modalities && <div>Input: {profile.modalities.input.join(", ")}</div>}
+              {profile.knowledge && (
+                <div>
+                  {ui("Knowledge:")} {profile.knowledge}
+                </div>
+              )}
+              {profile.release_date && (
+                <div>
+                  {ui("Released:")} {profile.release_date}
+                </div>
+              )}
+              {profile.modalities && (
+                <div>
+                  {ui("Input:")} {profile.modalities.input.join(", ")}
+                </div>
+              )}
             </div>
           </div>
           {profile.supported_parameters && profile.supported_parameters.length > 0 && (
             <div className="border-t pt-3 mt-3">
               <div className="font-medium text-muted-foreground mb-2 flex items-center gap-1 text-sm">
                 <Wrench className="h-3.5 w-3.5" />
-                Supported Parameters
+                {ui("Supported Parameters")}
               </div>
               <div className="flex flex-wrap gap-1">
                 {profile.supported_parameters.map((parameter) => (
@@ -388,14 +423,14 @@ export function ModelRow({
             </div>
           )}
           <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
-            Profile data from provider discovery and{" "}
+            {ui("Profile data from provider discovery and")}{" "}
             <a
               href="https://models.dev"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-foreground"
             >
-              models.dev
+              {ui("models.dev")}
             </a>
           </div>
         </div>

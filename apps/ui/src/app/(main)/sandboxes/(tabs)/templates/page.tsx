@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { SandboxTemplateIcon } from "@/components/icons/facet-icons";
 import { Box } from "lucide-react";
 import { usePageTitle, useSandboxTemplates } from "@/hooks";
@@ -12,7 +13,8 @@ import { EmptyState, PageMain } from "@/components/layout";
 // Templates tab. The page header, tabs and "New Sandbox Template" action come
 // from the shell (../sandboxes-shell.tsx).
 export default function SandboxTemplatesPage() {
-  usePageTitle("Templates", "Sandboxes");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Templates"), ui("Sandboxes"));
   const { data, isLoading, error } = useSandboxTemplates();
   return (
     <PageMain>
@@ -24,9 +26,11 @@ export default function SandboxTemplatesPage() {
         emptyState={
           <EmptyState
             icon={<SandboxTemplateIcon />}
-            title="No Sandbox Templates"
+            title={ui("No Sandbox Templates")}
             action={
-              <LinkButton href="/sandboxes/templates/new">Create a Sandbox Template</LinkButton>
+              <LinkButton href="/sandboxes/templates/new">
+                {ui("Create a Sandbox Template")}
+              </LinkButton>
             }
           />
         }
@@ -44,8 +48,10 @@ export default function SandboxTemplatesPage() {
                   subtitle={template.name}
                   headerActions={
                     <div className="flex gap-2">
-                      {template.is_managed ? <Badge>Managed</Badge> : null}
-                      <Badge variant="outline">Revision {template.current_revision.revision}</Badge>
+                      {template.is_managed ? <Badge>{ui("Managed")}</Badge> : null}
+                      <Badge variant="outline">
+                        {ui("Revision")} {template.current_revision.revision}
+                      </Badge>
                     </div>
                   }
                   footer={
@@ -55,7 +61,7 @@ export default function SandboxTemplatesPage() {
                   }
                 >
                   <EntityCardDescription>
-                    {template.description || "Reusable Sandbox configuration"}
+                    {template.description || ui("Reusable Sandbox configuration")}
                   </EntityCardDescription>
                 </EntityCard>
               );

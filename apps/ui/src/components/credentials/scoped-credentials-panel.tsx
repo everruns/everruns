@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, useState, type FormEvent } from "react";
 import { usePageReadContext } from "@/components/chat-mode/use-page-read-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -53,11 +54,12 @@ function ValueForm({
   onSaved: () => Promise<unknown>;
   onCancel: () => void;
 }) {
+  const ui = useUiTranslations();
   usePageReadContext({
     fields: ["interaction"],
     values: { interaction: "Credential values are entered manually and are unavailable to Chat." },
     entityType: "manual_dialog",
-    label: "Credential value",
+    label: ui("Credential value"),
     formId: "credential_value",
     priority: 100,
   });
@@ -95,13 +97,14 @@ function ValueForm({
     >
       {credential.source_connection_id && (
         <p className="text-sm text-muted-foreground">
-          Saving a manual value replaces this connection reference and stops automatic token refresh
-          for this binding.
+          {ui(
+            "Saving a manual value replaces this connection reference and stops automatic token refresh for this binding.",
+          )}
         </p>
       )}
       <div className="space-y-1.5">
         <Label htmlFor={`${id}-value`}>
-          {credential.configured ? "Replacement value" : "Credential value"}
+          {credential.configured ? ui("Replacement value") : ui("Credential value")}
         </Label>
         <Input
           id={`${id}-value`}
@@ -112,14 +115,15 @@ function ValueForm({
           value={value}
           maxLength={65536}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="Paste securely"
+          placeholder={ui("Paste securely")}
           required
           disabled={pending}
         />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={`${id}-expires`}>
-          Expires at <span className="font-normal text-muted-foreground">(optional)</span>
+          {ui("Expires at")}{" "}
+          <span className="font-normal text-muted-foreground">{ui("(optional)")}</span>
         </Label>
         <Input
           id={`${id}-expires`}
@@ -131,7 +135,7 @@ function ValueForm({
       </div>
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <ShieldCheck className="size-3.5 shrink-0" />
-        Encrypted on save. The value is never returned or added to chat.
+        {ui("Encrypted on save. The value is never returned or added to chat.")}
       </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -148,10 +152,10 @@ function ValueForm({
           }}
           disabled={pending}
         >
-          Cancel
+          {ui("Cancel")}
         </Button>
         <Button type="submit" disabled={pending || !value}>
-          {pending ? "Saving…" : "Save value"}
+          {pending ? ui("Saving…") : ui("Save value")}
         </Button>
       </div>
     </form>
@@ -167,6 +171,7 @@ function AccessDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const { currentOrg, hasRole } = useOrg();
   const canGrantOrganization = hasRole("admin");
   const [agent, setAgent] = useState("");
@@ -204,10 +209,13 @@ function AccessDialog({
         className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto"
       >
         <DialogHeader>
-          <DialogTitle>Access to {credential.label}</DialogTitle>
+          <DialogTitle>
+            {ui("Access to")} {credential.label}
+          </DialogTitle>
           <DialogDescription>
-            Grant use of this credential without revealing its value. Access can be revoked at any
-            time.
+            {ui(
+              "Grant use of this credential without revealing its value. Access can be revoked at any time.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-48 space-y-2 overflow-auto">
@@ -215,7 +223,7 @@ function AccessDialog({
             <Skeleton className="h-12" />
           ) : grants.error ? (
             <p role="alert" className="text-sm text-destructive">
-              Could not load access grants.
+              {ui("Could not load access grants.")}
             </p>
           ) : grants.data?.length ? (
             grants.data.map((grant) => (
@@ -232,8 +240,10 @@ function AccessDialog({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {grant.expires_at
-                      ? `Until ${new Date(grant.expires_at).toLocaleString()}`
-                      : "Until revoked"}
+                      ? ui("Until {value0}", {
+                          value0: new Date(grant.expires_at).toLocaleString(),
+                        })
+                      : ui("Until revoked")}
                   </p>
                 </div>
                 <Button
@@ -253,30 +263,30 @@ function AccessDialog({
                     }
                   }}
                 >
-                  Revoke access
+                  {ui("Revoke access")}
                 </Button>
               </div>
             ))
           ) : (
             <p className="text-sm text-muted-foreground">
               {credential.scope === "organization"
-                ? "No agents have access yet."
-                : "No additional access granted."}
+                ? ui("No agents have access yet.")
+                : ui("No additional access granted.")}
             </p>
           )}
         </div>
         <form onSubmit={save} className="space-y-3 border-t border-border pt-4">
           <div className="space-y-1.5">
-            <Label htmlFor="credential-grant-audience">Grant access to</Label>
+            <Label htmlFor="credential-grant-audience">{ui("Grant access to")}</Label>
             <Select value={audience} onValueChange={setAudience}>
               <SelectTrigger id="credential-grant-audience">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="agent">One agent</SelectItem>
+                <SelectItem value="agent">{ui("One agent")}</SelectItem>
                 {canGrantOrganization && (
                   <SelectItem value="organization">
-                    All service agents in this organization
+                    {ui("All service agents in this organization")}
                   </SelectItem>
                 )}
               </SelectContent>
@@ -287,13 +297,14 @@ function AccessDialog({
               ariaLabel="Agent receiving credential access"
               value={agent}
               onValueChange={setAgent}
-              placeholder="Choose an agent"
+              placeholder={ui("Choose an agent")}
               disabled={pending}
             />
           )}
           <div className="space-y-1.5">
             <Label htmlFor="grant-expiry">
-              Access expires <span className="font-normal text-muted-foreground">(optional)</span>
+              {ui("Access expires")}{" "}
+              <span className="font-normal text-muted-foreground">{ui("(optional)")}</span>
             </Label>
             <Input
               id="grant-expiry"
@@ -304,9 +315,9 @@ function AccessDialog({
             />
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Authorized service runs can act with this credential, including unattended runs. This
-            grants use, not permission to manage or share it further. Responses may be visible to
-            participants in those sessions.
+            {ui(
+              "Authorized service runs can act with this credential, including unattended runs. This grants use, not permission to manage or share it further. Responses may be visible to participants in those sessions.",
+            )}
           </p>
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -315,7 +326,7 @@ function AccessDialog({
           )}
           <DialogFooter>
             <Button type="submit" disabled={pending || (audience === "agent" && !agent)}>
-              {pending ? "Saving…" : "Grant access"}
+              {pending ? ui("Saving…") : ui("Grant access")}
             </Button>
           </DialogFooter>
         </form>
@@ -335,6 +346,7 @@ function AddBinding({
   onOpenChange: (open: boolean) => void;
   onSaved: () => Promise<unknown>;
 }) {
+  const ui = useUiTranslations();
   const [kind, setKind] = useState("http");
   const [name, setName] = useState("");
   const [label, setLabel] = useState("");
@@ -383,34 +395,35 @@ function AddBinding({
         className="max-h-[calc(100svh-2rem)] max-w-lg overflow-y-auto"
       >
         <DialogHeader>
-          <DialogTitle>Add credential binding</DialogTitle>
+          <DialogTitle>{ui("Add credential binding")}</DialogTitle>
           <DialogDescription>
-            Choose where the credential may be used. You will add its value securely after reviewing
-            the binding.
+            {ui(
+              "Choose where the credential may be used. You will add its value securely after reviewing the binding.",
+            )}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           {
             <div className="space-y-1.5">
-              <Label htmlFor={`${id}-kind`}>Binding type</Label>
+              <Label htmlFor={`${id}-kind`}>{ui("Binding type")}</Label>
               <Select value={kind} onValueChange={setKind}>
                 <SelectTrigger id={`${id}-kind`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="http">HTTP service</SelectItem>
-                  <SelectItem value="mcp_parameter">MCP tool parameter</SelectItem>
+                  <SelectItem value="http">{ui("HTTP service")}</SelectItem>
+                  <SelectItem value="mcp_parameter">{ui("MCP tool parameter")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           }
           <div className="space-y-1.5">
-            <Label htmlFor={`${id}-label`}>Label</Label>
+            <Label htmlFor={`${id}-label`}>{ui("Label")}</Label>
             <Input
               id={`${id}-label`}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Shipmail account"
+              placeholder={ui("Shipmail account")}
               maxLength={128}
               required
               disabled={pending}
@@ -419,7 +432,7 @@ function AddBinding({
           {kind === "http" ? (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-name`}>Reference name</Label>
+                <Label htmlFor={`${id}-name`}>{ui("Reference name")}</Label>
                 <Input
                   id={`${id}-name`}
                   value={name}
@@ -430,11 +443,13 @@ function AddBinding({
                   disabled={pending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  The agent uses ${name || "NAME"}. It never reads the value.
+                  {ui("The agent uses $")}
+                  {name || ui("NAME")}
+                  {ui(". It never reads the value.")}
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-url`}>Allowed HTTPS URL</Label>
+                <Label htmlFor={`${id}-url`}>{ui("Allowed HTTPS URL")}</Label>
                 <Input
                   id={`${id}-url`}
                   type="url"
@@ -446,32 +461,32 @@ function AddBinding({
                   disabled={pending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  A host and optional path prefix. This does not grant network access.
+                  {ui("A host and optional path prefix. This does not grant network access.")}
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-auth`}>Send credential as</Label>
+                <Label htmlFor={`${id}-auth`}>{ui("Send credential as")}</Label>
                 <Select value={auth} onValueChange={setAuth}>
                   <SelectTrigger id={`${id}-auth`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="bearer">Bearer authorization</SelectItem>
-                    <SelectItem value="header">Custom HTTP header</SelectItem>
-                    <SelectItem value="form_field">Named form field</SelectItem>
+                    <SelectItem value="bearer">{ui("Bearer authorization")}</SelectItem>
+                    <SelectItem value="header">{ui("Custom HTTP header")}</SelectItem>
+                    <SelectItem value="form_field">{ui("Named form field")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {auth !== "bearer" && (
                 <div className="space-y-1.5">
                   <Label htmlFor={`${id}-field`}>
-                    {auth === "header" ? "Header name" : "Form field name"}
+                    {auth === "header" ? ui("Header name") : ui("Form field name")}
                   </Label>
                   <Input
                     id={`${id}-field`}
                     value={field}
                     onChange={(e) => setField(e.target.value)}
-                    placeholder={auth === "header" ? "X-API-Key" : "assertion"}
+                    placeholder={auth === "header" ? ui("X-API-Key") : ui("assertion")}
                     required
                     disabled={pending}
                   />
@@ -481,7 +496,7 @@ function AddBinding({
           ) : (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-mcp-url`}>Exact MCP HTTPS URL</Label>
+                <Label htmlFor={`${id}-mcp-url`}>{ui("Exact MCP HTTPS URL")}</Label>
                 <Input
                   id={`${id}-mcp-url`}
                   type="url"
@@ -495,7 +510,7 @@ function AddBinding({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor={`${id}-server`}>MCP server name</Label>
+                <Label htmlFor={`${id}-server`}>{ui("MCP server name")}</Label>
                 <Input
                   id={`${id}-server`}
                   value={server}
@@ -506,7 +521,7 @@ function AddBinding({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor={`${id}-tool`}>Tool</Label>
+                  <Label htmlFor={`${id}-tool`}>{ui("Tool")}</Label>
                   <Input
                     id={`${id}-tool`}
                     value={tool}
@@ -516,7 +531,7 @@ function AddBinding({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor={`${id}-parameter`}>Parameter</Label>
+                  <Label htmlFor={`${id}-parameter`}>{ui("Parameter")}</Label>
                   <Input
                     id={`${id}-parameter`}
                     value={parameter}
@@ -540,10 +555,10 @@ function AddBinding({
               onClick={() => onOpenChange(false)}
               disabled={pending}
             >
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? "Adding…" : "Add binding"}
+              {pending ? ui("Adding…") : ui("Add binding")}
             </Button>
           </DialogFooter>
         </form>
@@ -559,6 +574,7 @@ function ScopedCredentialsPanelContent({
   owner: CredentialOwner;
   title?: string;
 }) {
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -604,13 +620,13 @@ function ScopedCredentialsPanelContent({
           </h3>
           <p className="mt-1 max-w-xl text-sm leading-5 text-muted-foreground">
             {owner.scope === "virtual_user" && owner.usage === "service"
-              ? "Credentials for this service virtual user’s authorized runs."
+              ? ui("Credentials for this service virtual user’s authorized runs.")
               : DESCRIPTIONS[owner.scope]}
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
           <Plus className="size-4" />
-          Add binding
+          {ui("Add binding")}
         </Button>
       </div>
       <div className="space-y-3 p-4">
@@ -618,9 +634,11 @@ function ScopedCredentialsPanelContent({
           <Skeleton className="h-28" />
         ) : query.error ? (
           <div role="alert" className="space-y-2 text-sm text-destructive">
-            <p>Could not load credentials. {message(query.error)}</p>
+            <p>
+              {ui("Could not load credentials.")} {message(query.error)}
+            </p>
             <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
-              Retry
+              {ui("Retry")}
             </Button>
           </div>
         ) : query.data?.length ? (
@@ -639,15 +657,17 @@ function ScopedCredentialsPanelContent({
                       <h4 className="font-medium">{credential.label}</h4>
                       <Badge variant={expired ? "destructive" : "outline"}>
                         {expired
-                          ? "Expired"
+                          ? ui("Expired")
                           : credential.configured
-                            ? "Configured"
-                            : "Setup required"}
+                            ? ui("Configured")
+                            : ui("Setup required")}
                       </Badge>
                     </div>
                     {credential.source_connection_id && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Uses the selected GitHub App connection; tokens refresh automatically.
+                        {ui(
+                          "Uses the selected GitHub App connection; tokens refresh automatically.",
+                        )}
                       </p>
                     )}
                     {credential.name && (
@@ -661,22 +681,27 @@ function ScopedCredentialsPanelContent({
                     <p className="mt-1 text-xs text-muted-foreground">
                       {credential.binding
                         ? credential.binding.auth.type === "bearer"
-                          ? "Authorization: Bearer"
+                          ? ui("Authorization: Bearer")
                           : "name" in credential.binding.auth
                             ? `${credential.binding.auth.type === "header" ? "Header" : "Form field"}: ${credential.binding.auth.name}`
                             : ""
-                        : `${credential.tool_name} → ${credential.parameter_name}`}
+                        : ui("{value0} → {value1}", {
+                            value0: credential.tool_name,
+                            value1: credential.parameter_name,
+                          })}
                     </p>
                     {credential.expires_at && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Expires {new Date(credential.expires_at).toLocaleString()}
+                        {ui("Expires")} {new Date(credential.expires_at).toLocaleString()}
                       </p>
                     )}
                     {credential.last_used_at && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        Last used {new Date(credential.last_used_at).toLocaleString()}
+                        {ui("Last used")} {new Date(credential.last_used_at).toLocaleString()}
                         {credential.last_used_agent_id
-                          ? ` · ${credential.last_used_agent_name ?? "Service agent"}`
+                          ? ui(" · {value0}", {
+                              value0: credential.last_used_agent_name ?? "Service agent",
+                            })
                           : ""}
                       </p>
                     )}
@@ -693,19 +718,19 @@ function ScopedCredentialsPanelContent({
                         <KeyRound className="size-3.5" />
                       )}
                       {credential.source_connection_id
-                        ? "Use a manual value"
+                        ? ui("Use a manual value")
                         : credential.configured
-                          ? "Replace"
-                          : "Add value"}
+                          ? ui("Replace")
+                          : ui("Add value")}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setSharing(credential)}>
                       <Users className="size-3.5" />
-                      Access
+                      {ui("Access")}
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
-                      aria-label={`Revoke ${credential.label}`}
+                      aria-label={ui("Revoke {value0}", { value0: credential.label })}
                       onClick={() => setRevoking(credential)}
                     >
                       <Trash2 className="size-4 text-destructive" />
@@ -726,9 +751,11 @@ function ScopedCredentialsPanelContent({
         ) : (
           <div className="flex flex-col items-center justify-center border border-dashed border-border px-5 py-9 text-center">
             <LockKeyhole className="mb-3 size-7 text-muted-foreground" />
-            <p className="text-sm font-medium">No credentials yet</p>
+            <p className="text-sm font-medium">{ui("No credentials yet")}</p>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              Add a binding to connect a service securely. Values stay encrypted and out of chat.
+              {ui(
+                "Add a binding to connect a service securely. Values stay encrypted and out of chat.",
+              )}
             </p>
           </div>
         )}
@@ -763,10 +790,13 @@ function ScopedCredentialsPanelContent({
       >
         <DialogContent chatProtected="Credential controls" className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Revoke {revoking?.label}?</DialogTitle>
+            <DialogTitle>
+              {ui("Revoke")} {revoking?.label}?
+            </DialogTitle>
             <DialogDescription>
-              The next request will be blocked. This also removes access grants. Requests already
-              sent cannot be recalled.
+              {ui(
+                "The next request will be blocked. This also removes access grants. Requests already sent cannot be recalled.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {error && (
@@ -776,10 +806,10 @@ function ScopedCredentialsPanelContent({
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRevoking(null)} disabled={pending}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button variant="destructive" onClick={() => void revoke()} disabled={pending}>
-              {pending ? "Revoking…" : "Revoke credential"}
+              {pending ? ui("Revoking…") : ui("Revoke credential")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -77,3 +77,9 @@ draft markers and guarded local Undo. Agent definition saves attributed to that
 conversation refresh the page and receive persisted-change markers with guarded
 undo. A concurrent saved change blocks a dirty draft's Save until the operator discards and
 reviews the latest definition. Marker dismissal never bypasses that conflict.
+
+- **Localization is a draft section.** A More row opens locale-keyed display-name and
+  description overrides. Add or remove any supported language tag, then use the
+  page-level Save changes or Discard. Built-in resources keep their read-only policy.
+  Display text falls back per field; stable addresses and execution configuration
+  remain independent.

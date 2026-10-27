@@ -8398,6 +8398,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -8855,6 +8857,7 @@ export interface components {
        * @example conversation
        */
       harness_name: string;
+      localizations: components["schemas"]["EntityLocalizations"];
       /**
        * @description Name (e.g. "dad-jokes-agent")
        * @example dad-jokes-agent
@@ -9033,6 +9036,7 @@ export interface components {
     AgentHarnessSummary: {
       display_name?: string | null;
       id?: string | null;
+      localizations: components["schemas"]["EntityLocalizations"];
       name?: string | null;
       source: components["schemas"]["AgentHarnessSource"];
       status: components["schemas"]["AgentHarnessStatus"];
@@ -11772,6 +11776,8 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -12230,6 +12236,8 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -13588,6 +13596,18 @@ export interface components {
       via_agent_id?: string | null;
       /** @description The session through which an agent made the change. */
       via_session_id?: string | null;
+    };
+    /**
+     * @description Display-only translations shared by portable agent files and platform resources.
+     *     Addresses, tool identifiers and execution instructions never use these values.
+     */
+    EntityLocalization: {
+      description?: string | null;
+      display_name?: string | null;
+    };
+    /** @description Locale-keyed display overlays. Deserialization normalizes tags and bounds input. */
+    EntityLocalizations: {
+      [key: string]: components["schemas"]["EntityLocalization"];
     };
     /**
      * @description One revision of an entity: the entry that made it and the entity as it
@@ -15437,6 +15457,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -15500,6 +15522,7 @@ export interface components {
       display_name: string;
       /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
       icon?: string | null;
+      localizations: components["schemas"]["EntityLocalizations"];
       /** @description Unique slug (e.g. `data-analyst`). */
       name: string;
       /**
@@ -16487,6 +16510,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
@@ -17367,6 +17392,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -18642,6 +18669,8 @@ export interface components {
          * @example false
          */
         is_built_in?: boolean;
+        /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+        localizations?: components["schemas"]["EntityLocalizations"];
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
@@ -19345,6 +19374,8 @@ export interface components {
       instructions_file?: string | null;
       /** @description Optional Markdown introduction shown before the conversation starts. */
       intro_markdown?: string | null;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
       /**
@@ -28324,6 +28355,7 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 20
@@ -28726,6 +28758,7 @@ export interface components {
        * @example I triage incidents, dig through logs, and draft the update.
        */
       intro_markdown?: string | null;
+      localizations?: components["schemas"]["EntityLocalizations"] | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
        * @description Name, unique per org.
@@ -29872,6 +29905,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
@@ -30466,6 +30501,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
@@ -30952,6 +30989,8 @@ export interface components {
        * @example false
        */
       is_built_in?: boolean;
+      /** @description Locale-keyed display overlays; identifiers and execution instructions are unchanged. */
+      localizations?: components["schemas"]["EntityLocalizations"];
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**

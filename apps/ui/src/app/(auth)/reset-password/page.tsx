@@ -4,6 +4,7 @@
 // (expired / invalid / used) render the same generic state with a path to
 // request a fresh link; no raw server messages (TM-AUTH-019).
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -21,7 +22,8 @@ import { Check, Loader2, TriangleAlert } from "lucide-react";
 type FormError = { kind: "message"; text: string } | { kind: "expired" };
 
 export default function ResetPasswordPage() {
-  usePageTitle("Reset your password");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Reset your password"));
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const resetPasswordMutation = useResetPassword();
@@ -41,18 +43,19 @@ export default function ResetPasswordPage() {
           <TriangleAlert className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Invalid reset link
+          {ui("Invalid reset link")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          This reset link is invalid or has expired. Reset links are valid for one hour and can only
-          be used once.
+          {ui(
+            "This reset link is invalid or has expired. Reset links are valid for one hour and can only be used once.",
+          )}
         </p>
         <Button className="mt-7" onClick={() => window.location.assign("/forgot-password")}>
-          Request a new link
+          {ui("Request a new link")}
         </Button>
         <p className="mt-5 text-sm text-muted-foreground">
           <Link href="/login" className="font-medium text-primary hover:underline">
-            Back to sign in
+            {ui("Back to sign in")}
           </Link>
         </p>
       </AuthShell>
@@ -66,14 +69,15 @@ export default function ResetPasswordPage() {
           <Check className="icon-sharp h-[22px] w-[22px]" strokeWidth={2.2} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Password updated
+          {ui("Password updated")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          Your password has been reset and all other sessions have been signed out. You can now sign
-          in with your new password.
+          {ui(
+            "Your password has been reset and all other sessions have been signed out. You can now sign in with your new password.",
+          )}
         </p>
         <Button className="mt-7" onClick={() => window.location.assign("/login")}>
-          Continue to sign in
+          {ui("Continue to sign in")}
         </Button>
       </AuthShell>
     );
@@ -116,10 +120,10 @@ export default function ResetPasswordPage() {
   return (
     <AuthShell>
       <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        Set a new password
+        {ui("Set a new password")}
       </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
-        Choose a new password for your account.
+        {ui("Choose a new password for your account.")}
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -129,11 +133,11 @@ export default function ResetPasswordPage() {
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor="password">New password</Label>
+          <Label htmlFor="password">{ui("New password")}</Label>
           <Input
             id="password"
             type="password"
-            placeholder="At least 12 characters, one number"
+            placeholder={ui("At least 12 characters, one number")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -143,11 +147,11 @@ export default function ResetPasswordPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="confirm-password">Confirm password</Label>
+          <Label htmlFor="confirm-password">{ui("Confirm password")}</Label>
           <Input
             id="confirm-password"
             type="password"
-            placeholder="Repeat your new password"
+            placeholder={ui("Repeat your new password")}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
@@ -160,7 +164,7 @@ export default function ResetPasswordPage() {
           {resetPasswordMutation.isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Updating...
+              {ui("Updating...")}
             </>
           ) : (
             "Update password"

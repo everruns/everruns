@@ -12,32 +12,33 @@ export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "session
 export function getAgentTabItems(
   sessionCount?: number,
   integrationCount?: number,
+  translate: (message: string) => string = (message) => message,
 ): SectionTabItem[] {
   return [
-    { value: "agent", label: "Agent", icon: <AgentIcon className="size-4" /> },
-    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+    { value: "agent", label: translate("Agent"), icon: <AgentIcon className="size-4" /> },
+    { value: "preview", label: translate("Preview"), icon: <Eye className="size-4" /> },
     {
       value: "integrations",
       label:
         integrationCount === undefined ? (
-          "Integrations"
+          translate("Integrations")
         ) : (
           <>
-            Integrations
+            {translate("Integrations")}
             <span className="bg-muted px-1 text-[11px] font-medium">{integrationCount}</span>
           </>
         ),
       icon: <Plug className="size-4" />,
     },
-    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
+    { value: "stats", label: translate("Stats"), icon: <BarChart3 className="size-4" /> },
     {
       value: "sessions",
       label:
         sessionCount === undefined ? (
-          "Sessions"
+          translate("Sessions")
         ) : (
           <>
-            Sessions
+            {translate("Sessions")}
             <span className="bg-muted px-1 text-[11px] font-medium">{sessionCount}</span>
           </>
         ),

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { FileText, Loader2, X, AlertCircle } from "lucide-react";
 import type { PendingFile } from "@/lib/api/files";
 
@@ -15,6 +16,7 @@ function formatSize(bytes: number): string {
 }
 
 export function FileAttachments({ files, onRemove }: FileAttachmentsProps) {
+  const ui = useUiTranslations();
   if (files.length === 0) return null;
 
   return (
@@ -41,7 +43,7 @@ export function FileAttachments({ files, onRemove }: FileAttachmentsProps) {
             type="button"
             onClick={() => onRemove(f.id)}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Remove ${f.file.name}`}
+            aria-label={ui("Remove {value0}", { value0: f.file.name })}
           >
             <X className="h-3.5 w-3.5" />
           </button>

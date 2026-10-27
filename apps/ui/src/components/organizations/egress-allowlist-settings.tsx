@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { isPublicDraftLocation } from "@/components/chat-mode/page-form-schemas";
@@ -29,6 +30,7 @@ const allowlistDraftSchema = z.strictObject({
  * on the org's own settings page.
  */
 export function EgressAllowlistSettings() {
+  const ui = useUiTranslations();
   const { data: allowlist, isLoading, error } = useOrgEgressAllowlist();
   const savePatterns = useSetOrgEgressAllowlist();
   // The unsaved edit; null shows the stored list.
@@ -42,7 +44,7 @@ export function EgressAllowlistSettings() {
     schema: allowlistDraftSchema,
     values: { host_patterns: text },
     entityType: "organization_network",
-    label: "Outbound allowlist",
+    label: ui("Outbound allowlist"),
     formId: "outbound_allowlist",
     enabled: !!allowlist && !isLoading && !error && publicPatterns(text),
     baseline: storedText,
@@ -85,15 +87,16 @@ export function EgressAllowlistSettings() {
             id="organization-settings-outbound-allowlist"
             className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground"
           >
-            Outbound allowlist
+            {ui("Outbound allowlist")}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Hosts this organization&apos;s agents, MCP servers and integrations may send data to, in
-            addition to the deployment&apos;s allowlist.
+            {ui(
+              "Hosts this organization's agents, MCP servers and integrations may send data to, in addition to the deployment's allowlist.",
+            )}
           </p>
         </div>
         <Badge variant={allowlist.granted ? "accent" : "outline"}>
-          {allowlist.granted ? "Enabled" : "Not enabled"}
+          {allowlist.granted ? ui("Enabled") : ui("Not enabled")}
         </Badge>
       </div>
       {chat.notice}
@@ -107,26 +110,29 @@ export function EgressAllowlistSettings() {
             chat.clear();
           }}
         >
-          Discard allowlist changes
+          {ui("Discard allowlist changes")}
         </Button>
       )}
       <Card className="gap-0 overflow-hidden p-0">
         <div className="space-y-3 px-5 py-4">
           {!curated && (
             <p className="text-sm text-muted-foreground">
-              This deployment does not restrict outbound requests, so the list has no effect here.
+              {ui(
+                "This deployment does not restrict outbound requests, so the list has no effect here.",
+              )}
             </p>
           )}
           {curated && allowlist.open && (
             <p className="text-sm text-muted-foreground">
-              This organization has open outbound access: its agents can reach any public host
-              except the deployment&apos;s deny list, so the list below is not needed.
+              {ui(
+                "This organization has open outbound access: its agents can reach any public host except the deployment's deny list, so the list below is not needed.",
+              )}
             </p>
           )}
           {allowlist.granted ? (
             <>
               <Label htmlFor="egress-allowlist-patterns" className="text-sm font-medium">
-                Host patterns
+                {ui("Host patterns")}
               </Label>
               <Textarea
                 id="egress-allowlist-patterns"
@@ -141,9 +147,10 @@ export function EgressAllowlistSettings() {
                 placeholder={"api.example.com\n*.example.com\nhttps://example.com/mcp/"}
               />
               <p className="text-xs text-muted-foreground">
-                One per line, up to {allowlist.max_patterns}: <code>example.com</code>,{" "}
-                <code>*.example.com</code>, or an <code>https://example.com/path/</code> prefix.
-                Public hostnames only; the deployment&apos;s deny list still applies.
+                {ui("One per line, up to")} {allowlist.max_patterns}: <code>example.com</code>,{" "}
+                <code>*.example.com</code>
+                {ui(", or an")} <code>https://example.com/path/</code>{" "}
+                {ui("prefix. Public hostnames only; the deployment's deny list still applies.")}
               </p>
               {editable && (
                 <div className="flex items-center gap-3">
@@ -153,11 +160,11 @@ export function EgressAllowlistSettings() {
                     disabled={chat.blocked || !dirty || savePatterns.isPending}
                   >
                     {savePatterns.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                    Save
+                    {ui("Save")}
                   </Button>
                   {saved && !dirty && (
                     <span role="status" className="text-sm text-success">
-                      Saved
+                      {ui("Saved")}
                     </span>
                   )}
                 </div>
@@ -165,7 +172,9 @@ export function EgressAllowlistSettings() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">
-              A platform administrator must enable this before the organization can add hosts.
+              {ui(
+                "A platform administrator must enable this before the organization can add hosts.",
+              )}
               {allowlist.patterns.length > 0 &&
                 ` ${allowlist.patterns.length} saved pattern(s) are kept but not enforced.`}
             </p>

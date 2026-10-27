@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -94,6 +95,7 @@ export function SetApiKeyDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const ui = useUiTranslations();
   const { schema, supportsOAuth } = useDriverCredentialSchema(provider?.provider_type);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const updateProvider = useUpdateProvider(provider?.id || "");
@@ -141,25 +143,28 @@ export function SetApiKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent chatProtected="Provider credentials">
         <DialogHeader>
-          <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} Credentials</DialogTitle>
+          <DialogTitle>
+            {provider?.api_key_set ? ui("Update") : ui("Set")} {ui("Credentials")}
+          </DialogTitle>
           <DialogDescription>
             {provider?.api_key_set
-              ? "Enter new credentials to replace the existing ones."
-              : "Enter the credentials for this provider."}
+              ? ui("Enter new credentials to replace the existing ones.")
+              : ui("Enter the credentials for this provider.")}
           </DialogDescription>
         </DialogHeader>
         {supportsOAuth ? (
           <div className="space-y-3">
             <Button type="button" className="w-full" onClick={handleConnectOAuth}>
-              Connect with {oauthLabel}
+              {ui("Connect with")} {oauthLabel}
             </Button>
             <p className="text-sm text-muted-foreground">
-              Authorize in your browser to set up a key automatically, with no copy &amp; paste. Or
-              enter credentials manually below.
+              {ui(
+                "Authorize in your browser to set up a key automatically, with no copy & paste. Or enter credentials manually below.",
+              )}
             </p>
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">or</span>
+              <span className="text-xs text-muted-foreground">{ui("or")}</span>
               <div className="h-px flex-1 bg-border" />
             </div>
           </div>
@@ -178,10 +183,10 @@ export function SetApiKeyDialog({
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button type="submit" disabled={updateProvider.isPending || !hasInput}>
-              {updateProvider.isPending ? "Saving..." : "Save Credentials"}
+              {updateProvider.isPending ? ui("Saving...") : ui("Save Credentials")}
             </Button>
           </DialogFooter>
         </form>

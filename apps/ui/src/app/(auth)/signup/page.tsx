@@ -8,6 +8,7 @@
 // the email itself, never on-screen). Without confirm mode (self-host, no
 // email sender) signup keeps the instant session.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -37,7 +38,8 @@ function providerLabel(provider: string): string {
 }
 
 export default function SignupPage() {
-  usePageTitle("Create your account");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Create your account"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
@@ -119,30 +121,30 @@ export default function SignupPage() {
           <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Check your email
+          {ui("Check your email")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          If <b className="font-medium text-foreground">{submittedEmail}</b>
+          {ui("If")} <b className="font-medium text-foreground">{submittedEmail}</b>
           {" can be registered, we've sent a confirmation link. Click it to verify"}
           {" your email and get started. The link signs you in."}
         </p>
         <p className="mt-6 text-[13px] text-muted-foreground">
-          Wrong address?{" "}
+          {ui("Wrong address?")}{" "}
           <button
             type="button"
             onClick={() => setSubmittedEmail(null)}
             className="font-medium text-primary hover:underline"
           >
-            Use a different email
+            {ui("Use a different email")}
           </button>
         </p>
         <p className="mt-2 text-[13px] text-muted-foreground">
-          Already have an account?{" "}
+          {ui("Already have an account?")}{" "}
           <Link
             href={buildLoginHref(returnTo)}
             className="font-medium text-primary hover:underline"
           >
-            Log in
+            {ui("Log in")}
           </Link>
         </p>
       </AuthShell>
@@ -163,17 +165,17 @@ export default function SignupPage() {
     return (
       <AuthShell>
         <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-          Signups are closed
+          {ui("Signups are closed")}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          New registrations are currently disabled on this deployment.
+          {ui("New registrations are currently disabled on this deployment.")}
         </p>
         <p className="mt-6 text-sm text-muted-foreground">
           <Link
             href={buildLoginHref(returnTo)}
             className="font-medium text-primary hover:underline"
           >
-            Back to log in
+            {ui("Back to log in")}
           </Link>
         </p>
       </AuthShell>
@@ -189,12 +191,12 @@ export default function SignupPage() {
   return (
     <AuthShell>
       <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        Create your account
+        {ui("Create your account")}
       </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
-        Already have one?{" "}
+        {ui("Already have one?")}{" "}
         <Link href={buildLoginHref(returnTo)} className="font-medium text-primary hover:underline">
-          Log in
+          {ui("Log in")}
         </Link>
       </p>
 
@@ -210,7 +212,7 @@ export default function SignupPage() {
                 disabled={oauthPending}
               >
                 <OAuthProviderIcon provider={provider} />
-                Continue with {providerLabel(provider)}
+                {ui("Continue with")} {providerLabel(provider)}
               </Button>
             ))}
           </div>
@@ -220,7 +222,7 @@ export default function SignupPage() {
           <div className="flex items-center gap-3 py-1">
             <div className="h-px flex-1 bg-border" />
             <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-              or
+              {ui("or")}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>
@@ -228,7 +230,7 @@ export default function SignupPage() {
 
         {!hasPasswordAuth && oauthProviders.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            No sign-up methods are currently available on this deployment.
+            {ui("No sign-up methods are currently available on this deployment.")}
           </p>
         )}
 
@@ -240,11 +242,11 @@ export default function SignupPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{ui("Email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@company.com"
+                placeholder={ui("you@company.com")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -252,7 +254,7 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{ui("Password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -271,8 +273,8 @@ export default function SignupPage() {
               {/* Inline requirements, live-checked as the user types. */}
               <ul id="password-requirements" className="space-y-1 pt-1">
                 {[
-                  { ok: lengthOk, label: "At least 12 characters" },
-                  { ok: digitOk, label: "At least one number" },
+                  { ok: lengthOk, label: ui("At least 12 characters") },
+                  { ok: digitOk, label: ui("At least one number") },
                 ].map(({ ok, label }) => (
                   <li
                     key={label}
@@ -298,7 +300,7 @@ export default function SignupPage() {
               {registerMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating account...
+                  {ui("Creating account...")}
                 </>
               ) : (
                 "Create account"

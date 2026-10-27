@@ -1,3 +1,4 @@
+import { UK_COUNT_FORMS } from "./count-messages";
 /**
  * Formatting utilities for displaying numbers, dates, and durations.
  * Centralized to avoid duplication across components.
@@ -12,13 +13,22 @@ export function formatCompactNumber(value: number): string {
   return value.toString();
 }
 
-export function pluralize(count: number, singular: string, plural?: string): string {
+export function pluralize(count: number, singular: string, plural?: string, locale = "en"): string {
+  if (locale.toLowerCase().split("-")[0] === "uk" && UK_COUNT_FORMS[singular]) {
+    const form = new Intl.PluralRules("uk").select(count);
+    return UK_COUNT_FORMS[singular][form === "one" ? 0 : form === "few" ? 1 : 2];
+  }
   if (count === 1) return singular;
   return plural ?? `${singular}s`;
 }
 
-export function formatCountLabel(count: number, singular: string, plural?: string): string {
-  return `${count} ${pluralize(count, singular, plural)}`;
+export function formatCountLabel(
+  count: number,
+  singular: string,
+  plural?: string,
+  locale = "en",
+): string {
+  return `${new Intl.NumberFormat(locale).format(count)} ${pluralize(count, singular, plural, locale)}`;
 }
 
 /**
@@ -65,7 +75,7 @@ export function formatDurationSeconds(seconds: number): string {
 /**
  * Format a date as relative time (e.g., "5 min ago", "2 hours ago", "yesterday")
  */
-export function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString: string, locale?: string): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -74,6 +84,14 @@ export function formatRelativeTime(dateString: string): string {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
+  if (locale?.toLowerCase().split("-")[0] === "uk") {
+    if (diffSecs < 60) return "щойно";
+    const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    if (diffMins < 60) return format.format(-diffMins, "minute");
+    if (diffHours < 24) return format.format(-diffHours, "hour");
+    if (diffDays < 7) return format.format(-diffDays, "day");
+    return date.toLocaleDateString(locale);
+  }
   if (diffSecs < 60) return "just now";
   if (diffMins < 60) return `${diffMins} min ago`;
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
@@ -85,15 +103,15 @@ export function formatRelativeTime(dateString: string): string {
 /**
  * Format a date for display using locale settings
  */
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleString();
+export function formatDate(dateString: string, locale?: string): string {
+  return new Date(dateString).toLocaleString(locale);
 }
 
 /**
  * Format a date as short date (without time)
  */
-export function formatShortDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString();
+export function formatShortDate(dateString: string, locale?: string): string {
+  return new Date(dateString).toLocaleDateString(locale);
 }
 
 /**

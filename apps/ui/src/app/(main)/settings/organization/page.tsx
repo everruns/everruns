@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { z } from "zod";
 import { usePageSettingsDraft } from "@/components/chat-mode/use-page-settings-draft";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -84,7 +85,8 @@ const INITIAL_SAVE_STATES: Record<SettingsGroupKey, GroupSaveState> = {
 };
 
 export default function OrganizationPage() {
-  usePageTitle("Organization", "Settings");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Organization"), ui("Settings"));
   const router = useRouter();
   const { currentOrg, organizations, setCurrentOrg, hasRole } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
@@ -122,7 +124,7 @@ export default function OrganizationPage() {
     },
     entityType: "organization",
     entityId: organizationId,
-    label: "Organization settings",
+    label: ui("Organization settings"),
     enabled: !!organizationId,
     writable: canManage && !!organizationId && !updateOrganization.isPending,
     save: async (values) => {
@@ -154,7 +156,7 @@ export default function OrganizationPage() {
     fields: ["name"],
     values: { name: newOrgName },
     entityType: "organization",
-    label: "Create organization",
+    label: ui("Create organization"),
     formId: "create",
     priority: 30,
     enabled: createDialogOpen,
@@ -352,9 +354,9 @@ export default function OrganizationPage() {
     <div className="space-y-8">
       <section>
         <div className="mb-6">
-          <h2 className="text-xl font-semibold">Organization</h2>
+          <h2 className="text-xl font-semibold">{ui("Organization")}</h2>
           <p className="text-sm text-muted-foreground">
-            Manage organization-level defaults and identity.
+            {ui("Manage organization-level defaults and identity.")}
           </p>
         </div>
 
@@ -363,7 +365,7 @@ export default function OrganizationPage() {
         {error ? (
           <Card className="p-8 text-center">
             <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-            <h3 className="text-lg font-medium mb-2">Failed to load organization</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("Failed to load organization")}</h3>
             <p className="text-muted-foreground">{error.message}</p>
           </Card>
         ) : isLoading ? (
@@ -389,20 +391,23 @@ export default function OrganizationPage() {
               <Card className="flex items-start gap-3 border-warning/30 bg-warning/5 p-4 text-sm">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
                 <p>
-                  Only organization owners and admins can change these settings. You have read-only
-                  access as a member.
+                  {ui(
+                    "Only organization owners and admins can change these settings. You have read-only access as a member.",
+                  )}
                 </p>
               </Card>
             )}
             <SettingsGroup
-              title="Identity"
-              description="Name and stable identifier for this organization."
+              title={ui("Identity")}
+              description={ui("Name and stable identifier for this organization.")}
               status={canManage ? <AutoSaveBadge saveState={saveStates.identity} /> : null}
               error={saveStates.identity.error}
             >
               <SettingsRow
-                label="Organization name"
-                description="Shown in navigation, resource ownership, and member-facing views."
+                label={ui("Organization name")}
+                description={ui(
+                  "Shown in navigation, resource ownership, and member-facing views.",
+                )}
                 htmlFor="org-name"
               >
                 <Input
@@ -410,15 +415,15 @@ export default function OrganizationPage() {
                   value={name}
                   onChange={handleNameChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Organization name"
+                  placeholder={ui("Organization name")}
                   readOnly={!canManage || settings.pending}
                   className={cn(CONTROL_CLASS_NAME, !canManage && "bg-muted")}
                 />
               </SettingsRow>
 
               <SettingsRow
-                label="Organization ID"
-                description="Use this ID when making API calls scoped to this organization."
+                label={ui("Organization ID")}
+                description={ui("Use this ID when making API calls scoped to this organization.")}
                 htmlFor="org-id"
               >
                 <div className="flex items-center gap-2">
@@ -430,7 +435,9 @@ export default function OrganizationPage() {
                   />
                   <CopyButton
                     value={organization?.id || currentOrg?.public_id || ""}
-                    label={`Copy ID: ${organization?.id || currentOrg?.public_id || ""}`}
+                    label={ui("Copy ID: {value0}", {
+                      value0: organization?.id || currentOrg?.public_id || "",
+                    })}
                     kind="id"
                   />
                 </div>
@@ -438,14 +445,16 @@ export default function OrganizationPage() {
             </SettingsGroup>
 
             <SettingsGroup
-              title="Models"
-              description="Default for agents and sessions without an explicit model. Everruns Chat has its own selection in Chat settings."
+              title={ui("Models")}
+              description={ui(
+                "Default for agents and sessions without an explicit model. Everruns Chat has its own selection in Chat settings.",
+              )}
               status={canManage ? <AutoSaveBadge saveState={saveStates.models} /> : null}
               error={saveStates.models.error}
             >
               <SettingsRow
-                label="Default model"
-                description="Leave empty to use the platform default, GPT-6 Luna."
+                label={ui("Default model")}
+                description={ui("Leave empty to use the platform default, GPT-6 Luna.")}
                 htmlFor="default-model"
               >
                 <ModelPicker
@@ -460,7 +469,7 @@ export default function OrganizationPage() {
                     setDefaultModelId(value);
                     scheduleAutoSave("models", nextDraft);
                   }}
-                  placeholder="Platform default · GPT-6 Luna"
+                  placeholder={ui("Platform default · GPT-6 Luna")}
                   disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
@@ -468,14 +477,18 @@ export default function OrganizationPage() {
             </SettingsGroup>
 
             <SettingsGroup
-              title="Harnesses"
-              description="Harness fallbacks applied when Sessions do not set their own runtime Sandbox."
+              title={ui("Harnesses")}
+              description={ui(
+                "Harness fallbacks applied when Sessions do not set their own runtime Sandbox.",
+              )}
               status={canManage ? <AutoSaveBadge saveState={saveStates.harnesses} /> : null}
               error={saveStates.harnesses.error}
             >
               <SettingsRow
-                label="Default harness"
-                description="Used as the normal starting harness in the UI. New orgs default this to Generic."
+                label={ui("Default harness")}
+                description={ui(
+                  "Used as the normal starting harness in the UI. New orgs default this to Generic.",
+                )}
                 htmlFor="default-harness"
               >
                 <HarnessSelect
@@ -490,15 +503,17 @@ export default function OrganizationPage() {
                     setDefaultHarnessId(value);
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
-                  placeholder="Select default harness"
+                  placeholder={ui("Select default harness")}
                   disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
 
               <SettingsRow
-                label="Base harness"
-                description="Used only when a session starts without an explicit harness. New orgs default this to Base."
+                label={ui("Base harness")}
+                description={ui(
+                  "Used only when a session starts without an explicit harness. New orgs default this to Base.",
+                )}
                 htmlFor="base-harness"
               >
                 <HarnessSelect
@@ -513,7 +528,7 @@ export default function OrganizationPage() {
                     setBaseHarnessId(value);
                     scheduleAutoSave("harnesses", nextDraft);
                   }}
-                  placeholder="Select base harness"
+                  placeholder={ui("Select base harness")}
                   disabled={!canManage || settings.pending}
                   className={CONTROL_CLASS_NAME}
                 />
@@ -521,7 +536,7 @@ export default function OrganizationPage() {
 
               {harnesses.length === 0 && (
                 <div className="px-5 pb-4 text-xs text-muted-foreground">
-                  Harnesses will appear after org init.
+                  {ui("Harnesses will appear after org init.")}
                 </div>
               )}
             </SettingsGroup>
@@ -539,33 +554,35 @@ export default function OrganizationPage() {
       <section>
         <div className="mb-6 flex flex-col items-stretch gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Organizations</h2>
-            <p className="text-sm text-muted-foreground">All organizations you are a member of.</p>
+            <h2 className="text-xl font-semibold">{ui("Organizations")}</h2>
+            <p className="text-sm text-muted-foreground">
+              {ui("All organizations you are a member of.")}
+            </p>
           </div>
           <Button className="w-full xl:w-auto" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Create Organization
+            {ui("Create Organization")}
           </Button>
         </div>
 
         {organizations.length === 0 ? (
           <Card className="p-8 text-center">
             <OrganizationIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No organizations</h3>
+            <h3 className="text-lg font-medium mb-2">{ui("No organizations")}</h3>
             <p className="text-muted-foreground">
-              Create an organization to start managing shared resources.
+              {ui("Create an organization to start managing shared resources.")}
             </p>
           </Card>
         ) : (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <Table aria-label="Organizations" className="min-w-[42rem]">
+              <Table aria-label={ui("Organizations")} className="min-w-[42rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Organization</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{ui("Organization")}</TableHead>
+                    <TableHead>{ui("Role")}</TableHead>
+                    <TableHead>{ui("Status")}</TableHead>
+                    <TableHead className="text-right">{ui("Actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -581,10 +598,10 @@ export default function OrganizationPage() {
                           {isCurrent ? (
                             <Badge variant="accent">
                               <Check className="h-3 w-3" />
-                              Current
+                              {ui("Current")}
                             </Badge>
                           ) : (
-                            <span className="text-muted-foreground">Available</span>
+                            <span className="text-muted-foreground">{ui("Available")}</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -592,10 +609,10 @@ export default function OrganizationPage() {
                             variant="outline"
                             size="sm"
                             disabled={isCurrent}
-                            aria-label={`Switch to ${org.name}`}
+                            aria-label={ui("Switch to {value0}", { value0: org.name })}
                             onClick={() => setCurrentOrg(org)}
                           >
-                            Switch
+                            {ui("Switch")}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -611,34 +628,34 @@ export default function OrganizationPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Organization</DialogTitle>
+            <DialogTitle>{ui("Create Organization")}</DialogTitle>
             <DialogDescription>
-              Create a new organization. You will be added as a member automatically.
+              {ui("Create a new organization. You will be added as a member automatically.")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrg} className="space-y-4">
             {createDraft.notice}
             <div className="space-y-2">
-              <Label htmlFor="new-org-name">Name</Label>
+              <Label htmlFor="new-org-name">{ui("Name")}</Label>
               <Input
                 id="new-org-name"
                 value={newOrgName}
                 onChange={(e) => setNewOrgName(e.target.value)}
-                placeholder="Organization name"
+                placeholder={ui("Organization name")}
                 required
               />
             </div>
             {createOrganization.isError && (
               <p className="text-sm text-destructive">
-                Failed to create: {createOrganization.error.message}
+                {ui("Failed to create:")} {createOrganization.error.message}
               </p>
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                Cancel
+                {ui("Cancel")}
               </Button>
               <Button type="submit" disabled={createOrganization.isPending || !newOrgName.trim()}>
-                {createOrganization.isPending ? "Creating..." : "Create"}
+                {createOrganization.isPending ? ui("Creating...") : ui("Create")}
               </Button>
             </DialogFooter>
           </form>
@@ -718,6 +735,7 @@ function SettingsRow({
 }
 
 function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
+  const ui = useUiTranslations();
   // Nothing edited yet: no badge. A "Saved" chip before any change claims an action
   // that never happened.
   if (saveState.state === "idle") return null;
@@ -726,19 +744,19 @@ function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
     return (
       <Badge role="status" aria-live="polite" variant="outline" className="text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
-        Saving
+        {ui("Saving")}
       </Badge>
     );
   }
 
   if (saveState.state === "error") {
-    return <Badge variant="destructive">Not saved</Badge>;
+    return <Badge variant="destructive">{ui("Not saved")}</Badge>;
   }
 
   if (saveState.state === "dirty") {
     return (
       <Badge role="status" aria-live="polite" variant="secondary">
-        Unsaved changes
+        {ui("Unsaved changes")}
       </Badge>
     );
   }
@@ -746,7 +764,7 @@ function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
   return (
     <Badge role="status" aria-live="polite" variant="outline" className="text-success">
       <Check className="h-3 w-3" />
-      Saved
+      {ui("Saved")}
     </Badge>
   );
 }

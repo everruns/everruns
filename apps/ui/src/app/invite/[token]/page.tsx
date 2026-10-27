@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,7 +16,8 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 type Phase = "loading" | "accepting" | "success" | "error";
 
 function AcceptInviteInner() {
-  usePageTitle("Accept invitation");
+  const ui = useUiTranslations();
+  usePageTitle(ui("Accept invitation"));
   const params = useParams<{ token: string }>();
   const token = params.token;
   const router = useRouter();
@@ -67,7 +69,7 @@ function AcceptInviteInner() {
         {(phase === "loading" || phase === "accepting") && (
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-            <p className="text-muted-foreground">Accepting your invitation…</p>
+            <p className="text-muted-foreground">{ui("Accepting your invitation…")}</p>
           </div>
         )}
 
@@ -75,12 +77,12 @@ function AcceptInviteInner() {
           <div className="flex flex-col items-center gap-4">
             <CheckCircle2 className="h-12 w-12 text-success" />
             <div>
-              <h1 className="text-lg font-semibold">You&apos;re in!</h1>
+              <h1 className="text-lg font-semibold">{ui("You're in!")}</h1>
               <p className="text-sm text-muted-foreground">
-                Your membership is active. Continue to your dashboard.
+                {ui("Your membership is active. Continue to your dashboard.")}
               </p>
             </div>
-            <Button onClick={() => router.replace("/chats")}>Go to chats</Button>
+            <Button onClick={() => router.replace("/chats")}>{ui("Go to chats")}</Button>
           </div>
         )}
 
@@ -88,13 +90,13 @@ function AcceptInviteInner() {
           <div className="flex flex-col items-center gap-4">
             <XCircle className="h-12 w-12 text-destructive" />
             <div>
-              <h1 className="text-lg font-semibold">Invitation unavailable</h1>
+              <h1 className="text-lg font-semibold">{ui("Invitation unavailable")}</h1>
               <p className="text-sm text-muted-foreground">
-                {errorMessage ?? "This invitation can no longer be used."}
+                {errorMessage ?? ui("This invitation can no longer be used.")}
               </p>
             </div>
             <Button variant="outline" onClick={() => router.replace("/chats")}>
-              Go to chats
+              {ui("Go to chats")}
             </Button>
           </div>
         )}

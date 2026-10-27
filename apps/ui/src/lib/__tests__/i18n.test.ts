@@ -33,3 +33,19 @@ describe("i18n locale helpers", () => {
     expect(formatEditCount("uk", 11)).toBe("11 змін");
   });
 });
+
+describe("localized product counts", () => {
+  it("uses Ukrainian plurals after tens and teens", async () => {
+    const { formatCountLabel } = await import("@/lib/formatting");
+    for (const [count, noun] of [
+      [1, "агент"],
+      [2, "агенти"],
+      [5, "агентів"],
+      [11, "агентів"],
+      [21, "агент"],
+      [22, "агенти"],
+    ] as const) {
+      expect(formatCountLabel(count, "agent", undefined, "uk")).toBe(`${count} ${noun}`);
+    }
+  });
+});

@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
 
 // New agent page. Four ways to start, one result: a normal
@@ -38,7 +39,8 @@ import { useCreateAgentFromDraft } from "./create-from-draft";
 import { DescribeTab } from "./describe-tab";
 
 export function NewAgentFlow() {
-  usePageTitle("New agent", "Agents");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New agent"), ui("Agents"));
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = parseNewAgentTab(searchParams.get("tab"));
@@ -69,7 +71,7 @@ export function NewAgentFlow() {
     fields: ["display_name", "name", "description", "system_prompt"],
     values: draft,
     entityType: "agent",
-    label: "New agent",
+    label: ui("New agent"),
     baseline: "new",
     enabled: tab === "blank" || tab === "describe",
     dirty: [draft.display_name, draft.name, draft.description, draft.system_prompt].some(Boolean),
@@ -96,26 +98,30 @@ export function NewAgentFlow() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: "New agent" }]} />
+      <PageBreadcrumb
+        items={[{ label: ui("Agents"), href: "/agents" }, { label: ui("New agent") }]}
+      />
       <PageMasthead
         icon={<AgentIcon />}
-        title="New agent"
-        description="Every path creates a normal agent. Channels start as drafts and take no traffic until you publish them."
+        title={ui("New agent")}
+        description={ui(
+          "Every path creates a normal agent. Channels start as drafts and take no traffic until you publish them.",
+        )}
       />
       {chatDraft.notice}
       <SectionTabs
         value={tab}
         onValueChange={(value) => setTab(value as NewAgentTab)}
-        aria-label="How to start"
+        aria-label={ui("How to start")}
         items={[
-          { value: "describe", label: "Describe it" },
+          { value: "describe", label: ui("Describe it") },
           {
             value: "example",
-            label: "From an example",
+            label: ui("From an example"),
             count: examples?.length,
           },
-          { value: "blank", label: "Blank" },
-          { value: "import", label: "Import" },
+          { value: "blank", label: ui("Blank") },
+          { value: "import", label: ui("Import") },
         ]}
       />
       {(createError || error) && (tab === "describe" || tab === "blank") && (
@@ -154,6 +160,7 @@ export function NewAgentFlow() {
 }
 
 function ExamplesTab() {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: capabilities } = useCapabilities({ includeRetired: true });
   const { data: examples, isLoading } = useAgentExamples();
@@ -174,7 +181,12 @@ function ExamplesTab() {
 
   if (isLoading) return null;
   if (!examples?.length) {
-    return <EmptyState title="No examples" description="This deployment ships no examples." />;
+    return (
+      <EmptyState
+        title={ui("No examples")}
+        description={ui("This deployment ships no examples.")}
+      />
+    );
   }
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -192,6 +204,7 @@ function ExamplesTab() {
 }
 
 function ImportTab() {
+  const ui = useUiTranslations();
   const router = useRouter();
   const { data: agents } = useAgents({ includeArchived: true });
   const { data: capabilities } = useCapabilities({ includeRetired: true });
@@ -204,7 +217,7 @@ function ImportTab() {
       <div
         role="button"
         tabIndex={0}
-        aria-label="Choose an agent package"
+        aria-label={ui("Choose an agent package")}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") inputRef.current?.click();
@@ -226,20 +239,21 @@ function ImportTab() {
         }
       >
         <Upload className="size-6 text-muted-foreground" />
-        <div className="font-medium">Drop an agent package</div>
+        <div className="font-medium">{ui("Drop an agent package")}</div>
         <p className="max-w-md text-sm text-muted-foreground">
-          A zip that starts at agent.toml, or a single agent file (.md, .toml, .yaml, .json). You
-          review the contents before anything is created.
+          {ui(
+            "A zip that starts at agent.toml, or a single agent file (.md, .toml, .yaml, .json). You review the contents before anything is created.",
+          )}
         </p>
         <Button type="button" variant="outline" size="sm">
-          Choose file
+          {ui("Choose file")}
         </Button>
         <input
           ref={inputRef}
           type="file"
           className="hidden"
           accept=".md,.toml,.yaml,.yml,.json,.zip"
-          aria-label="Import agent file"
+          aria-label={ui("Import agent file")}
           onChange={(event) => {
             const chosen = event.target.files?.[0];
             if (chosen) setFile(chosen);
@@ -248,11 +262,13 @@ function ImportTab() {
         />
       </div>
       <div className="mt-4 space-y-2">
-        <p className="text-sm text-muted-foreground">Export one from another organization:</p>
+        <p className="text-sm text-muted-foreground">
+          {ui("Export one from another organization:")}
+        </p>
         <CodeBlock
           samples={[
             {
-              label: "CLI",
+              label: ui("CLI"),
               language: "bash",
               code: "everruns agents export triage --format zip",
             },

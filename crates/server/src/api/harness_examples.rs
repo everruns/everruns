@@ -21,6 +21,7 @@ use super::common::impl_auth_state;
 /// A read-only harness example defined in code.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct HarnessExample {
+    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
     /// Unique slug (e.g. `data-analyst`).
     pub name: String,
     /// Human-readable display name (e.g. `Data Analyst`).
@@ -46,6 +47,7 @@ pub struct HarnessExample {
 
 fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
     HarnessExample {
+        localizations: ex.definition.localizations.clone(),
         name: ex.definition.name.clone(),
         display_name: ex.definition.display_name.clone(),
         description: ex.definition.description.clone(),

@@ -1,4 +1,5 @@
 "use client";
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
@@ -10,6 +11,7 @@ interface Session {
   updated_at: string;
 }
 export function VirtualUserSessions({ identityId }: { identityId: string }) {
+  const ui = useUiTranslations();
   const { currentOrg } = useOrg();
   const query = useQuery({
     queryKey: ["virtual-user-sessions", identityId, currentOrg?.public_id],
@@ -17,11 +19,13 @@ export function VirtualUserSessions({ identityId }: { identityId: string }) {
     queryFn: async () =>
       (await api.get<{ data: Session[] }>(`/v1/virtual-users/${identityId}/sessions`)).data.data,
   });
-  if (query.isLoading) return <p>Loading sessions…</p>;
-  if (query.error) return <p className="text-destructive">Sessions could not be loaded.</p>;
+  if (query.isLoading) return <p>{ui("Loading sessions…")}</p>;
+  if (query.error) return <p className="text-destructive">{ui("Sessions could not be loaded.")}</p>;
   return (
     <div className="space-y-2">
-      {!query.data?.length && <p className="text-sm text-muted-foreground">No sessions yet.</p>}
+      {!query.data?.length && (
+        <p className="text-sm text-muted-foreground">{ui("No sessions yet.")}</p>
+      )}
       {query.data?.map((session) => (
         <Link
           key={session.id}

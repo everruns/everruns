@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId } from "react";
 import {
   Select,
@@ -29,6 +30,7 @@ export function CommunicationSelect({
   className,
   showDescription = true,
 }: CommunicationSelectProps) {
+  const ui = useUiTranslations();
   const descriptionId = `${useId()}-communication-description`;
   const selected = getCommunicationOption(value);
   return (
@@ -44,14 +46,14 @@ export function CommunicationSelect({
         <SelectContent>
           {COMMUNICATION_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              {ui(option.label)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       {showDescription && (
         <p id={descriptionId} className="text-xs leading-relaxed text-muted-foreground">
-          {selected.description}
+          {ui(selected.description)}
         </p>
       )}
     </>

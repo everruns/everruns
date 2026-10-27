@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +34,7 @@ interface FileViewerProps {
 type ViewMode = "preview" | "source";
 
 export function FileViewer({ workspaceId, file, onClose, readOnly = false }: FileViewerProps) {
+  const ui = useUiTranslations();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
@@ -121,7 +123,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
             {file.is_readonly && (
               <Badge variant="outline" className="text-xs shrink-0">
                 <Lock className="h-3 w-3 mr-1" />
-                Read-only
+                {ui("Read-only")}
               </Badge>
             )}
             <Badge variant="secondary" className="text-xs shrink-0">
@@ -136,20 +138,20 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
                   size="sm"
                   className="h-7 px-2"
                   onClick={() => setViewMode("preview")}
-                  title="View"
+                  title={ui("View")}
                 >
                   <Eye className="h-3.5 w-3.5 mr-1" />
-                  <span className="text-xs">View</span>
+                  <span className="text-xs">{ui("View")}</span>
                 </Button>
                 <Button
                   variant={viewMode === "source" ? "secondary" : "ghost"}
                   size="sm"
                   className="h-7 px-2"
                   onClick={() => setViewMode("source")}
-                  title="Source"
+                  title={ui("Source")}
                 >
                   <Code2 className="h-3.5 w-3.5 mr-1" />
-                  <span className="text-xs">Source</span>
+                  <span className="text-xs">{ui("Source")}</span>
                 </Button>
               </div>
             )}
@@ -159,7 +161,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
                 size="icon"
                 className="h-7 w-7"
                 onClick={handleEdit}
-                title="Edit"
+                title={ui("Edit")}
               >
                 <Edit3 className="h-3.5 w-3.5" />
               </Button>
@@ -171,7 +173,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
                   size="icon"
                   className="h-7 w-7"
                   onClick={handleCancel}
-                  title="Cancel"
+                  title={ui("Cancel")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
@@ -181,7 +183,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
                   className="h-7 w-7"
                   onClick={handleSave}
                   disabled={updateFile.isPending}
-                  title="Save"
+                  title={ui("Save")}
                 >
                   <Save className="h-3.5 w-3.5" />
                 </Button>
@@ -192,11 +194,17 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
               size="icon"
               className="h-7 w-7"
               onClick={handleDownload}
-              title="Download"
+              title={ui("Download")}
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Close">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onClose}
+              title={ui("Close")}
+            >
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -205,12 +213,12 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         {isLoading ? (
-          <div className="p-4 text-sm text-muted-foreground">Loading...</div>
+          <div className="p-4 text-sm text-muted-foreground">{ui("Loading...")}</div>
         ) : isBinary && !hasPreview ? (
           <div className="p-4 text-sm text-muted-foreground text-center">
             <File className="h-12 w-12 mx-auto mb-2 text-muted-foreground/60" />
-            <p>Binary file</p>
-            <p className="text-xs mt-1">Use download to view this file</p>
+            <p>{ui("Binary file")}</p>
+            <p className="text-xs mt-1">{ui("Use download to view this file")}</p>
           </div>
         ) : !readOnly && isEditing ? (
           <textarea
@@ -218,12 +226,12 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             spellCheck={false}
-            aria-label="File content editor"
+            aria-label={ui("File content editor")}
           />
         ) : !fileData?.content && fileData?.content !== "" ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <File className="h-12 w-12 mb-2 opacity-30" />
-            <p className="text-sm">Empty file</p>
+            <p className="text-sm">{ui("Empty file")}</p>
           </div>
         ) : hasPreview && viewMode === "preview" ? (
           <FilePreview
@@ -236,7 +244,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
         ) : (
           <ScrollArea className="h-full">
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-words">
-              {fileData?.content || "Empty file"}
+              {fileData?.content || ui("Empty file")}
             </pre>
           </ScrollArea>
         )}

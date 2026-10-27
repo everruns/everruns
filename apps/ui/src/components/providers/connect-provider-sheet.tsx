@@ -16,6 +16,7 @@
 // provider's consent screen; their models are reviewed
 // from the "new models" prompt when the browser comes back.
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import {
@@ -146,6 +147,7 @@ export function ConnectProviderSheet({
   /** Called once the sheet finishes, with a one-line summary for the page. */
   onConnected: (summary: string) => void;
 }) {
+  const ui = useUiTranslations();
   const [step, setStep] = useState<Step>({ kind: "list" });
 
   // Each open starts at the driver list.
@@ -168,7 +170,7 @@ export function ConnectProviderSheet({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Back"
+              aria-label={ui("Back")}
               onClick={() => setStep({ kind: "list" })}
             >
               <ArrowLeft className="icon-sharp size-4" />
@@ -212,6 +214,7 @@ function DriverList({
   providers: Provider[];
   onPick: (driver: DriverId) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: config } = useProvidersConfig();
   const drivers = useMemo(
     () => [...new Set(CONNECT_ORDER)].filter((driver) => isDriverOffered(driver, config?.drivers)),
@@ -220,7 +223,7 @@ function DriverList({
   return (
     <>
       <DrawerDescription>
-        Several providers of one kind can be connected, for example two Azure resources.
+        {ui("Several providers of one kind can be connected, for example two Azure resources.")}
       </DrawerDescription>
       <ul className="-mx-6 min-h-0 flex-1 divide-y overflow-y-auto border-y">
         {drivers.map((driver) => {
@@ -242,9 +245,13 @@ function DriverList({
                     {getProviderDescription(driver)}
                   </span>
                 </span>
-                {connected > 0 && <Badge variant="success">{connected} connected</Badge>}
+                {connected > 0 && (
+                  <Badge variant="success">
+                    {connected} {ui("connected")}
+                  </Badge>
+                )}
                 <span className="whitespace-nowrap text-xs text-muted-foreground">
-                  {connected > 0 ? "Add another" : connectMethod(driver, supportsOAuth)}
+                  {connected > 0 ? ui("Add another") : connectMethod(driver, supportsOAuth)}
                 </span>
               </button>
             </li>
@@ -271,6 +278,7 @@ function ConnectForm({
   onCancel: () => void;
   onCreated: (provider: Provider) => void;
 }) {
+  const ui = useUiTranslations();
   const createProvider = useCreateProvider();
   const { schema, supportsOAuth } = useDriverCredentialSchema(driver);
   const existing = providers.filter((provider) => provider.provider_type === driver);
@@ -292,7 +300,7 @@ function ConnectForm({
     schema: providerConnectDraftSchema,
     entityType: "provider",
     entityId: `new:${driver}`,
-    label: "Connect provider",
+    label: ui("Connect provider"),
     priority: 30,
     values: { name, custom_endpoint: customEndpoint, base_url: baseUrl },
     enabled: isPublicDraftLocation(baseUrl),
@@ -364,24 +372,26 @@ function ConnectForm({
       <div className="-mx-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6">
         {existing.length > 0 && (
           <div className="flex flex-col gap-1.5 border bg-muted/40 p-3 text-xs">
-            <span className="font-medium">Already connected</span>
+            <span className="font-medium">{ui("Already connected")}</span>
             {existing.map((provider) => (
               <span key={provider.id} className="flex justify-between gap-3">
                 <span className="font-medium">{provider.name}</span>
                 <span className="truncate font-mono text-muted-foreground">
-                  {provider.base_url ?? "Driver default"}
+                  {provider.base_url ?? ui("Driver default")}
                 </span>
               </span>
             ))}
             <span className="text-muted-foreground">
-              This adds another {label} provider with its own credentials and models. Give it a name
-              that tells them apart in model pickers.
+              {ui("This adds another")} {label}{" "}
+              {ui(
+                "provider with its own credentials and models. Give it a name that tells them apart in model pickers.",
+              )}
             </span>
           </div>
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="connect-provider-name">Name</Label>
+          <Label htmlFor="connect-provider-name">{ui("Name")}</Label>
           <Input
             id="connect-provider-name"
             ref={nameRef}
@@ -395,15 +405,16 @@ function ConnectForm({
             className={duplicate ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
           >
             {duplicate
-              ? "A provider with this name already exists. Names must be unique."
-              : "Shown in model pickers as “Model (Name)”."}
+              ? ui("A provider with this name already exists. Names must be unique.")
+              : ui("Shown in model pickers as “Model (Name)”.")}
           </p>
         </div>
 
         {baseUrlRequired || customEndpoint ? (
           <div className="space-y-1.5">
             <Label htmlFor="connect-provider-endpoint">
-              Endpoint{baseUrlRequired ? "" : " (optional)"}
+              {ui("Endpoint")}
+              {baseUrlRequired ? "" : ui(" (optional)")}
             </Label>
             <Input
               id="connect-provider-endpoint"
@@ -414,8 +425,9 @@ function ConnectForm({
             />
             {driver === "azure_openai" && (
               <p className="text-xs text-muted-foreground">
-                Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or
-                `services.ai.azure.com`.
+                {ui(
+                  "Your Azure OpenAI `.../openai/v1` endpoint on `openai.azure.com` or `services.ai.azure.com`.",
+                )}
               </p>
             )}
           </div>
@@ -425,7 +437,7 @@ function ConnectForm({
             className="self-start text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
             onClick={() => setCustomEndpoint(true)}
           >
-            Use a custom endpoint
+            {ui("Use a custom endpoint")}
           </button>
         )}
 
@@ -441,7 +453,7 @@ function ConnectForm({
             <CredentialCheckStatus state={check} />
             {keyConsole && (
               <p className="text-xs text-muted-foreground">
-                Generate one at{" "}
+                {ui("Generate one at")}{" "}
                 <a
                   href={keyConsole.href}
                   target="_blank"
@@ -451,7 +463,7 @@ function ConnectForm({
                   {keyConsole.label}
                   <ExternalLink className="icon-sharp size-3" />
                 </a>
-                . Keys are encrypted at rest.
+                {ui(". Keys are encrypted at rest.")}
               </p>
             )}
           </div>
@@ -466,7 +478,7 @@ function ConnectForm({
 
       <DrawerFooter className="flex-row flex-wrap justify-end gap-2 p-0">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          {ui("Cancel")}
         </Button>
         {supportsOAuth && (
           <Button
@@ -475,14 +487,14 @@ function ConnectForm({
             onClick={() => void handleSignIn()}
             disabled={chat.blocked || !formReady || createProvider.isPending}
           >
-            {redirecting ? "Redirecting…" : `Sign in with ${label}`}
+            {redirecting ? ui("Redirecting…") : ui("Sign in with {value0}", { value0: label })}
           </Button>
         )}
         <Button
           type="submit"
           disabled={chat.blocked || !formReady || !hasCredential || createProvider.isPending}
         >
-          {createProvider.isPending && !redirecting ? "Connecting…" : "Connect"}
+          {createProvider.isPending && !redirecting ? ui("Connecting…") : ui("Connect")}
         </Button>
       </DrawerFooter>
     </form>
@@ -496,6 +508,7 @@ function ChooseModelsStep({
   provider: Provider;
   onDone: (summary: string) => void;
 }) {
+  const ui = useUiTranslations();
   const { data: models = [], isFetching } = useModels();
   const setModelsEnabled = useSetModelsEnabled();
   const review = useReviewProviderModels();
@@ -531,18 +544,20 @@ function ChooseModelsStep({
   };
 
   if (isFetching && selected === null) {
-    return <p className="text-sm text-muted-foreground">Discovering models…</p>;
+    return <p className="text-sm text-muted-foreground">{ui("Discovering models…")}</p>;
   }
 
   if (discovered.length === 0) {
     return (
       <>
         <DrawerDescription>
-          {provider.name} is connected, but it listed no models yet. Sync it from its card once the
-          account has access, or add a model by hand.
+          {provider.name}{" "}
+          {ui(
+            "is connected, but it listed no models yet. Sync it from its card once the account has access, or add a model by hand.",
+          )}
         </DrawerDescription>
         <DrawerFooter className="flex-row justify-end p-0">
-          <Button onClick={() => onDone(`${provider.name} connected.`)}>Done</Button>
+          <Button onClick={() => onDone(`${provider.name} connected.`)}>{ui("Done")}</Button>
         </DrawerFooter>
       </>
     );
@@ -552,8 +567,11 @@ function ChooseModelsStep({
   return (
     <>
       <DrawerDescription>
-        {provider.name} lists {discovered.length} {discovered.length === 1 ? "model" : "models"}.
-        Recommended ones are ticked: the newest of each family and calibrated decision models.
+        {provider.name} {ui("lists")} {discovered.length}{" "}
+        {discovered.length === 1 ? ui("model") : ui("models")}
+        {ui(
+          ". Recommended ones are ticked: the newest of each family and calibrated decision models.",
+        )}
       </DrawerDescription>
       <ModelSelectionList
         models={discovered}
@@ -567,7 +585,7 @@ function ChooseModelsStep({
       )}
       <DrawerFooter className="flex-row justify-end gap-2 p-0">
         <Button onClick={() => void finish()} disabled={busy}>
-          {busy ? "Saving…" : selectionActionLabel(discovered, selected ?? new Set(), "enable")}
+          {busy ? ui("Saving…") : selectionActionLabel(discovered, selected ?? new Set(), "enable")}
         </Button>
       </DrawerFooter>
     </>

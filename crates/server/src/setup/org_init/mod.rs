@@ -291,6 +291,7 @@ async fn upsert_built_in_harness(
         .await
         .with_context(|| format!("resolve parent for built-in harness {}", harness.name))?;
     let input = CreateHarnessRow {
+        localizations: harness.localizations.clone(),
         name: harness.name.to_string(),
         display_name: Some(harness.display_name.to_string()),
         icon: harness.icon.clone(),
@@ -918,6 +919,7 @@ mod tests {
             .create_harness(
                 DEFAULT_ORG_ID,
                 crate::storage::CreateHarnessRow {
+                    localizations: Default::default(),
                     name: "data-analyst".to_string(),
                     display_name: Some("Data Analyst".to_string()),
                     icon: None,

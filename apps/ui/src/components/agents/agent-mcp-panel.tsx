@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useId, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, Link2, Plus, Trash2, Unplug, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -98,6 +99,7 @@ function McpAttachmentRow({
   onDeferredChange: (attachment: AgentMcpAttachment, deferred: boolean) => void;
   saving: boolean;
 }) {
+  const ui = useUiTranslations();
   const toolsId = useId();
   const connectInChatId = useId();
   const deferredId = useId();
@@ -116,31 +118,31 @@ function McpAttachmentRow({
             <Badge variant="outline">{identityLabel(attachment.acts_as)}</Badge>
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Source: <span className="text-foreground">{attachment.source_label}</span>
+            {ui("Source:")} <span className="text-foreground">{attachment.source_label}</span>
           </p>
           {attachment.overridden_sources.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              Overrides:{" "}
+              {ui("Overrides:")}{" "}
               {attachment.overridden_sources.map((source) => source.source_label).join(", ")}
             </p>
           )}
           {hasCollision && (
             <p className="flex items-center gap-1 text-xs text-destructive">
               <AlertTriangle className="size-3" />
-              Tool prefix collides with another attachment name.
+              {ui("Tool prefix collides with another attachment name.")}
             </p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {attachment.contributor && (
             <LinkButton href={attachment.contributor.href} variant="outline" size="sm">
-              View {attachment.contributor.name}
+              {ui("View")} {attachment.contributor.name}
             </LinkButton>
           )}
           {attachment.editable && (
             <Button variant="outline" size="sm" onClick={() => onRemove(attachment)}>
               <Trash2 className="size-4" />
-              Remove
+              {ui("Remove")}
             </Button>
           )}
         </div>
@@ -149,12 +151,12 @@ function McpAttachmentRow({
         {attachment.url && <p className="break-all font-mono text-xs">{attachment.url}</p>}
         {attachment.preset_name && (
           <p className="text-sm text-muted-foreground">
-            Preset: <span className="text-foreground">{attachment.preset_name}</span>
+            {ui("Preset:")} <span className="text-foreground">{attachment.preset_name}</span>
           </p>
         )}
         {attachment.header_names.length > 0 && (
           <p className="text-sm text-muted-foreground">
-            Headers:{" "}
+            {ui("Headers:")}{" "}
             <span className="font-mono text-foreground">{attachment.header_names.join(", ")}</span>
           </p>
         )}
@@ -165,20 +167,22 @@ function McpAttachmentRow({
                 id={connectInChatId}
                 checked={connectsInChat}
                 disabled={saving}
-                aria-label="Ask to connect in chat"
+                aria-label={ui("Ask to connect in chat")}
                 onCheckedChange={(allow) => onConnectInChatChange(attachment, allow)}
               />
               <div className="space-y-0.5">
-                <Label htmlFor={connectInChatId}>Ask to connect in chat</Label>
+                <Label htmlFor={connectInChatId}>{ui("Ask to connect in chat")}</Label>
                 <p className="text-xs text-muted-foreground">
                   {connectsInChat
-                    ? "A missing sign-in pauses the chat with a Connect card."
-                    : "A missing sign-in fails the call with a link to settings. For channels that cannot show cards."}
+                    ? ui("A missing sign-in pauses the chat with a Connect card.")
+                    : ui(
+                        "A missing sign-in fails the call with a link to settings. For channels that cannot show cards.",
+                      )}
                 </p>
               </div>
             </div>
           ) : (
-            !connectsInChat && <Badge variant="outline">Connects in settings only</Badge>
+            !connectsInChat && <Badge variant="outline">{ui("Connects in settings only")}</Badge>
           ))}
         {attachment.editable ? (
           <div className="flex items-start gap-3">
@@ -186,47 +190,51 @@ function McpAttachmentRow({
               id={deferredId}
               checked={attachment.deferred}
               disabled={saving}
-              aria-label="Load tools on demand"
+              aria-label={ui("Load tools on demand")}
               onCheckedChange={(deferred) => onDeferredChange(attachment, deferred)}
             />
             <div className="space-y-0.5">
-              <Label htmlFor={deferredId}>Load tools on demand</Label>
+              <Label htmlFor={deferredId}>{ui("Load tools on demand")}</Label>
               <p className="text-xs text-muted-foreground">
                 {attachment.deferred
-                  ? "The agent sees one line for this server and loads its tools through tool search when it needs them."
-                  : "The server's tools are listed at the start of every turn."}
+                  ? ui(
+                      "The agent sees one line for this server and loads its tools through tool search when it needs them.",
+                    )
+                  : ui("The server's tools are listed at the start of every turn.")}
               </p>
             </div>
           </div>
         ) : (
-          attachment.deferred && <Badge variant="outline">Tools load on demand</Badge>
+          attachment.deferred && <Badge variant="outline">{ui("Tools load on demand")}</Badge>
         )}
 
         {attachment.state === "preset_missing" ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
             <span className="flex items-center gap-2">
               <AlertTriangle className="size-4" />
-              This preset is no longer available.
+              {ui("This preset is no longer available.")}
             </span>
             <LinkButton href="/settings/mcp-catalog" variant="outline" size="sm">
-              View catalog
+              {ui("View catalog")}
             </LinkButton>
           </div>
         ) : attachment.state === "connection_missing" ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">Connection required.</span>
+            <span className="text-sm text-muted-foreground">{ui("Connection required.")}</span>
             {isCapability ? null : attachment.action === "ask_admin" ? (
-              <Badge variant="outline">Ask an admin</Badge>
+              <Badge variant="outline">{ui("Ask an admin")}</Badge>
             ) : connectHref ? (
               <LinkButton href={connectHref} size="sm">
                 <Link2 className="size-4" />
-                {attachment.action === "authorize" ? "Authorize" : "Connect"}
+                {attachment.action === "authorize" ? ui("Authorize") : ui("Connect")}
               </LinkButton>
             ) : null}
           </div>
         ) : attachment.connected_as ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="success">Connected as {attachment.connected_as}</Badge>
+            <Badge variant="success">
+              {ui("Connected as")} {attachment.connected_as}
+            </Badge>
             {!isCapability &&
               (attachment.action === "connect" || attachment.action === "authorize") &&
               connectHref && (
@@ -236,8 +244,8 @@ function McpAttachmentRow({
                 <LinkButton href={connectHref} variant="outline" size="sm">
                   <Link2 className="size-4" />
                   {attachment.action === "authorize"
-                    ? "Authorize the agent"
-                    : "Connect your account"}
+                    ? ui("Authorize the agent")
+                    : ui("Connect your account")}
                 </LinkButton>
               )}
             {attachment.can_revoke ? (
@@ -248,21 +256,21 @@ function McpAttachmentRow({
                 onClick={() => revoke.mutate(attachment.name)}
               >
                 <Unplug className="size-4" />
-                Revoke
+                {ui("Revoke")}
               </Button>
             ) : !isCapability &&
               !attachment.service_connection_provider &&
               // Not revocable here means the agent's login is the one in use
               // and only an admin may change it.
               (attachment.acts_as === "service" || attachment.acts_as === "user_or_service") ? (
-              <Badge variant="outline">Ask an admin</Badge>
+              <Badge variant="outline">{ui("Ask an admin")}</Badge>
             ) : null}
             {revoke.error && (
               <span className="text-sm text-destructive">{errorMessage(revoke.error)}</span>
             )}
           </div>
         ) : (
-          <Badge variant="success">Ready</Badge>
+          <Badge variant="success">{ui("Ready")}</Badge>
         )}
 
         {/* Sign-in servers never cache tools on the preset: the list depends on
@@ -270,7 +278,7 @@ function McpAttachmentRow({
         {attachment.tools.length === 0 && attachment.acts_as !== "none" ? (
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
             <Wrench className="size-4" />
-            Tools are listed when a chat signs in.
+            {ui("Tools are listed when a chat signs in.")}
           </p>
         ) : (
           <div>
@@ -282,10 +290,10 @@ function McpAttachmentRow({
               onClick={() => setToolsOpen((open) => !open)}
             >
               <Wrench className="size-4" />
-              Tools
+              {ui("Tools")}
               <Badge variant="secondary">{attachment.tools.length}</Badge>
               {!attachment.tools_available && (
-                <span className="text-xs text-muted-foreground">Unavailable</span>
+                <span className="text-xs text-muted-foreground">{ui("Unavailable")}</span>
               )}
               <ChevronDown
                 className={`size-4 transition-transform ${toolsOpen ? "rotate-180" : ""}`}
@@ -302,7 +310,9 @@ function McpAttachmentRow({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No cached tools are available.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {ui("No cached tools are available.")}
+                  </p>
                 )}
               </div>
             )}
@@ -314,6 +324,7 @@ function McpAttachmentRow({
 }
 
 export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readOnly?: boolean }) {
+  const ui = useUiTranslations();
   const attachments = useAgentMcpAttachments(agent.id);
   const updateAgent = useUpdateAgent();
   const { data: presets = [], isLoading: presetsLoading } = useMcpServers();
@@ -511,27 +522,27 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
       <ConnectErrorBanner />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Agent MCP servers</h2>
+          <h2 className="text-lg font-semibold">{ui("Agent MCP servers")}</h2>
           <p className="text-sm text-muted-foreground">
-            Servers added to this agent, plus any its capabilities and harness bring.
+            {ui("Servers added to this agent, plus any its capabilities and harness bring.")}
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)} disabled={readOnly}>
           <Plus className="size-4" />
-          Add MCP server
+          {ui("Add MCP server")}
         </Button>
       </div>
 
       {attachments.isLoading ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            Loading MCP servers…
+            {ui("Loading MCP servers…")}
           </CardContent>
         </Card>
       ) : attachments.error ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-destructive">
-            Failed to load MCP servers.
+            {ui("Failed to load MCP servers.")}
           </CardContent>
         </Card>
       ) : attachments.data?.length ? (
@@ -553,9 +564,9 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
       ) : (
         <Card>
           <CardContent className="py-8 text-center">
-            <p className="font-medium">No MCP servers attached</p>
+            <p className="font-medium">{ui("No MCP servers attached")}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add an organization preset or a custom HTTP server.
+              {ui("Add an organization preset or a custom HTTP server.")}
             </p>
           </CardContent>
         </Card>
@@ -569,9 +580,9 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Add MCP server</DialogTitle>
+            <DialogTitle>{ui("Add MCP server")}</DialogTitle>
             <DialogDescription>
-              Attach an organization preset or enter a custom HTTP endpoint.
+              {ui("Attach an organization preset or enter a custom HTTP endpoint.")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
@@ -584,7 +595,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                 setAddError(null);
               }}
             >
-              Preset
+              {ui("Preset")}
             </Button>
             <Button
               type="button"
@@ -595,24 +606,24 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                 setAddError(null);
               }}
             >
-              Custom
+              {ui("Custom")}
             </Button>
           </div>
 
           {flow === "preset" ? (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="mcp-preset-search">Search presets</Label>
+                <Label htmlFor="mcp-preset-search">{ui("Search presets")}</Label>
                 <Input
                   id="mcp-preset-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by name or description"
+                  placeholder={ui("Search by name or description")}
                 />
               </div>
               <div className="max-h-52 space-y-2 overflow-y-auto">
                 {presetsLoading ? (
-                  <p className="text-sm text-muted-foreground">Loading presets…</p>
+                  <p className="text-sm text-muted-foreground">{ui("Loading presets…")}</p>
                 ) : visiblePresets.length ? (
                   visiblePresets.map((preset) => {
                     const alreadyAttached = existingAttachmentNames.has(preset.name);
@@ -634,7 +645,9 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                       >
                         <span className="flex items-center justify-between gap-2 text-sm font-medium">
                           {preset.name}
-                          {alreadyAttached && <Badge variant="secondary">Already attached</Badge>}
+                          {alreadyAttached && (
+                            <Badge variant="secondary">{ui("Already attached")}</Badge>
+                          )}
                         </span>
                         {preset.description && (
                           <span className="block text-xs text-muted-foreground">
@@ -648,11 +661,13 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     );
                   })
                 ) : (
-                  <p className="text-sm text-muted-foreground">No matching presets.</p>
+                  <p className="text-sm text-muted-foreground">{ui("No matching presets.")}</p>
                 )}
               </div>
               <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Who should this server act as?</legend>
+                <legend className="text-sm font-medium">
+                  {ui("Who should this server act as?")}
+                </legend>
                 <Label>
                   <input
                     type="radio"
@@ -661,7 +676,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     checked={actsAs === "none"}
                     onChange={() => setActsAs("none")}
                   />
-                  No identity
+                  {ui("No identity")}
                 </Label>
                 <Label>
                   <input
@@ -672,7 +687,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     disabled={identityDisabled}
                     onChange={() => setActsAs("service")}
                   />
-                  Service identity
+                  {ui("Service identity")}
                 </Label>
                 <Label>
                   <input
@@ -683,7 +698,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     disabled={identityDisabled}
                     onChange={() => setActsAs("user")}
                   />
-                  Invoking user
+                  {ui("Invoking user")}
                 </Label>
                 <Label>
                   <input
@@ -694,11 +709,11 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     disabled={identityDisabled}
                     onChange={() => setActsAs("user_or_service")}
                   />
-                  Each user, or the agent if they have not connected
+                  {ui("Each user, or the agent if they have not connected")}
                 </Label>
                 {selectedPresetRecord && identityDisabled && (
                   <p className="text-xs text-muted-foreground">
-                    This preset does not support OAuth identity grants.
+                    {ui("This preset does not support OAuth identity grants.")}
                   </p>
                 )}
               </fieldset>
@@ -709,14 +724,14 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                     checked={connectInChat}
                     onChange={(event) => setConnectInChat(event.target.checked)}
                   />
-                  Ask to connect in chat when a sign-in is missing
+                  {ui("Ask to connect in chat when a sign-in is missing")}
                 </Label>
               )}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="mcp-custom-name">Name</Label>
+                <Label htmlFor="mcp-custom-name">{ui("Name")}</Label>
                 <Input
                   id="mcp-custom-name"
                   value={customName}
@@ -724,7 +739,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mcp-custom-url">URL</Label>
+                <Label htmlFor="mcp-custom-url">{ui("URL")}</Label>
                 <Input
                   id="mcp-custom-url"
                   type="url"
@@ -733,7 +748,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="mcp-custom-headers">Headers</Label>
+                <Label htmlFor="mcp-custom-headers">{ui("Headers")}</Label>
                 <Textarea
                   id="mcp-custom-headers"
                   value={customHeaders}
@@ -741,7 +756,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                   placeholder={"Header-Name: value\nAnother-Header: value"}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Custom servers do not use a user or service grant.
+                  {ui("Custom servers do not use a user or service grant.")}
                 </p>
               </div>
             </div>
@@ -750,7 +765,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
           {addError && <p className="text-sm text-destructive">{addError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={closeAdd}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               disabled={
@@ -759,7 +774,7 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
               }
               onClick={flow === "preset" ? addPreset : addCustom}
             >
-              Add server
+              {ui("Add server")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -776,10 +791,12 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove MCP server?</DialogTitle>
+            <DialogTitle>{ui("Remove MCP server?")}</DialogTitle>
             <DialogDescription>
-              Remove {removeTarget?.name} from this agent. New sessions will no longer be able to
-              use it. Existing user and service grants are not revoked.
+              {ui("Remove")} {removeTarget?.name}{" "}
+              {ui(
+                "from this agent. New sessions will no longer be able to use it. Existing user and service grants are not revoked.",
+              )}
             </DialogDescription>
           </DialogHeader>
           {removeError && <p className="text-sm text-destructive">{removeError}</p>}
@@ -791,14 +808,14 @@ export function AgentMcpPanel({ agent, readOnly = false }: { agent: Agent; readO
                 setRemoveError(null);
               }}
             >
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               variant="destructive"
               disabled={updateAgent.isPending}
               onClick={removeAttachment}
             >
-              Remove attachment
+              {ui("Remove attachment")}
             </Button>
           </DialogFooter>
         </DialogContent>

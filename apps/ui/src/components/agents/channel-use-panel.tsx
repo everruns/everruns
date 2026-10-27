@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useMemo } from "react";
@@ -61,6 +62,7 @@ function describe(kind: ChannelType): string {
 /// an agent reachable through Slack and a webhook has two. Here there is
 /// exactly one, so the snippet is the real thing.
 export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; agentId?: string }) {
+  const ui = useUiTranslations();
   const path = ingressPath(channel.channel_type, channel.id, agentId);
 
   const samples = useMemo<CodeBlockSample[]>(() => {
@@ -71,48 +73,48 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
     const url = `${origin}/api${path}`;
 
     if (channel.channel_type === "fcp" || channel.channel_type === "ag_ui") {
-      return [{ label: "URL", language: "text", code: url }];
+      return [{ label: ui("URL"), language: "text", code: url }];
     }
     if (channel.channel_type === "slack") {
-      return [{ label: "Request URL", language: "text", code: url }];
+      return [{ label: ui("Request URL"), language: "text", code: url }];
     }
     if (channel.channel_type === "api") {
       return [
         {
-          label: "curl",
+          label: ui("curl"),
           language: "bash",
           code: `# Start a session; the response carries its id\ncurl -X POST '${url}/sessions' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{}'\n\n# Send a message, then follow ${url}/sessions/<session_id>/sse\ncurl -X POST '${url}/sessions/<session_id>/messages' \\\n  -H 'authorization: Bearer <agent_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "hello"}]}}'`,
         },
-        { label: "URL", language: "text", code: url },
+        { label: ui("URL"), language: "text", code: url },
       ];
     }
     if (channel.channel_type === "voice") {
       return [
         {
-          label: "curl",
+          label: ui("curl"),
           language: "bash",
           code: `curl -X POST '${url}' \\\n  -H 'authorization: Bearer <api_key>' \\\n  -H 'content-type: application/json' \\\n  -d '{"sdp": "<WebRTC SDP offer>"}'`,
         },
-        { label: "URL", language: "text", code: url },
+        { label: ui("URL"), language: "text", code: url },
       ];
     }
     return [
       {
-        label: "curl",
+        label: ui("curl"),
         language: "bash",
         code: `curl -X POST '${url}' \\\n  -H 'content-type: application/json' \\\n  -d '{"message": "hello"}'`,
       },
-      { label: "URL", language: "text", code: url },
+      { label: ui("URL"), language: "text", code: url },
     ];
-  }, [channel.channel_type, path]);
+  }, [channel.channel_type, path, ui]);
 
   if (channel.channel_type === "work_chat") return <WorkChatUsePanel channel={channel} />;
   if (!path) {
     return (
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          This channel fires on its own, so there is no inbound URL to call.
+          {ui("This channel fires on its own, so there is no inbound URL to call.")}
         </p>
       </div>
     );
@@ -121,7 +123,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
   return (
     <div className="flex flex-col gap-2">
       <div>
-        <p className="text-xs font-medium text-muted-foreground">Use it</p>
+        <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
         <p className="mt-1 text-sm text-muted-foreground">{describe(channel.channel_type)}</p>
       </div>
       <CodeBlock samples={samples} />
@@ -130,6 +132,7 @@ export function ChannelUsePanel({ channel, agentId }: { channel: AgentChannel; a
 }
 
 function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
+  const ui = useUiTranslations();
   const hosted = useQuery({
     queryKey: ["hosted-chat-url", channel.id],
     enabled: channel.channel_type === "work_chat" && channel.status === "live",
@@ -139,17 +142,19 @@ function WorkChatUsePanel({ channel }: { channel: AgentChannel }) {
   const url = hosted.data?.public_url;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground">Use it</p>
+      <p className="text-xs font-medium text-muted-foreground">{ui("Use it")}</p>
       {url ? (
         <>
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm underline">
-            Open Work Chat
+            {ui("Open Work Chat")}
           </a>
-          <CodeBlock samples={[{ label: "URL", language: "text", code: url }]} />
+          <CodeBlock samples={[{ label: ui("URL"), language: "text", code: url }]} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Publish this channel and configure your deployment’s hosted chat domain to open Work Chat.
+          {ui(
+            "Publish this channel and configure your deployment’s hosted chat domain to open Work Chat.",
+          )}
         </p>
       )}
     </div>

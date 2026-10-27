@@ -82,6 +82,14 @@ impl CitationVerificationConfig {
 pub struct CitationVerificationCapability;
 
 impl Capability for CitationVerificationCapability {
+    fn localizations(&self) -> Vec<everruns_core::capabilities::CapabilityLocalization> {
+        vec![everruns_core::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Перевірка посилань",
+            "Перевіряє, чи джерело підтверджує відповідне твердження, та додає результат перевірки до кожного посилання.",
+        )]
+    }
+
     fn id(&self) -> &str {
         CITATION_VERIFICATION_CAPABILITY_ID
     }

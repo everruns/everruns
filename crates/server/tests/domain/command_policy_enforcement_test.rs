@@ -71,6 +71,7 @@ fn make_ctx(caller: Caller, resolver: Arc<dyn PermissionResolver>) -> Ctx {
 
 fn minimal_harness(name: &str) -> CreateHarnessRequest {
     CreateHarnessRequest {
+        localizations: Default::default(),
         name: name.to_string(),
         display_name: None,
         description: None,
@@ -546,6 +547,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
+                localizations: Default::default(),
                 name: format!("harness-{name}"),
                 display_name: None,
                 icon: None,
@@ -571,6 +573,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
         .create_agent(
             DEFAULT_ORG_ID,
             CreateAgentRow {
+                localizations: Default::default(),
                 public_id: public_id.to_string(),
                 name: name.to_string(),
                 display_name: None,

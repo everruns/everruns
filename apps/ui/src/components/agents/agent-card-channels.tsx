@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import Link from "next/link";
 import { Pause } from "lucide-react";
 import { ChannelIcon } from "@/components/agents/channels/channel-icon";
@@ -36,6 +37,7 @@ export function AgentCardChannels({
   agent: Agent;
   canManage?: boolean;
 }) {
+  const ui = useUiTranslations();
   const channels = agent.channels?.filter((channel) => channel.channel_type !== "schedule");
   const integrationsHref = `/agents/${agent.id}?tab=integrations`;
   const visibility = [
@@ -51,18 +53,18 @@ export function AgentCardChannels({
 
   return (
     <div
-      aria-label="Channels"
+      aria-label={ui("Channels")}
       className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-xs"
     >
-      <span className="shrink-0 text-muted-foreground">Channels</span>
+      <span className="shrink-0 text-muted-foreground">{ui("Channels")}</span>
       {channels === undefined ? (
-        <span className="text-muted-foreground">Not loaded</span>
+        <span className="text-muted-foreground">{ui("Not loaded")}</span>
       ) : channels.length === 0 ? (
         <>
-          <span className="text-muted-foreground">None configured</span>
+          <span className="text-muted-foreground">{ui("None configured")}</span>
           {canManage && agent.status === "active" && (
             <Link href={`/agents/${agent.id}/channels/new`} className="ml-auto hover:underline">
-              Add
+              {ui("Add")}
             </Link>
           )}
         </>
@@ -77,7 +79,10 @@ export function AgentCardChannels({
                   <TooltipTrigger asChild>
                     <Link
                       href={integrationsHref}
-                      aria-label={`${label}: ${state.description}`}
+                      aria-label={ui("{value0}: {value1}", {
+                        value0: label,
+                        value1: state.description,
+                      })}
                       className={cn(
                         "inline-flex shrink-0 items-center gap-1.5 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
                         visibility[index],
@@ -110,7 +115,7 @@ export function AgentCardChannels({
                   <Link
                     key={visible}
                     href={integrationsHref}
-                    aria-label={`View all ${channels.length} channels`}
+                    aria-label={ui("View all {value0} channels", { value0: channels.length })}
                     className={cn(
                       "inline-flex shrink-0 items-center bg-muted/60 px-2 py-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
                       overflowVisibility[visible - 1],

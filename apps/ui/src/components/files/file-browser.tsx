@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { relativeFilePath } from "@/lib/path-utils";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -119,6 +120,7 @@ export function FileBrowser({
   refreshToken,
   readOnly = false,
 }: FileBrowserProps) {
+  const ui = useUiTranslations();
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(["/workspace"]));
   const [loadedDirs, setLoadedDirs] = useState<Map<string, FileInfo[]>>(new Map());
   const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
@@ -330,7 +332,7 @@ export function FileBrowser({
                       e.stopPropagation();
                       openCreateFileDialog(file.path);
                     }}
-                    title="New file"
+                    title={ui("New file")}
                   >
                     <Plus className="size-3" />
                   </Button>
@@ -344,7 +346,7 @@ export function FileBrowser({
                       e.stopPropagation();
                       openCreateDirDialog(file.path);
                     }}
-                    title="New folder"
+                    title={ui("New folder")}
                   >
                     <FolderPlus className="size-3" />
                   </Button>
@@ -355,7 +357,7 @@ export function FileBrowser({
                     size="icon"
                     className="size-5"
                     onClick={(e) => handleDelete(file, e)}
-                    title="Delete"
+                    title={ui("Delete")}
                   >
                     <Trash2 className="size-3 text-destructive" />
                   </Button>
@@ -385,7 +387,7 @@ export function FileBrowser({
                 size="icon"
                 className="size-5"
                 onClick={(e) => handleDelete(file, e)}
-                title="Delete"
+                title={ui("Delete")}
               >
                 <Trash2 className="size-3 text-destructive" />
               </Button>
@@ -405,10 +407,10 @@ export function FileBrowser({
           size="sm"
           className="h-7 px-2 gap-1.5"
           onClick={handleRefresh}
-          title="Refresh"
+          title={ui("Refresh")}
         >
           <RefreshCw className="size-3.5" />
-          <span className="text-xs">Refresh</span>
+          <span className="text-xs">{ui("Refresh")}</span>
         </Button>
         {writable && (
           <>
@@ -417,20 +419,20 @@ export function FileBrowser({
               size="sm"
               className="h-7 px-2 gap-1.5"
               onClick={() => openCreateDirDialog("/workspace")}
-              title="New folder"
+              title={ui("New folder")}
             >
               <FolderPlus className="size-3.5" />
-              <span className="text-xs">Folder</span>
+              <span className="text-xs">{ui("Folder")}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 gap-1.5"
               onClick={() => openCreateFileDialog("/workspace")}
-              title="New file"
+              title={ui("New file")}
             >
               <Plus className="size-3.5" />
-              <span className="text-xs">File</span>
+              <span className="text-xs">{ui("File")}</span>
             </Button>
           </>
         )}
@@ -441,13 +443,13 @@ export function FileBrowser({
         {isLoading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="size-4 animate-spin mr-2" />
-            <span className="text-sm">Loading files...</span>
+            <span className="text-sm">{ui("Loading files...")}</span>
           </div>
         ) : !rootFiles?.length ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <File className="size-8 mb-2 opacity-40" />
-            <p className="text-sm">No files yet</p>
-            <p className="text-xs mt-1">Create a file or folder to get started</p>
+            <p className="text-sm">{ui("No files yet")}</p>
+            <p className="text-xs mt-1">{ui("Create a file or folder to get started")}</p>
           </div>
         ) : (
           <FileTree
@@ -465,9 +467,9 @@ export function FileBrowser({
       <Dialog open={writable && isCreateFileOpen} onOpenChange={setIsCreateFileOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create File</DialogTitle>
+            <DialogTitle>{ui("Create File")}</DialogTitle>
             <DialogDescription>
-              Create a new file in{" "}
+              {ui("Create a new file in")}{" "}
               <code className="text-xs bg-muted px-1 py-0.5">
                 {relativeFilePath(createPath) || "."}
               </code>
@@ -475,7 +477,7 @@ export function FileBrowser({
           </DialogHeader>
           <div className="space-y-4">
             <Input
-              placeholder="filename.txt"
+              placeholder={ui("filename.txt")}
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateFile()}
@@ -483,18 +485,18 @@ export function FileBrowser({
             />
             <textarea
               className="w-full h-32 p-2 text-sm border font-mono bg-background resize-none"
-              placeholder="File content (optional)"
+              placeholder={ui("File content (optional)")}
               value={newFileContent}
               onChange={(e) => setNewFileContent(e.target.value)}
-              aria-label="File content (optional)"
+              aria-label={ui("File content (optional)")}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateFileOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button onClick={handleCreateFile} disabled={!newFileName.trim()}>
-              Create
+              {ui("Create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -504,16 +506,16 @@ export function FileBrowser({
       <Dialog open={writable && isCreateDirOpen} onOpenChange={setIsCreateDirOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Folder</DialogTitle>
+            <DialogTitle>{ui("Create Folder")}</DialogTitle>
             <DialogDescription>
-              Create a new folder in{" "}
+              {ui("Create a new folder in")}{" "}
               <code className="text-xs bg-muted px-1 py-0.5">
                 {relativeFilePath(createPath) || "."}
               </code>
             </DialogDescription>
           </DialogHeader>
           <Input
-            placeholder="folder-name"
+            placeholder={ui("folder-name")}
             value={newDirName}
             onChange={(e) => setNewDirName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreateDir()}
@@ -521,10 +523,10 @@ export function FileBrowser({
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDirOpen(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button onClick={handleCreateDir} disabled={!newDirName.trim()}>
-              Create
+              {ui("Create")}
             </Button>
           </DialogFooter>
         </DialogContent>

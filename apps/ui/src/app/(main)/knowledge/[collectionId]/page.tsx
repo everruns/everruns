@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 import { use, useState, useRef } from "react";
 import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/api/knowledge";
 
 export default function KnowledgeDetail({ params }: { params: Promise<{ collectionId: string }> }) {
+  const ui = useUiTranslations();
   const { collectionId } = use(params);
   const { currentOrg } = useOrg();
   const cache = useQueryClient();
@@ -68,7 +70,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
       cache.invalidateQueries({ queryKey: ["knowledge-indexers"] }),
     ]);
   };
-  usePageTitle(collection.data?.name, "Knowledge");
+  usePageTitle(collection.data?.name, ui("Knowledge"));
   const action = async (fn: () => Promise<unknown>) => {
     setError("");
     setBusy(true);
@@ -99,12 +101,12 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Knowledge", href: "/knowledge" }, { label: c?.name ?? "Collection" }]}
+        items={[{ label: ui("Knowledge"), href: "/knowledge" }, { label: c?.name ?? "Collection" }]}
       />
       <PageMasthead
         icon={<BookOpen />}
-        title={c?.name ?? "Knowledge"}
-        description={c?.description ?? "Loading collection…"}
+        title={c?.name ?? ui("Knowledge")}
+        description={c?.description ?? ui("Loading collection…")}
         actions={
           canManage && (
             <Button
@@ -113,7 +115,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
               onClick={() => action(() => syncKnowledge(collectionId))}
             >
               <RefreshCw className="size-4" />
-              Refresh sources
+              {ui("Refresh sources")}
             </Button>
           )
         }
@@ -121,7 +123,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
       <PageMain>
         {(error || collection.error) && (
           <p role="alert" className="mb-4 text-sm text-destructive">
-            {error || "Collection unavailable in this organization."}
+            {error || ui("Collection unavailable in this organization.")}
           </p>
         )}
         {c && (
@@ -129,19 +131,19 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
             <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
               <Badge variant="secondary">
                 {c.indexing === "off"
-                  ? "Indexing off"
+                  ? ui("Indexing off")
                   : c.indexing === "lexical"
-                    ? "Keyword search"
-                    : "Hybrid search"}
+                    ? ui("Keyword search")
+                    : ui("Hybrid search")}
               </Badge>
               <span className="text-muted-foreground">
-                {c.file_count ?? 0} files · {c.indexed_count ?? 0} indexed
+                {c.file_count ?? 0} {ui("files ·")} {c.indexed_count ?? 0} {ui("indexed")}
               </span>
               {c.revision !== c.published_revision && c.indexing !== "off" && (
-                <Badge variant="outline">Building updated index</Badge>
+                <Badge variant="outline">{ui("Building updated index")}</Badge>
               )}
               {c.jobs?.some((j) => j.status === "failed") && (
-                <Badge variant="destructive">Processing needs attention</Badge>
+                <Badge variant="destructive">{ui("Processing needs attention")}</Badge>
               )}
             </div>
             {c.jobs
@@ -149,10 +151,13 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
               .slice(0, 1)
               .map((j) => (
                 <p key={j.id} className="mb-4 text-sm text-muted-foreground">
-                  {j.error} Refresh sources to retry.
+                  {j.error} {ui("Refresh sources to retry.")}
                 </p>
               ))}
-            <section aria-label="Search knowledge" className="mb-6 rounded-lg border bg-card p-4">
+            <section
+              aria-label={ui("Search knowledge")}
+              className="mb-6 rounded-lg border bg-card p-4"
+            >
               <form
                 className="flex gap-2"
                 onSubmit={(e) => {
@@ -161,24 +166,24 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                 }}
               >
                 <Input
-                  aria-label="Search collection"
+                  aria-label={ui("Search collection")}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={
                     c.indexing === "off"
-                      ? "Enable indexing in settings to search passages"
-                      : "Find relevant passages…"
+                      ? ui("Enable indexing in settings to search passages")
+                      : ui("Find relevant passages…")
                   }
                   disabled={c.indexing === "off"}
                 />
                 <Button type="submit" disabled={busy || !query.trim() || c.indexing === "off"}>
                   <Search className="size-4" />
-                  Search
+                  {ui("Search")}
                 </Button>
               </form>
               {c.indexing === "off" && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Browse files below, or use grep on the agent&apos;s Knowledge mount.
+                  {ui("Browse files below, or use grep on the agent's Knowledge mount.")}
                 </p>
               )}
               {results && (
@@ -197,7 +202,9 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                       <p className="break-all font-mono text-xs text-muted-foreground">
                         {hit.path}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">Version {hit.version_id}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {ui("Version")} {hit.version_id}
+                      </p>
                       {/^https:\/\//.test(hit.source_uri) && (
                         <a
                           className="text-xs underline"
@@ -205,17 +212,19 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Original source
+                          {ui("Original source")}
                         </a>
                       )}
                     </article>
                   ))}
                   {!results.results.length && (
-                    <p className="text-sm text-muted-foreground">No matching indexed passages.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {ui("No matching indexed passages.")}
+                    </p>
                   )}
                   {results.truncated && (
                     <p className="text-xs text-muted-foreground">
-                      Results are bounded. Narrow the query for more complete coverage.
+                      {ui("Results are bounded. Narrow the query for more complete coverage.")}
                     </p>
                   )}
                 </div>
@@ -224,9 +233,9 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
               <section className="min-w-0 rounded-lg border">
                 <div className="flex flex-wrap items-center gap-3 border-b p-4">
-                  <h2 className="font-medium">Files</h2>
+                  <h2 className="font-medium">{ui("Files")}</h2>
                   <Input
-                    aria-label="Filter file paths"
+                    aria-label={ui("Filter file paths")}
                     className="ml-auto max-w-xs"
                     value={prefix}
                     onChange={(e) => setPrefix(e.target.value)}
@@ -235,12 +244,12 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                   {canManage && !builtin && (
                     <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs">
                       <Upload className="size-4" />
-                      Upload
+                      {ui("Upload")}
                       <input
                         type="file"
                         multiple
                         className="sr-only"
-                        aria-label="Upload knowledge files"
+                        aria-label={ui("Upload knowledge files")}
                         disabled={busy}
                         onChange={(e) => {
                           const uploads = Array.from(e.target.files ?? []);
@@ -261,12 +270,12 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                   {canManage && !builtin && (
                     <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-xs">
                       <Upload className="size-4" />
-                      Upload folder
+                      {ui("Upload folder")}
                       <input
                         type="file"
                         multiple
                         className="sr-only"
-                        aria-label="Upload knowledge folder"
+                        aria-label={ui("Upload knowledge folder")}
                         ref={(node) => {
                           node?.setAttribute("webkitdirectory", "");
                         }}
@@ -290,7 +299,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                 </div>
                 {files.error && (
                   <p role="alert" className="p-4 text-sm text-destructive">
-                    Unable to load files.
+                    {ui("Unable to load files.")}
                   </p>
                 )}
                 <div className="max-h-[560px] overflow-auto divide-y">
@@ -306,12 +315,14 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                         <span className="min-w-0 flex-1">
                           <span className="block break-all text-sm">{file.path}</span>
                           <span className="mt-1 block text-xs text-muted-foreground">
-                            {file.version?.mime_type ?? "Original file"} ·{" "}
+                            {file.version?.mime_type ?? ui("Original file")} ·{" "}
                             {file.version?.size_bytes !== undefined
-                              ? `${file.version.size_bytes.toLocaleString()} bytes`
+                              ? ui("{value0} bytes", {
+                                  value0: file.version.size_bytes.toLocaleString(),
+                                })
                               : file.indexed_version
-                                ? "Indexed"
-                                : "Not indexed"}
+                                ? ui("Indexed")
+                                : ui("Not indexed")}
                           </span>
                         </span>
                         {file.version?.extraction_status && (
@@ -322,7 +333,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                 </div>
                 {!files.isLoading && !files.data?.pages.some((p) => p.data.length) && (
                   <p className="p-5 text-sm text-muted-foreground">
-                    No files in this view. Upload files or connect a source below.
+                    {ui("No files in this view. Upload files or connect a source below.")}
                   </p>
                 )}
                 {files.hasNextPage && (
@@ -332,14 +343,14 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                     onClick={() => files.fetchNextPage()}
                     disabled={files.isFetchingNextPage}
                   >
-                    Load more files
+                    {ui("Load more files")}
                   </Button>
                 )}
               </section>
               <section className="min-w-0 rounded-lg border bg-card p-4">
                 <div className="mb-3 flex items-start gap-2">
                   <h2 className="min-w-0 flex-1 break-all text-sm font-medium">
-                    {selected?.path ?? "File preview"}
+                    {selected?.path ?? ui("File preview")}
                   </h2>
                   {selected && (
                     <a
@@ -348,13 +359,15 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                       className="flex items-center gap-1 text-xs underline"
                     >
                       <Download className="size-3" />
-                      Original
+                      {ui("Original")}
                     </a>
                   )}
                 </div>
                 <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 font-mono text-xs">
                   {preview ||
-                    "Select a file to inspect its extracted text. Binary originals are retained even when no text view is available."}
+                    ui(
+                      "Select a file to inspect its extracted text. Binary originals are retained even when no text view is available.",
+                    )}
                 </pre>
                 {selected && canManage && (
                   <div className="mt-4 flex flex-wrap gap-4 text-sm">
@@ -376,7 +389,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                           })
                         }
                       />
-                      Include in index
+                      {ui("Include in index")}
                     </label>
                     <label className="flex items-center gap-2">
                       <Checkbox
@@ -396,14 +409,14 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                           })
                         }
                       />
-                      Agent can read
+                      {ui("Agent can read")}
                     </label>
                   </div>
                 )}
                 {selected?.version && (
                   <details className="mt-4">
                     <summary className="cursor-pointer text-sm">
-                      Metadata and extraction warnings
+                      {ui("Metadata and extraction warnings")}
                     </summary>
                     <pre className="mt-3 overflow-auto whitespace-pre-wrap text-xs">
                       {JSON.stringify(
@@ -420,12 +433,12 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
               </section>
             </div>
             <section className="mt-8 space-y-4">
-              <h2 className="text-lg font-medium">Sources</h2>
+              <h2 className="text-lg font-medium">{ui("Sources")}</h2>
               {c.sources?.map((source) => (
                 <div key={source.id} className="rounded-lg border p-4">
                   <div className="flex gap-3">
                     <span className="font-medium capitalize">
-                      {source.kind === "builtin" ? "Everruns documentation" : source.kind}
+                      {source.kind === "builtin" ? ui("Everruns documentation") : source.kind}
                     </span>
                     <Badge variant="outline">{source.sync_status}</Badge>
                   </div>
@@ -447,7 +460,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
             </section>
             {canManage && !builtin && (
               <details className="mt-5 rounded-lg border p-5">
-                <summary className="cursor-pointer font-medium">Connect a source</summary>
+                <summary className="cursor-pointer font-medium">{ui("Connect a source")}</summary>
                 <div className="mt-5 max-w-2xl">
                   <SourceForm collectionId={collectionId} onSaved={refresh} />
                 </div>
@@ -456,7 +469,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
             {canManage && !builtin && (
               <details className="mt-5 rounded-lg border p-5">
                 <summary className="cursor-pointer font-medium">
-                  Write a note or OKF concept
+                  {ui("Write a note or OKF concept")}
                 </summary>
                 <form
                   className="mt-5 max-w-2xl space-y-3"
@@ -468,30 +481,32 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
                     });
                   }}
                 >
-                  <Label htmlFor="knowledge-note-path">File path</Label>
+                  <Label htmlFor="knowledge-note-path">{ui("File path")}</Label>
                   <Input
                     id="knowledge-note-path"
                     value={notePath}
                     onChange={(e) => setNotePath(e.target.value)}
                     required
                   />
-                  <Label htmlFor="knowledge-note">Markdown and frontmatter</Label>
+                  <Label htmlFor="knowledge-note">{ui("Markdown and frontmatter")}</Label>
                   <Textarea
                     id="knowledge-note"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     rows={9}
-                    placeholder="Write Markdown, optionally with OKF metadata…"
+                    placeholder={ui("Write Markdown, optionally with OKF metadata…")}
                   />
                   <Button type="submit" disabled={busy || !note.trim()}>
-                    Save note
+                    {ui("Save note")}
                   </Button>
                 </form>
               </details>
             )}
             {canManage && (
               <details className="mt-5 rounded-lg border p-5">
-                <summary className="cursor-pointer font-medium">Collection settings</summary>
+                <summary className="cursor-pointer font-medium">
+                  {ui("Collection settings")}
+                </summary>
                 <div className="mt-5 max-w-2xl">
                   <CollectionForm
                     key={c.id}
@@ -507,7 +522,7 @@ export default function KnowledgeDetail({ params }: { params: Promise<{ collecti
             {canManage && (
               <details className="mt-5 rounded-lg border p-5">
                 <summary className="cursor-pointer font-medium">
-                  Add an organization search account
+                  {ui("Add an organization search account")}
                 </summary>
                 <div className="mt-5 max-w-2xl">
                   <IndexerForm onSaved={refresh} />

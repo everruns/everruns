@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChatPageFilters } from "@/components/chat-mode/page-view-state";
 
 import { useTextPageFormDraft } from "@/components/chat-mode/use-text-page-form-draft";
@@ -68,12 +69,13 @@ export default function VirtualUserDetailPage({
 }: {
   params: Promise<{ identityId: string }>;
 }) {
+  const ui = useUiTranslations();
   const { identityId } = use(params);
   const router = useRouter();
   const [tab, setTab] = useState("overview");
   useChatPageFilters({ tab: tab });
   const { data: identity, isLoading } = useVirtualUser(identityId);
-  usePageTitle(identity?.name ?? null, "Virtual User");
+  usePageTitle(identity?.name ?? null, ui("Virtual User"));
   const updateIdentity = useUpdateVirtualUser();
   const deleteIdentity = useDeleteVirtualUser();
   const destroyIdentity = useDestroyVirtualUser();
@@ -172,8 +174,10 @@ export default function VirtualUserDetailPage({
   if (!identity) {
     return (
       <ResourceNotFound
-        title="Virtual user not found"
-        description="This virtual user may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Virtual user not found")}
+        description={ui(
+          "This virtual user may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/virtual-users"
         backLabel="Back to virtual users"
         resourceId={identityId}
@@ -184,7 +188,7 @@ export default function VirtualUserDetailPage({
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Virtual Users", href: "/virtual-users" }, { label: identity.name }]}
+        items={[{ label: ui("Virtual Users"), href: "/virtual-users" }, { label: identity.name }]}
       />
 
       <PageMasthead
@@ -195,12 +199,12 @@ export default function VirtualUserDetailPage({
           <>
             <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
             <Badge variant="outline">
-              {identity.usage === "end_user" ? "End user" : "Service"}
+              {identity.usage === "end_user" ? ui("End user") : ui("Service")}
             </Badge>
             {!isReadOnly && (
               <Badge variant="accent">
                 <Pencil className="size-3" />
-                Editing
+                {ui("Editing")}
               </Badge>
             )}
           </>
@@ -209,13 +213,13 @@ export default function VirtualUserDetailPage({
         meta={
           <>
             <span>
-              Locale <span className="text-primary">{identity.locale || "—"}</span>
+              {ui("Locale")} <span className="text-primary">{identity.locale || "—"}</span>
             </span>
             <span>
-              Timezone <span className="text-primary">{identity.timezone || "—"}</span>
+              {ui("Timezone")} <span className="text-primary">{identity.timezone || "—"}</span>
             </span>
             <span>
-              Created{" "}
+              {ui("Created")}{" "}
               <span className="text-foreground">
                 {new Date(identity.created_at).toLocaleDateString()}
               </span>
@@ -230,10 +234,10 @@ export default function VirtualUserDetailPage({
               disabled={isSaving || isReadOnly || chatDraft.blocked}
             >
               <Check className="size-4" />
-              {isReadOnly ? "Read-only" : isSaving ? "Saving..." : "Save changes"}
+              {isReadOnly ? ui("Read-only") : isSaving ? ui("Saving...") : ui("Save changes")}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
-              Discard
+              {ui("Discard")}
             </Button>
             <EntityActionsMenu
               entityRef={identity.id}
@@ -245,7 +249,7 @@ export default function VirtualUserDetailPage({
                   ? [
                       {
                         id: "unarchive",
-                        label: "Unarchive virtual user",
+                        label: ui("Unarchive virtual user"),
                         icon: <ArchiveRestore className="size-4" />,
                         disabled: updateIdentity.isPending,
                         onSelect: () =>
@@ -289,16 +293,16 @@ export default function VirtualUserDetailPage({
         value={tab}
         onValueChange={setTab}
         items={[
-          { value: "overview", label: "Overview" },
-          { value: "connections", label: "Connections" },
-          { value: "bindings", label: "Linked identities" },
-          { value: "sessions", label: "Sessions" },
+          { value: "overview", label: ui("Overview") },
+          { value: "connections", label: ui("Connections") },
+          { value: "bindings", label: ui("Linked identities") },
+          { value: "sessions", label: ui("Sessions") },
         ]}
       />
       {tab === "bindings" && (
         <Card>
           <CardHeader>
-            <CardTitle>Linked identities</CardTitle>
+            <CardTitle>{ui("Linked identities")}</CardTitle>
           </CardHeader>
           <CardContent>
             <LinkedIdentities identityId={identityId} />
@@ -308,7 +312,7 @@ export default function VirtualUserDetailPage({
       {tab === "sessions" && (
         <Card>
           <CardHeader>
-            <CardTitle>Sessions</CardTitle>
+            <CardTitle>{ui("Sessions")}</CardTitle>
           </CardHeader>
           <CardContent>
             <VirtualUserSessions identityId={identityId} />
@@ -332,14 +336,14 @@ export default function VirtualUserDetailPage({
           <PageMain>
             <Card>
               <CardHeader>
-                <CardTitle>Profile</CardTitle>
+                <CardTitle>{ui("Profile")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{ui("Name")}</Label>
                   <Input
                     id="name"
-                    placeholder="Virtual user name"
+                    placeholder={ui("Virtual user name")}
                     value={formData.name}
                     onChange={(e) => handleFormChange("name", e.target.value)}
                     disabled={isSaving || isReadOnly}
@@ -348,44 +352,44 @@ export default function VirtualUserDetailPage({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">{ui("Description")}</Label>
                   <PromptEditor
                     id="description"
-                    placeholder="Describe this virtual user..."
+                    placeholder={ui("Describe this virtual user...")}
                     value={formData.description}
                     onChange={(value) => handleFormChange("description", value)}
                     disabled={isSaving || isReadOnly}
                   />
-                  <p className="text-xs text-muted-foreground">Supports Markdown</p>
+                  <p className="text-xs text-muted-foreground">{ui("Supports Markdown")}</p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Locale</Label>
+                    <Label>{ui("Locale")}</Label>
                     <Combobox
                       options={LOCALE_OPTIONS}
                       value={formData.locale}
                       onValueChange={(value) => handleFormChange("locale", value)}
-                      placeholder="Select locale..."
+                      placeholder={ui("Select locale...")}
                       searchPlaceholder="Search locales..."
                       disabled={isSaving || isReadOnly}
                     />
                     <p className="text-xs text-muted-foreground">
-                      BCP 47 locale for formatting and translations
+                      {ui("BCP 47 locale for formatting and translations")}
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label>Timezone</Label>
+                    <Label>{ui("Timezone")}</Label>
                     <Combobox
                       options={TIMEZONE_OPTIONS}
                       value={formData.timezone}
                       onValueChange={(value) => handleFormChange("timezone", value)}
-                      placeholder="Select timezone..."
+                      placeholder={ui("Select timezone...")}
                       searchPlaceholder="Search timezones..."
                       disabled={isSaving || isReadOnly}
                     />
                     <p className="text-xs text-muted-foreground">
-                      IANA timezone for date/time rendering
+                      {ui("IANA timezone for date/time rendering")}
                     </p>
                   </div>
                 </div>
@@ -396,36 +400,40 @@ export default function VirtualUserDetailPage({
           {/* Summary sidebar */}
           <PageRail>
             {updateIdentity.error && (
-              <p className="text-sm text-destructive">Error: {updateIdentity.error.message}</p>
+              <p className="text-sm text-destructive">
+                {ui("Error:")} {updateIdentity.error.message}
+              </p>
             )}
 
             <Card>
               <CardHeader>
-                <CardTitle>Summary</CardTitle>
+                <CardTitle>{ui("Summary")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium">Status</p>
+                  <p className="text-sm font-medium">{ui("Status")}</p>
                   <p className="text-sm text-muted-foreground">{identity.status}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Locale</p>
-                  <p className="text-sm text-muted-foreground">{formData.locale || "(not set)"}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Timezone</p>
+                  <p className="text-sm font-medium">{ui("Locale")}</p>
                   <p className="text-sm text-muted-foreground">
-                    {formData.timezone || "(not set)"}
+                    {formData.locale || ui("(not set)")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Created</p>
+                  <p className="text-sm font-medium">{ui("Timezone")}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.timezone || ui("(not set)")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{ui("Created")}</p>
                   <p className="text-sm text-muted-foreground">
                     {new Date(identity.created_at).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Updated</p>
+                  <p className="text-sm font-medium">{ui("Updated")}</p>
                   <p className="text-sm text-muted-foreground">
                     {new Date(identity.updated_at).toLocaleDateString()}
                   </p>
@@ -437,16 +445,17 @@ export default function VirtualUserDetailPage({
       </form>
 
       <PageFooter>
-        <BackLink href="/virtual-users">Back to Virtual Users</BackLink>
+        <BackLink href="/virtual-users">{ui("Back to Virtual Users")}</BackLink>
       </PageFooter>
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Virtual User</DialogTitle>
+            <DialogTitle>{ui("Delete Virtual User")}</DialogTitle>
             <DialogDescription>
-              Permanently delete the archived identity &quot;{identity.name}&quot;? Existing
-              references will render as deleted tombstones.
+              {ui('Permanently delete the archived identity "')}
+              {identity.name}
+              {ui('"? Existing references will render as deleted tombstones.')}
             </DialogDescription>
             {destroyIdentity.error && (
               <EntityDeleteErrorNotice
@@ -459,14 +468,14 @@ export default function VirtualUserDetailPage({
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
+              {ui("Cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDestroy}
               disabled={destroyIdentity.isPending}
             >
-              {destroyIdentity.isPending ? "Deleting..." : "Delete Virtual User"}
+              {destroyIdentity.isPending ? ui("Deleting...") : ui("Delete Virtual User")}
             </Button>
           </DialogFooter>
         </DialogContent>

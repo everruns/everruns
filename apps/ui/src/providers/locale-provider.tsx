@@ -7,7 +7,16 @@
  * - Fall back to English when components render outside the app shell (tests, isolated stories).
  */
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   detectBrowserLocale,
   formatMessage,
@@ -15,49 +24,83 @@ import {
   type MessageKey,
   type SupportedLocale,
 } from "@/lib/i18n";
+import { uiMessages } from "@/lib/ui-messages";
 
 interface LocaleContextValue {
   locale: SupportedLocale;
+  displayLocale: string;
+  preference: "system" | SupportedLocale;
+  setPreference: (value: "system" | SupportedLocale) => void;
   backendLocale: string;
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
 }
 
 const fallbackLocaleContext: LocaleContextValue = {
   locale: "en",
+  displayLocale: "en",
+  preference: "system",
+  setPreference: () => {},
   backendLocale: "en-US",
   t: (key, values) => formatMessage("en", key, values),
 };
 
 const LocaleContext = createContext<LocaleContextValue>(fallbackLocaleContext);
 
-function getInitialBrowserLocale(): string {
-  if (typeof window === "undefined") {
-    return "en-US";
+const PREFERENCE_KEY = "everruns.ui-language";
+function readPreference(): "system" | SupportedLocale {
+  try {
+    const value = localStorage.getItem(PREFERENCE_KEY);
+    return value === "en" || value === "uk" ? value : "system";
+  } catch {
+    return "system";
   }
-
-  return detectBrowserLocale(window.navigator);
+}
+function subscribePreference(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener("everruns:language", callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("everruns:language", callback);
+  };
+}
+function setPreference(value: "system" | SupportedLocale) {
+  try {
+    localStorage.setItem(PREFERENCE_KEY, value);
+  } catch {
+    /* Private browsing may disable storage. */
+  }
+  window.dispatchEvent(new Event("everruns:language"));
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [backendLocale, setBackendLocale] = useState(getInitialBrowserLocale);
-  const [locale, setLocale] = useState<SupportedLocale>(() =>
-    getSupportedLocale(getInitialBrowserLocale()),
+  const preference = useSyncExternalStore(
+    subscribePreference,
+    readPreference,
+    () => "system" as const,
   );
+  const [backendLocale, setBackendLocale] = useState("en-US");
+  const displayLocale = preference === "system" ? backendLocale : preference;
+  const locale = getSupportedLocale(displayLocale);
 
   useEffect(() => {
     const browserLocale = detectBrowserLocale(window.navigator);
     setBackendLocale(browserLocale);
-    setLocale(getSupportedLocale(browserLocale));
-    document.documentElement.lang = browserLocale;
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = displayLocale;
+  }, [displayLocale]);
 
   const value = useMemo<LocaleContextValue>(
     () => ({
       locale,
+      displayLocale,
+      preference,
+      setPreference,
       backendLocale,
       t: (key, values) => formatMessage(locale, key, values),
     }),
-    [backendLocale, locale],
+    [backendLocale, locale, displayLocale, preference],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
@@ -65,4 +108,20 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
 export function useLocale() {
   return useContext(LocaleContext);
+}
+
+/** Product-owned source messages act as gettext-style IDs; never pass user content. */
+export function useUiTranslations() {
+  const { locale } = useLocale();
+  return useCallback(
+    (message: string, values?: Record<string, unknown>): string => {
+      const template = locale === "uk" ? (uiMessages[message] ?? message) : message;
+      return values
+        ? template.replace(/\{(\w+)\}/g, (token, key: string) =>
+            key in values ? String(values[key]) : token,
+          )
+        : template;
+    },
+    [locale],
+  );
 }

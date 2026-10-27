@@ -14,6 +14,7 @@
  */
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import packageJson from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
@@ -83,6 +84,7 @@ export function Sidebar({
   config?: Partial<SidebarConfig>;
   className?: string;
 }) {
+  const ui = useUiTranslations();
   const pathname = usePathname();
   const {
     user,
@@ -132,7 +134,7 @@ export function Sidebar({
       <div className="flex h-14 items-center justify-between border-b border-border/70 bg-card px-4">
         <Link href="/chats" prefetch={false} className="flex items-center gap-2">
           <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
-          <span className="text-base font-semibold tracking-[-0.02em]">Everruns</span>
+          <span className="text-base font-semibold tracking-[-0.02em]">{ui("Everruns")}</span>
         </Link>
       </div>
 
@@ -141,14 +143,14 @@ export function Sidebar({
         useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
       />
 
-      <div role="search" aria-label="Sidebar search" className="px-2.5 py-2">
+      <div role="search" aria-label={ui("Sidebar search")} className="px-2.5 py-2">
         <button
           type="button"
           onClick={() => openCommandPalette(true)}
           className="flex w-full items-center gap-2 border border-input bg-transparent px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-card hover:text-foreground"
         >
           <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="flex-1 text-left">Search...</span>
+          <span className="flex-1 text-left">{ui("Search...")}</span>
           <kbd className="hidden h-4 items-center gap-0.5 border bg-muted px-1.5 font-mono text-[10px] font-medium sm:inline-flex">
             <span className="text-[11px]">⌘</span>K
           </kbd>
@@ -166,7 +168,7 @@ export function Sidebar({
 
       <div
         role="contentinfo"
-        aria-label="Sidebar footer"
+        aria-label={ui("Sidebar footer")}
         className="border-t border-border/70 p-2.5"
       >
         <SidebarUserMenu
@@ -183,6 +185,7 @@ export function Sidebar({
 }
 
 export function MobileSidebar({ config }: { config?: Partial<SidebarConfig> }) {
+  const ui = useUiTranslations();
   const [open, setOpen] = useState(false);
 
   return (
@@ -191,14 +194,14 @@ export function MobileSidebar({ config }: { config?: Partial<SidebarConfig> }) {
         type="button"
         variant="ghost"
         size="icon"
-        aria-label="Open navigation"
+        aria-label={ui("Open navigation")}
         onClick={() => setOpen(true)}
       >
         <Menu className="size-5" />
       </Button>
       <Link href="/chats" prefetch={false} className="flex items-center gap-2">
         <Image src="/logo.svg" alt="" width={24} height={24} />
-        <span className="text-sm font-semibold tracking-[-0.02em]">Everruns</span>
+        <span className="text-sm font-semibold tracking-[-0.02em]">{ui("Everruns")}</span>
       </Link>
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent
@@ -208,7 +211,7 @@ export function MobileSidebar({ config }: { config?: Partial<SidebarConfig> }) {
             if ((event.target as Element).closest("a")) setOpen(false);
           }}
         >
-          <DrawerTitle className="sr-only">Navigation</DrawerTitle>
+          <DrawerTitle className="sr-only">{ui("Navigation")}</DrawerTitle>
           <Sidebar config={config} className="w-full border-r-0" />
         </DrawerContent>
       </Drawer>

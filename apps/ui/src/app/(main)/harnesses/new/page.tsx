@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { usePageFormDraft } from "@/components/chat-mode/use-page-form-draft";
 import { harnessCreateDraftSchema } from "@/components/chat-mode/page-form-schemas";
 
@@ -55,7 +56,8 @@ function slugify(value: string): string {
 }
 
 export default function NewHarnessPage() {
-  usePageTitle("New Harness", "Harnesses");
+  const ui = useUiTranslations();
+  usePageTitle(ui("New Harness"), ui("Harnesses"));
   const router = useRouter();
   const createHarness = useCreateHarness();
   const { data: allCapabilities = [] } = useCapabilities();
@@ -113,7 +115,7 @@ export default function NewHarnessPage() {
       network_access: networkAccess,
     },
     entityType: "harness",
-    label: "New Harness",
+    label: ui("New Harness"),
     baseline: "new",
     dirty: !!(
       Object.values(formData).some(Boolean) ||
@@ -169,20 +171,22 @@ export default function NewHarnessPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Harnesses", href: "/harnesses" }, { label: "New" }]} />
+      <PageBreadcrumb
+        items={[{ label: ui("Harnesses"), href: "/harnesses" }, { label: ui("New") }]}
+      />
 
       <PageMasthead
         icon={<HarnessDomainIcon />}
-        title="New Harness"
-        description="Define a reusable execution baseline for agents and sessions."
+        title={ui("New Harness")}
+        description={ui("Define a reusable execution baseline for agents and sessions.")}
         actions={
           <>
             <Button type="submit" form="harness-create-form" disabled={createHarness.isPending}>
               <Check className="size-4" />
-              {createHarness.isPending ? "Creating..." : "Create Harness"}
+              {createHarness.isPending ? ui("Creating...") : ui("Create Harness")}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.back()}>
-              Cancel
+              {ui("Cancel")}
             </Button>
           </>
         }
@@ -191,11 +195,11 @@ export default function NewHarnessPage() {
       <PageControlStrip className="border-b">
         <PageJumpNav
           items={[
-            { href: "#identity", label: "Identity" },
-            { href: "#branding", label: "Branding" },
-            { href: "#behavior", label: "Behavior" },
-            { href: "#files", label: "Files" },
-            { href: "#network", label: "Network" },
+            { href: "#identity", label: ui("Identity") },
+            { href: "#branding", label: ui("Branding") },
+            { href: "#behavior", label: ui("Behavior") },
+            { href: "#files", label: ui("Files") },
+            { href: "#network", label: ui("Network") },
           ]}
           className="px-3.5"
         />
@@ -207,15 +211,15 @@ export default function NewHarnessPage() {
           <PageMain>
             <Card id="identity" className="scroll-mt-6">
               <CardHeader>
-                <CardTitle>Identity</CardTitle>
-                <CardDescription>How the harness is named and found</CardDescription>
+                <CardTitle>{ui("Identity")}</CardTitle>
+                <CardDescription>{ui("How the harness is named and found")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{ui("Name")}</Label>
                   <Input
                     id="name"
-                    placeholder="my-harness"
+                    placeholder={ui("my-harness")}
                     value={formData.name}
                     onChange={(e) => handleNameChange(e.target.value)}
                     aria-invalid={!!fieldErrors.name}
@@ -229,53 +233,61 @@ export default function NewHarnessPage() {
                       {nameAvailability.isChecking ? (
                         <>
                           <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                          <span className="text-muted-foreground">Checking availability…</span>
+                          <span className="text-muted-foreground">
+                            {ui("Checking availability…")}
+                          </span>
                         </>
                       ) : nameAvailability.available === true ? (
                         <>
                           <Check className="w-3 h-3 text-success" />
-                          <span className="text-success">Name is available</span>
+                          <span className="text-success">{ui("Name is available")}</span>
                         </>
                       ) : nameAvailability.available === false ? (
                         <>
                           <X className="w-3 h-3 text-destructive" />
-                          <span className="text-destructive">Name is already taken or invalid</span>
+                          <span className="text-destructive">
+                            {ui("Name is already taken or invalid")}
+                          </span>
                         </>
                       ) : null}
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.
+                    {ui(
+                      "Unique identifier used in URLs and API. Lowercase letters, numbers, and hyphens.",
+                    )}
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">{ui("Description")}</Label>
                   <Textarea
                     id="description"
-                    placeholder="When to choose this harness"
+                    placeholder={ui("When to choose this harness")}
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={2}
                     aria-describedby="description-help"
                   />
                   <p id="description-help" className="text-xs text-muted-foreground">
-                    Shown in the harness picker. Say when someone should choose this harness.
+                    {ui(
+                      "Shown in the harness picker. Say when someone should choose this harness.",
+                    )}
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tags">Tags</Label>
+                  <Label htmlFor="tags">{ui("Tags")}</Label>
                   <TagInput
                     id="tags"
-                    placeholder="Add a tag…"
+                    placeholder={ui("Add a tag…")}
                     value={formData.tags}
                     onChange={(value) => setFormData((prev) => ({ ...prev, tags: value }))}
                     disabled={createHarness.isPending}
                     aria-describedby="tags-help"
                   />
                   <p id="tags-help" className="text-xs text-muted-foreground">
-                    Press Enter or comma to add a tag. Backspace removes the last tag.
+                    {ui("Press Enter or comma to add a tag. Backspace removes the last tag.")}
                   </p>
                 </div>
               </CardContent>
@@ -283,21 +295,23 @@ export default function NewHarnessPage() {
 
             <Card id="branding" className="scroll-mt-6">
               <CardContent>
-                <CardTitle className="mb-1 text-base font-semibold">Branding</CardTitle>
+                <CardTitle className="mb-1 text-base font-semibold">{ui("Branding")}</CardTitle>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  How the harness appears in the runtime catalog.
+                  {ui("How the harness appears in the runtime catalog.")}
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="display_name">Display Name</Label>
+                    <Label htmlFor="display_name">{ui("Display Name")}</Label>
                     <Input
                       id="display_name"
-                      placeholder={formData.name ? undefined : "My Harness"}
+                      placeholder={formData.name ? undefined : ui("My Harness")}
                       value={formData.display_name}
                       onChange={(e) => handleDisplayNameChange(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Optional human-readable label shown in the UI. Defaults to name if empty.
+                      {ui(
+                        "Optional human-readable label shown in the UI. Defaults to name if empty.",
+                      )}
                     </p>
                   </div>
                 </div>
@@ -306,48 +320,49 @@ export default function NewHarnessPage() {
 
             <Card id="behavior" className="scroll-mt-6">
               <CardHeader>
-                <CardTitle>Behavior</CardTitle>
-                <CardDescription>Inheritance, model, and base instructions</CardDescription>
+                <CardTitle>{ui("Behavior")}</CardTitle>
+                <CardDescription>{ui("Inheritance, model, and base instructions")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="parent-harness">Parent Harness</Label>
+                    <Label htmlFor="parent-harness">{ui("Parent Harness")}</Label>
                     <HarnessSelect
                       id="parent-harness"
                       value={formData.parent_harness_id}
                       onValueChange={(value) =>
                         setFormData({ ...formData, parent_harness_id: value })
                       }
-                      placeholder="No parent harness"
+                      placeholder={ui("No parent harness")}
                       includeNoneOption
                       noneLabel="No parent harness"
                       disabled={createHarness.isPending}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Inherit system prompt, capabilities, initial files, and default model from
-                      another harness.
+                      {ui(
+                        "Inherit system prompt, capabilities, initial files, and default model from another harness.",
+                      )}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="model">Model (optional)</Label>
+                    <Label htmlFor="model">{ui("Model (optional)")}</Label>
                     <ModelPicker
                       value={formData.default_model_id}
                       onChange={(value) => setFormData({ ...formData, default_model_id: value })}
-                      placeholder="Use default model"
+                      placeholder={ui("Use default model")}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Select a specific model or leave empty to use the default
+                      {ui("Select a specific model or leave empty to use the default")}
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="system_prompt">System Prompt (optional)</Label>
+                  <Label htmlFor="system_prompt">{ui("System Prompt (optional)")}</Label>
                   <PromptEditor
                     id="system_prompt"
-                    placeholder="You are a helpful assistant..."
+                    placeholder={ui("You are a helpful assistant...")}
                     value={formData.system_prompt}
                     onChange={(value) => {
                       setFormData({ ...formData, system_prompt: value });
@@ -358,9 +373,9 @@ export default function NewHarnessPage() {
                     <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Base instructions for the AI model (supports Markdown). Leave empty to
-                    contribute no base prompt; the parent harness, agent, session, and capabilities
-                    still apply.
+                    {ui(
+                      "Base instructions for the AI model (supports Markdown). Leave empty to contribute no base prompt; the parent harness, agent, session, and capabilities still apply.",
+                    )}
                   </p>
                 </div>
               </CardContent>
@@ -372,7 +387,9 @@ export default function NewHarnessPage() {
                   value={initialFiles}
                   onChange={setInitialFiles}
                   disabled={createHarness.isPending}
-                  description="Seed starter files into every session created from this harness."
+                  description={ui(
+                    "Seed starter files into every session created from this harness.",
+                  )}
                 />
               </CardContent>
             </Card>
@@ -383,7 +400,9 @@ export default function NewHarnessPage() {
                   value={networkAccess}
                   onChange={setNetworkAccess}
                   disabled={createHarness.isPending}
-                  description="Set the baseline network policy. Agents and sessions can only narrow it, never widen it."
+                  description={ui(
+                    "Set the baseline network policy. Agents and sessions can only narrow it, never widen it.",
+                  )}
                 />
               </CardContent>
             </Card>
@@ -392,8 +411,8 @@ export default function NewHarnessPage() {
           <PageRail>
             <Card>
               <CardHeader>
-                <CardTitle>Capabilities</CardTitle>
-                <CardDescription>Tools and specialized behaviors</CardDescription>
+                <CardTitle>{ui("Capabilities")}</CardTitle>
+                <CardDescription>{ui("Tools and specialized behaviors")}</CardDescription>
               </CardHeader>
               <CardContent>
                 <CapabilitySelector
@@ -406,14 +425,16 @@ export default function NewHarnessPage() {
             </Card>
 
             {createHarness.error && (
-              <p className="text-sm text-destructive">Error: {createHarness.error.message}</p>
+              <p className="text-sm text-destructive">
+                {ui("Error:")} {createHarness.error.message}
+              </p>
             )}
           </PageRail>
         </PageColumns>
       </form>
 
       <PageFooter>
-        <BackLink href="/harnesses">Back to Harnesses</BackLink>
+        <BackLink href="/harnesses">{ui("Back to Harnesses")}</BackLink>
       </PageFooter>
     </PageContainer>
   );

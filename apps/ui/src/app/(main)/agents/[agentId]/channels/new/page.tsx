@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useChannelChatDraft } from "@/components/chat-mode/use-channel-chat-draft";
 
 import { use, useEffect, useState } from "react";
@@ -34,6 +36,8 @@ import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { beginSlackInstall } from "@/lib/api/agent-channels";
 
 export default function NewAgentChannelPage({ params }: { params: Promise<{ agentId: string }> }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const { agentId } = use(params);
   const router = useRouter();
   const { data: agent, isLoading } = useAgent(agentId);
@@ -62,13 +66,15 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
   }, [agent, canManage, policiesLoading, returnHref, router]);
 
   if (isLoading || policiesLoading || slackInstallCapability.isLoading) {
-    return <div className="container mx-auto p-6">Loading channel form...</div>;
+    return <div className="container mx-auto p-6">{ui("Loading channel form...")}</div>;
   }
   if (!agent) {
     return (
       <ResourceNotFound
-        title="Agent not found"
-        description="This agent may have been deleted, moved to another organization, or the URL may be wrong."
+        title={ui("Agent not found")}
+        description={ui(
+          "This agent may have been deleted, moved to another organization, or the URL may be wrong.",
+        )}
         backHref="/agents"
         backLabel="Back to agents"
         resourceId={agentId}
@@ -76,7 +82,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
     );
   }
 
-  const agentName = getDisplayName(agent);
+  const agentName = getDisplayName(agent, displayLocale);
   const slackInstallAvailable = slackInstallCapability.data?.connected === true;
   // Saving a credential-free Slack channel installs it straight away, so with
   // several workspaces connected the choice has to be made before Save, not
@@ -96,15 +102,15 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
       {chatDraft.notice}
       <PageBreadcrumb
         items={[
-          { label: "Agents", href: "/agents" },
+          { label: ui("Agents"), href: "/agents" },
           { label: agentName, href: returnHref },
-          { label: "New channel" },
+          { label: ui("New channel") },
         ]}
       />
       <PageMasthead
         icon={<Radio />}
-        title="New channel"
-        description="Expose this agent through a webhook, AG-UI, Slack, or another transport."
+        title={ui("New channel")}
+        description={ui("Expose this agent through a webhook, AG-UI, Slack, or another transport.")}
         actions={
           <>
             <Button
@@ -118,10 +124,10 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
               }
             >
               <Check className="size-4" />
-              {createChannel.isPending ? "Saving..." : "Save channel"}
+              {createChannel.isPending ? ui("Saving...") : ui("Save channel")}
             </Button>
             <Button type="button" variant="outline" onClick={() => router.push(returnHref)}>
-              Discard
+              {ui("Discard")}
             </Button>
           </>
         }
@@ -177,7 +183,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
           <PageMain>
             <Card>
               <CardHeader>
-                <CardTitle>1. Channel type</CardTitle>
+                <CardTitle>{ui("1. Channel type")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ChannelTypePicker
@@ -189,7 +195,7 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
             <Card>
               <CardHeader>
                 <CardTitle>
-                  2. Configure {formState.kind === "ag_ui" ? "AG-UI" : formState.kind}
+                  {ui("2. Configure")} {formState.kind === "ag_ui" ? ui("AG-UI") : formState.kind}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -209,7 +215,9 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
         </PageColumns>
       </form>
       <PageFooter>
-        <BackLink href={returnHref}>Back to {agentName}</BackLink>
+        <BackLink href={returnHref}>
+          {ui("Back to")} {agentName}
+        </BackLink>
       </PageFooter>
     </PageContainer>
   );

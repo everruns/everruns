@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import * as React from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { CheckIcon, ChevronDownIcon, XIcon } from "lucide-react";
@@ -47,6 +48,7 @@ export function Combobox({
   error,
   footer,
 }: ComboboxProps) {
+  const ui = useUiTranslations();
   const [search, setSearch] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
   const selectedLabel = valueLabel ?? options.find((option) => option.value === value)?.label;
@@ -124,7 +126,7 @@ export function Combobox({
                     role="status"
                     className="px-2 py-4 text-center text-sm text-muted-foreground"
                   >
-                    No results found
+                    {ui("No results found")}
                   </div>
                 )}
                 {filtered.map((option, index) => (
@@ -149,7 +151,7 @@ export function Combobox({
               </ComboboxPrimitive.List>
               {loading && (
                 <p role="status" className="p-2 text-sm text-muted-foreground">
-                  Loading…
+                  {ui("Loading…")}
                 </p>
               )}
               {error && (

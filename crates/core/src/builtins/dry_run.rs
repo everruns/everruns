@@ -37,6 +37,14 @@ pub struct DryRunCapability;
 
 #[async_trait]
 impl Capability for DryRunCapability {
+    fn localizations(&self) -> Vec<crate::capabilities::CapabilityLocalization> {
+        vec![crate::capabilities::CapabilityLocalization::text(
+            "uk",
+            "Пробний запуск",
+            "Виконує інструменти лише для читання та імітує решту викликів, щоб показати заплановані дії без їх виконання.",
+        )]
+    }
+
     fn id(&self) -> &str {
         DRY_RUN_CAPABILITY_ID
     }

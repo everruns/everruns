@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function BlankTab({
   creating: boolean;
   onCreate: () => void;
 }) {
+  const ui = useUiTranslations();
   // Follow the display name until the person types their own slug.
   const [slugEdited, setSlugEdited] = useState(
     () => draft.name !== "" && draft.name !== slugifyAgentName(draft.display_name),
@@ -57,14 +59,14 @@ export function BlankTab({
     >
       <div className="space-y-6">
         <section className="space-y-4 rounded-md border bg-card p-4">
-          <h2 className="font-medium">The job</h2>
+          <h2 className="font-medium">{ui("The job")}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="blank-display-name">Name</Label>
+              <Label htmlFor="blank-display-name">{ui("Name")}</Label>
               <Input
                 id="blank-display-name"
                 value={draft.display_name}
-                placeholder="Invoice chaser"
+                placeholder={ui("Invoice chaser")}
                 onChange={(event) =>
                   update({
                     display_name: event.target.value,
@@ -74,12 +76,12 @@ export function BlankTab({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="blank-name">Addressable name</Label>
+              <Label htmlFor="blank-name">{ui("Addressable name")}</Label>
               <div className="relative">
                 <Input
                   id="blank-name"
                   value={draft.name}
-                  placeholder="invoice-chaser"
+                  placeholder={ui("invoice-chaser")}
                   className="pr-8 font-mono"
                   onChange={(event) => {
                     setSlugEdited(true);
@@ -89,9 +91,9 @@ export function BlankTab({
                 {draft.name && !availability.isChecking && availability.available !== null && (
                   <span className="absolute top-1/2 right-2 -translate-y-1/2">
                     {availability.available ? (
-                      <Check className="size-4 text-success" aria-label="Name available" />
+                      <Check className="size-4 text-success" aria-label={ui("Name available")} />
                     ) : (
-                      <X className="size-4 text-destructive" aria-label="Name taken" />
+                      <X className="size-4 text-destructive" aria-label={ui("Name taken")} />
                     )}
                   </span>
                 )}
@@ -99,28 +101,28 @@ export function BlankTab({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="blank-description">Description</Label>
+            <Label htmlFor="blank-description">{ui("Description")}</Label>
             <Input
               id="blank-description"
               value={draft.description}
-              placeholder="One sentence on what it does"
+              placeholder={ui("One sentence on what it does")}
               onChange={(event) => update({ description: event.target.value })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="blank-instructions">Instructions</Label>
+            <Label htmlFor="blank-instructions">{ui("Instructions")}</Label>
             <Textarea
               id="blank-instructions"
               value={draft.system_prompt}
               rows={8}
-              placeholder="You chase overdue invoices. Each weekday morning..."
+              placeholder={ui("You chase overdue invoices. Each weekday morning...")}
               onChange={(event) => update({ system_prompt: event.target.value })}
             />
           </div>
           {draft.schedule && (
             <div className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-sm">
               <span>
-                Wakes itself: {describeCronExpression(draft.schedule.cron)} (
+                {ui("Wakes itself:")} {describeCronExpression(draft.schedule.cron)} (
                 {draft.schedule.timezone}): “{draft.schedule.message}”
               </span>
               <Button
@@ -129,7 +131,7 @@ export function BlankTab({
                 size="sm"
                 onClick={() => update({ schedule: null })}
               >
-                Remove
+                {ui("Remove")}
               </Button>
             </div>
           )}
@@ -137,9 +139,11 @@ export function BlankTab({
 
         <section className="space-y-3 rounded-md border bg-card p-4">
           <div>
-            <h2 className="font-medium">Where it works</h2>
+            <h2 className="font-medium">{ui("Where it works")}</h2>
             <p className="text-sm text-muted-foreground">
-              Each one is created as a draft channel. Nothing takes traffic until you publish it.
+              {ui(
+                "Each one is created as a draft channel. Nothing takes traffic until you publish it.",
+              )}
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -169,13 +173,13 @@ export function BlankTab({
 
       <aside className="h-fit space-y-3 rounded-md border bg-card p-4">
         <p className="text-sm text-muted-foreground">
-          Model and harness use {orgName} defaults. Change them, or add capabilities, on the agent
-          page after it is created.
+          {ui("Model and harness use")} {orgName}{" "}
+          {ui("defaults. Change them, or add capabilities, on the agent page after it is created.")}
         </p>
         {blocker && <p className="text-sm text-muted-foreground">{blocker}.</p>}
         <Button type="submit" variant="accent" className="w-full" disabled={creating || !!blocker}>
           {creating ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-          Create agent
+          {ui("Create agent")}
         </Button>
       </aside>
     </form>

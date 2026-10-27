@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/providers/locale-provider";
+import { useUiTranslations } from "@/providers/locale-provider";
 import { SessionCredentialsDialog } from "@/components/credentials/session-credentials-dialog";
 import { AgentIcon } from "@/components/icons/facet-icons";
 import type { ComponentType } from "react";
@@ -59,6 +61,7 @@ export interface SessionNavItem {
 }
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
+  const ui = useUiTranslations();
   return (
     <TooltipProvider>
       <Tooltip>
@@ -70,19 +73,19 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
         </TooltipTrigger>
         <TooltipContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-            <dt className="text-muted-foreground">Input</dt>
+            <dt className="text-muted-foreground">{ui("Input")}</dt>
             <dd>{usage.input_tokens.toLocaleString()}</dd>
-            <dt className="text-muted-foreground">Output</dt>
+            <dt className="text-muted-foreground">{ui("Output")}</dt>
             <dd>{usage.output_tokens.toLocaleString()}</dd>
             {(usage.cache_read_tokens ?? 0) > 0 && (
               <>
-                <dt className="text-muted-foreground">Cache read</dt>
+                <dt className="text-muted-foreground">{ui("Cache read")}</dt>
                 <dd>{usage.cache_read_tokens!.toLocaleString()}</dd>
               </>
             )}
             {(usage.cache_creation_tokens ?? 0) > 0 && (
               <>
-                <dt className="text-muted-foreground">Cache created</dt>
+                <dt className="text-muted-foreground">{ui("Cache created")}</dt>
                 <dd>{usage.cache_creation_tokens!.toLocaleString()}</dd>
               </>
             )}
@@ -288,6 +291,7 @@ function SessionRecordingActions({
   sessionTags: string[];
   platformChat: boolean;
 }) {
+  const ui = useUiTranslations();
   const { locale } = useLocale();
   const notificationsContext = useOptionalNotificationsContext();
 
@@ -305,10 +309,10 @@ function SessionRecordingActions({
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-          aria-label="Export session"
+          aria-label={ui("Export session")}
         >
           <Download className="icon-sharp h-4 w-4" />
-          Export
+          {ui("Export")}
         </DropdownMenuTrigger>
         <DropdownMenuPositioner align="end">
           <DropdownMenuContent className="w-40">
@@ -317,14 +321,14 @@ function SessionRecordingActions({
                 void downloadSessionExport(sessionId, "jsonl", locale, notificationsContext?.notify)
               }
             >
-              JSONL
+              {ui("JSONL")}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() =>
                 void downloadSessionExport(sessionId, "atif", locale, notificationsContext?.notify)
               }
             >
-              ATIF
+              {ui("ATIF")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenuPositioner>
@@ -365,11 +369,13 @@ export function SessionHeader({
   backHref?: string;
   backLabel?: string;
 }) {
+  const { displayLocale } = useDisplayLocale();
+  const ui = useUiTranslations();
   const agentReferenceLabel =
     session.agent_id != null
       ? getEntityReferenceLabel({
           kind: "Agent",
-          name: getDisplayName(agent),
+          name: getDisplayName(agent, displayLocale),
           status: agent?.status ?? "deleted",
         })
       : null;
@@ -383,7 +389,7 @@ export function SessionHeader({
         className="mb-1.5"
         items={[
           { label: backLabel, href: backHref },
-          { label: session.title || `Session ${shortenId(session.id)}` },
+          { label: session.title || ui("Session {value0}", { value0: shortenId(session.id) }) },
         ]}
       />
 
@@ -393,7 +399,7 @@ export function SessionHeader({
           <div className="min-w-0">
             <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
               <EntityIdentity value={sessionId}>
-                {session.title || `Session ${shortenId(session.id)}`}
+                {session.title || ui("Session {value0}", { value0: shortenId(session.id) })}
               </EntityIdentity>
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -450,7 +456,7 @@ export function SessionHeader({
           on one line, and crowding them squeezes the title out of legibility. */}
       <SectionTabs
         value={activeTab}
-        aria-label="Session views"
+        aria-label={ui("Session views")}
         className="mt-3"
         items={navigationItems.map((item) => ({
           value: item.key,

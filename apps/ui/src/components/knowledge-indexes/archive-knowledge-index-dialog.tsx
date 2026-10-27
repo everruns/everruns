@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +27,7 @@ export function ArchiveKnowledgeIndexDialog({
   onOpenChange,
   onArchive,
 }: ArchiveKnowledgeIndexDialogProps) {
+  const ui = useUiTranslations();
   async function handleArchive() {
     await onArchive();
     onOpenChange(false);
@@ -35,17 +37,19 @@ export function ArchiveKnowledgeIndexDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Archive Knowledge Index</DialogTitle>
+          <DialogTitle>{ui("Archive Knowledge Index")}</DialogTitle>
           <DialogDescription>
-            {index ? `Archive ${index.name}?` : "Archive this knowledge index?"}
+            {index
+              ? ui("Archive {value0}?", { value0: index.name })
+              : ui("Archive this knowledge index?")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
+            {ui("Cancel")}
           </Button>
           <Button variant="destructive" onClick={handleArchive} disabled={isPending || !index}>
-            Archive
+            {ui("Archive")}
           </Button>
         </DialogFooter>
       </DialogContent>

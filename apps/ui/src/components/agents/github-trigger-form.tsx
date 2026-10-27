@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { useAgentGitHub, useGitHubRepositories } from "@/hooks/use-agent-github";
 import { ConnectGitHubButton } from "@/components/agents/connect-github-button";
@@ -183,16 +184,18 @@ export function GitHubTriggerForm({
   /** Where GitHub sends the browser back after Connect; defaults to the agent page. */
   returnTo?: string;
 }) {
+  const ui = useUiTranslations();
   const { data: status, isLoading } = useAgentGitHub(agentId);
   const { data: repos = [] } = useGitHubRepositories(status?.identity_id, !!status?.connected);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading GitHub status…</p>;
+  if (isLoading)
+    return <p className="text-sm text-muted-foreground">{ui("Loading GitHub status…")}</p>;
 
   if (!status?.connected) {
     return (
       <div className="space-y-3 border p-4">
         <p className="text-sm text-muted-foreground">
-          Connect GitHub to this agent before adding a GitHub trigger.
+          {ui("Connect GitHub to this agent before adding a GitHub trigger.")}
           {!status?.app_created && " The App can only be installed where it is created."}
         </p>
         <ConnectGitHubButton
@@ -209,7 +212,7 @@ export function GitHubTriggerForm({
   return (
     <>
       <div className="space-y-2">
-        <Label>Events</Label>
+        <Label>{ui("Events")}</Label>
         <div className="space-y-2">
           {GITHUB_EVENT_OPTIONS.map((option) => (
             <div key={option.value} className="flex items-center gap-2">
@@ -229,18 +232,18 @@ export function GitHubTriggerForm({
         <>
           <CiNamesField
             id={`${idPrefix}-branches`}
-            label="Branches"
+            label={ui("Branches")}
             hint="Comma-separated. Empty means every branch."
-            placeholder="main"
+            placeholder={ui("main")}
             path={CI_BRANCH_PATH}
             value={value}
             onChange={onChange}
           />
           <CiNamesField
             id={`${idPrefix}-workflows`}
-            label="Workflows"
+            label={ui("Workflows")}
             hint="Comma-separated workflow names, as GitHub shows them. Empty means every workflow."
-            placeholder="CI"
+            placeholder={ui("CI")}
             path={CI_WORKFLOW_PATH}
             value={value}
             onChange={onChange}
@@ -252,19 +255,27 @@ export function GitHubTriggerForm({
                 checked={onlyWhenOutcomeChanges(value)}
                 onCheckedChange={(on) => onChange(withOutcomeChanges(value, on === true))}
               />
-              <Label htmlFor={`${idPrefix}-changes-only`}>Only when the CI result changes</Label>
+              <Label htmlFor={`${idPrefix}-changes-only`}>
+                {ui("Only when the CI result changes")}
+              </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Wakes on green to red and red to green for each workflow and branch, not on every run.
+              {ui(
+                "Wakes on green to red and red to green for each workflow and branch, not on every run.",
+              )}
             </p>
           </div>
         </>
       )}
       <div className="space-y-2">
-        <Label>Repositories</Label>
-        <p className="text-xs text-muted-foreground">None selected means all repositories.</p>
+        <Label>{ui("Repositories")}</Label>
+        <p className="text-xs text-muted-foreground">
+          {ui("None selected means all repositories.")}
+        </p>
         <div className="max-h-48 space-y-2 overflow-y-auto">
-          {repos.length === 0 && <p className="text-sm text-muted-foreground">All repositories</p>}
+          {repos.length === 0 && (
+            <p className="text-sm text-muted-foreground">{ui("All repositories")}</p>
+          )}
           {repos.map((repo) => (
             <div key={repo.full_name} className="flex items-center gap-2">
               <Checkbox
@@ -279,14 +290,14 @@ export function GitHubTriggerForm({
               />
               <Label htmlFor={`${idPrefix}-repo-${repo.full_name}`}>
                 {repo.full_name}
-                {repo.private ? " (private)" : ""}
+                {repo.private ? ui(" (private)") : ""}
               </Label>
             </div>
           ))}
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-session-mode`}>Session mode</Label>
+        <Label htmlFor={`${idPrefix}-session-mode`}>{ui("Session mode")}</Label>
         <Select
           value={value.session_mode}
           onValueChange={(session_mode) =>
@@ -297,14 +308,16 @@ export function GitHubTriggerForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="per_thread">One session per pull request or CI workflow</SelectItem>
-            <SelectItem value="shared_session">One session for everything</SelectItem>
-            <SelectItem value="session_per_invocation">New session per event</SelectItem>
+            <SelectItem value="per_thread">
+              {ui("One session per pull request or CI workflow")}
+            </SelectItem>
+            <SelectItem value="shared_session">{ui("One session for everything")}</SelectItem>
+            <SelectItem value="session_per_invocation">{ui("New session per event")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-message`}>Message</Label>
+        <Label htmlFor={`${idPrefix}-message`}>{ui("Message")}</Label>
         <Textarea
           id={`${idPrefix}-message`}
           value={value.message}
@@ -318,7 +331,7 @@ export function GitHubTriggerForm({
           checked={value.enabled}
           onCheckedChange={(enabled) => onChange({ ...value, enabled })}
         />
-        <Label htmlFor={`${idPrefix}-enabled`}>Enabled</Label>
+        <Label htmlFor={`${idPrefix}-enabled`}>{ui("Enabled")}</Label>
       </div>
     </>
   );

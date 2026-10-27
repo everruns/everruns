@@ -220,6 +220,7 @@ async fn mcp_setup(
         .create_agent(
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentRow {
+                localizations: Default::default(),
                 public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
                 name: "Responder".into(),
                 display_name: None,

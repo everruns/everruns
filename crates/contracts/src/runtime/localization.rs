@@ -7,6 +7,104 @@
 //! - Allowed locale and timezone lists are the single source of truth for the
 //!   backend. The UI mirrors these lists.
 
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// Display-only translations shared by portable agent files and platform resources.
+/// Addresses, tool identifiers and execution instructions never use these values.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EntityLocalization {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Locale-keyed display overlays. Deserialization normalizes tags and bounds input.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EntityLocalizations(pub BTreeMap<String, EntityLocalization>);
+
+impl EntityLocalizations {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.0.len() > 64 {
+            return Err("localizations: at most 64 locales are allowed".into());
+        }
+        for (locale, entry) in &self.0 {
+            normalize_locale_tag(locale)?;
+            for (field, value, limit) in [
+                ("display_name", &entry.display_name, 255),
+                ("description", &entry.description, 2000),
+            ] {
+                if let Some(value) = value
+                    && (value.trim().is_empty()
+                        || value.chars().count() > limit
+                        || value.contains('\0'))
+                {
+                    return Err(format!(
+                        "localizations.{locale}.{field}: expected 1–{limit} characters without NUL"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolve each field independently: exact tag, language, English, then caller's base.
+    pub fn resolve<'a>(
+        &'a self,
+        locale: &str,
+        field: impl Fn(&'a EntityLocalization) -> Option<&'a str>,
+    ) -> Option<&'a str> {
+        let normalized = normalize_locale_tag(locale).ok()?;
+        let language = normalized.split('-').next().unwrap_or("en");
+        [normalized.as_str(), language, "en"]
+            .into_iter()
+            .find_map(|key| self.0.get(key).and_then(&field))
+    }
+}
+
+impl<'de> Deserialize<'de> for EntityLocalizations {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = BTreeMap::<String, EntityLocalization>::deserialize(deserializer)?;
+        let mut entries = BTreeMap::new();
+        for (locale, entry) in raw {
+            let tag = normalize_locale_tag(&locale).map_err(serde::de::Error::custom)?;
+            if entries.insert(tag, entry).is_some() {
+                return Err(serde::de::Error::custom(
+                    "localizations: duplicate normalized locale",
+                ));
+            }
+        }
+        let value = Self(entries);
+        value.validate().map_err(serde::de::Error::custom)?;
+        Ok(value)
+    }
+}
+
+/// Normalize language tags for lookup, accepting the underscore spelling used by clients.
+pub fn normalize_locale_tag(raw: &str) -> Result<String, String> {
+    let tag = raw.trim().replace('_', "-").to_ascii_lowercase();
+    let mut parts = tag.split('-');
+    let language = parts.next().unwrap_or_default();
+    if tag.len() > 64
+        || !(2..=8).contains(&language.len())
+        || !language.bytes().all(|b| b.is_ascii_alphabetic())
+        || parts
+            .any(|p| p.is_empty() || p.len() > 8 || !p.bytes().all(|b| b.is_ascii_alphanumeric()))
+    {
+        return Err(format!("localizations: invalid locale tag {raw:?}"));
+    }
+    Ok(tag)
+}
+
 /// Allowed BCP 47 locale tags. Russia excluded per policy.
 // UI mirror: apps/ui/src/lib/locale-data.ts LOCALE_OPTIONS.
 pub const ALLOWED_LOCALES: &[&str] = &[
@@ -156,7 +254,7 @@ pub fn resolve_backend_locale(locale: Option<&str>) -> BackendLocale {
     match locale
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| value.to_ascii_lowercase())
+        .map(|value| value.replace('_', "-").to_ascii_lowercase())
     {
         Some(value) if value == "uk" || value.starts_with("uk-") => BackendLocale::Uk,
         _ => BackendLocale::En,
@@ -164,6 +262,10 @@ pub fn resolve_backend_locale(locale: Option<&str>) -> BackendLocale {
 }
 
 pub struct BackendStrings {
+    pub turn_cancelled: &'static str,
+    pub no_turn_running: &'static str,
+    pub cancellation_reason: &'static str,
+    pub cancellation_message: &'static str,
     pub working: &'static str,
     pub current_directory: &'static str,
     pub and_more_actions: &'static str,
@@ -174,6 +276,10 @@ pub struct BackendStrings {
 }
 
 const EN_STRINGS: BackendStrings = BackendStrings {
+    turn_cancelled: "Turn cancelled successfully",
+    no_turn_running: "No turn currently running",
+    cancellation_reason: "User requested cancellation",
+    cancellation_message: "User requested to cancel the work.",
     working: "Working",
     current_directory: "current directory",
     and_more_actions: "and {count} more actions",
@@ -184,6 +290,10 @@ const EN_STRINGS: BackendStrings = BackendStrings {
 };
 
 const UK_STRINGS: BackendStrings = BackendStrings {
+    turn_cancelled: "Виконання успішно скасовано",
+    no_turn_running: "Наразі нічого не виконується",
+    cancellation_reason: "Користувач попросив скасувати виконання",
+    cancellation_message: "Користувач попросив скасувати роботу.",
     working: "Працюю",
     current_directory: "поточній директорії",
     and_more_actions: "і ще {count} дій",
@@ -230,9 +340,9 @@ pub fn format_more_actions(locale: Option<&str>, count: usize) -> String {
             .and_more_actions
             .replace("{count}", &count.to_string()),
         BackendLocale::Uk => {
-            let template = match count {
-                1 => "і ще 1 дію",
-                2..=4 => "і ще {count} дії",
+            let template = match (count % 10, count % 100) {
+                (1, n) if n != 11 => "і ще {count} дію",
+                (2..=4, n) if !(12..=14).contains(&n) => "і ще {count} дії",
                 _ => "і ще {count} дій",
             };
             template.replace("{count}", &count.to_string())
@@ -275,4 +385,78 @@ pub fn localized_tool_display_name(
     localized
         .map(str::to_string)
         .or_else(|| fallback_display_name.map(ToOwned::to_owned))
+}
+
+#[cfg(test)]
+mod display_localization_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn fields_resolve_independently_and_other_languages_are_supported() {
+        let entries: EntityLocalizations = serde_json::from_value(json!({
+            "UK_ua": {"display_name": "Підтримка"},
+            "uk": {"description": "Допомога"},
+            "en": {"display_name": "Support", "description": "Help"},
+            "de": {"display_name": "Hilfe"}
+        }))
+        .unwrap();
+        assert_eq!(
+            entries.resolve("uk-UA", |e| e.display_name.as_deref()),
+            Some("Підтримка")
+        );
+        assert_eq!(
+            entries.resolve("uk-UA", |e| e.description.as_deref()),
+            Some("Допомога")
+        );
+        assert_eq!(
+            entries.resolve("de-AT", |e| e.display_name.as_deref()),
+            Some("Hilfe")
+        );
+        assert_eq!(
+            entries.resolve("fr-FR", |e| e.description.as_deref()),
+            Some("Help")
+        );
+    }
+
+    #[test]
+    fn invalid_and_ambiguous_overlays_fail_at_the_boundary() {
+        for value in [
+            json!({"": {"display_name":"Name"}}),
+            json!({"uk--UA": {"display_name":"Name"}}),
+            json!({"uk": {"display_name":" "}}),
+            json!({"uk": {"instructions":"Injected instructions"}}),
+            json!({"uk-UA": {}, "UK_ua": {}}),
+            json!({"uk": {"display_name":"a".repeat(256)}}),
+        ] {
+            assert!(
+                serde_json::from_value::<EntityLocalizations>(value.clone()).is_err(),
+                "{value}"
+            );
+        }
+        let oversized = (0..65)
+            .map(|i| (format!("en-{i:03}"), json!({})))
+            .collect::<serde_json::Map<_, _>>();
+        assert!(serde_json::from_value::<EntityLocalizations>(json!(oversized)).is_err());
+    }
+
+    #[test]
+    fn ukrainian_action_counts_use_the_final_digits() {
+        for (count, ending) in [
+            (1, "дію"),
+            (2, "дії"),
+            (5, "дій"),
+            (11, "дій"),
+            (14, "дій"),
+            (21, "дію"),
+            (22, "дії"),
+            (111, "дій"),
+        ] {
+            assert_eq!(
+                format_more_actions(Some("uk-UA"), count),
+                format!("і ще {count} {ending}")
+            );
+        }
+        assert_eq!(resolve_backend_locale(Some("UK_ua")), BackendLocale::Uk);
+    }
 }

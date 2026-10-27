@@ -1,5 +1,6 @@
 "use client";
 
+import { useUiTranslations } from "@/providers/locale-provider";
 import { Info } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -20,6 +21,7 @@ interface MessageInfoIconProps {
  * Shows: message ID, model, reasoning effort, timestamp, and token usage.
  */
 export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
+  const ui = useUiTranslations();
   const { t } = useLocale();
   const agentData = getEventData(event, "output.message.completed");
 
@@ -61,7 +63,11 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt className="text-muted-foreground">{t("message_info_id")}</dt>
           <dd>
-            <CopyButton value={event.id} label={`Copy ID: ${event.id}`} kind="id" />
+            <CopyButton
+              value={event.id}
+              label={ui("Copy ID: {value0}", { value0: event.id })}
+              kind="id"
+            />
           </dd>
           {model && (
             <>
