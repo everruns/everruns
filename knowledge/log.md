@@ -3,6 +3,7 @@
 ## 2026-10-27
 
 - Added [Slate Design System Pages](ui/design-system.md): Slate published at everruns.com/docs/design-system/ from the app's own tokens and Facet icons, replacing the retired design tool export as the starting point for redesigns.
+- Added [Knowledge Pages](ui/knowledge-pages.md): the tabbed Knowledge landing (collections and search accounts) and collections browsed with the shared session file browser over a one-level folder listing.
 
 - Added [Framework provider-native batches](framework/batch-model-requests.md): explicit offline completions, scoped resumable tickets, uncertain submission reconciliation, and native Anthropic lifecycle support.
 
