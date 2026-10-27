@@ -15355,6 +15355,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15715,6 +15727,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -15966,6 +15990,18 @@
               "format": "int32",
               "minimum": 0
             }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -16087,6 +16123,18 @@
               ],
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "tree",
+            "in": "query",
+            "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],

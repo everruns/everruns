@@ -131,6 +131,54 @@ is the reference implementation.
 - Older detail screens that have not moved to the workspace still use titled block cards in a
   main column with a side rail. New detail screens use the workspace.
 
+## File browser
+
+Anything that is a set of files, such as a session's workspace or a Knowledge collection, opens
+on the same tree and viewer from
+[`apps/ui/src/components/files/`](https://github.com/everruns/everruns/blob/main/apps/ui/src/components/files/).
+The [Knowledge pages](https://github.com/everruns/everruns/blob/main/knowledge/ui/knowledge-pages.md)
+are the reference implementation.
+
+<DsExample flush caption="Knowledge collection, Files tab: folder tree beside the viewer, per-file controls in the viewer footer.">
+  <div class="ds-page bg-brand-dots">
+    <div class="ds-crumbs"><span>Library</span><span class="ds-sep">/</span><span>Knowledge</span><span class="ds-sep">/</span><span class="ds-current">support-playbooks</span></div>
+    <div class="ds-masthead">
+      <div class="ds-masthead-main">
+        <span class="ds-tile"><DsIcon name="facet:knowledge" size={20} /></span>
+        <div><div class="ds-title">support-playbooks <span class="ds-badge ds-badge-secondary">Hybrid search</span></div><p class="ds-desc">Escalation runbooks and canned answers for the support agent.</p></div>
+      </div>
+      <div class="ds-row"><button class="ds-btn ds-btn-outline"><DsIcon name="upload" />Upload files</button></div>
+    </div>
+    <div class="ds-tabs"><span class="ds-tab" aria-selected="true">Files <span class="ds-count">128</span></span><span class="ds-tab">Search</span><span class="ds-tab">Sources <span class="ds-count">2</span></span><span class="ds-tab">Settings</span></div>
+    <div class="ds-explorer">
+      <div class="ds-tree">
+        <div class="ds-tree-row"><DsIcon name="chevron-down" size={14} class="ds-muted" /><DsIcon name="folder" size={14} />notes</div>
+        <div class="ds-tree-row ds-nested"><DsIcon name="file-text" size={14} class="ds-muted" />refund-policy.md<span class="ds-size">2.1 KB</span></div>
+        <div class="ds-tree-row ds-nested" aria-selected="true"><DsIcon name="file-text" size={14} class="ds-muted" />vip-escalation.md<span class="ds-size">3 KB</span></div>
+        <div class="ds-tree-row"><DsIcon name="chevron-right" size={14} class="ds-muted" /><DsIcon name="folder" size={14} />playbooks</div>
+        <div class="ds-tree-row"><span style="width: 14px"></span><DsIcon name="file-text" size={14} class="ds-muted" />index.md<span class="ds-size">1.2 KB</span></div>
+      </div>
+      <div>
+        <div class="ds-pane-head">vip-escalation.md <span class="ds-status ds-status-success">Text ready</span><span class="ds-row"><button class="ds-btn ds-btn-outline ds-btn-sm ds-btn-icon" aria-label="Edit"><DsIcon name="pencil" size={14} /></button><button class="ds-btn ds-btn-outline ds-btn-sm ds-btn-icon" aria-label="Download"><DsIcon name="download" size={14} /></button></span></div>
+        <div class="ds-pane-body"><p><strong>VIP escalation</strong></p><p>Customers on the Enterprise plan get a named engineer within one business hour.</p></div>
+        <div class="ds-viewer-foot"><span>text/markdown</span><span>Updated 3 days ago</span><span class="ds-row" style="margin-left: auto"><DsIcon name="check" size={14} />Agent can read</span></div>
+      </div>
+    </div>
+  </div>
+</DsExample>
+
+- **One browser, many filesystems.** `FileBrowser` and `FileViewer` take a `FileSource` (list a
+  folder, read a file, a download URL, optional writes). A source without writes renders
+  read-only: no New, Edit, or Delete, and a lock on each file.
+- **The tree loads one folder at a time.** Folders expand on demand; never page a whole
+  recursive listing into the tree.
+- **The selection is part of the address** (`?file=`), so search results and shared links open
+  straight to a file.
+- **Per-file controls sit in the viewer footer**, not in the tree. Extraction or sync state is
+  a status dot in the viewer header; the tree shows a dot only when a file needs attention.
+- **Section tabs are paths** on pages whose tabs are whole sections (Knowledge, Sandboxes):
+  `/knowledge/{id}/sources`, with the shell as the tabs' layout.
+
 ## Edit mode
 
 Edit is a mode of the same page (`?mode=edit`), not a separate layout, so the reader keeps their

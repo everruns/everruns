@@ -41964,6 +41964,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path?: never;
@@ -42157,6 +42162,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -42268,6 +42278,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {
@@ -42299,6 +42314,11 @@ export interface operations {
         version?: string | null;
         offset?: number | null;
         length?: number | null;
+        /**
+         * @description List only the immediate children of `path`: its files plus one entry per
+         *     subfolder (`kind: "folder"`), for browsing a collection folder by folder.
+         */
+        tree?: boolean | null;
       };
       header?: never;
       path: {

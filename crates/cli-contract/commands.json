@@ -6772,6 +6772,13 @@
         "required": false
       },
       {
+        "field": "tree",
+        "long": "tree",
+        "kind": "boolean",
+        "required": false,
+        "help": "List only the immediate children of `path`: its files plus one entry per subfolder (`kind: \"f..."
+      },
+      {
         "field": "version",
         "long": "version",
         "kind": "string",
@@ -7076,6 +7083,13 @@
         "long": "path",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "tree",
+        "long": "tree",
+        "kind": "boolean",
+        "required": false,
+        "help": "List only the immediate children of `path`: its files plus one entry per subfolder (`kind: \"f..."
       },
       {
         "field": "version",

@@ -14586,6 +14586,13 @@
                 "null"
               ]
             },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "version": {
               "format": "uuid",
               "type": [
@@ -26990,6 +26997,13 @@
             "path": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "tree": {
+              "description": "List only the immediate children of `path`: its files plus one entry per\nsubfolder (`kind: \"folder\"`), for browsing a collection folder by folder.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
