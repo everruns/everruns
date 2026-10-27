@@ -668,10 +668,18 @@ mod tests {
                     if let TestBroker::Native(process) = &mut self.process {
                         assert!(process.try_wait().unwrap().is_none(), "broker exited");
                     }
-                    if tokio::net::TcpStream::connect(("127.0.0.1", self.port))
+                    // A forwarded Docker port can accept TCP before the broker
+                    // speaks NATS. Require the application handshake and PONG.
+                    let ready =
+                        tokio::time::timeout(std::time::Duration::from_millis(250), async {
+                            match async_nats::connect(self.url()).await {
+                                Ok(client) => client.flush().await.is_ok(),
+                                Err(_) => false,
+                            }
+                        })
                         .await
-                        .is_ok()
-                    {
+                        .unwrap_or(false);
+                    if ready {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;

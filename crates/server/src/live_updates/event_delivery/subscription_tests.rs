@@ -42,16 +42,32 @@ impl TestProxy {
         let drop_responses = Arc::new(AtomicBool::new(false));
         let drop_upstream = drop_responses.clone();
         let task = tokio::spawn(async move {
-            let (downstream, _) = listener.accept().await.unwrap();
-            let upstream = tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .unwrap();
-            let (down_read, down_write) = downstream.into_split();
-            let (up_read, up_write) = upstream.into_split();
-            let _ = tokio::try_join!(
-                forward(down_read, up_write, delay, Arc::new(AtomicBool::new(false))),
-                forward(up_read, down_write, delay, drop_upstream),
-            );
+            // Initial handshakes and reconnects may use more than one socket.
+            // A failed connection must not drop the proxy's listener. The set
+            // also owns and cancels every connection when the proxy is dropped.
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        let (downstream, _) = accepted.unwrap();
+                        let drop_upstream = drop_upstream.clone();
+                        connections.spawn(async move {
+                            let Ok(upstream) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await else {
+                                return;
+                            };
+                            let (down_read, down_write) = downstream.into_split();
+                            let (up_read, up_write) = upstream.into_split();
+                            let _ = tokio::try_join!(
+                                forward(down_read, up_write, delay, Arc::new(AtomicBool::new(false))),
+                                forward(up_read, down_write, delay, drop_upstream),
+                            );
+                        });
+                    }
+                    Some(result) = connections.join_next(), if !connections.is_empty() => {
+                        result.expect("proxy connection task did not panic");
+                    }
+                }
+            }
         });
         Self {
             url,
@@ -65,6 +81,34 @@ impl Drop for TestProxy {
     fn drop(&mut self) {
         self.task.abort();
     }
+}
+
+#[tokio::test]
+async fn nats_proxy_accepts_a_new_connection_after_a_probe_disconnects() {
+    use tokio::io::AsyncReadExt;
+
+    let broker = TestNatsServer::start().await;
+    let proxy = TestProxy::start(broker.port, std::time::Duration::ZERO).await;
+    let mut probe = tokio::net::TcpStream::connect(proxy.url.trim_start_matches("nats://"))
+        .await
+        .unwrap();
+    // Read part of INFO, then close before the NATS handshake. A failed
+    // startup connection must not turn the proxy into a refused listener.
+    let mut byte = [0];
+    probe.read_exact(&mut byte).await.unwrap();
+    drop(probe);
+    let publisher = NatsEventDelivery::connect(&proxy.url)
+        .await
+        .expect("a new connection after a probe must reach the broker");
+    let event = make_test_event(Uuid::new_v4());
+    let mut subscriber = publisher.subscribe(event.session_id.uuid()).await.unwrap();
+    publisher.publish(&event).await.unwrap();
+    let received = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received.id, event.id);
+    publisher.shutdown().await;
 }
 
 #[tokio::test]
