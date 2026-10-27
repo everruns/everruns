@@ -1,6 +1,15 @@
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { Sidebar } from "@/components/layout/sidebar";
-import type { SidebarConfig, NavigationSection } from "@/components/layout/sidebar";
+import type {
+  SidebarConfig,
+  NavigationSection,
+} from "@/components/layout/sidebar";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Settings, Zap } from "lucide-react";
 
@@ -10,8 +19,13 @@ jest.mock("next/link", () => ({
     children,
     prefetch,
     ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
-    <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    prefetch?: boolean;
+  }) => (
+    <a
+      {...props}
+      data-prefetch={prefetch === undefined ? undefined : String(prefetch)}
+    >
       {children}
     </a>
   ),
@@ -34,9 +48,19 @@ jest.mock("next/navigation", () => ({
 // Mock next/image
 jest.mock("next/image", () => ({
   __esModule: true,
-  default: (props: { src: string; alt: string; width: number; height: number }) => (
+  default: (props: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+  }) => (
     // eslint-disable-next-line nextjs/no-img-element
-    <img src={props.src} alt={props.alt} width={props.width} height={props.height} />
+    <img
+      src={props.src}
+      alt={props.alt}
+      width={props.width}
+      height={props.height}
+    />
   ),
 }));
 
@@ -69,7 +93,9 @@ jest.mock("@/hooks/use-organizations", () => ({
 }));
 
 jest.mock("@/components/layout/mcp-connect-button", () => ({
-  McpConnectButton: () => <button type="button" aria-label="Connect your coding agent" />,
+  McpConnectButton: () => (
+    <button type="button" aria-label="Connect your coding agent" />
+  ),
   McpConnectDialog: ({ open }: { open: boolean }) =>
     open ? (
       <div role="dialog" aria-label="MCP connection details">
@@ -118,7 +144,8 @@ const mockFeatureFlags = {
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
-  useFeatureFlag: (flag: string) => mockFeatureFlags[flag as keyof typeof mockFeatureFlags],
+  useFeatureFlag: (flag: string) =>
+    mockFeatureFlags[flag as keyof typeof mockFeatureFlags],
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
@@ -180,7 +207,10 @@ describe("Sidebar", () => {
     mockFeatureFlags.chat_threads = true;
     mockThreads.mockReturnValue([{ id: "side_1", title: "Side conversation" }]);
     render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
+      "href",
+      "/chats",
+    );
     expect(screen.getByTestId("sidebar-chat-threads")).toBeInTheDocument();
     expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
@@ -188,15 +218,27 @@ describe("Sidebar", () => {
   it("keeps search row focused on search only", () => {
     render(<Sidebar />);
 
-    const brandRow = screen.getByAltText("Everruns").closest("a")?.parentElement;
+    const brandRow = screen
+      .getByAltText("Everruns")
+      .closest("a")?.parentElement;
     const searchRow = screen.getByRole("search", { name: "Sidebar search" });
 
     expect(brandRow).not.toBeNull();
-    expect(within(searchRow).getByRole("button", { name: /search/i })).toBeInTheDocument();
-    expect(within(brandRow!).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
-    expect(within(brandRow!).queryByLabelText("Notifications")).not.toBeInTheDocument();
-    expect(within(searchRow).queryByLabelText("Connect your coding agent")).not.toBeInTheDocument();
-    expect(within(searchRow).queryByLabelText("Notifications")).not.toBeInTheDocument();
+    expect(
+      within(searchRow).getByRole("button", { name: /search/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(brandRow!).queryByLabelText("Connect your coding agent"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(brandRow!).queryByLabelText("Notifications"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchRow).queryByLabelText("Connect your coding agent"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchRow).queryByLabelText("Notifications"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders notifications as an account-row indicator and MCP in the profile menu", () => {
@@ -214,8 +256,12 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     const footer = screen.getByRole("contentinfo", { name: "Sidebar footer" });
-    expect(within(footer).getByRole("button", { name: /test user/i })).toBeInTheDocument();
-    expect(within(footer).getByLabelText("Unread notifications")).toBeInTheDocument();
+    expect(
+      within(footer).getByRole("button", { name: /test user/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(footer).getByLabelText("Unread notifications"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     expect(screen.getByText("Notifications")).toBeInTheDocument();
@@ -241,18 +287,26 @@ describe("Sidebar", () => {
     expect(trigger).toHaveTextContent("Local user");
 
     fireEvent.click(trigger);
-    expect(screen.getByRole("menuitem", { name: "Account" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Account" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Changelog" })).toHaveAttribute(
       "href",
       "https://everruns.com/docs/changelog/",
     );
-    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Connect your coding agent" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: /personal access tokens/i }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /sign out/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /sign out/i }),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Connect your coding agent" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Connect your coding agent" }),
+    );
     expect(
       await screen.findByRole("dialog", { name: /mcp connection details/i }),
     ).toBeInTheDocument();
@@ -273,16 +327,24 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
 
-    expect(screen.getByRole("menuitem", { name: /personal access tokens/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Connect your coding agent" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /personal access tokens/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: /sign out/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Connect your coding agent" }),
+    ).toBeInTheDocument();
   });
 
   it("renders only the version when no current user is available", () => {
     render(<Sidebar />);
 
     const footer = screen.getByRole("contentinfo", { name: "Sidebar footer" });
-    expect(within(footer).getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
+    expect(
+      within(footer).getByText(/^Everruns v\d+\.\d+\.\d+$/),
+    ).toBeInTheDocument();
     expect(within(footer).queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -324,7 +386,11 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Documentation" }));
 
-    expect(open).toHaveBeenCalledWith("https://everruns.com/docs", "_blank", "noopener,noreferrer");
+    expect(open).toHaveBeenCalledWith(
+      "https://everruns.com/docs",
+      "_blank",
+      "noopener,noreferrer",
+    );
     open.mockRestore();
   });
 
@@ -345,7 +411,10 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     const changelog = screen.getByRole("menuitem", { name: "Changelog" });
 
-    expect(changelog).toHaveAttribute("href", "https://everruns.com/docs/changelog/");
+    expect(changelog).toHaveAttribute(
+      "href",
+      "https://everruns.com/docs/changelog/",
+    );
     expect(changelog).toHaveAttribute("target", "_blank");
     expect(changelog).toHaveAttribute("rel", "noopener noreferrer");
   });
@@ -370,8 +439,13 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Knowledge")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
+    expect(
+      screen.queryByRole("link", { name: "Approvals" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
+      "href",
+      "/chats",
+    );
   });
 
   it.each(["/chats", "/chats/new", "/chats/history", "/sessions"])(
@@ -415,7 +489,10 @@ describe("Sidebar", () => {
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 
-    expect(screen.getByAltText("Everruns").closest("a")).toHaveAttribute("data-prefetch", "false");
+    expect(screen.getByAltText("Everruns").closest("a")).toHaveAttribute(
+      "data-prefetch",
+      "false",
+    );
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
     for (const link of links) {
@@ -478,7 +555,9 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue(pathname);
     render(<Sidebar />);
 
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveClass("border-l-primary");
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveClass(
+      "border-l-primary",
+    );
   });
 
   // Duplicate of "renders only the version when no current user is available"
@@ -492,8 +571,13 @@ describe("Sidebar", () => {
   it("links Sandboxes as one Building entry", () => {
     mockPathname.mockReturnValue("/sandboxes/templates/template-1");
     render(<Sidebar />);
-    expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute("href", "/sandboxes");
-    expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute(
+      "href",
+      "/sandboxes",
+    );
+    expect(
+      screen.queryByRole("link", { name: "Fleet" }),
+    ).not.toBeInTheDocument();
   });
 
   it("hangs the thread list directly under the Chats entry", () => {
@@ -507,31 +591,43 @@ describe("Sidebar", () => {
     expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
   });
 
-  it("hides Durable Execution navigation items by default (collapsed)", () => {
+  it("hides System navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Monitoring" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Health" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
     expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
   });
 
-  it("shows Durable Execution navigation items when expanded", () => {
+  it("shows System navigation items when expanded, Health first", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
 
-    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute(
+      "href",
+      "/system/health",
+    );
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute(
+      "href",
+      "/durable",
+    );
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();
   });
 
-  it("collapses Durable Execution section again on second click", () => {
+  it("collapses the System section again on second click", () => {
     render(<Sidebar />);
 
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
+    const toggle = screen.getByRole("button", { name: /^system$/i });
     fireEvent.click(toggle);
     expect(screen.getByText("Workers")).toBeInTheDocument();
 
@@ -549,7 +645,7 @@ describe("Sidebar", () => {
     expect(workersLink).toHaveClass("bg-primary/5");
   });
 
-  it("hides Durable Execution when durable policy is denied", () => {
+  it("hides System when durable policy is denied", () => {
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": false } },
       can: () => false,
@@ -557,7 +653,9 @@ describe("Sidebar", () => {
 
     render(<Sidebar />);
 
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^system$/i }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -581,7 +679,9 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Custom Page")).toBeInTheDocument();
     // Default items should not appear
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
-    expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^system$/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
       "data-prefetch",
       "false",
@@ -617,7 +717,9 @@ describe("Sidebar with config", () => {
       },
     ];
 
-    render(<Sidebar config={{ navigation: customNav, extraSections: extra }} />);
+    render(
+      <Sidebar config={{ navigation: customNav, extraSections: extra }} />,
+    );
 
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Extra")).toBeInTheDocument();
@@ -635,7 +737,9 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={config} />);
 
     // Dialog title should not be in the DOM when custom handler overrides default
-    expect(screen.queryByText("Create a new organization")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Create a new organization"),
+    ).not.toBeInTheDocument();
     // The org selector trigger should still render
     expect(screen.getByText("Test Org")).toBeInTheDocument();
   });
@@ -655,7 +759,9 @@ describe("Sidebar with config", () => {
     const config: Partial<SidebarConfig> = {
       profileMenu: {
         items: ({ navigate }) => (
-          <DropdownMenuItem onClick={() => navigate("/billing")}>Billing</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate("/billing")}>
+            Billing
+          </DropdownMenuItem>
         ),
       },
     };
@@ -693,7 +799,9 @@ describe("Sidebar with config", () => {
     mockPathname.mockReturnValue("/custom/child");
     const customNav: NavigationSection[] = [
       {
-        items: [{ name: "Exact Only", href: "/custom", icon: Settings, exact: true }],
+        items: [
+          { name: "Exact Only", href: "/custom", icon: Settings, exact: true },
+        ],
       },
     ];
 
@@ -824,7 +932,9 @@ describe("Create Organization dialog", () => {
     it("keeps the user in the app and reports a retryable failure", async () => {
       const unhandled = jest.fn();
       window.addEventListener("unhandledrejection", unhandled);
-      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
 
       const logout = renderMenuWithFailingLogout(new Error("Logout failed"));
 
@@ -832,7 +942,10 @@ describe("Create Organization dialog", () => {
         "Sign out failed. Your session may still be active. Try again.",
       );
       expect(logout).toHaveBeenCalled();
-      expect(consoleError).toHaveBeenCalledWith("Logout failed", expect.any(Error));
+      expect(consoleError).toHaveBeenCalledWith(
+        "Logout failed",
+        expect.any(Error),
+      );
       expect(unhandled).not.toHaveBeenCalled();
       expect(mockPush).not.toHaveBeenCalledWith("/login");
 
@@ -841,7 +954,9 @@ describe("Create Organization dialog", () => {
     });
 
     it("handles a non-Error rejection without presenting logout as successful", async () => {
-      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
 
       renderMenuWithFailingLogout("boom");
 
@@ -852,7 +967,9 @@ describe("Create Organization dialog", () => {
     });
 
     it("retries logout and navigates only after it succeeds", async () => {
-      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const consoleError = jest
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
       const logout = jest
         .fn()
         .mockRejectedValueOnce(new Error("Network unavailable"))
@@ -871,7 +988,9 @@ describe("Create Organization dialog", () => {
       fireEvent.click(screen.getByRole("button", { name: /test user/i }));
       fireEvent.click(screen.getByText("Sign out"));
 
-      fireEvent.click(await screen.findByRole("button", { name: "Try sign out again" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Try sign out again" }),
+      );
 
       await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
       expect(logout).toHaveBeenCalledTimes(2);

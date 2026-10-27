@@ -17,6 +17,7 @@ import {
   DurableIcon,
   EvalsIcon,
   HarnessDomainIcon,
+  HealthIcon,
   KnowledgeIcon,
   MemoryIcon,
   ObserverIcon,
@@ -33,7 +34,10 @@ import {
 } from "@/components/icons/facet-icons";
 import { ArrowRight, Plus } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
+import {
+  registryNavigationItems,
+  type RegistryNavigationItem,
+} from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
@@ -170,13 +174,27 @@ export const defaultBuildingNavigation: NavigationItem[] = [
 export const defaultRegistriesNavigation: NavigationItem[] = [
   ...registryNavigationItems.map<NavigationItem>(
     ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
-      const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-      return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
+      const flag =
+        href === "/skills"
+          ? "skills"
+          : href === "/plugins"
+            ? "plugins"
+            : undefined;
+      return {
+        name,
+        href,
+        icon,
+        keywords,
+        description,
+        flag,
+        experimental: Boolean(flag),
+      };
     },
   ),
   {
     name: "Knowledge",
-    description: "Organize collections, sources and searchable knowledge for agents.",
+    description:
+      "Organize collections, sources and searchable knowledge for agents.",
     href: "/knowledge",
     icon: KnowledgeIcon,
     flag: "knowledge",
@@ -238,6 +256,21 @@ export const defaultBottomNavigation: NavigationItem[] = [
 
 export const defaultDurableNavigation: NavigationItem[] = [
   {
+    name: "Health",
+    description:
+      "Check that every part of the install is set up right and working.",
+    href: "/system/health",
+    icon: HealthIcon,
+    keywords: [
+      "doctor",
+      "status",
+      "diagnostics",
+      "setup",
+      "install",
+      "versions",
+    ],
+  },
+  {
     name: "Monitoring",
     description: "Inspect running sessions, actors and leases.",
     href: "/durable",
@@ -294,7 +327,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Library", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
+  { label: "System", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
@@ -337,7 +370,9 @@ function bestNavigationMatch(
   pathname: string,
   sections: NavigationSection[],
 ): { section: NavigationSection; item: NavigationItem } | undefined {
-  let best: { length: number; section: NavigationSection; item: NavigationItem } | undefined;
+  let best:
+    | { length: number; section: NavigationSection; item: NavigationItem }
+    | undefined;
   for (const section of sections) {
     for (const item of section.items) {
       const href = item.activePrefix ?? item.href;
@@ -372,8 +407,11 @@ export function visibleNavigationSections(
     .filter((section) => section.items.length > 0);
 }
 
-export function isDurableNavigationSection(section: NavigationSection): boolean {
+/** The System section: platform users only, like the pages it links to. */
+export function isDurableNavigationSection(
+  section: NavigationSection,
+): boolean {
   return section.items.some(
-    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+    (item) => isUnder(item.href, "/durable") || isUnder(item.href, "/system"),
   );
 }

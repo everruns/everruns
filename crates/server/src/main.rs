@@ -28,6 +28,15 @@ struct Args {
     /// Probe GET /health on HTTP_ADDR and exit 0 when healthy (for container healthchecks)
     #[arg(long)]
     health_check: bool,
+
+    /// Run the system doctor against this environment's services, print the
+    /// report and exit: 1 when a check is a problem, 0 otherwise
+    #[arg(long)]
+    doctor: bool,
+
+    /// With --doctor, print the report as JSON
+    #[arg(long, requires = "doctor")]
+    json: bool,
 }
 
 #[tokio::main]
@@ -43,6 +52,17 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    if args.doctor {
+        use everruns_server::domains::system::doctor::preflight;
+        let report = preflight::run().await?;
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            print!("{}", preflight::render(&report));
+        }
+        std::process::exit(preflight::exit_code(&report));
     }
 
     // Initialize telemetry (guard must stay alive for the lifetime of the application)

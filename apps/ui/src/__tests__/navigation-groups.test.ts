@@ -1,4 +1,7 @@
-import { defaultNavigationSections, navigationGroupForPath } from "@/lib/navigation";
+import {
+  defaultNavigationSections,
+  navigationGroupForPath,
+} from "@/lib/navigation";
 
 // EVE-869: a page's group is decided in exactly one place — the sidebar section
 // table. These pin the derivation the breadcrumb depends on.
@@ -18,7 +21,8 @@ describe("navigationGroupForPath", () => {
 
   it("prefers the longest matching route", () => {
     // Both `/durable` and `/durable/workers` match; the more specific wins.
-    expect(navigationGroupForPath("/durable/workers")).toBe("Durable Execution");
+    expect(navigationGroupForPath("/durable/workers")).toBe("System");
+    expect(navigationGroupForPath("/system/health")).toBe("System");
   });
 
   it("gives no group to pages outside a labelled section", () => {
@@ -32,8 +36,12 @@ describe("navigationGroupForPath", () => {
 
   it("follows the section table, so regrouping a route needs no page change", () => {
     const regrouped = defaultNavigationSections.map((section) =>
-      section.label === "Building" ? { ...section, label: "Workshop" } : section,
+      section.label === "Building"
+        ? { ...section, label: "Workshop" }
+        : section,
     );
-    expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
+    expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe(
+      "Workshop",
+    );
   });
 });
