@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { useSessionContext } from "../session-context";
 import { EventFilter } from "@/components/events/event-filter";
+import { RawEventPreview } from "@/components/events/raw-event-preview";
 import { DEFAULT_EXCLUDED_EVENTS } from "@/lib/api/events";
 import { LlmHistoryViewer } from "@/components/llm/llm-history-viewer";
 import type { LlmGenerationData, Event as SessionEvent } from "@/lib/api/types";
@@ -210,9 +211,7 @@ export default function EventsPage() {
                           )}
                           <CopyButton data={event} />
                         </div>
-                        <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
-                          {JSON.stringify(event, null, 2)}
-                        </pre>
+                        <RawEventPreview event={event} />
                       </div>
                     </TableCell>
                   </TableRow>

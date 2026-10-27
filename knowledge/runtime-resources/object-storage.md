@@ -101,9 +101,17 @@ untouched.
   row) and selects on `size_bytes`/path only; the existing Rust-side line scan
   fetches each candidate from the blob store and matches it. The TM-DOS-008
   per-file (512 KiB) and total-scan (5 MiB) caps still bound the work.
-- **move/copy/delete.** Move keeps the same object (only the path changes).
-  Copy duplicates the blob under the new file id. Delete removes the object,
-  then the row (cascade clears the sidecar).
+- **move/copy/fork/delete.** Move keeps the same object (only the path
+  changes). Copy and session fork add another pointer to the same object, so
+  no bytes are duplicated. Delete, overwrite and compare-and-set only drop or
+  repoint the sidecar row; the object stays until the blob GC finds no pointer
+  left (see *Garbage collection*). Pointer changes hold the owning
+  `workspace_files` row lock and copies take a share lock on the source row,
+  so the GC's pointer snapshot always includes at least one live pointer for
+  an object that is being copied.
+- **Large files.** Whole-file reads (`read_file`, the JSON file API, worker
+  reads) load at most `MAX_LOADED_FILE_BYTES` (100 MiB); a larger offloaded
+  file answers 422 there. Raw downloads stream instead (*Streaming reads*).
 
 ### Multitenancy
 
@@ -122,6 +130,18 @@ Images keep their existing flow: `GET /v1/images/{id}` streams bytes the server
 fetched from PostgreSQL or the blob store, and workers fetch via the
 HMAC-signed `/internal/images/{id}` endpoint, both proxy through Everruns, so
 no S3 URL ever leaves the control plane.
+
+### Streaming reads
+
+`GET .../fs/_/download/{path}` (and `GET .../fs/{path}` with
+`Accept: application/octet-stream`) on both the session and workspace
+surfaces stream the bytes: offloaded content through
+`BlobStore::get_stream`, inline content as the requested slice of the column.
+They answer `Range: bytes=...` with `206 Partial Content`, honor `If-Range`
+against the `ETag` (the content SHA-256 when offloaded), and return `416` for
+a range outside the file. This is what lets browsers play and seek recorded
+video. Knowledge, Memory and virtual-mount files are small generated files and
+keep the whole-file path, sliced in memory.
 
 ## Disaster-recovery metadata
 
@@ -170,8 +190,9 @@ reconstruct the row and re-link the blob. The record is forward-versioned
 ## Garbage collection
 
 Object stores are not transactional with PostgreSQL, so a blob object can
-outlive its metadata: an interrupted delete (row gone, object left) or a crash
-between `put()` and the best-effort object cleanup leaks an object. Such orphans
+outlive its metadata: every delete and overwrite leaves its object behind on
+purpose (copies and forks may share it), and a crash between `put()` and the
+best-effort cleanup of a failed insert leaks one too. Such orphans
 are never *served*, reads always go through the sidecar pointer rows, but they
 accumulate as storage cost. A periodic GC sweep reconciles bucket contents
 against the live pointers and reclaims orphans.
@@ -305,9 +326,8 @@ available for local smoke testing (see *Local development*).
 
 ## Non-goals / follow-ups
 
-- **Streaming I/O.** The current contract buffers whole blobs in memory, matching
-  the existing inline path and per-file size caps. Range/streaming reads are a
-  later enhancement.
+- **Streaming writes.** Writes still buffer the whole file. Streaming uploads
+  are the next step of the media storage work.
 - **Migration of existing data.** Enabling `s3` offloads newly written content;
   a backfill job to move pre-existing inline content is follow-up work. Reads
   transparently serve inline or offloaded content regardless.

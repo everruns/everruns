@@ -208,6 +208,17 @@ fn test_grpc_status_to_error_invalid_argument() {
 }
 
 #[test]
+fn a_reply_over_the_grpc_size_cap_is_not_retried() {
+    // tonic reports a message past `max_*_message_size` as OUT_OF_RANGE. The
+    // same history is too large on every attempt, so retrying only loops.
+    let status = tonic::Status::out_of_range(
+        "Error, encoded message length too large: found 18611223 bytes, the limit is: 16777216 bytes",
+    );
+    let err = grpc_status_to_error(status);
+    assert!(err.is_non_retryable(), "{err:?}");
+}
+
+#[test]
 fn test_grpc_status_to_error_resource_exhausted_payload() {
     let status = tonic::Status::resource_exhausted("message too large");
     let err = grpc_status_to_error(status);

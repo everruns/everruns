@@ -38,6 +38,14 @@ pub use proto::worker_service_server::{WorkerService, WorkerServiceServer};
 /// `FailedPrecondition` message the control plane answers checkpoint and
 /// journal RPCs with when it has no `SECRETS_ENCRYPTION_KEY`. Workers match on
 /// it to run without those stores, as the in-process worker does (EVE-1261).
+/// Largest gRPC message the server and workers exchange, both directions.
+///
+/// Images travel by presigned URL, not gRPC, but a turn still loads the whole
+/// message history in one `LoadMessages` reply, and tool results make long
+/// sessions large: production sessions reached 18-21 MiB and every turn failed
+/// at the old 16 MiB cap. Both ends must use the same value.
+pub const MAX_GRPC_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
+
 pub const CHECKPOINT_ENCRYPTION_NOT_CONFIGURED: &str = "checkpoint encryption is not configured";
 // ============================================================================
 // Error types

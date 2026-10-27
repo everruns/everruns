@@ -53,7 +53,7 @@ impl Command for ManageSessionSandbox {
             .ok_or_else(|| {
                 CommandError::bad_request("Session sandbox is not configured for this session")
             })?;
-        let tool_context = service.tool_context(session_id);
+        let tool_context = service.tool_context(session_id).await;
 
         match self.action {
             SessionSandboxAction::Pause => {

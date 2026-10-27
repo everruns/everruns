@@ -689,18 +689,11 @@ impl WorkerServiceImpl {
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
     }
 
-    /// Max gRPC message size (16MB)
-    ///
-    /// Image data no longer flows through gRPC — workers fetch images via presigned
-    /// HTTP URLs returned by resolve_image/resolve_images RPCs. The limit only needs
-    /// to accommodate metadata, proto messages, and session file content.
-    const MAX_GRPC_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
-
     /// Create a tonic server for this service
     pub fn into_server(self) -> WorkerServiceServer<Self> {
         WorkerServiceServer::new(self)
-            .max_decoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
-            .max_encoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
+            .max_encoding_message_size(everruns_internal_protocol::MAX_GRPC_MESSAGE_SIZE)
     }
 
     /// Convert ResolvedModel to proto ResolvedModel

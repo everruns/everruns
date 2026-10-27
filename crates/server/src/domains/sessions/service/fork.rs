@@ -195,34 +195,9 @@ impl SessionService {
         source_workspace_id: Uuid,
         child_workspace_id: Uuid,
     ) -> Result<()> {
-        let files = self.db.list_all_session_files(source_workspace_id).await?;
-        for file in files {
-            if self
-                .db
-                .get_session_file(child_workspace_id, &file.path)
-                .await?
-                .is_some()
-            {
-                continue;
-            }
-            let content = if file.is_directory {
-                None
-            } else {
-                self.db
-                    .get_session_file(source_workspace_id, &file.path)
-                    .await?
-                    .and_then(|row| row.content)
-            };
-            self.db
-                .create_session_file(CreateSessionFileRow {
-                    session_id: SessionId::from_uuid(child_workspace_id),
-                    path: file.path,
-                    content,
-                    is_directory: file.is_directory,
-                    is_readonly: file.is_readonly,
-                })
-                .await?;
-        }
+        self.db
+            .copy_all_session_files(source_workspace_id, child_workspace_id)
+            .await?;
         Ok(())
     }
 

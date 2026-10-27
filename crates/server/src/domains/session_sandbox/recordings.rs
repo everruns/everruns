@@ -15,14 +15,14 @@
 // one runs is skipped; whatever it would have found is still in the Sandbox
 // for the next one.
 
-use base64::Engine;
 use everruns_capabilities::capabilities::sandbox_desktop::collect_desktop_recordings;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{EventContext, EventRequest, FILE_OP_CREATE, FileWrittenData};
+use futures::StreamExt;
 
 use super::SessionSandboxService;
 use crate::domains::session_files::queries::workspace_key_unscoped;
-use crate::domains::session_files::service::{CreateFileInput, WorkspaceFileService};
+use crate::domains::session_files::service::WorkspaceFileService;
 
 /// Session-files folder the recordings are written to.
 pub const RECORDINGS_DIR: &str = "/recordings";
@@ -47,7 +47,7 @@ impl SessionSandboxService {
         if !config.desktop_recording() {
             return Ok(());
         }
-        let context = self.tool_context(session_id);
+        let context = self.tool_context(session_id).await;
         let recordings = collect_desktop_recordings(&context, &config)
             .await
             .map_err(|err| anyhow::anyhow!("{err:?}"))?;
@@ -72,16 +72,12 @@ impl SessionSandboxService {
             if self.db.session_file_exists(workspace_key, &path).await? {
                 continue;
             }
+            // Raw bytes straight to storage: no base64 copy of the video.
+            let size = content.len() as u64;
+            let body =
+                futures::stream::once(async move { Ok(bytes::Bytes::from(content)) }).boxed();
             let file = files
-                .create_file(
-                    workspace_key,
-                    CreateFileInput {
-                        path,
-                        content: Some(base64::engine::general_purpose::STANDARD.encode(&content)),
-                        encoding: Some("base64".to_string()),
-                        is_readonly: Some(true),
-                    },
-                )
+                .write_file_stream(workspace_key, &path, body, Some(size), Some(true))
                 .await?;
             if let Some(events) = self.events() {
                 let event = EventRequest::new(

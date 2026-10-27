@@ -8153,6 +8153,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/workspaces/{workspace_id}/fs/_/upload/{path}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Upload raw file bytes
+     * @description Creates or replaces the file with the request body, streamed to storage,
+     *     so files larger than the JSON API carries (recordings, media) can be
+     *     uploaded. Parent directories are created as needed.
+     */
+    put: operations["upload_path"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/workspaces/{workspace_id}/fs/{path}": {
     parameters: {
       query?: never;
@@ -52853,6 +52875,15 @@ export interface operations {
           "application/octet-stream": unknown;
         };
       };
+      /** @description The byte range named by the `Range` header */
+      206: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/octet-stream": unknown;
+        };
+      };
       /** @description Path points to a directory */
       400: {
         headers: {
@@ -52862,6 +52893,13 @@ export interface operations {
       };
       /** @description File not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The `Range` header lies outside the file */
+      416: {
         headers: {
           [name: string]: unknown;
         };
@@ -53059,6 +53097,57 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  upload_path: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Workspace ID (wsp_<32-hex>) */
+        workspace_id: string;
+        /** @description File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value. */
+        path: string;
+      };
+      cookie?: never;
+    };
+    /** @description Raw file bytes */
+    requestBody: {
+      content: {
+        "application/octet-stream": number[];
+      };
+    };
+    responses: {
+      /** @description File written */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FileInfo"];
+        };
+      };
+      /** @description Invalid path, or the path is a directory or a mounted folder */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or workspace is read-only */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description File or session storage limit exceeded */
+      413: {
         headers: {
           [name: string]: unknown;
         };

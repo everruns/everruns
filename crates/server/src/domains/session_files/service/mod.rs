@@ -29,6 +29,7 @@ pub(super) mod knowledge_mounts;
 use knowledge_mounts::KnowledgeRoute;
 mod mounts;
 mod search;
+pub mod streaming;
 
 /// Input for creating a file
 pub struct CreateFileInput {
@@ -266,10 +267,9 @@ impl WorkspaceFileService {
 
         self.ensure_parent_path_writable(session_id, &path).await?;
 
-        // Check if already exists
-        if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
+        if let Some(existing) = self.db.get_session_file_info(session_id, &path).await? {
             if existing.is_directory {
-                return Ok(Self::row_to_file_info(existing));
+                return Ok(Self::row_to_file_info_from_info(existing));
             } else {
                 return Err(anyhow!("A file exists at path: {}", path));
             }
@@ -297,10 +297,10 @@ impl WorkspaceFileService {
                     || msg.contains("UNIQUE constraint")
                 {
                     // Race: another request created it concurrently; return existing
-                    if let Some(existing) = self.db.get_session_file(session_id, &path).await?
+                    if let Some(existing) = self.db.get_session_file_info(session_id, &path).await?
                         && existing.is_directory
                     {
-                        return Ok(Self::row_to_file_info(existing));
+                        return Ok(Self::row_to_file_info_from_info(existing));
                     }
                     return Err(anyhow!("A file exists at path: {}", path));
                 }
@@ -318,7 +318,7 @@ impl WorkspaceFileService {
         self.ensure_path_not_virtual(session_id, path)?;
 
         // Check if directory exists
-        if let Some(existing) = self.db.get_session_file(session_id, path).await? {
+        if let Some(existing) = self.db.get_session_file_info(session_id, path).await? {
             if existing.is_directory {
                 return Ok(());
             } else {
@@ -349,7 +349,7 @@ impl WorkspaceFileService {
                     || msg.contains("UNIQUE constraint")
                 {
                     // Race: another request created it concurrently; check it's a directory
-                    if let Some(existing) = self.db.get_session_file(session_id, path).await?
+                    if let Some(existing) = self.db.get_session_file_info(session_id, path).await?
                         && existing.is_directory
                     {
                         return Ok(());
@@ -367,7 +367,7 @@ impl WorkspaceFileService {
         let mut current = FileInfo::parent_path(path);
 
         while let Some(parent) = current {
-            if let Some(existing) = self.db.get_session_file(session_id, &parent).await?
+            if let Some(existing) = self.db.get_session_file_info(session_id, &parent).await?
                 && existing.is_directory
                 && existing.is_readonly
             {
@@ -521,7 +521,7 @@ impl WorkspaceFileService {
             }));
         }
 
-        let row = self.db.get_session_file(session_id, &path).await?;
+        let row = self.db.get_session_file_info(session_id, &path).await?;
         Ok(row.map(|r| FileStat {
             path: r.path.clone(),
             name: FileInfo::name_from_path(&r.path),
@@ -565,7 +565,7 @@ impl WorkspaceFileService {
 
         // Verify directory exists (root always exists)
         if path != "/" && !virtual_dir_exists && !mount_ancestor {
-            let dir = self.db.get_session_file(session_id, &path).await?;
+            let dir = self.db.get_session_file_info(session_id, &path).await?;
             match dir {
                 Some(d) if !d.is_directory => {
                     return Err(anyhow!("Path is not a directory: {}", path));
@@ -699,7 +699,7 @@ impl WorkspaceFileService {
 
         // Check if file exists and is not readonly
         let existing_size =
-            if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
+            if let Some(existing) = self.db.get_session_file_info(session_id, &path).await? {
                 if existing.is_directory {
                     return Err(anyhow!("Cannot update directory: {}", path));
                 }
@@ -836,7 +836,7 @@ impl WorkspaceFileService {
         }
 
         // Check if file/directory exists
-        let file = self.db.get_session_file(session_id, &path).await?;
+        let file = self.db.get_session_file_info(session_id, &path).await?;
 
         // Check readonly on the target itself
         if let Some(ref f) = file
@@ -905,7 +905,7 @@ impl WorkspaceFileService {
         }
 
         // Check source exists
-        let source = self.db.get_session_file(session_id, &src_path).await?;
+        let source = self.db.get_session_file_info(session_id, &src_path).await?;
         if source.is_none() {
             return Err(anyhow!("Source not found: {}", src_path));
         }
@@ -953,7 +953,7 @@ impl WorkspaceFileService {
         }
 
         // Check source exists and is not a directory
-        let source = self.db.get_session_file(session_id, &src_path).await?;
+        let source = self.db.get_session_file_info(session_id, &src_path).await?;
         let source_size = match source {
             None => return Err(anyhow!("Source not found: {}", src_path)),
             Some(ref s) if s.is_directory => {

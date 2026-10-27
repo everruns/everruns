@@ -42,6 +42,11 @@ pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
                 AgentLoopError::store(format!("Resource exhausted: {msg}"))
             }
         }
+        // tonic's answer to a message past the size cap. It is the same size on
+        // every attempt, so it fails the turn instead of retrying it forever.
+        tonic::Code::OutOfRange if msg.contains("message length too large") => {
+            AgentLoopError::config(format!("Message exceeds the gRPC size cap: {msg}"))
+        }
         tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
             AgentLoopError::config(format!("Auth error: {msg}"))
         }
