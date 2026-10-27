@@ -1,6 +1,6 @@
 // `WorkerService` trait implementation for the gRPC service.
 //
-// Delegation only. A trait impl cannot be split across modules, so every
+// Authorization gate and delegation only. A trait impl cannot be split across modules, so every
 // handler body lives in `super::worker::<domain>` as an inherent method and
 // `delegate!` below generates the RPC that forwards to it. Keep it that way: a
 // body added here is a body nobody will find again.
@@ -23,6 +23,7 @@ macro_rules! delegate {
                     &self,
                     request: Request<$req>,
                 ) -> Result<Response<$resp>, Status> {
+                    super::assignment_scope::check_rpc(&request, stringify!($rpc))?;
                     self.$handler(request).await
                 }
             )*

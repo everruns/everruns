@@ -1426,6 +1426,7 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
 }
 
 mod actors;
+mod assignment_scope;
 mod checkpoint_encryption;
 mod history_cache;
 mod runtime_command_view;
