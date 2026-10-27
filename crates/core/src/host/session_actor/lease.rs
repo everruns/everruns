@@ -380,6 +380,16 @@ impl Lease {
             .await
     }
 
+    /// The first event of the tail (the latest `turn.started`, when a turn is
+    /// open): enough to name the turn without reading the rest of it.
+    pub(crate) async fn read_tail_head(&self) -> Result<Vec<Event>> {
+        Ok(self
+            .store
+            .read_actor_journal(self.session_id, None, 1)
+            .await?
+            .events)
+    }
+
     /// The log's tail from the session's latest `turn.started`: what a fold
     /// of its open turn needs.
     pub(crate) async fn read_tail(&self) -> Result<Vec<Event>> {
