@@ -3356,9 +3356,7 @@ export interface UpdateSessionRequest {
   model_id?: string | null;
 }
 
-// ============================================
 // Session Schedule types
-// ============================================
 export type ScheduleType = "oneshot" | "recurring";
 
 export interface SessionSchedule {
