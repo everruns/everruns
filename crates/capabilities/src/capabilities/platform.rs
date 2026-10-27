@@ -171,13 +171,8 @@ impl Capability for PlatformCapability {
         super::platform_native::tools()
     }
 
-    /// In shell mode this capability contributes no model-facing tools.
-    ///
-    /// The catalog is still here: the mounts, the permission checks and the
-    /// docs tree are the capability's, and none of them move. What goes is the
-    /// three tools, because a host in shell mode reaches the same commands as
-    /// `everruns` in its own shell. Leaving them would give the model two ways
-    /// to do one thing and a prompt that has to explain when to use which.
+    /// Shell-only attachments retain mounts and the permission boundary while
+    /// the host installs the CLI. Scripted mode selects the legacy entry points.
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         if shell_surface(config) {
             return vec![];
@@ -202,12 +197,7 @@ impl Capability for PlatformCapability {
             .collect()
     }
 
-    /// The tool prose is wrong in shell mode and has to go with the tools.
-    ///
-    /// It tells the model that platform builtins have no `--help` and that
-    /// filesystem redirection is disabled. Both are true of the scripted tool
-    /// and false of a real shell, so a host in shell mode would be instructed
-    /// against the two things shell mode exists to provide.
+    /// Scripted-interface restrictions must not accompany a real session shell.
     async fn system_prompt_contribution_with_config(
         &self,
         _ctx: &SystemPromptContext,
