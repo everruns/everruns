@@ -101,6 +101,13 @@ Implementation must mechanically enumerate descriptors and nested command
 registries so an unclassified new operation fails validation rather than
 inheriting access.
 
+Hosting wrappers can add worker-authenticated HTTP admission, usage, search and
+egress routes, or give workers a proxy-token signer. These are authority edges
+too, even though they are absent from the protobuf service. Replacing the gRPC
+bearer is insufficient while an executor can use another global bearer/signing
+secret to select a foreign tenant or mint a foreign proxy identity. Deployment
+qualification must extend the inventory to every such wrapper listener and key.
+
 ## Identity, assignment and capability
 
 Use a distinct authenticated executor identity, established by the deployment's

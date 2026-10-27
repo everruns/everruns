@@ -22,7 +22,8 @@ merging a design is not evidence that the stronger boundary exists.
 
 Enumerate the compiled worker service descriptors, decoded generic operations,
 command registry, internal HTTP byte routes, direct adapters, and background
-dispatch/reaper paths. Each operation declares its service role, assignment
+dispatch/reaper paths, including every hosting-wrapper listener and token signer
+reachable by an executor. Each operation declares its service role, assignment
 purpose, target scope, side-effect class and revocation/replay requirements.
 An unclassified operation is denied and fails coverage validation. The present
 65-RPC/19-handler-group source baseline is only the starting census.
@@ -162,6 +163,7 @@ Record positive own-assignment behavior alongside rejection evidence.
 | Exact retry after lost receipt; same ordinal with changed body; gap/out-of-order/cross-assignment replay | Return a prior valid receipt or refuse replay without a second mutation/charge; never reset replay state on reconnect |
 | Server restart/failover and stale admission cache or capability | New authority fences the old generation; unavailable authoritative state fails closed rather than allowing from a stale cache |
 | Blob signature/query tampering, old shared signer, foreign upload metadata, alternate direct adapter | No byte read/write or internal-caller/database escape; executor has no signer/root key/storage credential |
+| Shared wrapper/egress bearer or signer used with another tenant's limits, usage, wallet permit or proxy identity | Every hosting route/relay enforces its role and assignment; retiring the gRPC bearer alone cannot satisfy the cutover gate |
 | Provider/MCP/Slack/payment target or initiator spoofing, shared deployment-key request | Current resource grants, management purpose, egress/spend policy and side-effect idempotency apply; no raw shared secret is returned |
 | Executor/sandbox environment, filesystem, process and IPC inspection | Only permitted assignment authority is present; scheduler/other tenant secrets are absent; actual host boundary limitations recorded |
 | Oversize/malformed batches, slow consumer, reconnect storm, concurrent streams, one noisy tenant | Count/byte/in-flight budgets hold; fair progress and bounded memory are measured; completion cannot overtake accepted prior work |
