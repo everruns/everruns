@@ -322,3 +322,7 @@ includes the exact command for each one.
 ## License
 
 Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+
+### Provider-native batch requests (alpha)
+
+`everruns::batch::Batch` submits independent completions through Anthropic Message Batches, returns a serializable credential-free ticket, and lets another process poll, collect or cancel. Enable `anthropic`; application code owns persistence and scheduling. See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) and the runnable `batch_classification` and `batch_eval` examples.

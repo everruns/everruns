@@ -334,6 +334,7 @@ export default defineConfig({
                     { label: "Agent Format Reference", slug: "reference/agent-package" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Direct Calls and Decisions", slug: "framework/direct-model-calls" },
+                    { label: "Batch Model Requests", slug: "framework/batch-model-requests" },
                     { label: "Sessions", slug: "framework/sessions" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
                     { label: "Observability", slug: "framework/observability" },

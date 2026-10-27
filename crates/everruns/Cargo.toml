@@ -426,3 +426,11 @@ required-features = ["agent-package-fs", "openai"]
 [[example]]
 name = "dreaming"
 required-features = ["openai", "builtins", "filesystem"]
+
+[[example]]
+name = "batch_classification"
+required-features = ["anthropic"]
+
+[[example]]
+name = "batch_eval"
+required-features = ["anthropic"]
