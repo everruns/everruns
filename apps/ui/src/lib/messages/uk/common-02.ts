@@ -107,7 +107,7 @@ export const messages: Readonly<Record<string, string>> = {
   Branch: "Відділення",
   Branding: "Представлення",
   "Brave Search (any key)": "Brave Search (будь-яка клавіша)",
-  Breadcrumb: "Панірувальні сухарі",
+  Breadcrumb: "Навігаційний ланцюжок",
   "Brings this point back as a new change. The current state stays in history, so this can be undone the same way.":
     "Повертає цей пункт як нову зміну. Поточний стан залишається в історії, тому це можна скасувати таким же чином.",
   Browse: "Перегляньте",
