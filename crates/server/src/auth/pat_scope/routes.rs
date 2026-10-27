@@ -720,6 +720,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/skills/config", Read),
     ("POST", "/v1/skills/upload", Write),
     ("POST", "/v1/skills/validate", Write),
+    ("GET", "/v1/system/doctor", Read),
     ("GET", "/v1/task-webhooks", Read),
     ("POST", "/v1/task-webhooks", Write),
     ("DELETE", "/v1/task-webhooks/{webhook_id}", Write),
