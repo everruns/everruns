@@ -32,6 +32,9 @@
 #[cfg(test)]
 mod tests;
 
+pub mod detached_calls;
+pub use detached_calls::{DetachedCalls, DetachedCallsConfig};
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -45,6 +48,7 @@ use tracing::{debug, info, warn};
 
 use crate::actor_lease_store::{ActorLeaseStore, LeasedActor};
 use crate::engine::model_wait::{self, ModelWaitSlots};
+use crate::engine::tool_detach;
 use crate::host::{DEFAULT_SESSION_LEASE_TTL, TurnDrive, WaitsOnPerson};
 use crate::phase_reads::PhaseIds;
 use crate::runtime_host::WorkerRuntimeHost;
@@ -160,6 +164,9 @@ pub struct ActorRuntime<H: ActorHosts> {
     renew_poke: Arc<Notify>,
     /// Wakes the lease loop: new runnable actors, or a finished one.
     wake: Arc<Notify>,
+    /// Finishes long tool calls after their turns parked; `None` keeps every
+    /// call with its turn.
+    detached: Option<Arc<DetachedCalls>>,
 }
 
 impl<H: ActorHosts> Clone for ActorRuntime<H> {
@@ -170,6 +177,7 @@ impl<H: ActorHosts> Clone for ActorRuntime<H> {
             config: self.config.clone(),
             renew_poke: self.renew_poke.clone(),
             wake: self.wake.clone(),
+            detached: self.detached.clone(),
         }
     }
 }
@@ -182,7 +190,14 @@ impl<H: ActorHosts> ActorRuntime<H> {
             config,
             renew_poke: Arc::new(Notify::new()),
             wake: Arc::new(Notify::new()),
+            detached: None,
         }
+    }
+
+    /// Detach long tool calls into `detached` (see `detached_calls`).
+    pub fn with_detached_calls(mut self, detached: Arc<DetachedCalls>) -> Self {
+        self.detached = Some(detached);
+        self
     }
 
     /// Take wake-ups from `wakeups` (in place of a push channel).
@@ -241,6 +256,10 @@ impl<H: ActorHosts> ActorRuntime<H> {
         let base = slots.poll_interval.min(slots.poll_backoff_max);
         let mut backoff = base;
         let mut running = JoinSet::new();
+        let renewer = self
+            .detached
+            .clone()
+            .map(|detached| tokio::spawn(detached.run(self.renew_poke.clone(), shutdown.clone())));
         loop {
             if *shutdown.borrow() {
                 break;
@@ -294,6 +313,12 @@ impl<H: ActorHosts> ActorRuntime<H> {
             running.abort_all();
             while running.join_next().await.is_some() {}
         }
+        if let Some(detached) = &self.detached {
+            if let Some(renewer) = renewer {
+                renewer.abort();
+            }
+            detached.stop().await;
+        }
     }
 
     async fn lease_into(
@@ -320,8 +345,16 @@ impl<H: ActorHosts> ActorRuntime<H> {
             let runtime = self.clone();
             let guard = InFlight::enter(slots.in_flight.clone());
             let model_waits = slots.model_waits.clone();
+            let detacher = runtime
+                .detached
+                .as_ref()
+                .map(|detached| detached.for_lease(actor.fence, runtime.wake.clone()));
             running.spawn(async move {
-                model_wait::scope(model_waits, runtime.run_actor(actor)).await;
+                let run = model_wait::scope(model_waits, runtime.run_actor(actor));
+                match detacher {
+                    Some(detacher) => tool_detach::provide(detacher, run).await,
+                    None => run.await,
+                }
                 // The release may have left the actor runnable (input arrived
                 // as its turn ended), and a slot just opened. Free the slot
                 // before the wake-up, or the woken loop can still count it

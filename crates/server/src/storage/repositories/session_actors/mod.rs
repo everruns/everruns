@@ -67,6 +67,7 @@
 //   `has_more`. A turn's log is bounded in practice by its iteration cap, so
 //   one page is the common case.
 
+mod detached;
 pub(super) mod rows;
 use rows::*;
 
@@ -201,6 +202,9 @@ impl Database {
             return Ok(Vec::new());
         }
         let scan = (limit * ACTOR_LEASE_SCAN_FACTOR).min(MAX_ACTOR_LEASE_SCAN);
+        // Turns whose detached calls' holders stopped renewing them resume
+        // here, on the lease poll every worker runs (`detached`).
+        self.sweep_expired_detached_tool_calls().await?;
         Ok(sqlx::query_as::<_, LeasedActorRow>(
             r#"
             WITH candidates AS (
@@ -208,6 +212,10 @@ impl Database {
                 FROM session_actors
                 WHERE runnable_since IS NOT NULL
                   AND (lease_holder IS NULL OR lease_expires_at <= NOW())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM detached_tool_calls d
+                      WHERE d.session_id = session_actors.session_id
+                  )
                 ORDER BY runnable_since, session_id
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
@@ -347,8 +355,12 @@ impl Database {
     }
 
     /// Cancel the turn `session_id` is running or about to run; see the
-    /// header for who records it. One statement under the row lock.
+    /// header for who records it. One statement under the row lock decides.
+    /// The cancel also deletes the turn's detached calls, after the actor row
+    /// is locked (lock order of `detached`): their holders stop them, and a
+    /// late completion can no longer make the actor runnable.
     pub async fn request_session_actor_cancel(&self, session_id: SessionId) -> Result<ActorCancel> {
+        let mut tx = self.pool.begin().await?;
         let leased = sqlx::query_scalar::<_, bool>(
             r#"
             WITH current AS (
@@ -377,8 +389,13 @@ impl Database {
             "#,
         )
         .bind(session_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+        sqlx::query("DELETE FROM detached_tool_calls WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(match leased {
             Some(true) => ActorCancel::Requested,
             Some(false) => ActorCancel::Withdrawn,
