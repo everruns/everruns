@@ -165,7 +165,7 @@ impl CatalogLimits {
 
 const BOUNDED_SYSTEM_PROMPT: &str = "Additional tools are available through tool_search. \
 Search by operation, capability, or MCP server purpose. The catalog includes MCP server \
-names and descriptions. Search returns authoritative parameter schemas and makes matching \
+names and descriptions. Search returns operation summaries and makes matching \
 operations available as native functions on your next step. If a deferred server is loaded, \
 search again for its operation. Refine broad queries; only a bounded working set is advertised.";
 
@@ -305,6 +305,20 @@ impl Capability for ToolSearchCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Optimization")
+    }
+
+    fn supersedes_with_config(&self, config: &Value) -> Vec<&'static str> {
+        if CatalogLimits::from_config(config).is_some() {
+            // An explicit disclosure ceiling must win over inherited hosted
+            // search, which otherwise skips the bounded definition hook.
+            vec![
+                super::auto_tool_search::AUTO_TOOL_SEARCH_CAPABILITY_ID,
+                super::openai_tool_search::OPENAI_TOOL_SEARCH_CAPABILITY_ID,
+                super::claude_tool_search::CLAUDE_TOOL_SEARCH_CAPABILITY_ID,
+            ]
+        } else {
+            vec![]
+        }
     }
 
     fn native_tool_disclosure_policy_with_config(

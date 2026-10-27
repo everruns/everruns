@@ -50,6 +50,10 @@ Hosted modes keep their provider wire behavior. The bounded catalog settings
 below apply to generic `tool_search`; they do not change hosted search. A
 first-party model ID through a gateway does not establish that the gateway
 implements the hosted format. Driver profile masking remains authoritative.
+Explicit bounded generic search supersedes inherited automatic and hosted search
+capabilities. This keeps an Agent's disclosure ceiling authoritative even when
+its parent harness selects hosted search for the model; configuration order must
+not restore the complete catalog or add a second discovery mechanism.
 See [OpenAI's guide](https://developers.openai.com/api/docs/guides/tools-tool-search/)
 and [Anthropic's tool-use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool).
 

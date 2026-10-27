@@ -6,6 +6,55 @@ use everruns_contracts::typed_id::SessionId;
 
 struct CatalogTool(ToolDefinition);
 
+#[tokio::test]
+async fn explicit_bounded_search_supersedes_inherited_discovery() {
+    use crate::builtins::{
+        AutoToolSearchCapability, ClaudeToolSearchCapability, OpenAiToolSearchCapability,
+    };
+    let mut registry = CapabilityRegistry::new();
+    registry.register(ToolSearchCapability::new());
+    registry.register(AutoToolSearchCapability::new());
+    registry.register(OpenAiToolSearchCapability::new());
+    registry.register(ClaudeToolSearchCapability::new());
+    for inherited in [
+        "auto_tool_search",
+        "openai_tool_search",
+        "claude_tool_search",
+    ] {
+        for model in [
+            "gpt-5.4",
+            "meta/muse-spark-1.3-contributor",
+            "claude-opus-4-8",
+        ] {
+            for bounded_first in [false, true] {
+                let mut configs = vec![
+                    crate::AgentCapabilityConfig::new(inherited),
+                    crate::AgentCapabilityConfig::with_config(
+                        "tool_search",
+                        json!({"bounded":true,"threshold":1}),
+                    ),
+                ];
+                if bounded_first {
+                    configs.reverse();
+                }
+                let mut ctx = SystemPromptContext::without_file_store(SessionId::new());
+                ctx.model = Some(model.into());
+                let runtime = RuntimeAgentBuilder::new()
+                    .tools(definitions(2000))
+                    .with_capability_configs(&configs, &registry, &ctx)
+                    .await
+                    .model(model)
+                    .build();
+                assert!(runtime.tool_search.is_none(), "{inherited}/{model}");
+                assert_eq!(runtime.tools.len(), 1, "{inherited}/{model}");
+                assert_eq!(runtime.tools[0].name(), "tool_search");
+                assert_eq!(runtime.catalog_tools.len(), 2000);
+                assert_eq!(runtime.execution_tools().len(), 2001);
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl Tool for CatalogTool {
     fn name(&self) -> &str {

@@ -80,6 +80,11 @@ models or provider inline tool-change paths.
    one read operation and one update operation; verify revealed schemas use
    canonical `params` payloads and the change call carries a reason and the
    revision read as separate metadata.
+   Keep the Worker harness's inherited `auto_tool_search` enabled. Check the
+   initial provider request: it must contain only eager tools and `tool_search`,
+   with no undisclosed platform functions or hosted search activator. Repeat on
+   a first-party model and a gateway model; the Agent's bounded setting wins in
+   both cases.
 2. Ask for an aggregation across many resources. Verify the assistant uses the
    `everruns` shell for the loop/filtering work and reports the requested
    aggregate. Confirm the active optional schema count, serialized schema bytes,
