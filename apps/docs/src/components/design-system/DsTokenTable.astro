@@ -1,0 +1,62 @@
+---
+// Color tokens, read from the app's design-system.css at build time
+// (src/generated/app-tokens.json). The values on this page cannot drift from the
+// product; only the usage notes below are written by hand.
+import "../../styles/design-system-examples.css";
+import tokens from "../../generated/app-tokens.json";
+
+interface Props {
+  /** Token names without the leading `--`, in display order. */
+  names: string[];
+}
+
+const usage: Record<string, string> = {
+  background: "Page behind everything, under the dot grid.",
+  foreground: "Body text and headings.",
+  card: "Cards, panes and popovers. Flat, no texture.",
+  "card-foreground": "Text on cards.",
+  popover: "Menus, dialogs, tooltips.",
+  primary: "Navy. Commit buttons, links, the selected-nav marker. Near-white in dark mode.",
+  "primary-foreground": "Text on a navy fill.",
+  secondary: "Quiet neutral fill: secondary badges.",
+  muted: "Hover fill and quiet surfaces. Hover is always muted, never gold.",
+  "muted-foreground": "Secondary text and metadata. AA on both page and muted surface.",
+  accent: "Gold. The create button, the masthead tile wash, user chat turns.",
+  "accent-foreground": "Text on a light gold tint (Editing badge).",
+  success: "Healthy, enabled, passed.",
+  warning: "Degraded, waiting, needs attention.",
+  info: "Running, informational.",
+  destructive: "Errors and irreversible actions only.",
+  border: "Every 1px rule and card edge.",
+  input: "Form control borders.",
+  ring: "Focus ring. Deeper gold than the accent in light mode for 3:1 contrast.",
+};
+
+const byName = (list: { name: string; value: string }[]) =>
+  Object.fromEntries(list.map((t) => [t.name.slice(2), t.value]));
+const light = byName(tokens.light);
+const dark = byName(tokens.dark);
+const { names } = Astro.props;
+---
+
+<table class="ds-token-table not-content">
+  <thead>
+    <tr><th>Token</th><th>Light</th><th>Dark</th><th>Use for</th></tr>
+  </thead>
+  <tbody>
+    {names.map((name) => (
+      <tr>
+        <td><code>--{name}</code></td>
+        <td>
+          <span class="ds-swatch" style={`background:hsl(${light[name]})`} />
+          <code>{light[name]}</code>
+        </td>
+        <td>
+          <span class="ds-swatch" style={`background:hsl(${dark[name]})`} />
+          <code>{dark[name]}</code>
+        </td>
+        <td>{usage[name] ?? ""}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>

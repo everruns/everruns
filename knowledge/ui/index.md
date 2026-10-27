@@ -21,4 +21,5 @@
 * [Demo Screenshot Set](demo-screenshots.md) - Maintained light and dark demo scenes, data, framing, and refresh contract.
 * [Documentation Site Specification](documentation.md) - Documentation site.
 * [Sign-up Experience Redesign, Analysis & Design Brief](signup-experience-redesign-brief.md) - Design brief for on-brand sign-up / onboarding screens.
+* [Slate Design System Pages](design-system.md) - Why Slate is published as docs pages built from the app's tokens and icons, and the contract that keeps them current.
 * [Facet Iconography](iconography.md) - Custom domain icon philosophy, the original Intent Agent mark, and the reproduction contract.
