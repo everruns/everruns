@@ -48,6 +48,20 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    if any(p.startswith(('crates/server/src/domains/change_history/',
+                         'crates/server/src/storage/entity_changes',
+                         'crates/server/src/storage/manager_context',
+                         'crates/server/src/storage/repositories/entity_changes',
+                         'crates/server/src/storage/repositories/manager_context'))
+           or p in ('crates/server/src/api/history.rs',
+                    'crates/server/src/api/manager_context.rs',
+                    'crates/server/src/domains/common/mod.rs',
+                    'crates/server/src/storage/transaction.rs',
+                    'crates/server/tests/domain/change_history_test.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        # History/context writes must retain their baseline and revision guards
+        # across the real REST and command adapters, not just unit fixtures.
+        filters.add('change_history_test::')
     if any(p.startswith('crates/server/src/domains/knowledge/')
            or p in ('crates/server/src/api/knowledge.rs',
                     'crates/server/src/api/agent_api/work_chat.rs',

@@ -143,6 +143,24 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_history_changes_cover_rest_and_command_revision_contracts(self):
+        for path in ['crates/server/src/domains/change_history/mod.rs',
+                     'crates/server/src/domains/change_history/snapshot.rs',
+                     'crates/server/src/storage/entity_changes.rs',
+                     'crates/server/src/storage/repositories/entity_changes.rs',
+                     'crates/server/src/storage/manager_context.rs',
+                     'crates/server/src/storage/repositories/manager_context.rs',
+                     'crates/server/src/api/history.rs',
+                     'crates/server/src/api/manager_context.rs',
+                     'crates/server/src/domains/common/mod.rs',
+                     'crates/server/src/storage/transaction.rs',
+                     'crates/server/tests/domain/change_history_test.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                self.assertIn('change_history_test::', focused.risk_filters([path]))
+        self.assertNotIn('change_history_test::', focused.risk_filters([
+            'crates/server/src/domains/models/service.rs']))
+
     def test_knowledge_mount_changes_cover_consumer_workspace_isolation(self):
         for path in ['crates/server/src/domains/knowledge/runtime.rs',
                      'crates/server/src/api/knowledge.rs',

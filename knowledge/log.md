@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-27
+
+- History and manager-context changes now select their REST/command integration contract before merge, including the first mutation's restorable baseline. See [CI Build Time](project/ci-build-time.md).
+
 ## 2026-10-26
 
 - Chat now treats subchats as independent instances, renders one active conversation,

@@ -24,6 +24,8 @@ which share the same cache and linker characteristics.
 Pull requests run formatting, linting, repository guards, affected workspace tests,
 and relevant UI/docs checks. The affected set includes reverse Cargo dependencies;
 server persistence, authorization, and migration changes add focused contracts.
+History and manager-context changes exercise the real REST/command revision
+contract before merge, including the first mutation's restorable baseline.
 The durable isolation job provisions its own source scanner. Missing or failed
 scans are incomplete checks, never evidence of a clean architecture boundary;
 the [scanner regression](../../scripts/test-durable-isolation.sh) exercises both
